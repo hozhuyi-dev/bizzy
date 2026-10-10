@@ -1,0 +1,28 @@
+# Environment
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+*.local
+
+# Secrets that should never be committed
+*service-account*.json
+
+# TypeScript
+node_modules
+dist
+dist-ssr
+.tanstack
+coverage
+
+# CDK
+bizzy-infra/cdk.out
+bizzy-infra/.cdk.staging
+
+# Go
+bizzy-lambda/bin
+
+# OS / editor
+.DS_Store
+Thumbs.db

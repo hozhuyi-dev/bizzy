@@ -1,0 +1,165 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - production
+  workflow_dispatch:
+    inputs:
+      env_name:
+        description: "Environment to deploy to"
+        required: true
+        default: "development"
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+# Never cancel a deploy halfway: an interrupted CloudFormation update has to
+# roll back before the next one can start.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.env_name || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # Infra first: the web build reads its configuration from the stack outputs,
+  # so it must not run against outputs from the previous deploy.
+  infra:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.env_name || (github.ref_name == 'production' && 'production') || 'staging' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: bizzy-lambda/go.mod
+          cache-dependency-path: bizzy-lambda/go.sum
+
+      - name: Install dependencies
+        run: pnpm -F bizzy-infra install --frozen-lockfile
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # CloudFormation can't create SecureStrings, so the key goes to SSM here
+      # and the sync Lambda reads it at runtime. Via a file so the JSON never
+      # appears on a command line.
+      - name: Store Google service account key
+        run: |
+          set -euo pipefail
+          key_file="$RUNNER_TEMP/service-account.json"
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_KEY" > "$key_file"
+          aws ssm put-parameter \
+            --name "/${{ vars.PROJECT_NAME }}/${{ vars.ENVIRONMENT }}/google-service-account" \
+            --type SecureString \
+            --value "file://$key_file" \
+            --overwrite > /dev/null
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+
+      - name: Deploy stacks
+        run: pnpm -F bizzy-infra cdk:deploy:ci
+        env:
+          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          CALLBACK_URLS: ${{ secrets.CALLBACK_URLS }}
+          LOGOUT_URLS: ${{ secrets.LOGOUT_URLS }}
+          ALLOWED_EMAIL: ${{ secrets.ALLOWED_EMAIL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          SYNC_TIME_ZONE: ${{ secrets.SYNC_TIME_ZONE }}
+
+  web:
+    needs: infra
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.env_name || (github.ref_name == 'production' && 'production') || 'staging' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm -F bizzy-web install --frozen-lockfile
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Same script as local development, so CI can't drift from it.
+      - name: Write web env from stack outputs
+        run: node scripts/web-env.mjs
+        env:
+          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+      - name: Build
+        run: pnpm -F bizzy-web build:${{ vars.ENVIRONMENT }}
+
+      - name: Upload to S3
+        run: |
+          set -euo pipefail
+
+          WEB_STACK="${{ vars.PROJECT_NAME }}-${{ vars.ENVIRONMENT }}-web"
+          output() {
+            aws cloudformation describe-stacks --stack-name "$WEB_STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
+          }
+          SITE_BUCKET=$(output SiteBucketName)
+          DISTRIBUTION_ID=$(output DistributionId)
+          echo "DISTRIBUTION_ID=$DISTRIBUTION_ID" >> "$GITHUB_ENV"
+
+          DIST=bizzy-web/dist
+          # Vite content-hashes everything under assets/, so cache it forever.
+          aws s3 sync "$DIST" "s3://$SITE_BUCKET" \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*" --include "assets/*"
+          # Un-hashed public files revalidate on every request.
+          aws s3 sync "$DIST" "s3://$SITE_BUCKET" \
+            --cache-control "public,max-age=0,must-revalidate" \
+            --exclude "assets/*" --exclude "index.html"
+          # Entry document last, once everything it references is in place.
+          aws s3 cp "$DIST/index.html" "s3://$SITE_BUCKET/index.html" \
+            --cache-control "no-cache"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/*" > /dev/null

@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - production
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lambda:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bizzy-lambda
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: bizzy-lambda/go.mod
+          cache-dependency-path: bizzy-lambda/go.sum
+
+      - name: Format check
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+  infra:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      # `cdk synth` compiles the Go lambdas.
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: bizzy-lambda/go.mod
+          cache-dependency-path: bizzy-lambda/go.sum
+
+      - name: Install dependencies
+        run: pnpm -F bizzy-infra install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm -F bizzy-infra typecheck
+
+      - name: Lint
+        run: pnpm -F bizzy-infra lint
+
+      - name: Test
+        run: pnpm -F bizzy-infra test
+
+      - name: Synth
+        run: pnpm -F bizzy-infra cdk:synth --quiet
+        env:
+          ENVIRONMENT: staging
+          PROJECT_NAME: bizzy
+          AWS_ACCOUNT_ID: "123456789012"
+          AWS_REGION: ap-southeast-1
+          CALLBACK_URLS: https://example.com/
+          LOGOUT_URLS: https://example.com/
+          ALLOWED_EMAIL: owner@example.com
+          GOOGLE_CLIENT_ID: placeholder
+          GOOGLE_CLIENT_SECRET: placeholder
+          GOOGLE_CALENDAR_ID: owner@example.com
+          SYNC_TIME_ZONE: Asia/Kuala_Lumpur
+
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm -F bizzy-web install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm -F bizzy-web typecheck
+
+      - name: Lint
+        run: pnpm -F bizzy-web lint
+
+      - name: Test
+        run: pnpm -F bizzy-web test
+
+      - name: Build
+        run: pnpm -F bizzy-web build:production

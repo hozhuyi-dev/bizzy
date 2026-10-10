@@ -1,0 +1,23 @@
+{
+  "name": "bizzy",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "aws:login": "aws login --profile hozhuyi.dev",
+    "web:dev": "pnpm -F bizzy-web dev",
+    "web:env": "node scripts/web-env.mjs",
+    "web:test": "pnpm -F bizzy-web test",
+    "web:lint": "pnpm -F bizzy-web lint",
+    "web:typecheck": "pnpm -F bizzy-web typecheck",
+    "lambda:test": "cd bizzy-lambda && go test ./...",
+    "lambda:vet": "cd bizzy-lambda && go vet ./...",
+    "lambda:deploy": "pnpm -F bizzy-infra cdk:hotswap",
+    "infra:test": "pnpm -F bizzy-infra test",
+    "infra:lint": "pnpm -F bizzy-infra lint",
+    "infra:typecheck": "pnpm -F bizzy-infra typecheck",
+    "cdk:diff": "pnpm -F bizzy-infra cdk:diff",
+    "cdk:deploy": "pnpm -F bizzy-infra cdk:deploy",
+    "dev:deploy": "pnpm cdk:deploy && pnpm web:env"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

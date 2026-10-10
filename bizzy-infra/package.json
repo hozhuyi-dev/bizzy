@@ -1,0 +1,33 @@
+{
+  "name": "bizzy-infra",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "cdk:synth": "cdk synth",
+    "cdk:diff": "cdk diff --profile hozhuyi.dev",
+    "cdk:deploy": "cdk deploy --all --profile hozhuyi.dev",
+    "cdk:deploy:ci": "cdk deploy --all --require-approval never",
+    "cdk:hotswap": "cdk deploy \"*-development-api\" --hotswap --profile hozhuyi.dev"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "dependencies": {
+    "aws-cdk-lib": "^2.273.0",
+    "constructs": "^10.8.1",
+    "dotenv": "^18.0.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
+    "aws-cdk": "^2.1145.0",
+    "eslint": "^10.12.0",
+    "jiti": "^2.7.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
+  }
+}
