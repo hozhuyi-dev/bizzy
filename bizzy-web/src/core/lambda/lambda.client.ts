@@ -37,15 +37,13 @@ const client = new LambdaClient({
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-export async function invoke<T>(action: string, payload?: unknown): Promise<T> {
+async function send(functionName: string, payload: unknown): Promise<string> {
   const result = await client.send(
     new InvokeCommand({
-      FunctionName: import.meta.env.VITE_API_FUNCTION_NAME,
-      Payload: encoder.encode(JSON.stringify({ action, payload })),
+      FunctionName: functionName,
+      Payload: encoder.encode(JSON.stringify(payload)),
     }),
   );
-
-  const text = result.Payload ? decoder.decode(result.Payload) : "";
 
   // A crash or timeout inside the function, as opposed to an error it chose
   // to return.
@@ -53,10 +51,24 @@ export async function invoke<T>(action: string, payload?: unknown): Promise<T> {
     throw new ApiError("internal", "Something went wrong. Please try again.");
   }
 
+  return result.Payload ? decoder.decode(result.Payload) : "";
+}
+
+export async function invoke<T>(action: string, payload?: unknown): Promise<T> {
+  const text = await send(import.meta.env.VITE_API_FUNCTION_NAME, { action, payload });
   const body = JSON.parse(text) as ApiResponse<T>;
   if (body.error) {
     throw new ApiError(body.error.code, body.error.message);
   }
 
   return body.data as T;
+}
+
+/**
+ * Runs the calendar sync Lambda, which returns its summary as-is rather than
+ * through the API's {data, error} envelope.
+ */
+export async function invokeCalendarSync<T>(): Promise<T> {
+  const text = await send(import.meta.env.VITE_CALENDAR_SYNC_FUNCTION_NAME, {});
+  return JSON.parse(text) as T;
 }

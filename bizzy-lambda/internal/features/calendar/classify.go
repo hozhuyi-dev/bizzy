@@ -8,10 +8,12 @@ import (
 // Event is the part of a Google Calendar event the sync cares about. With
 // singleEvents=true each recurring instance arrives with its own ID.
 type Event struct {
-	ID        string
-	Title     string
-	Start     time.Time
-	End       time.Time
+	ID    string
+	Title string
+	Start time.Time
+	End   time.Time
+	// ColorID is the event's own colour ("" for the calendar's default).
+	ColorID   string
 	AllDay    bool
 	Cancelled bool
 }

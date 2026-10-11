@@ -4,37 +4,50 @@ import { extraAliases } from "../../clients.columns";
 import { ClientsMutation } from "../../clients.mutation";
 import type { Client, SaveClientInput } from "../../clients.types";
 import { Button } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
 import { DialogFooter } from "~/components/ui/dialog";
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
 } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import { Textarea } from "~/components/ui/textarea";
 import { centsToInput, parseCents } from "~/core/utils/money.util";
 
 interface ClientFormProps {
   /** Omitted when creating a client. */
-  client?: Client;
-  onDone: () => void;
+  client?: Client | undefined;
+  /** Prefills a new client, e.g. from an unmatched calendar name. */
+  initialName?: string | undefined;
+  onDone: (client: Client) => void;
 }
 
 interface ClientFormValues {
   name: string;
   email: string;
+  phone: string;
+  address: string;
+  postcode: string;
   /** Comma-separated; easier to type on a phone than a tag input. */
   aliases: string;
   defaultFee: string;
+  homeVisits: boolean;
 }
 
-function toFormValues(client: Client | undefined): ClientFormValues {
+function toFormValues(client: Client | undefined, initialName: string | undefined): ClientFormValues {
   return {
-    name: client?.name ?? "",
+    name: client?.name ?? initialName ?? "",
     email: client?.email ?? "",
+    phone: client?.phone ?? "",
+    address: client?.address ?? "",
+    postcode: client?.postcode ?? "",
     aliases: client ? extraAliases(client).join(", ") : "",
     defaultFee: centsToInput(client?.defaultFeeCents),
+    homeVisits: client?.homeVisits ?? false,
   };
 }
 
@@ -43,26 +56,35 @@ function fieldErrors(errors: ReadonlyArray<string | undefined>) {
   return errors.flatMap((message) => (message ? [{ message }] : []));
 }
 
+function optional<TKey extends string>(key: TKey, value: string): Partial<Record<TKey, string>> {
+  const trimmed = value.trim();
+  return trimmed ? ({ [key]: trimmed } as Record<TKey, string>) : {};
+}
+
 function toInput(values: ClientFormValues, id: string | undefined): SaveClientInput {
   const fee = values.defaultFee.trim();
   return {
     ...(id ? { id } : {}),
     name: values.name,
-    ...(values.email.trim() ? { email: values.email.trim() } : {}),
+    ...optional("email", values.email),
+    ...optional("phone", values.phone),
+    ...optional("address", values.address),
+    ...optional("postcode", values.postcode),
     aliases: values.aliases.split(",").map((alias) => alias.trim()).filter(Boolean),
     ...(fee ? { defaultFeeCents: parseCents(fee) ?? 0 } : {}),
+    ...(values.homeVisits ? { homeVisits: true } : {}),
   };
 }
 
-export function ClientForm({ client, onDone }: ClientFormProps) {
+export function ClientForm({ client, initialName, onDone }: ClientFormProps) {
   const save = ClientsMutation.useSave();
 
   const form = useForm({
-    defaultValues: toFormValues(client),
+    defaultValues: toFormValues(client, initialName),
     onSubmit: async ({ value }) => {
-      await save.mutateAsync(toInput(value, client?.id));
+      const saved = await save.mutateAsync(toInput(value, client?.id));
       toast.success(client ? "Client updated" : "Client added");
-      onDone();
+      onDone(saved);
     },
   });
 
@@ -143,17 +165,86 @@ export function ClientForm({ client, onDone }: ClientFormProps) {
           )}
         </form.Field>
 
-        <form.Field name="email">
+        <form.Field name="homeVisits">
+          {(field) => (
+            <Field orientation="horizontal">
+              <Checkbox
+                id={field.name}
+                checked={field.state.value}
+                onCheckedChange={(checked) => field.handleChange(checked)}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor={field.name}>Usually a home visit</FieldLabel>
+                <FieldDescription>
+                  An event colour set in the calendar still wins.
+                </FieldDescription>
+              </FieldContent>
+            </Field>
+          )}
+        </form.Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <form.Field name="phone">
+            {(field) => (
+              <Field>
+                <FieldLabel htmlFor={field.name}>Phone</FieldLabel>
+                <Input
+                  id={field.name}
+                  type="tel"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="012-345 6789"
+                />
+              </Field>
+            )}
+          </form.Field>
+
+          <form.Field name="email">
+            {(field) => (
+              <Field>
+                <FieldLabel htmlFor={field.name}>Email</FieldLabel>
+                <Input
+                  id={field.name}
+                  type="email"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                />
+              </Field>
+            )}
+          </form.Field>
+        </div>
+
+        <form.Field name="address">
           {(field) => (
             <Field>
-              <FieldLabel htmlFor={field.name}>Email</FieldLabel>
-              <Input
+              <FieldLabel htmlFor={field.name}>Address</FieldLabel>
+              <Textarea
                 id={field.name}
-                type="email"
+                rows={2}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
+              <FieldDescription>Printed on receipts.</FieldDescription>
+            </Field>
+          )}
+        </form.Field>
+
+        <form.Field name="postcode">
+          {(field) => (
+            <Field>
+              <FieldLabel htmlFor={field.name}>Postcode</FieldLabel>
+              <Input
+                id={field.name}
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                inputMode="numeric"
+                className="max-w-32"
+              />
+              <FieldDescription>Kept apart so clients can be grouped by area.</FieldDescription>
             </Field>
           )}
         </form.Field>

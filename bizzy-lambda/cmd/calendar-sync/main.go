@@ -1,5 +1,6 @@
-// Command calendar-sync runs once a day on a schedule and imports the last
-// SYNC_WINDOW_DAYS of calendar events as sessions.
+// Command calendar-sync runs once a day on a schedule, and whenever she taps
+// "Sync now" in the app, and imports the last SYNC_WINDOW_DAYS of calendar
+// events as sessions.
 package main
 
 import (
@@ -9,14 +10,24 @@ import (
 	"os"
 	"strconv"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/aws/aws-lambda-go/lambda"
 
+	"bizzy-lambda/internal/features/billing"
 	"bizzy-lambda/internal/features/calendar"
+	"bizzy-lambda/internal/features/calsync"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/packages"
+	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/platform/ssm"
 )
+
+// lookahead is how far ahead the sync looks for bookings, so a client who
+// has rebooked is not suggested for a follow-up.
+const lookahead = 60 * 24 * time.Hour
 
 func main() {
 	ctx := context.Background()
@@ -24,6 +35,11 @@ func main() {
 	store, err := dynamo.New(ctx)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	loc, err := time.LoadLocation(mustEnv("TIME_ZONE"))
+	if err != nil {
+		log.Fatalf("TIME_ZONE: %v", err)
 	}
 
 	key, err := ssm.SecureString(ctx, mustEnv("GOOGLE_SERVICE_ACCOUNT_PARAM"))
@@ -41,14 +57,27 @@ func main() {
 		days = 30
 	}
 
-	syncer := calendar.Syncer{
-		Events:  source,
-		Clients: clients.NewRepository(store),
-		Window:  time.Duration(days) * 24 * time.Hour,
-		Now:     time.Now,
+	clientsRepo := clients.NewRepository(store)
+	sessionsRepo := sessions.NewRepository(store)
+
+	syncer := calsync.Syncer{
+		Events:   source,
+		Clients:  clientsRepo,
+		Sessions: sessionsRepo,
+		Billing: &billing.Reconciler{
+			Clients:  clientsRepo,
+			Sessions: sessionsRepo,
+			Packages: packages.NewRepository(store),
+			Settings: settings.NewRepository(store),
+			Location: loc,
+		},
+		Status:    calsync.NewStatusRepository(store),
+		Window:    time.Duration(days) * 24 * time.Hour,
+		Lookahead: lookahead,
+		Now:       time.Now,
 	}
 
-	lambda.Start(func(ctx context.Context) (calendar.Summary, error) {
+	lambda.Start(func(ctx context.Context) (calsync.Summary, error) {
 		summary, err := syncer.Run(ctx)
 		if err != nil {
 			return summary, err

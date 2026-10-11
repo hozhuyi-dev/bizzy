@@ -28,14 +28,11 @@ export function DataTable<TData extends RowData>({
   emptyMessage,
 }: DataTableProps<TData>) {
   const rows = table.getRowModel().rows;
-
-  if (rows.length === 0) {
-    return (
-      <p className="py-10 text-center text-sm text-muted-foreground">
-        {emptyMessage}
-      </p>
-    );
-  }
+  const empty = (
+    <p className="py-10 text-center text-sm whitespace-normal text-muted-foreground">
+      {emptyMessage}
+    </p>
+  );
 
   return (
     <>
@@ -64,6 +61,12 @@ export function DataTable<TData extends RowData>({
             ))}
           </TableHeader>
           <TableBody>
+            {/* An empty table keeps its header, so the page doesn't jump. */}
+            {rows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={table.getAllLeafColumns().length}>{empty}</TableCell>
+              </TableRow>
+            )}
             {rows.map((row) => (
               <TableRow
                 key={row.id}
@@ -81,6 +84,7 @@ export function DataTable<TData extends RowData>({
       </div>
 
       <ul className="flex flex-col gap-2 md:hidden">
+        {rows.length === 0 && <li>{empty}</li>}
         {rows.map((row) => (
           <li key={row.id}>{renderCard(row)}</li>
         ))}

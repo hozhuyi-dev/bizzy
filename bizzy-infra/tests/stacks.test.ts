@@ -90,6 +90,22 @@ describe("data", () => {
     });
   });
 
+  test("creates all five local indexes up front", () => {
+    synth("staging").data.hasResourceProperties("AWS::DynamoDB::Table", {
+      LocalSecondaryIndexes: ["LSI1", "LSI2", "LSI3", "LSI4", "LSI5"].map(
+        (name) =>
+          Match.objectLike({
+            IndexName: name,
+            KeySchema: [
+              { AttributeName: "PK", KeyType: "HASH" },
+              { AttributeName: `${name}SK`, KeyType: "RANGE" },
+            ],
+            Projection: { ProjectionType: "ALL" },
+          }),
+      ),
+    });
+  });
+
   test("retains the production table", () => {
     synth("production").data.hasResource("AWS::DynamoDB::Table", {
       DeletionPolicy: "Retain",
@@ -101,11 +117,15 @@ describe("data", () => {
 describe("api", () => {
   const { api } = synth("staging");
 
-  test("lets the signed-in role invoke only the api function", () => {
+  test("lets the signed-in role invoke only the api and sync functions", () => {
     const policies = api.findResources("AWS::IAM::Policy", {
-      Properties: { PolicyName: Match.stringLikeRegexp("InvokeApi") },
+      Properties: { PolicyName: Match.stringLikeRegexp("InvokeFunctions") },
     });
-    expect(Object.keys(policies)).toHaveLength(1);
+    const [policy] = Object.values(policies) as Array<{
+      Properties: { PolicyDocument: { Statement: Array<{ Resource: Array<unknown> }> } };
+    }>;
+    expect(policy?.Properties.PolicyDocument.Statement).toHaveLength(1);
+    expect(policy?.Properties.PolicyDocument.Statement[0]?.Resource).toHaveLength(2);
   });
 
   test("runs the calendar sync daily in her time zone", () => {

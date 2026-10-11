@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"bizzy-lambda/internal/platform/apperr"
 )
@@ -15,7 +16,25 @@ type memoryStore struct {
 
 func (m *memoryStore) List(context.Context) ([]Client, error) { return m.clients, nil }
 
-func (m *memoryStore) Put(_ context.Context, client Client) error {
+func (m *memoryStore) Get(_ context.Context, id string) (Client, bool, error) {
+	for _, c := range m.clients {
+		if c.ID == id {
+			return c, true, nil
+		}
+	}
+	return Client{}, false, nil
+}
+
+func (m *memoryStore) SetContacted(_ context.Context, id string, at *time.Time) error {
+	for i, c := range m.clients {
+		if c.ID == id {
+			m.clients[i].LastContactedAt = at
+		}
+	}
+	return nil
+}
+
+func (m *memoryStore) SaveProfile(_ context.Context, client Client) error {
 	for i, existing := range m.clients {
 		if existing.ID == client.ID {
 			m.clients[i] = client
@@ -59,6 +78,21 @@ func TestSave(t *testing.T) {
 		h := handler{repo: &memoryStore{clients: []Client{{ID: "a", Name: "Jane Smith", Aliases: []string{"jane smith", "js"}}}}}
 		_, err := h.save(ctx, Client{Name: "John Stone", Aliases: []string{"JS"}})
 		assertCode(t, err, apperr.CodeConflict)
+	})
+
+	t.Run("runs the after-save hook with the client id", func(t *testing.T) {
+		var got string
+		h := handler{repo: &memoryStore{}, afterSave: func(_ context.Context, id string) error {
+			got = id
+			return nil
+		}}
+		out, err := h.save(ctx, Client{Name: "Jane"})
+		if err != nil {
+			t.Fatalf("save error: %v", err)
+		}
+		if got == "" || got != out.(Client).ID {
+			t.Errorf("hook got %q, want %q", got, out.(Client).ID)
+		}
 	})
 
 	t.Run("updating a client keeps its own aliases", func(t *testing.T) {

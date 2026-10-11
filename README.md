@@ -1,6 +1,6 @@
 # bizzy
 
-Back-office for a one-person physio practice. Sessions are read from Google Calendar every day; she reviews them, generates invoices (PDF, in the browser) and tracks prepaid packages.
+Back-office for a one-person physio practice. Sessions are read from Google Calendar every day; she fixes what the sync couldn't read, issues receipts when a client asks (PDF, in the browser), tracks prepaid packages, follows up lapsed clients and sees how the business is doing.
 
 | Folder | What | Stack |
 | --- | --- | --- |
@@ -13,20 +13,30 @@ Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets AWS credentials (identi
 ## Calendar syntax
 
 ```
-[?] <name> [amount] [NxPRICE]
+[?] <name> [amount] [NxPRICE | N@TOTAL]
 ```
 
 | Title | Meaning |
 | --- | --- |
 | `Jane Smith` | Uses a package credit if one is left, otherwise her default rate |
 | `Jane Smith 95` | Paid 95 for this session |
-| `Jane Smith 10x850` | Bought 10 sessions for 850 today; this session uses the first |
-| `Jane Smith 95 10x850` | Paid 95 for this session, and bought a package for later |
-| `? Jane Smith` | Not confirmed yet; ignored until the `?` is removed |
+| `Jane Smith 10x85` | Bought 10 sessions at 85 each (850) today; this session uses the first |
+| `Jane Smith 3@250` | Bought 3 sessions for 250 in total, for when the price per session isn't round |
+| `Jane Smith 95 10x85` | Paid 95 for this session, and bought a package for later |
+| `? Jane Smith` | Not confirmed yet; on the to-do list until the `?` is removed |
 
 - Names match a client's aliases (case-insensitive). Unknown names that look like sessions, and near-miss typos, show up as **unmatched** in the app to link or create.
 - Events that match no client and carry no `?` or amount are personal and skipped. All-day events are skipped.
-- The sync re-reads the last 30 days every night. Fix the calendar, then sync again; invoiced sessions never change.
+- **Home visits**: give the event the home-visit colour (Tomato by default, changeable in Settings). Any other colour means her place; no colour follows the client's "usually a home visit" setting.
+- The sync re-reads the last 30 days every night (or on **Sync now**) and looks 60 days ahead for bookings. Fix the calendar, then sync again. A session with an issued receipt still follows the calendar, but a change that contradicts the receipt is flagged.
+
+## Receipts
+
+Issued on request, one per paid session or package purchase. A receipt starts as a draft prefilled from the session, where everything printed can be edited freely; **Issue** takes the next number (`RCP-0001`, format and starting number in Settings). Issued receipts can be **revised** (same number, `Rev 01`, earlier revisions kept) or **cancelled** (number stays used). The lifecycle and PDF layout are generic, so other document types slot in through `documents.Types` (API) and `DOCUMENT_TYPES` (web).
+
+## Data
+
+One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `PACKAGE`, `DOC`, …) and five generic local secondary indexes created up front, because LSIs can't be added later (see `bizzy-lambda/internal/platform/dynamo`). Each writer owns its fields on a shared item (the sync, the billing reconcile, her actions), so they never overwrite each other. Client items carry monthly activity, which the follow-up list and Insights are summed from.
 
 ## Environments
 
@@ -82,11 +92,4 @@ pnpm web:test
 
 ## Remaining work
 
-- **Persist sessions on sync**: sessions repository, upsert by event id, skip invoiced sessions (flag drift instead), remove deleted events, keep `ignored` choices
-- **Packages**: create from `NxPRICE` (keyed by event id) and from the app; apply credits in date order on every sync
-- **Sync now button**: web invokes the `calendar-sync` Lambda directly (grant the signed-in role, output its name), toast the summary, refresh sessions
-- **Sessions inbox**: status filter, row selection to invoice, link/create client for unmatched, ignore
-- **Packages page**: remaining credits per client
-- **Settings page**: business details printed on invoices
-- **Invoices**: gap-free numbering (atomic counter), one per paid session or package, PDF via `@react-pdf/renderer` (lazy-loaded), invoices list
 - **Staging / production**: GitHub environments and secrets, OIDC deploy role, Google client redirect URIs per environment, add her as a Google test user, share her calendar with the service account

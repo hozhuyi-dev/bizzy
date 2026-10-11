@@ -9,7 +9,7 @@ import (
 
 // Title is a session event title parsed against the agreed syntax:
 //
-//	[?] <name> [amount] [NxPRICE]
+//	[?] <name> [amount] [NxPRICE | N@TOTAL]
 //
 // The two trailing tokens may come in either order. A title with both means
 // the client paid `amount` for this session and bought a package for later.
@@ -20,7 +20,9 @@ type Title struct {
 	Package   *PackageSpec
 }
 
-// PackageSpec is an `NxPRICE` token: N sessions bought for PRICE in total.
+// PackageSpec is a package bought in a session: `10x85` is 10 sessions at 85
+// each, `10@1000` is 10 sessions for 1000 in total (for when the price per
+// session isn't a round number). Either way the total is what's kept.
 type PackageSpec struct {
 	Sessions   int
 	PriceCents int64
@@ -43,7 +45,7 @@ func (e *ParseError) Error() string { return e.Reason }
 var (
 	// A leading `RM` is tolerated even though the syntax does not need it.
 	amountPattern  = regexp.MustCompile(`^(?i:RM)?(\d+(?:\.\d{1,2})?)$`)
-	packagePattern = regexp.MustCompile(`^(\d+)[xX](?i:RM)?(\d+(?:\.\d{1,2})?)$`)
+	packagePattern = regexp.MustCompile(`^(\d+)([xX@])(?i:RM)?(\d+(?:\.\d{1,2})?)$`)
 )
 
 // ParseTitle reads an event title. Titles with no trailing tokens always
@@ -65,13 +67,17 @@ func ParseTitle(raw string) (Title, error) {
 
 		if match := packagePattern.FindStringSubmatch(last); match != nil {
 			if title.Package != nil {
-				return title, &ParseError{Reason: "more than one package (NxPRICE) in the title"}
+				return title, &ParseError{Reason: "more than one package (10x85 or 10@850) in the title"}
 			}
 			sessions, err := strconv.Atoi(match[1])
-			if err != nil || sessions < 1 {
+			if err != nil || sessions < 1 || sessions > 1000 {
 				return title, &ParseError{Reason: fmt.Sprintf("package %q needs at least 1 session", last)}
 			}
-			title.Package = &PackageSpec{Sessions: sessions, PriceCents: toCents(match[2])}
+			price := toCents(match[3])
+			if match[2] != "@" {
+				price *= int64(sessions)
+			}
+			title.Package = &PackageSpec{Sessions: sessions, PriceCents: price}
 		} else if match := amountPattern.FindStringSubmatch(last); match != nil {
 			if title.FeeCents != nil {
 				return title, &ParseError{Reason: "more than one amount in the title"}

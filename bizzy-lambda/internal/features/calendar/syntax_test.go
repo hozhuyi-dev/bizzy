@@ -35,7 +35,7 @@ func TestParseTitle(t *testing.T) {
 		},
 		{
 			name:  "RM prefix on a package price",
-			input: "Jane Smith 10xrm850",
+			input: "Jane Smith 10xrm85",
 			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
 		},
 		{
@@ -49,23 +49,33 @@ func TestParseTitle(t *testing.T) {
 			want:  Title{Tentative: true, Name: "Jane Smith", FeeCents: cents(9500)},
 		},
 		{
-			name:  "package bought and used this session",
-			input: "Jane Smith 10x850",
+			name:  "package at a price per session",
+			input: "Jane Smith 10x85",
 			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
 		},
 		{
 			name:  "uppercase X",
-			input: "Jane Smith 10X850",
-			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
+			input: "Jane Smith 10X85.50",
+			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85500}},
+		},
+		{
+			name:  "package at a total price",
+			input: "Jane Smith 3@250",
+			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 3, PriceCents: 25000}},
+		},
+		{
+			name:  "RM prefix on a package total",
+			input: "Jane Smith 10@RM1000",
+			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 100000}},
 		},
 		{
 			name:  "paid session plus package for later",
-			input: "Jane Smith 95 10x850",
+			input: "Jane Smith 95 10x85",
 			want:  Title{Name: "Jane Smith", FeeCents: cents(9500), Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
 		},
 		{
 			name:  "package then amount, either order",
-			input: "Jane Smith 10x850 95",
+			input: "Jane Smith 10@850 95",
 			want:  Title{Name: "Jane Smith", FeeCents: cents(9500), Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
 		},
 		{
@@ -102,8 +112,9 @@ func TestParseTitleErrors(t *testing.T) {
 		input string
 	}{
 		{name: "two amounts", input: "Jane Smith 95 100"},
-		{name: "two packages", input: "Jane Smith 10x850 5x400"},
-		{name: "zero-session package", input: "Jane Smith 0x850"},
+		{name: "two packages", input: "Jane Smith 10x85 5@400"},
+		{name: "zero-session package", input: "Jane Smith 0x85"},
+		{name: "zero-session package total", input: "Jane Smith 0@850"},
 		{name: "amount without name", input: "95"},
 		{name: "tentative without name", input: "?"},
 	}

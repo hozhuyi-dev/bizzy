@@ -58,7 +58,7 @@ function AuthGate() {
   return (
     <div className="min-h-dvh">
       <NavBar />
-      <main className="mx-auto max-w-5xl p-4">
+      <main className="mx-auto max-w-7xl px-4 pb-6">
         <Outlet />
       </main>
     </div>

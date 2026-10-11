@@ -40,25 +40,15 @@ export class ApiStack extends cdk.Stack {
       projectName: projectName,
       environment: environment,
       command: "api",
-      environmentVariables: { TABLE_NAME: table.tableName },
+      // Saving a client or a setting re-derives the sessions it affects.
+      timeout: Duration.seconds(30),
+      environmentVariables: {
+        TABLE_NAME: table.tableName,
+        TIME_ZONE: syncTimeZone,
+      },
     });
 
     table.grantReadWriteData(this.api.function);
-
-    // The browser invokes the function directly with identity-pool
-    // credentials. A Policy owned by this stack, rather than
-    // `grantInvoke(role)`, keeps the dependency one-way: grantInvoke would
-    // write the statement into the auth stack's role and make the two stacks
-    // reference each other.
-    new Policy(this, "InvokeApi", {
-      roles: [authenticatedRole],
-      statements: [
-        new PolicyStatement({
-          actions: ["lambda:InvokeFunction"],
-          resources: [this.api.function.functionArn],
-        }),
-      ],
-    });
 
     // Written by the deploy workflow from a GitHub secret before `cdk deploy`;
     // SecureStrings can't be created by CloudFormation.
@@ -74,6 +64,7 @@ export class ApiStack extends cdk.Stack {
         GOOGLE_CALENDAR_ID: googleCalendarId,
         GOOGLE_SERVICE_ACCOUNT_PARAM: serviceAccountParam,
         SYNC_WINDOW_DAYS: "30",
+        TIME_ZONE: syncTimeZone,
       },
     });
 
@@ -84,6 +75,24 @@ export class ApiStack extends cdk.Stack {
       "GoogleServiceAccount",
       { parameterName: serviceAccountParam },
     ).grantRead(this.calendarSync.function);
+
+    // The browser invokes both functions directly with identity-pool
+    // credentials (the sync for "Sync now"). A Policy owned by this stack,
+    // rather than `grantInvoke(role)`, keeps the dependency one-way:
+    // grantInvoke would write the statement into the auth stack's role and
+    // make the two stacks reference each other.
+    new Policy(this, "InvokeFunctions", {
+      roles: [authenticatedRole],
+      statements: [
+        new PolicyStatement({
+          actions: ["lambda:InvokeFunction"],
+          resources: [
+            this.api.function.functionArn,
+            this.calendarSync.function.functionArn,
+          ],
+        }),
+      ],
+    });
 
     new Schedule(this, "DailyCalendarSync", {
       description: `${projectName}-${environment} daily calendar sync`,

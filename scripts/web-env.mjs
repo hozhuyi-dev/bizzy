@@ -75,6 +75,7 @@ const api = stackOutputs("api");
 const values = {
   VITE_AWS_REGION: region,
   VITE_API_FUNCTION_NAME: api("ApiFunctionName"),
+  VITE_CALENDAR_SYNC_FUNCTION_NAME: api("CalendarSyncFunctionName"),
   VITE_AMPLIFY_USER_POOL_ID: auth("UserPoolId"),
   VITE_AMPLIFY_USER_POOL_CLIENT_ID: auth("UserPoolClientId"),
   VITE_AMPLIFY_IDENTITY_POOL_ID: auth("IdentityPoolId"),

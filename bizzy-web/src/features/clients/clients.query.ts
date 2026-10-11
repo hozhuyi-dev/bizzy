@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClientsService } from "./clients.service";
+import type { Client } from "./clients.types";
 import { ClientKeys } from "~/core/keys.query";
 
 export const ClientsQuery = {
@@ -8,4 +10,10 @@ export const ClientsQuery = {
       queryKey: ClientKeys.list(),
       queryFn: () => ClientsService.list(),
     }),
+
+  /** Clients by id, for showing names next to sessions and documents. */
+  useById: (): ReadonlyMap<string, Client> => {
+    const { data } = ClientsQuery.useList();
+    return useMemo(() => new Map((data ?? []).map((client) => [client.id, client])), [data]);
+  },
 };

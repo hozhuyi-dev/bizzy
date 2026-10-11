@@ -1,0 +1,196 @@
+package documents
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	"bizzy-lambda/internal/platform/dynamo"
+)
+
+// Partitions:
+//
+//	DOC      SK = id. LSI1 date, LSI2 clientId#date, LSI3 date while a draft
+//	         is open, LSI4 type#date.
+//	DOCREV   SK = id#rev (zero-padded), one immutable item per issue.
+//	COUNTER  SK = type or type#year, attribute `last`.
+const (
+	docPartition      = "DOC"
+	revisionPartition = "DOCREV"
+	counterPartition  = "COUNTER"
+)
+
+type docRecord struct {
+	dynamo.Keys
+	Document
+}
+
+func toDocRecord(d Document) docRecord {
+	sortKey := d.Date + "#" + dynamo.TimeKey(d.CreatedAt)
+	keys := dynamo.Keys{
+		PK:     docPartition,
+		SK:     d.ID,
+		LSI1SK: sortKey,
+		LSI4SK: string(d.Type) + "#" + sortKey,
+	}
+	if d.ClientID != "" {
+		keys.LSI2SK = d.ClientID + "#" + sortKey
+	}
+	if d.Draft != nil && d.Status != StatusCancelled {
+		keys.LSI3SK = sortKey
+	}
+	return docRecord{Keys: keys, Document: d}
+}
+
+type revisionRecord struct {
+	dynamo.Keys
+	Revision
+}
+
+func revisionKey(documentID string, rev int) string {
+	return fmt.Sprintf("%s#%02d", documentID, rev)
+}
+
+type counterRecord struct {
+	dynamo.Keys
+	Last int64 `dynamodbav:"last"`
+}
+
+type Repository struct {
+	store *dynamo.Store
+}
+
+func NewRepository(store *dynamo.Store) Repository {
+	return Repository{store: store}
+}
+
+func (r Repository) Get(ctx context.Context, id string) (Document, bool, error) {
+	var rec docRecord
+	found, err := r.store.Get(ctx, docPartition, id, &rec)
+	return rec.Document, found, err
+}
+
+// ListByType returns one type of document, newest first.
+func (r Repository) ListByType(ctx context.Context, docType Type) ([]Document, error) {
+	records, err := dynamo.QueryAll[docRecord](ctx, r.store, dynamo.Query{
+		PK: docPartition, Index: dynamo.IndexCategory, Prefix: string(docType) + "#", Descending: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	all := make([]Document, len(records))
+	for i, rec := range records {
+		all[i] = rec.Document
+	}
+	return all, nil
+}
+
+// Revisions returns a document's issued revisions, oldest first.
+func (r Repository) Revisions(ctx context.Context, id string) ([]Revision, error) {
+	records, err := dynamo.QueryAll[revisionRecord](ctx, r.store, dynamo.Query{PK: revisionPartition, Prefix: id + "#"})
+	if err != nil {
+		return nil, err
+	}
+	all := make([]Revision, len(records))
+	for i, rec := range records {
+		all[i] = rec.Revision
+	}
+	return all, nil
+}
+
+// Counter returns the last number issued from a sequence (0 if none yet).
+func (r Repository) Counter(ctx context.Context, key string) (int64, error) {
+	var rec counterRecord
+	_, err := r.store.Get(ctx, counterPartition, key, &rec)
+	return rec.Last, err
+}
+
+// SetCounter moves a sequence forward so the next number is last+1, for
+// continuing her existing numbering. It never moves backwards, which could
+// reuse a number.
+func (r Repository) SetCounter(ctx context.Context, key string, last int64) (bool, error) {
+	n := &types.AttributeValueMemberN{Value: strconv.FormatInt(last, 10)}
+	return r.store.Apply(ctx, dynamo.Patch{
+		PK: counterPartition, SK: key,
+		Set: map[string]types.AttributeValue{"last": n},
+		When: &dynamo.Condition{
+			Expression: "attribute_not_exists(#last) OR #last <= :last",
+			Names:      map[string]string{"#last": "last"},
+			Values:     map[string]types.AttributeValue{":last": n},
+		},
+	})
+}
+
+// Write is one change to a document, committed atomically with the links
+// and counters it implies.
+type Write struct {
+	Doc Document
+	// PreviousVersion is the version read before the change; 0 for a new
+	// document. The write fails if someone else changed it since.
+	PreviousVersion int
+	// Delete removes the document instead of writing it (a discarded draft).
+	Delete bool
+	// Counter takes the next number, when the document is first issued.
+	Counter *CounterBump
+	// Revision is stored when the document is issued.
+	Revision *Revision
+	// Links are the patches to the sessions and packages it covers.
+	Links []dynamo.Patch
+}
+
+type CounterBump struct {
+	Key        string
+	Prev, Next int64
+}
+
+// Commit applies a Write in one transaction. dynamo.ErrTransactionConflict
+// means something changed since it was read.
+func (r Repository) Commit(ctx context.Context, w Write) error {
+	var items []dynamo.TransactItem
+
+	guard := &dynamo.Condition{Expression: "attribute_not_exists(PK)"}
+	if w.PreviousVersion > 0 {
+		guard = &dynamo.Condition{
+			Expression: "#version = :version",
+			Names:      map[string]string{"#version": "version"},
+			Values:     map[string]types.AttributeValue{":version": &types.AttributeValueMemberN{Value: strconv.Itoa(w.PreviousVersion)}},
+		}
+	}
+
+	if w.Delete {
+		items = append(items, dynamo.TransactItem{Delete: &[2]string{docPartition, w.Doc.ID}, When: guard})
+	} else {
+		items = append(items, dynamo.TransactItem{Put: toDocRecord(w.Doc), When: guard})
+	}
+
+	if c := w.Counter; c != nil {
+		cond := "#last = :prev"
+		if c.Prev == 0 {
+			cond = "attribute_not_exists(#last) OR #last = :prev"
+		}
+		items = append(items, dynamo.TransactItem{Patch: &dynamo.Patch{
+			PK: counterPartition, SK: c.Key,
+			Set: map[string]types.AttributeValue{"last": &types.AttributeValueMemberN{Value: strconv.FormatInt(c.Next, 10)}},
+			When: &dynamo.Condition{
+				Expression: cond,
+				Names:      map[string]string{"#last": "last"},
+				Values:     map[string]types.AttributeValue{":prev": &types.AttributeValueMemberN{Value: strconv.FormatInt(c.Prev, 10)}},
+			},
+		}})
+	}
+
+	if rev := w.Revision; rev != nil {
+		items = append(items, dynamo.TransactItem{
+			Put:  revisionRecord{Keys: dynamo.Keys{PK: revisionPartition, SK: revisionKey(rev.DocumentID, rev.Revision)}, Revision: *rev},
+			When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
+		})
+	}
+
+	for i := range w.Links {
+		items = append(items, dynamo.TransactItem{Patch: &w.Links[i]})
+	}
+
+	return r.store.Transact(ctx, items)
+}

@@ -62,6 +62,7 @@ func toEvent(item *gcal.Event) (Event, error) {
 	event := Event{
 		ID:        item.Id,
 		Title:     item.Summary,
+		ColorID:   item.ColorId,
 		Cancelled: item.Status == "cancelled",
 	}
 
@@ -85,6 +86,6 @@ func toEvent(item *gcal.Event) (Event, error) {
 		return event, fmt.Errorf("event %s end: %w", item.Id, err)
 	}
 
-	event.Start, event.End = start, end
+	event.Start, event.End = start.UTC(), end.UTC()
 	return event, nil
 }
