@@ -14,11 +14,14 @@ import (
 	"bizzy-lambda/internal/features/billing"
 	"bizzy-lambda/internal/features/calsync"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/google"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/dynamo"
+	"bizzy-lambda/internal/platform/googleauth"
 	"bizzy-lambda/internal/router"
 )
 
@@ -31,6 +34,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("TIME_ZONE: %v", err)
 	}
+
+	auth := googleauth.New(
+		mustEnv("GOOGLE_CLIENT_ID"),
+		mustEnv("GOOGLE_CLIENT_SECRET"),
+		googleauth.ParamTokens(mustEnv("GOOGLE_TOKEN_PARAM")),
+	)
+	directory := contacts.NewGoogle(auth.Client)
 
 	clientsRepo := clients.NewRepository(store)
 	sessionsRepo := sessions.NewRepository(store)
@@ -54,9 +64,11 @@ func main() {
 
 	r := router.New()
 
-	clients.Register(r, clientsRepo, func(ctx context.Context, id string) error {
+	clients.Register(r, clientsRepo, contacts.Linker{Dir: directory, Now: time.Now}, func(ctx context.Context, id string) error {
 		return reconcile(ctx, billing.Scope{ClientIDs: []string{id}, Unmatched: true})
 	})
+	contacts.Register(r, directory, clientsRepo, contacts.NewDismissedRepository(store))
+	google.Register(r, google.NewRepository(store), auth)
 	sessions.Register(r, sessionsRepo, func(ctx context.Context, before, after sessions.Session) error {
 		return reconcile(ctx, billing.Scope{Changes: []billing.Change{{Before: &before, After: &after}}})
 	})
@@ -77,4 +89,12 @@ func main() {
 	calsync.RegisterStatus(r, calsync.NewStatusRepository(store))
 
 	lambda.Start(r.Handle)
+}
+
+func mustEnv(name string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		log.Fatalf("%s is not set", name)
+	}
+	return value
 }

@@ -54,21 +54,22 @@ async function send(functionName: string, payload: unknown): Promise<string> {
   return result.Payload ? decoder.decode(result.Payload) : "";
 }
 
-export async function invoke<T>(action: string, payload?: unknown): Promise<T> {
-  const text = await send(import.meta.env.VITE_API_FUNCTION_NAME, { action, payload });
+function unwrap<T>(text: string): T {
   const body = JSON.parse(text) as ApiResponse<T>;
   if (body.error) {
     throw new ApiError(body.error.code, body.error.message);
   }
 
-  return body.data as T;
+  // The API omits an empty result ("data" is omitempty); queries need null,
+  // since TanStack Query rejects undefined data.
+  return (body.data ?? null) as T;
 }
 
-/**
- * Runs the calendar sync Lambda, which returns its summary as-is rather than
- * through the API's {data, error} envelope.
- */
+export async function invoke<T>(action: string, payload?: unknown): Promise<T> {
+  return unwrap<T>(await send(import.meta.env.VITE_API_FUNCTION_NAME, { action, payload }));
+}
+
+/** Runs the calendar sync Lambda, which replies in the same envelope. */
 export async function invokeCalendarSync<T>(): Promise<T> {
-  const text = await send(import.meta.env.VITE_CALENDAR_SYNC_FUNCTION_NAME, {});
-  return JSON.parse(text) as T;
+  return unwrap<T>(await send(import.meta.env.VITE_CALENDAR_SYNC_FUNCTION_NAME, {}));
 }

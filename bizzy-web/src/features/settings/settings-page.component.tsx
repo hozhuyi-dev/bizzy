@@ -4,10 +4,12 @@ import { toast } from "sonner";
 import { SettingsMutation, SettingsQuery } from "./settings.query";
 import { EVENT_COLOURS } from "./settings.types";
 import type { Settings } from "./settings.types";
+import { DismissedContacts } from "~/features/contacts/components/dismissed-contacts/dismissed-contacts.component";
 import {
   DocumentsMutation,
   DocumentsQuery,
 } from "~/features/documents/documents.query";
+import { GoogleConnectionCard } from "~/features/google/components/google-connection/google-connection.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
@@ -154,6 +156,7 @@ function SettingsForm({ saved }: { saved: Settings }) {
         }
       />
       <div className="flex max-w-3xl flex-col gap-8">
+        <GoogleConnectionCard />
         <form
           id={FORM_ID}
           onSubmit={(event) => {
@@ -227,6 +230,7 @@ function SettingsForm({ saved }: { saved: Settings }) {
           </FieldGroup>
         </form>
         <ReceiptNumbering />
+        <DismissedContacts />
       </div>
     </>
   );

@@ -27,8 +27,9 @@ const (
 	OutcomeSkip Outcome = iota
 	// OutcomeSession matched a client and is ready for billing rules.
 	OutcomeSession
-	// OutcomeUnmatched looks like a session but its name matched no client
-	// exactly; she links or creates the client in the app.
+	// OutcomeUnmatched looks like a session, or names one of her contacts,
+	// but matched no client exactly; she links or creates the client in the
+	// app.
 	OutcomeUnmatched
 	// OutcomeParseError looks like a session but the title is malformed.
 	OutcomeParseError
@@ -38,17 +39,25 @@ type Classification struct {
 	Outcome Outcome
 	Title   Title
 	Match   Match
+	// Contacts are the Google contacts the name may refer to, when it matched
+	// no client exactly.
+	Contacts []string
 	// Reason is set for OutcomeParseError.
 	Reason string
 }
 
-// Classify decides what an event is, using only its title and the known
-// aliases. It is pure so the rules can be tested without Google or DynamoDB.
+// suggestionLimit caps the contacts suggested for one name.
+const suggestionLimit = 3
+
+// Classify decides what an event is, using only its title, the known
+// aliases and her contacts' names (people may be nil). It is pure so the
+// rules can be tested without Google or DynamoDB.
 //
 // A timed event is a session candidate when its name matches a client alias,
-// nearly matches one, or the title is session-shaped (a `?` prefix or
-// trailing amount/package). Everything else is skipped.
-func Classify(event Event, aliases Aliases) Classification {
+// nearly matches one, names one of her contacts, or the title is
+// session-shaped (a `?` prefix or trailing amount/package). Everything else
+// is skipped.
+func Classify(event Event, aliases Aliases, people People) Classification {
 	if event.AllDay || event.Cancelled {
 		return Classification{Outcome: OutcomeSkip}
 	}
@@ -63,11 +72,14 @@ func Classify(event Event, aliases Aliases) Classification {
 	}
 
 	match := MatchName(title.Name, aliases)
-	switch {
-	case match.Kind == MatchExact:
+	if match.Kind == MatchExact {
 		return Classification{Outcome: OutcomeSession, Title: title, Match: match}
-	case match.Kind == MatchNearMiss, title.SessionShaped():
-		return Classification{Outcome: OutcomeUnmatched, Title: title, Match: match}
+	}
+
+	contacts := MatchPeople(title.Name, people, suggestionLimit)
+	switch {
+	case match.Kind == MatchNearMiss, title.SessionShaped(), len(contacts) > 0:
+		return Classification{Outcome: OutcomeUnmatched, Title: title, Match: match, Contacts: contacts}
 	default:
 		return Classification{Outcome: OutcomeSkip}
 	}

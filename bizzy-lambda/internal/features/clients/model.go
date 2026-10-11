@@ -7,16 +7,16 @@ import (
 
 // Client is written by several parties, each owning its own fields (see the
 // repository): the app (profile), the billing reconcile (Activity,
-// LastSessionAt), the calendar sync (NextBookedAt) and her follow-ups.
+// LastSessionAt), the calendar sync (NextBookedAt, and refreshing Contact)
+// and her follow-ups.
 type Client struct {
-	ID    string `json:"id" dynamodbav:"id"`
-	Name  string `json:"name" dynamodbav:"name"`
-	Email string `json:"email,omitempty" dynamodbav:"email,omitempty"`
-	Phone string `json:"phone,omitempty" dynamodbav:"phone,omitempty"`
-	// Address is printed on receipts; Postcode is kept apart so clients can
-	// be grouped by area.
-	Address  string `json:"address,omitempty" dynamodbav:"address,omitempty"`
-	Postcode string `json:"postcode,omitempty" dynamodbav:"postcode,omitempty"`
+	ID string `json:"id" dynamodbav:"id"`
+	// Name is hers to choose; the Google contact may be named differently.
+	Name string `json:"name" dynamodbav:"name"`
+	// Contact links the client to a Google contact, where her contact
+	// details live. Every client gets one when created; it is nil only if
+	// the link was never made.
+	Contact *Contact `json:"contact,omitempty" dynamodbav:"contact,omitempty"`
 	// Aliases are the names she writes in the calendar for this client. The
 	// client's own name is always one of them.
 	Aliases []string `json:"aliases" dynamodbav:"aliases"`
@@ -34,6 +34,36 @@ type Client struct {
 	// NextBookedAt is the next future calendar entry with this client.
 	NextBookedAt    *time.Time `json:"nextBookedAt,omitempty" dynamodbav:"nextBookedAt,omitempty"`
 	LastContactedAt *time.Time `json:"lastContactedAt,omitempty" dynamodbav:"lastContactedAt,omitempty"`
+}
+
+// Contact is the linked Google contact with a read-only copy of the details
+// bizzy uses. Google is the source of truth: edits in the app go straight to
+// Google, and the nightly sync refreshes the copy.
+type Contact struct {
+	// ResourceName is the contact's id in the People API ("people/c123").
+	ResourceName string `json:"resourceName" dynamodbav:"resourceName"`
+	// ETag is the contact's version when copied; an edit made against an
+	// older one is rejected rather than overwriting a change from her phone.
+	ETag        string `json:"etag,omitempty" dynamodbav:"etag,omitempty"`
+	DisplayName string `json:"displayName,omitempty" dynamodbav:"displayName,omitempty"`
+	Email       string `json:"email,omitempty" dynamodbav:"email,omitempty"`
+	Phone       string `json:"phone,omitempty" dynamodbav:"phone,omitempty"`
+	// Address is printed on receipts; Postcode is kept apart so clients can
+	// be grouped by area.
+	Address  string `json:"address,omitempty" dynamodbav:"address,omitempty"`
+	Postcode string `json:"postcode,omitempty" dynamodbav:"postcode,omitempty"`
+	// Missing is set when the sync no longer finds the contact in Google:
+	// deleted, or merged into another. The copy above is kept so the
+	// contact can be recreated from it.
+	Missing  bool      `json:"missing,omitempty" dynamodbav:"missing,omitempty"`
+	SyncedAt time.Time `json:"syncedAt" dynamodbav:"syncedAt"`
+}
+
+// SameDetails reports whether two copies say the same thing, ignoring when
+// they were taken.
+func (c Contact) SameDetails(other Contact) bool {
+	c.SyncedAt, other.SyncedAt = time.Time{}, time.Time{}
+	return c == other
 }
 
 // MonthActivity sums one client's sessions in a month.

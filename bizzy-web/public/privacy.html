@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  Linked from the Google OAuth consent screen (Branding > privacy policy),
+  which Google requires before the app can be published. Served as a static
+  file: CloudFront only rewrites extensionless paths to the app.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bizzy privacy policy</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1a1a1a;
+        --muted: #5c5c5c;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #121212;
+          --fg: #ececec;
+          --muted: #a3a3a3;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 2.5rem 1rem 4rem;
+      }
+      h1 {
+        font-size: 1.6rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.05rem;
+        margin: 1.75rem 0 0.25rem;
+      }
+      p {
+        margin: 0.25rem 0;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      a {
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Bizzy privacy policy</h1>
+      <p class="muted">Last updated 11 October 2026</p>
+
+      <p>
+        Bizzy is a private back-office tool used by a single physiotherapy practice to record
+        sessions, keep client details and issue receipts. It is not offered to the public, and only
+        the practice owner can sign in.
+      </p>
+
+      <h2>What Bizzy accesses</h2>
+      <p>With the practice owner's permission, Bizzy:</p>
+      <ul>
+        <li>reads events from one Google Calendar she chooses (read only);</li>
+        <li>reads, creates and updates contacts in her Google Contacts, and adds clients to a
+          “Clients” label.</li>
+      </ul>
+
+      <h2>How it is used</h2>
+      <p>
+        Calendar events are turned into session records, so sessions can be priced and receipts
+        issued. Contacts hold each client's name, phone, email and address, which appear in the app
+        and on receipts. Nothing is used for advertising or profiling.
+      </p>
+
+      <h2>Where it is stored</h2>
+      <p>
+        Session and client records, and the authorization Google grants, are stored in the
+        practice owner's own Amazon Web Services account. Data is not sold, and is not shared with
+        anyone else.
+      </p>
+
+      <h2>Google user data</h2>
+      <p>
+        Bizzy's use and transfer of information received from Google APIs adheres to the
+        <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API
+          Services User Data Policy</a>, including the Limited Use requirements.
+      </p>
+
+      <h2>Removing access</h2>
+      <p>
+        Disconnect Google in Bizzy's Settings, or remove Bizzy at
+        <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
+        Either stops all access to the calendar and contacts. Nothing in them is changed by
+        disconnecting.
+      </p>
+
+      <h2>Contact</h2>
+      <p>Questions about this policy: <a href="mailto:CONTACT_EMAIL">CONTACT_EMAIL</a>.</p>
+    </main>
+  </body>
+</html>

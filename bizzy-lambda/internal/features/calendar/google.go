@@ -3,32 +3,55 @@ package calendar
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
-	"golang.org/x/oauth2/google"
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/option"
+
+	"bizzy-lambda/internal/platform/googleauth"
 )
 
-// GoogleSource reads one calendar through a service account the calendar has
-// been shared with ("See all event details").
+// GoogleSource reads one of her calendars, acting as her (see googleauth).
 type GoogleSource struct {
 	service    *gcal.Service
 	calendarID string
 }
 
-func NewGoogleSource(ctx context.Context, serviceAccountJSON []byte, calendarID string) (*GoogleSource, error) {
-	jwt, err := google.JWTConfigFromJSON(serviceAccountJSON, gcal.CalendarReadonlyScope)
+func NewGoogleSource(ctx context.Context, client *http.Client, calendarID string) (*GoogleSource, error) {
+	service, err := gcal.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
-		return nil, fmt.Errorf("parse service account key: %w", err)
+		return nil, err
 	}
+	return &GoogleSource{service: service, calendarID: calendarID}, nil
+}
 
-	service, err := gcal.NewService(ctx, option.WithHTTPClient(jwt.Client(ctx)))
+// Calendar is one of her calendars, to choose which one the sync reads.
+type Calendar struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Primary bool   `json:"primary,omitempty"`
+}
+
+// Calendars lists the calendars her account can see.
+func Calendars(ctx context.Context, client *http.Client) ([]Calendar, error) {
+	service, err := gcal.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
 	}
 
-	return &GoogleSource{service: service, calendarID: calendarID}, nil
+	var all []Calendar
+	err = service.CalendarList.List().Pages(ctx, func(page *gcal.CalendarList) error {
+		for _, item := range page.Items {
+			name := item.SummaryOverride
+			if name == "" {
+				name = item.Summary
+			}
+			all = append(all, Calendar{ID: item.Id, Name: name, Primary: item.Primary})
+		}
+		return nil
+	})
+	return all, googleauth.Wrap("list calendars", err)
 }
 
 // Events lists event instances starting in [from, to). Recurring events are
@@ -55,7 +78,7 @@ func (g *GoogleSource) Events(ctx context.Context, from, to time.Time) ([]Event,
 		return nil
 	})
 
-	return events, err
+	return events, googleauth.Wrap("list events", err)
 }
 
 func toEvent(item *gcal.Event) (Event, error) {

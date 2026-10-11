@@ -8,16 +8,20 @@ import {
   SessionMenu,
   SessionReceipt,
   SessionStatusCell,
+  SessionSuggestions,
   SessionWho,
   createSessionColumns,
 } from "./sessions.columns";
 import { SessionsMutation } from "./sessions.mutation";
 import { SessionsQuery } from "./sessions.query";
 import type { SessionHandlers } from "./sessions.columns";
-import type { Session } from "./sessions.types";
+import type { ContactSuggestion, Session } from "./sessions.types";
 import type { Client } from "~/features/clients/clients.types";
+import { ClientsMutation, profileOf } from "~/features/clients/clients.mutation";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ClientForm } from "~/features/clients/components/client-form/client-form.component";
+import { ContactsMutation } from "~/features/contacts/contacts.query";
+import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
 import { useCreateReceipt } from "~/features/documents/use-create-receipt";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { SyncButton } from "~/features/sync/sync-button.component";
@@ -44,15 +48,24 @@ interface SessionsPageProps {
 // Stable fallback: a fresh [] each render would rebuild the row models.
 const NO_SESSIONS: Array<Session> = [];
 
+/** A client to create from a calendar name and the contact it matched. */
+interface NewClient {
+  name: string;
+  contact: ContactSuggestion;
+}
+
 export function SessionsPage({ view, month, onViewChange, onMonthChange }: SessionsPageProps) {
   const [linking, setLinking] = useState<Session | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [creating, setCreating] = useState<NewClient | null>(null);
 
   const open = SessionsQuery.useOpen();
   const history = SessionsQuery.useMonth(month);
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   const setIgnored = SessionsMutation.useSetIgnored();
+  const { mutate: saveClient } = ClientsMutation.useSave();
+  const { mutate: dismissContact } = ContactsMutation.useDismiss();
   const { create: createReceipt } = useCreateReceipt();
 
   const packagesById = useMemo(
@@ -66,6 +79,31 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
       clientsById,
       packagesById,
       onLink: setLinking,
+      onCreateClient: (session, contact) => setCreating({ name: session.name ?? "", contact }),
+      onAddAlias: (session, client) => {
+        const name = session.name ?? "";
+        saveClient(
+          { ...profileOf(client), aliases: [...client.aliases, name] },
+          {
+            onSuccess: () => toast.success(`“${name}” now matches ${client.name}`),
+            onError: (error) => toast.error(error.message),
+          },
+        );
+      },
+      onDismissContact: (contact) =>
+        dismissContact(
+          { contact, dismissed: true },
+          {
+            onSuccess: () =>
+              toast.success(`${contact.displayName} won't be suggested again`, {
+                action: {
+                  label: "Undo",
+                  onClick: () => dismissContact({ contact, dismissed: false }),
+                },
+              }),
+            onError: (error) => toast.error(error.message),
+          },
+        ),
       onEditClient: setEditingClient,
       onIgnore: (session, ignored) =>
         ignore(
@@ -74,7 +112,7 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
         ),
       onReceipt: createReceipt,
     }),
-    [clientsById, packagesById, ignore, createReceipt],
+    [clientsById, packagesById, ignore, saveClient, dismissContact, createReceipt],
   );
 
   const columns = useMemo(() => createSessionColumns(handlers), [handlers]);
@@ -130,6 +168,8 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
         }
       />
 
+      <GoogleNotice />
+
       {queryMatch(query, {
         pending: () => <p className="text-sm text-muted-foreground">Loading…</p>,
         error: (error) => (
@@ -160,6 +200,7 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
                     <SessionStatusCell session={row.original} />
                     <SessionReceipt session={row.original} handlers={handlers} />
                   </div>
+                  <SessionSuggestions session={row.original} handlers={handlers} />
                 </CardContent>
               </Card>
             )}
@@ -168,6 +209,22 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
       })}
 
       <LinkClientDialog session={linking} onClose={() => setLinking(null)} />
+
+      <Dialog open={creating !== null} onOpenChange={(isOpen) => !isOpen && setCreating(null)}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New client</DialogTitle>
+          </DialogHeader>
+          {creating && (
+            <ClientForm
+              key={creating.contact.resourceName}
+              initialName={creating.name}
+              initialContact={creating.contact}
+              onDone={() => setCreating(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editingClient !== null} onOpenChange={(isOpen) => !isOpen && setEditingClient(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto">

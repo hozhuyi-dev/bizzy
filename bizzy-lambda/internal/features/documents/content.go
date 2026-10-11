@@ -55,12 +55,17 @@ func issuerFrom(cfg settings.Settings) Issuer {
 	}
 }
 
+// recipientFrom takes the client's details from their copy of the Google
+// contact.
 func recipientFrom(c clients.Client) Recipient {
-	address := c.Address
-	if c.Postcode != "" && !strings.Contains(address, c.Postcode) {
-		address = strings.TrimSpace(address + " " + c.Postcode)
+	r := Recipient{Name: c.Name}
+	if contact := c.Contact; contact != nil {
+		r.Email, r.Phone, r.Address = contact.Email, contact.Phone, contact.Address
+		if contact.Postcode != "" && !strings.Contains(r.Address, contact.Postcode) {
+			r.Address = strings.TrimSpace(r.Address + " " + contact.Postcode)
+		}
 	}
-	return Recipient{Name: c.Name, Email: c.Email, Phone: c.Phone, Address: address}
+	return r
 }
 
 // Normalize trims what she typed, checks it and computes the total. Lines

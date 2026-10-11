@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"bizzy-lambda/internal/platform/dynamo"
 )
 
@@ -12,7 +14,7 @@ const partition = "CLIENT"
 // Attributes each writer owns. A profile save from the app must not wipe the
 // activity the reconcile computed, and the other way round.
 var (
-	profileAttributes  = []string{"id", "name", "email", "phone", "address", "postcode", "aliases", "defaultFeeCents", "homeVisits"}
+	profileAttributes  = []string{"id", "name", "contact", "aliases", "defaultFeeCents", "homeVisits"}
 	activityAttributes = []string{"activity", "lastSessionAt"}
 )
 
@@ -59,6 +61,22 @@ func (r Repository) SaveActivity(ctx context.Context, client Client) error {
 
 func (r Repository) SetNextBooked(ctx context.Context, id string, at *time.Time) error {
 	return r.patch(ctx, Client{ID: id, NextBookedAt: at}, []string{"nextBookedAt"})
+}
+
+// RefreshContact replaces the contact copy, but only while the client is
+// still linked to the same contact at the version the caller read: a link or
+// an edit made in the meantime wins. It reports whether it wrote.
+func (r Repository) RefreshContact(ctx context.Context, id string, previous, next Contact) (bool, error) {
+	p, err := dynamo.OwnedFrom(partition, id, Client{ID: id, Contact: &next}, []string{"contact"})
+	if err != nil {
+		return false, err
+	}
+	p.When = &dynamo.Condition{
+		Expression: "#c.#rn = :rn AND #c.#etag = :etag",
+		Names:      map[string]string{"#c": "contact", "#rn": "resourceName", "#etag": "etag"},
+		Values:     map[string]types.AttributeValue{":rn": dynamo.S(previous.ResourceName), ":etag": dynamo.S(previous.ETag)},
+	}
+	return r.store.Apply(ctx, p)
 }
 
 func (r Repository) SetContacted(ctx context.Context, id string, at *time.Time) error {

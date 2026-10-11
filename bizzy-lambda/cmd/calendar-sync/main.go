@@ -1,10 +1,15 @@
 // Command calendar-sync runs once a day on a schedule, and whenever she taps
-// "Sync now" in the app, and imports the last SYNC_WINDOW_DAYS of calendar
-// events as sessions.
+// "Sync now" in the app. It imports the last SYNC_WINDOW_DAYS of calendar
+// events as sessions and refreshes each client's copy of their Google
+// contact, acting as her through the grant she made in Settings.
+//
+// It replies like the API ({data} or {error}), so the app can tell "Google
+// is disconnected" from a crash.
 package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"log/slog"
 	"os"
@@ -18,11 +23,15 @@ import (
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/calsync"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/contacts"
+	"bizzy-lambda/internal/features/google"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
+	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/dynamo"
-	"bizzy-lambda/internal/platform/ssm"
+	"bizzy-lambda/internal/platform/googleauth"
+	"bizzy-lambda/internal/router"
 )
 
 // lookahead is how far ahead the sync looks for bookings, so a client who
@@ -42,15 +51,12 @@ func main() {
 		log.Fatalf("TIME_ZONE: %v", err)
 	}
 
-	key, err := ssm.SecureString(ctx, mustEnv("GOOGLE_SERVICE_ACCOUNT_PARAM"))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	source, err := calendar.NewGoogleSource(ctx, []byte(key), mustEnv("GOOGLE_CALENDAR_ID"))
-	if err != nil {
-		log.Fatal(err)
-	}
+	auth := googleauth.New(
+		mustEnv("GOOGLE_CLIENT_ID"),
+		mustEnv("GOOGLE_CLIENT_SECRET"),
+		googleauth.ParamTokens(mustEnv("GOOGLE_TOKEN_PARAM")),
+	)
+	connections := google.NewRepository(store)
 
 	days, err := strconv.Atoi(os.Getenv("SYNC_WINDOW_DAYS"))
 	if err != nil || days < 1 {
@@ -59,11 +65,13 @@ func main() {
 
 	clientsRepo := clients.NewRepository(store)
 	sessionsRepo := sessions.NewRepository(store)
+	status := calsync.NewStatusRepository(store)
 
-	syncer := calsync.Syncer{
-		Events:   source,
-		Clients:  clientsRepo,
-		Sessions: sessionsRepo,
+	base := calsync.Syncer{
+		Contacts:  contacts.NewGoogle(auth.Client),
+		Dismissed: contacts.NewDismissedRepository(store),
+		Clients:   clientsRepo,
+		Sessions:  sessionsRepo,
 		Billing: &billing.Reconciler{
 			Clients:  clientsRepo,
 			Sessions: sessionsRepo,
@@ -71,19 +79,53 @@ func main() {
 			Settings: settings.NewRepository(store),
 			Location: loc,
 		},
-		Status:    calsync.NewStatusRepository(store),
+		Status:    status,
 		Window:    time.Duration(days) * 24 * time.Hour,
 		Lookahead: lookahead,
 		Now:       time.Now,
 	}
 
-	lambda.Start(func(ctx context.Context) (calsync.Summary, error) {
-		summary, err := syncer.Run(ctx)
+	// The calendar is chosen in Settings, so it is read on every run.
+	run := func(ctx context.Context) (calsync.Summary, error) {
+		conn, err := connections.Get(ctx)
 		if err != nil {
-			return summary, err
+			return calsync.Summary{}, err
 		}
-		slog.InfoContext(ctx, "calendar sync", "summary", summary)
-		return summary, nil
+		if conn == nil {
+			return calsync.Summary{}, googleauth.ErrNotConnected
+		}
+		client, err := auth.Client(ctx)
+		if err != nil {
+			return calsync.Summary{}, err
+		}
+		source, err := calendar.NewGoogleSource(ctx, client, conn.CalendarID)
+		if err != nil {
+			return calsync.Summary{}, err
+		}
+
+		syncer := base
+		syncer.Events = source
+		return syncer.Run(ctx)
+	}
+
+	lambda.Start(func(ctx context.Context) (router.Response, error) {
+		summary, err := run(ctx)
+		if err == nil {
+			slog.InfoContext(ctx, "calendar sync", "summary", summary)
+			return router.Response{Data: summary}, nil
+		}
+
+		slog.ErrorContext(ctx, "calendar sync failed", "error", err)
+		body := &router.ErrorBody{Code: "internal", Message: "The sync failed. Please try again."}
+		var appErr *apperr.Error
+		if errors.As(err, &appErr) {
+			body = &router.ErrorBody{Code: appErr.Code, Message: appErr.Message}
+		}
+		// Recorded so the app shows why, including for the nightly run.
+		if putErr := status.Put(ctx, calsync.Run{At: time.Now().UTC(), Error: body.Message}); putErr != nil {
+			slog.ErrorContext(ctx, "record sync failure", "error", putErr)
+		}
+		return router.Response{Error: body}, nil
 	})
 }
 

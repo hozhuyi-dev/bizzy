@@ -1,6 +1,6 @@
 # bizzy
 
-Back-office for a one-person physio practice. Sessions are read from Google Calendar every day; she fixes what the sync couldn't read, issues receipts when a client asks (PDF, in the browser), tracks prepaid packages, follows up lapsed clients and sees how the business is doing.
+Back-office for a one-person physio practice. Sessions are read from Google Calendar every day and every client is linked to one of her Google contacts; she fixes what the sync couldn't read, issues receipts when a client asks (PDF, in the browser), tracks prepaid packages, follows up lapsed clients and sees how the business is doing.
 
 | Folder | What | Stack |
 | --- | --- | --- |
@@ -9,6 +9,8 @@ Back-office for a one-person physio practice. Sessions are read from Google Cale
 | `bizzy-infra` | AWS resources | CDK (TypeScript) |
 
 Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets AWS credentials (identity pool role mapping); the browser invokes the API Lambda directly with them.
+
+Separately, she **connects Google** once in Settings: an OAuth consent for her calendar (read only) and contacts (read and write). The API keeps the refresh token in SSM (`/<project>/<env>/google-refresh-token`), and both Lambdas act as her with it. A personal Gmail can't share its contacts with a service account, so this replaces the service account the calendar used to need. The connected account can differ from the sign-in account, e.g. a test account in development.
 
 ## Calendar syntax
 
@@ -26,9 +28,19 @@ Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets AWS credentials (identi
 | `? Jane Smith` | Not confirmed yet; on the to-do list until the `?` is removed |
 
 - Names match a client's aliases (case-insensitive). Unknown names that look like sessions, and near-miss typos, show up as **unmatched** in the app to link or create.
-- Events that match no client and carry no `?` or amount are personal and skipped. All-day events are skipped.
+- A name that matches one of her **Google contacts** (full name, nickname, a first name no other contact shares, or a typo of a long name) also shows up as unmatched, with **Add … as a client**, or **It's …** when that contact already belongs to a client under another name. **Not a client** stops suggesting that contact (undo in Settings).
+- Other events that match no client and carry no `?` or amount are personal and skipped. All-day events are skipped.
 - **Home visits**: give the event the home-visit colour (Tomato by default, changeable in Settings). Any other colour means her place; no colour follows the client's "usually a home visit" setting.
 - The sync re-reads the last 30 days every night (or on **Sync now**) and looks 60 days ahead for bookings. Fix the calendar, then sync again. A session with an issued receipt still follows the calendar, but a change that contradicts the receipt is flagged.
+
+## Clients and Google Contacts
+
+Every client links to a Google contact, picked or created when the client is added, so the details are on her phone too. The client's name and calendar aliases stay in bizzy and can differ from the contact's name.
+
+- Google is the source of truth for email, phone and address. The client keeps a read-only copy for lists, follow-ups and receipts (issued receipts keep what they printed).
+- **Edit details** in the app writes straight to Google. The edit carries the contact's etag, so if it changed on her phone in the meantime the save is refused and the latest is shown.
+- Each sync re-reads her contacts and refreshes the copies. A contact deleted or merged in Google is flagged on the client and can be recreated from the copy.
+- Linked contacts are added to a **Clients** label in Google Contacts.
 
 ## Receipts
 
@@ -36,7 +48,7 @@ Issued on request, one per paid session or package purchase. A receipt starts as
 
 ## Data
 
-One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `PACKAGE`, `DOC`, …) and five generic local secondary indexes created up front, because LSIs can't be added later (see `bizzy-lambda/internal/platform/dynamo`). Each writer owns its fields on a shared item (the sync, the billing reconcile, her actions), so they never overwrite each other. Client items carry monthly activity, which the follow-up list and Insights are summed from.
+One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `PACKAGE`, `DOC`, `GOOGLE`, `CONTACTS`, …) and five generic local secondary indexes created up front, because LSIs can't be added later (see `bizzy-lambda/internal/platform/dynamo`). Each writer owns its fields on a shared item (the sync, the billing reconcile, her actions), so they never overwrite each other. Client items carry monthly activity, which the follow-up list and Insights are summed from.
 
 ## Environments
 
@@ -50,27 +62,26 @@ One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `PACKAGE
 ## One-time setup
 
 1. **Google Cloud project**
-   - OAuth client (Web application), one redirect URI per environment: `https://bizzy-<env>.auth.<region>.amazoncognito.com/oauth2/idpresponse`. Publish the consent screen.
-   - Enable the Google Calendar API, create a service account and a JSON key.
-   - In Google Calendar, share the calendar with the service account email ("See all event details"). Use a test calendar for development and staging.
+   - Enable the **Google Calendar API** and the **People API**.
+   - Branding: app name, support email, home page `<app URL>/` and privacy policy `<app URL>/privacy.html` (served from `bizzy-web/public/privacy.html`), with the CloudFront domain under authorized domains. Leave the logo empty: one triggers brand verification.
+   - OAuth consent screen: add the scopes `.../auth/calendar.readonly` and `.../auth/contacts`, and **publish it** ("In production"). In "Testing" these refresh tokens expire after 7 days and the nightly sync stops. Unverified is fine for a single user: she clicks through Google's "unverified app" warning once when connecting.
+   - OAuth client (Web application), two redirect URIs per environment:
+     - `https://bizzy-<env>.auth.<region>.amazoncognito.com/oauth2/idpresponse` (sign-in)
+     - `<app origin>/google-callback` (connecting Google), e.g. `http://localhost:4200/google-callback` for development
 2. **AWS**: `cdk bootstrap`, and an IAM role GitHub Actions can assume through OIDC.
 3. **GitHub environments** `staging` and `production` (and `development` to deploy it from Actions):
    - Variables: `ENVIRONMENT`, `PROJECT_NAME`
-   - Secrets: `AWS_ROLE_ARN`, `AWS_ACCOUNT_ID`, `AWS_REGION`, `CALLBACK_URLS`, `LOGOUT_URLS`, `ALLOWED_EMAIL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALENDAR_ID`, `SYNC_TIME_ZONE`, `GOOGLE_SERVICE_ACCOUNT_KEY`
-4. Deploy once, then add the CloudFront URL from the web stack output to `CALLBACK_URLS` / `LOGOUT_URLS` and deploy again.
+   - Secrets: `AWS_ROLE_ARN`, `AWS_ACCOUNT_ID`, `AWS_REGION`, `CALLBACK_URLS`, `LOGOUT_URLS`, `ALLOWED_EMAIL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SYNC_TIME_ZONE`
+4. Deploy once, then add the CloudFront URL from the web stack output to `CALLBACK_URLS` / `LOGOUT_URLS` (and `<url>/google-callback` to the Google OAuth client) and deploy again.
+5. Sign in, open **Settings → Connect Google**, and pick the calendar sessions are booked in. Connect a test Google account (with a test calendar and contacts) in development and staging, so nothing touches her real contacts.
 
 ## Development environment
 
 The local frontend runs against the real `development` Lambda, DynamoDB and Cognito.
 
 1. `cp bizzy-infra/.env.example bizzy-infra/.env.development` and fill it in, with `http://localhost:4200/` as the callback and logout URL and your own email as `ALLOWED_EMAIL`.
-2. Store the service account key once:
-   ```sh
-   aws ssm put-parameter --profile hozhuyi.dev --type SecureString --overwrite \
-     --name /bizzy/development/google-service-account --value file://service-account.json
-   ```
-3. `pnpm dev:deploy` deploys the stacks and writes `bizzy-web/.env.development` from their outputs.
-4. `pnpm web:dev` and open http://localhost:4200.
+2. `pnpm dev:deploy` deploys the stacks and writes `bizzy-web/.env.development` from their outputs.
+3. `pnpm web:dev`, open http://localhost:4200 and connect a test Google account in Settings.
 
 After changing Go code, `pnpm lambda:deploy` hotswaps the development Lambdas in seconds.
 
@@ -92,4 +103,4 @@ pnpm web:test
 
 ## Remaining work
 
-- **Staging / production**: GitHub environments and secrets, OIDC deploy role, Google client redirect URIs per environment, add her as a Google test user, share her calendar with the service account
+- **Staging / production**: GitHub environments and secrets, OIDC deploy role, Google client redirect URIs per environment (sign-in and `/google-callback`), publish the consent screen, connect Google in each environment

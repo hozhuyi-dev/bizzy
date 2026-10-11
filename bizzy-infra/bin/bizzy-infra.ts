@@ -24,7 +24,6 @@ const logoutUrls = parseEnvList(process.env.LOGOUT_URLS);
 const allowedEmail = process.env.ALLOWED_EMAIL;
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-const googleCalendarId = process.env.GOOGLE_CALENDAR_ID;
 const syncTimeZone = process.env.SYNC_TIME_ZONE;
 
 assert.ok(projectName, "PROJECT_NAME is required");
@@ -34,7 +33,6 @@ assert.ok(callbackUrls.length > 0, "CALLBACK_URLS are required");
 assert.ok(allowedEmail, "ALLOWED_EMAIL is required");
 assert.ok(googleClientId, "GOOGLE_CLIENT_ID is required");
 assert.ok(googleClientSecret, "GOOGLE_CLIENT_SECRET is required");
-assert.ok(googleCalendarId, "GOOGLE_CALENDAR_ID is required");
 assert.ok(syncTimeZone, "SYNC_TIME_ZONE is required");
 
 const env = { account: awsAccountId, region: awsRegion };
@@ -62,7 +60,8 @@ const apiStack = new ApiStack(app, `${projectName}-${environment}-api`, {
   environment: environment,
   table: dataStack.data.table,
   authenticatedRole: authStack.auth.authenticatedRole,
-  googleCalendarId: googleCalendarId,
+  googleClientId: googleClientId,
+  googleClientSecret: googleClientSecret,
   syncTimeZone: syncTimeZone,
 });
 

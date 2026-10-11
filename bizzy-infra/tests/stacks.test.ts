@@ -35,7 +35,8 @@ function synth(environment: Environment) {
     environment,
     table: data.data.table,
     authenticatedRole: auth.auth.authenticatedRole,
-    googleCalendarId: "owner@example.com",
+    googleClientId: "client-id",
+    googleClientSecret: "client-secret",
     syncTimeZone: "Asia/Kuala_Lumpur",
   });
 
@@ -126,6 +127,30 @@ describe("api", () => {
     }>;
     expect(policy?.Properties.PolicyDocument.Statement).toHaveLength(1);
     expect(policy?.Properties.PolicyDocument.Statement[0]?.Resource).toHaveLength(2);
+  });
+
+  test("lets only the api write her Google token", () => {
+    type Policy = {
+      Properties: {
+        PolicyDocument: { Statement: Array<{ Action: unknown; Resource: unknown }> };
+      };
+    };
+    const statements = Object.values(api.findResources("AWS::IAM::Policy")).flatMap(
+      (policy) => (policy as Policy).Properties.PolicyDocument.Statement,
+    );
+    const ssm = statements.filter((s) => JSON.stringify(s.Action).includes("ssm:"));
+
+    expect(ssm.map((s) => s.Action)).toEqual(
+      expect.arrayContaining([
+        ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter"],
+        "ssm:GetParameter",
+      ]),
+    );
+    for (const s of ssm) {
+      expect(JSON.stringify(s.Resource)).toContain(
+        "parameter/bizzy/staging/google-refresh-token",
+      );
+    }
   });
 
   test("runs the calendar sync daily in her time zone", () => {

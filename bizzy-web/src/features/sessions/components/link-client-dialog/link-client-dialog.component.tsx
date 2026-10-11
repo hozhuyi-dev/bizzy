@@ -44,13 +44,15 @@ function LinkClientBody({ session, onClose }: { session: Session; onClose: () =>
   const name = session.name ?? "";
 
   if (mode === "new") {
+    // A contact the name matched, unless it already belongs to a client.
+    const suggested = session.suggestedContacts?.find((contact) => !contact.clientId);
     return (
       <>
         <DialogHeader>
           <DialogTitle>New client</DialogTitle>
           <DialogDescription>Sessions written as “{name}” will match this client.</DialogDescription>
         </DialogHeader>
-        <ClientForm initialName={name} onDone={onClose} />
+        <ClientForm initialName={name} initialContact={suggested} onDone={onClose} />
       </>
     );
   }

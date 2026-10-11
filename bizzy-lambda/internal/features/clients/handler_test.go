@@ -45,13 +45,31 @@ func (m *memoryStore) SaveProfile(_ context.Context, client Client) error {
 	return nil
 }
 
+type fakeLinker map[string]Contact
+
+func (f fakeLinker) Link(_ context.Context, resourceName string) (Contact, error) {
+	contact, ok := f[resourceName]
+	if !ok {
+		return Contact{}, apperr.NotFound("contact not found")
+	}
+	return contact, nil
+}
+
+var (
+	linker = fakeLinker{
+		"people/jane": {ResourceName: "people/jane", ETag: "e1", Phone: "012"},
+		"people/john": {ResourceName: "people/john", ETag: "e2"},
+	}
+	janeLink = &Contact{ResourceName: "people/jane"}
+)
+
 func TestSave(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("creates with normalised aliases including the name", func(t *testing.T) {
-		h := handler{repo: &memoryStore{}}
+		h := handler{repo: &memoryStore{}, contacts: linker}
 
-		out, err := h.save(ctx, Client{Name: "  Jane   Smith ", Aliases: []string{"JANE S", "jane smith", " "}})
+		out, err := h.save(ctx, Client{Name: "  Jane   Smith ", Aliases: []string{"JANE S", "jane smith", " "}, Contact: janeLink})
 		if err != nil {
 			t.Fatalf("save error: %v", err)
 		}
@@ -66,27 +84,59 @@ func TestSave(t *testing.T) {
 		if want := []string{"jane smith", "jane s"}; !slices.Equal(got.Aliases, want) {
 			t.Errorf("Aliases = %v, want %v", got.Aliases, want)
 		}
+		if got.Contact == nil || got.Contact.Phone != "012" {
+			t.Errorf("Contact = %+v, want the details copied from Google", got.Contact)
+		}
+	})
+
+	t.Run("requires a contact", func(t *testing.T) {
+		h := handler{repo: &memoryStore{}, contacts: linker}
+		_, err := h.save(ctx, Client{Name: "Jane"})
+		assertCode(t, err, apperr.CodeInvalid)
+	})
+
+	t.Run("keeps the contact copy when the link is unchanged", func(t *testing.T) {
+		kept := &Contact{ResourceName: "people/jane", ETag: "old", Phone: "999"}
+		h := handler{repo: &memoryStore{clients: []Client{{ID: "a", Name: "Jane", Aliases: []string{"jane"}, Contact: kept}}}, contacts: linker}
+		out, err := h.save(ctx, Client{ID: "a", Name: "Jane", Contact: &Contact{ResourceName: "people/jane", Phone: "typed in the browser"}})
+		if err != nil {
+			t.Fatalf("save error: %v", err)
+		}
+		if got := out.(Client).Contact; got.Phone != "999" {
+			t.Errorf("Contact = %+v, want the stored copy", got)
+		}
+	})
+
+	t.Run("relinking copies the new contact", func(t *testing.T) {
+		h := handler{repo: &memoryStore{clients: []Client{{ID: "a", Name: "Jane", Aliases: []string{"jane"}, Contact: janeLink}}}, contacts: linker}
+		out, err := h.save(ctx, Client{ID: "a", Name: "Jane", Contact: &Contact{ResourceName: "people/john"}})
+		if err != nil {
+			t.Fatalf("save error: %v", err)
+		}
+		if got := out.(Client).Contact; got.ResourceName != "people/john" || got.ETag != "e2" {
+			t.Errorf("Contact = %+v, want people/john", got)
+		}
 	})
 
 	t.Run("rejects a missing name", func(t *testing.T) {
-		h := handler{repo: &memoryStore{}}
+		h := handler{repo: &memoryStore{}, contacts: linker}
 		_, err := h.save(ctx, Client{Name: "  "})
 		assertCode(t, err, apperr.CodeInvalid)
 	})
 
 	t.Run("rejects an alias owned by another client", func(t *testing.T) {
-		h := handler{repo: &memoryStore{clients: []Client{{ID: "a", Name: "Jane Smith", Aliases: []string{"jane smith", "js"}}}}}
-		_, err := h.save(ctx, Client{Name: "John Stone", Aliases: []string{"JS"}})
+		h := handler{repo: &memoryStore{clients: []Client{{ID: "a", Name: "Jane Smith", Aliases: []string{"jane smith", "js"}}}}, contacts: linker}
+		_, err := h.save(ctx, Client{Name: "John Stone", Aliases: []string{"JS"}, Contact: janeLink})
 		assertCode(t, err, apperr.CodeConflict)
 	})
 
 	t.Run("runs the after-save hook with the client id", func(t *testing.T) {
 		var got string
-		h := handler{repo: &memoryStore{}, afterSave: func(_ context.Context, id string) error {
+		h := handler{repo: &memoryStore{}, contacts: linker, afterSave: func(_ context.Context, id string) error {
 			got = id
 			return nil
 		}}
-		out, err := h.save(ctx, Client{Name: "Jane"})
+		out, err := h.save(ctx, Client{Name: "Jane", Contact: janeLink})
 		if err != nil {
 			t.Fatalf("save error: %v", err)
 		}
@@ -96,8 +146,8 @@ func TestSave(t *testing.T) {
 	})
 
 	t.Run("updating a client keeps its own aliases", func(t *testing.T) {
-		h := handler{repo: &memoryStore{clients: []Client{{ID: "a", Name: "Jane Smith", Aliases: []string{"jane smith"}}}}}
-		if _, err := h.save(ctx, Client{ID: "a", Name: "Jane Smith", Aliases: []string{"jane"}}); err != nil {
+		h := handler{repo: &memoryStore{clients: []Client{{ID: "a", Name: "Jane Smith", Aliases: []string{"jane smith"}, Contact: janeLink}}}, contacts: linker}
+		if _, err := h.save(ctx, Client{ID: "a", Name: "Jane Smith", Aliases: []string{"jane"}, Contact: janeLink}); err != nil {
 			t.Fatalf("save error: %v", err)
 		}
 	})

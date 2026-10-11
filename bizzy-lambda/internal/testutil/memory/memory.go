@@ -81,6 +81,17 @@ func (r *ClientRepo) SetNextBooked(_ context.Context, id string, at *time.Time) 
 	return nil
 }
 
+func (r *ClientRepo) RefreshContact(_ context.Context, id string, previous, next clients.Contact) (bool, error) {
+	c, ok := r.ClientMap[id]
+	if !ok || c.Contact == nil || c.Contact.ResourceName != previous.ResourceName || c.Contact.ETag != previous.ETag {
+		return false, nil
+	}
+	c.Contact = &next
+	r.ClientMap[id] = c
+	r.Writes++
+	return true, nil
+}
+
 type SessionRepo Store
 
 func (r *SessionRepo) Get(_ context.Context, id string) (sessions.Session, bool, error) {

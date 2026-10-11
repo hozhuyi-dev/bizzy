@@ -21,7 +21,7 @@ const Partition = "SESSION"
 // ownedAttributes are written by Save (sync + reconcile). `ignored` and
 // `document` are hers and are never touched by it.
 var ownedAttributes = append([]string{
-	"eventId", "title", "start", "end", "colorId", "removed",
+	"eventId", "title", "start", "end", "colorId", "removed", "suggestedContacts",
 	"status", "name", "clientId", "suggestedClientId", "feeCents", "feeSource",
 	"packageId", "valueCents", "location", "locationSource", "reason", "drift",
 }, dynamo.IndexAttributes...)

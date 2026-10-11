@@ -59,7 +59,7 @@ interface ClientActions {
 }
 
 export function ContactButtons({ client, onContacted }: { client: Client; onContacted?: ((client: Client) => void) | undefined }) {
-  const whatsapp = whatsappLink(client.phone);
+  const whatsapp = whatsappLink(client.contact?.phone);
   return (
     <>
       {whatsapp && (
@@ -81,14 +81,23 @@ export function ContactButtons({ client, onContacted }: { client: Client; onCont
   );
 }
 
+/** Says when the client's Google contact needs her attention. */
+export function contactProblem(client: Client): string | undefined {
+  if (!client.contact) return "No contact";
+  if (client.contact.missing) return "Contact deleted in Google";
+  return undefined;
+}
+
 /** The name with her other calendar names under it. */
 export function ClientName({ client }: { client: Client }) {
   const aliases = extraAliases(client);
+  const problem = contactProblem(client);
   return (
     <div className="flex flex-col gap-1">
       <span className="font-medium">{client.name}</span>
-      {aliases.length > 0 && (
+      {(aliases.length > 0 || problem) && (
         <div className="flex flex-wrap gap-1">
+          {problem && <Badge variant="destructive">{problem}</Badge>}
           {aliases.map((alias) => (
             <Badge key={alias} variant="secondary">
               {alias}
@@ -133,7 +142,7 @@ export function ClientCard({ row, onEdit, onContacted }: { row: ClientRow } & Cl
             <dd>{client.defaultFeeCents === undefined ? "—" : formatCents(client.defaultFeeCents)}</dd>
           </div>
         </dl>
-        {(whatsappLink(client.phone) || onContacted) && (
+        {(whatsappLink(client.contact?.phone) || onContacted) && (
           <div className="-ml-2.5 flex flex-wrap gap-1">
             <ContactButtons client={client} onContacted={onContacted} />
           </div>

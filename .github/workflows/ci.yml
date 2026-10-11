@@ -86,7 +86,6 @@ jobs:
           ALLOWED_EMAIL: owner@example.com
           GOOGLE_CLIENT_ID: placeholder
           GOOGLE_CLIENT_SECRET: placeholder
-          GOOGLE_CALENDAR_ID: owner@example.com
           SYNC_TIME_ZONE: Asia/Kuala_Lumpur
 
   web:

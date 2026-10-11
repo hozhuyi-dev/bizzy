@@ -10,6 +10,9 @@ const (
 	CodeInvalid  Code = "invalid"
 	CodeNotFound Code = "not_found"
 	CodeConflict Code = "conflict"
+	// CodeDisconnected means Google access is missing or was revoked; the
+	// app sends her to Settings to connect again.
+	CodeDisconnected Code = "disconnected"
 )
 
 type Error struct {
@@ -29,4 +32,8 @@ func NotFound(format string, args ...any) *Error {
 
 func Conflict(format string, args ...any) *Error {
 	return &Error{Code: CodeConflict, Message: fmt.Sprintf(format, args...)}
+}
+
+func Disconnected(format string, args ...any) *Error {
+	return &Error{Code: CodeDisconnected, Message: fmt.Sprintf(format, args...)}
 }

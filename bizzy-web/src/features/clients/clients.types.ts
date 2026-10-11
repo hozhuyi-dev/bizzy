@@ -1,11 +1,10 @@
 // Mirrors bizzy-lambda/internal/features/clients/model.go.
 export interface Client {
   id: string;
+  /** Hers to choose; the Google contact may be named differently. */
   name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  postcode?: string;
+  /** The linked Google contact, where the client's details live. */
+  contact?: ClientContact;
   /** Names she writes in the calendar; always includes the client's name. */
   aliases: Array<string>;
   defaultFeeCents?: number;
@@ -19,6 +18,24 @@ export interface Client {
   lastContactedAt?: string;
 }
 
+/**
+ * A read-only copy of the linked Google contact. Edits go to Google, and the
+ * nightly sync refreshes the copy.
+ */
+export interface ClientContact {
+  resourceName: string;
+  etag?: string;
+  displayName?: string;
+  email?: string;
+  phone?: string;
+  /** Printed on receipts. */
+  address?: string;
+  postcode?: string;
+  /** No longer in Google (deleted or merged); the copy is kept. */
+  missing?: boolean;
+  syncedAt: string;
+}
+
 export interface MonthActivity {
   sessions: number;
   homeSessions?: number;
@@ -29,8 +46,11 @@ export interface MonthActivity {
   homeEarnedCents?: number;
 }
 
-/** The fields she edits; a new client has no id yet. */
-export type SaveClientInput = Pick<
-  Client,
-  "name" | "email" | "phone" | "address" | "postcode" | "aliases" | "defaultFeeCents" | "homeVisits"
-> & { id?: string };
+/**
+ * The fields she edits; a new client has no id yet. Only the contact's
+ * resource name is sent: the API copies the details from Google.
+ */
+export type SaveClientInput = Pick<Client, "name" | "aliases" | "defaultFeeCents" | "homeVisits"> & {
+  id?: string;
+  contact: { resourceName: string };
+};

@@ -35,6 +35,19 @@ export const SyncKeys = {
   status: () => [...SyncKeys.all, "status"] as const,
 };
 
+export const GoogleKeys = {
+  all: ["google"] as const,
+  status: () => [...GoogleKeys.all, "status"] as const,
+  calendars: () => [...GoogleKeys.all, "calendars"] as const,
+};
+
+export const ContactKeys = {
+  all: ["contacts"] as const,
+  list: () => [...ContactKeys.all, "list"] as const,
+  detail: (resourceName: string) => [...ContactKeys.all, "detail", resourceName] as const,
+  dismissed: () => [...ContactKeys.all, "dismissed"] as const,
+};
+
 /**
  * Everything derived from sessions: a sync, a client save or a receipt can
  * change any of these, so they are refreshed together.

@@ -16,7 +16,8 @@ export const SyncMutation = {
     const queryClient = useQueryClient();
     return useMutation({
       mutationFn: () => SyncService.run(),
-      onSuccess: () => invalidateBilling(queryClient),
+      // A failed run is recorded too, so refresh the status either way.
+      onSettled: () => invalidateBilling(queryClient),
     });
   },
 };

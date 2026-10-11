@@ -23,14 +23,21 @@ type store interface {
 // sessions, and a new default fee or home-visit setting reprices theirs.
 type AfterSave func(ctx context.Context, clientID string) error
 
+// Linker reads a Google contact for a client to link to. The contacts
+// feature implements it; it depends on this package, not the other way.
+type Linker interface {
+	Link(ctx context.Context, resourceName string) (Contact, error)
+}
+
 type handler struct {
 	repo      store
+	contacts  Linker
 	afterSave AfterSave
 	now       func() time.Time
 }
 
-func Register(r *router.Router, repo store, afterSave AfterSave) {
-	h := handler{repo: repo, afterSave: afterSave, now: time.Now}
+func Register(r *router.Router, repo store, contacts Linker, afterSave AfterSave) {
+	h := handler{repo: repo, contacts: contacts, afterSave: afterSave, now: time.Now}
 	r.Register("clients.list", h.list)
 	r.Register("clients.save", router.Typed(h.save))
 	r.Register("clients.markContacted", router.Typed(h.markContacted))
@@ -40,7 +47,9 @@ func (h handler) list(ctx context.Context, _ json.RawMessage) (any, error) {
 	return h.repo.List(ctx)
 }
 
-// save creates a client when ID is empty, otherwise replaces it.
+// save creates a client when ID is empty, otherwise replaces it. Only the
+// contact's resource name is read from the input: the details are copied
+// from Google when the link is made or changes.
 func (h handler) save(ctx context.Context, in Client) (any, error) {
 	client, err := prepare(in)
 	if err != nil {
@@ -53,6 +62,28 @@ func (h handler) save(ctx context.Context, in Client) (any, error) {
 	}
 	if err := checkAliases(client, existing); err != nil {
 		return nil, err
+	}
+
+	var current *Client
+	if client.ID != "" {
+		i := slices.IndexFunc(existing, func(c Client) bool { return c.ID == client.ID })
+		if i < 0 {
+			return nil, apperr.NotFound("client not found")
+		}
+		current = &existing[i]
+	}
+
+	if in.Contact == nil || in.Contact.ResourceName == "" {
+		return nil, apperr.Invalid("choose the client's Google contact, or create one")
+	}
+	if current != nil && current.Contact != nil && current.Contact.ResourceName == in.Contact.ResourceName {
+		client.Contact = current.Contact
+	} else {
+		contact, err := h.contacts.Link(ctx, in.Contact.ResourceName)
+		if err != nil {
+			return nil, err
+		}
+		client.Contact = &contact
 	}
 
 	if client.ID == "" {
@@ -99,10 +130,6 @@ func prepare(in Client) (Client, error) {
 	client := Client{
 		ID:              in.ID,
 		Name:            strings.Join(strings.Fields(in.Name), " "),
-		Email:           strings.TrimSpace(in.Email),
-		Phone:           strings.TrimSpace(in.Phone),
-		Address:         strings.TrimSpace(in.Address),
-		Postcode:        strings.TrimSpace(in.Postcode),
 		DefaultFeeCents: in.DefaultFeeCents,
 		HomeVisits:      in.HomeVisits,
 	}

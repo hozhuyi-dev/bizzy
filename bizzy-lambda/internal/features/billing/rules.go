@@ -80,9 +80,12 @@ func Derive(s sessions.Session, env Env) Entry {
 		out.Reason = "Not confirmed yet: remove the ? once it happened"
 	case out.ClientID == "":
 		out.Status = sessions.StatusUnmatched
-		if out.SuggestedClientID != "" {
+		switch {
+		case out.SuggestedClientID != "":
 			out.Reason = fmt.Sprintf("Did you mean %s?", env.Clients[out.SuggestedClientID].Name)
-		} else {
+		case len(out.SuggestedContacts) > 0:
+			out.Reason = fmt.Sprintf("No client is called %q yet, but it may be one of your contacts", title.Name)
+		default:
 			out.Reason = fmt.Sprintf("No client is called %q", title.Name)
 		}
 	}

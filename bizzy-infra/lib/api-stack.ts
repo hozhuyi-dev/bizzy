@@ -5,7 +5,6 @@ import type { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { type IRole, Policy, PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Schedule, ScheduleExpression } from "aws-cdk-lib/aws-scheduler";
 import { LambdaInvoke } from "aws-cdk-lib/aws-scheduler-targets";
-import { StringParameter } from "aws-cdk-lib/aws-ssm";
 import { GoFunction } from "./common/api/go-function";
 import type { Environment } from "../utils/environment.util";
 
@@ -15,7 +14,12 @@ interface ApiStackProps extends cdk.StackProps {
   table: ITable;
   /** The identity pool role the signed-in user's credentials carry. */
   authenticatedRole: IRole;
-  googleCalendarId: string;
+  /**
+   * The Google OAuth client, also used by Cognito for sign-in. The Lambdas
+   * use it to act as her in Google Calendar and Contacts.
+   */
+  googleClientId: string;
+  googleClientSecret: string;
   /** IANA zone the daily sync runs in, e.g. "Asia/Kuala_Lumpur". */
   syncTimeZone: string;
 }
@@ -32,9 +36,28 @@ export class ApiStack extends cdk.Stack {
       environment,
       table,
       authenticatedRole,
-      googleCalendarId,
+      googleClientId,
+      googleClientSecret,
       syncTimeZone,
     } = props;
+
+    // Her Google refresh token, written by the API when she connects Google
+    // in Settings (CloudFormation can't create SecureStrings, so it isn't a
+    // stack resource). Both functions act as her with it.
+    const tokenParam = `/${projectName}/${environment}/google-refresh-token`;
+    const tokenParamArn = this.formatArn({
+      service: "ssm",
+      resource: "parameter",
+      resourceName: tokenParam.slice(1),
+    });
+
+    // The client secret lands in the template, as it already does for the
+    // Cognito identity provider (see common/auth/cognito.ts).
+    const googleEnvironment = {
+      GOOGLE_CLIENT_ID: googleClientId,
+      GOOGLE_CLIENT_SECRET: googleClientSecret,
+      GOOGLE_TOKEN_PARAM: tokenParam,
+    };
 
     this.api = new GoFunction(this, "Api", {
       projectName: projectName,
@@ -45,14 +68,21 @@ export class ApiStack extends cdk.Stack {
       environmentVariables: {
         TABLE_NAME: table.tableName,
         TIME_ZONE: syncTimeZone,
+        ...googleEnvironment,
       },
     });
 
     table.grantReadWriteData(this.api.function);
 
-    // Written by the deploy workflow from a GitHub secret before `cdk deploy`;
-    // SecureStrings can't be created by CloudFormation.
-    const serviceAccountParam = `/${projectName}/${environment}/google-service-account`;
+    // Connecting writes the token and disconnecting deletes it. The default
+    // aws/ssm key's policy already lets SSM encrypt and decrypt for the
+    // account, so no KMS grant is needed.
+    this.api.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter"],
+        resources: [tokenParamArn],
+      }),
+    );
 
     this.calendarSync = new GoFunction(this, "CalendarSync", {
       projectName: projectName,
@@ -61,20 +91,20 @@ export class ApiStack extends cdk.Stack {
       timeout: Duration.minutes(2),
       environmentVariables: {
         TABLE_NAME: table.tableName,
-        GOOGLE_CALENDAR_ID: googleCalendarId,
-        GOOGLE_SERVICE_ACCOUNT_PARAM: serviceAccountParam,
         SYNC_WINDOW_DAYS: "30",
         TIME_ZONE: syncTimeZone,
+        ...googleEnvironment,
       },
     });
 
     table.grantReadWriteData(this.calendarSync.function);
 
-    StringParameter.fromSecureStringParameterAttributes(
-      this,
-      "GoogleServiceAccount",
-      { parameterName: serviceAccountParam },
-    ).grantRead(this.calendarSync.function);
+    this.calendarSync.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["ssm:GetParameter"],
+        resources: [tokenParamArn],
+      }),
+    );
 
     // The browser invokes both functions directly with identity-pool
     // credentials (the sync for "Sync now"). A Policy owned by this stack,
@@ -110,6 +140,11 @@ export class ApiStack extends cdk.Stack {
 
     new CfnOutput(this, "CalendarSyncFunctionName", {
       value: this.calendarSync.function.functionName,
+    });
+
+    // The browser sends her to Google's consent screen with it.
+    new CfnOutput(this, "GoogleClientId", {
+      value: googleClientId,
     });
   }
 }

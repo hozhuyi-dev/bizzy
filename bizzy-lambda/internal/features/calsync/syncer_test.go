@@ -8,6 +8,7 @@ import (
 	"bizzy-lambda/internal/features/billing"
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/docref"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/testutil/memory"
@@ -141,4 +142,91 @@ func TestRunRecordsNextBooking(t *testing.T) {
 	if len(m.SessionMap) != 0 {
 		t.Error("future events must not become sessions")
 	}
+}
+
+type fakeContacts []contacts.Person
+
+func (f fakeContacts) List(context.Context) ([]contacts.Person, error) { return f, nil }
+
+type fakeDismissed map[string]string
+
+func (f fakeDismissed) List(context.Context) (map[string]string, error) { return f, nil }
+
+func TestRunSuggestsContactsForUnknownNames(t *testing.T) {
+	m, cal := setup()
+	m.ClientMap["jane"] = withContact(m.ClientMap["jane"], clients.Contact{ResourceName: "people/jane", ETag: "j1", DisplayName: "Jane Smith-Wong"})
+	cal.events = []calendar.Event{
+		ev("e1", 3, "Mary Tan"),        // a contact, not a client yet
+		ev("e2", 2, "Jane Smith-Wong"), // Jane's contact name, not one of her aliases
+		ev("e3", 1, "Mum"),             // dismissed
+	}
+	s := newSyncer(m, cal)
+	s.Contacts = fakeContacts{
+		{ResourceName: "people/mary", ETag: "m1", DisplayName: "Mary Tan", GivenName: "Mary", FamilyName: "Tan"},
+		{ResourceName: "people/jane", ETag: "j1", DisplayName: "Jane Smith-Wong"},
+		{ResourceName: "people/mum", ETag: "u1", DisplayName: "Mum"},
+	}
+	s.Dismissed = fakeDismissed{"people/mum": "Mum"}
+
+	summary, err := s.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Unmatched != 2 || summary.Skipped != 1 {
+		t.Errorf("summary = %+v", summary)
+	}
+
+	mary := m.SessionMap["e1"]
+	if mary.Status != sessions.StatusUnmatched || len(mary.SuggestedContacts) != 1 || mary.SuggestedContacts[0].ResourceName != "people/mary" {
+		t.Errorf("e1 = %+v, want unmatched suggesting Mary", mary)
+	}
+	if got := m.SessionMap["e2"].SuggestedContacts; len(got) != 1 || got[0].ClientID != "jane" {
+		t.Errorf("e2 suggestions = %+v, want Jane's contact with her client id", got)
+	}
+	if _, ok := m.SessionMap["e3"]; ok {
+		t.Error("a dismissed contact's entry must stay personal")
+	}
+
+	m.Writes = 0
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if m.Writes != 0 {
+		t.Errorf("second run wrote %d items, want none", m.Writes)
+	}
+}
+
+func TestRunRefreshesContactCopies(t *testing.T) {
+	m, _ := setup()
+	m.ClientMap["jane"] = withContact(m.ClientMap["jane"], clients.Contact{ResourceName: "people/jane", ETag: "j1", Phone: "012"})
+	m.ClientMap["bob"] = withContact(clients.Client{ID: "bob", Name: "Bob", Aliases: []string{"bob"}}, clients.Contact{ResourceName: "people/bob", ETag: "b1", Phone: "019"})
+	s := newSyncer(m, &fakeCalendar{})
+	s.Contacts = fakeContacts{{ResourceName: "people/jane", ETag: "j2", Phone: "013", DisplayName: "Jane"}}
+
+	summary, err := s.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Contacts != 2 {
+		t.Errorf("summary.Contacts = %d, want 2", summary.Contacts)
+	}
+	if got := m.ClientMap["jane"].Contact; got.Phone != "013" || got.ETag != "j2" || got.Missing {
+		t.Errorf("jane's contact = %+v, want the new phone", got)
+	}
+	if got := m.ClientMap["bob"].Contact; !got.Missing || got.Phone != "019" {
+		t.Errorf("bob's contact = %+v, want marked missing with the old copy kept", got)
+	}
+
+	m.Writes = 0
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if m.Writes != 0 {
+		t.Errorf("second run wrote %d items, want none", m.Writes)
+	}
+}
+
+func withContact(c clients.Client, contact clients.Contact) clients.Client {
+	c.Contact = &contact
+	return c
 }

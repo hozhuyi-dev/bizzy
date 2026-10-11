@@ -24,16 +24,16 @@ export const ClientsMutation = {
   },
 };
 
-/** The editable part of a client, to save it back with a change. */
+/**
+ * The editable part of a client, to save it back with a change. Every client
+ * is created with a contact, so a missing one only fails loudly on save.
+ */
 export function profileOf(client: Client): SaveClientInput {
   return {
     id: client.id,
     name: client.name,
     aliases: client.aliases,
-    ...(client.email ? { email: client.email } : {}),
-    ...(client.phone ? { phone: client.phone } : {}),
-    ...(client.address ? { address: client.address } : {}),
-    ...(client.postcode ? { postcode: client.postcode } : {}),
+    contact: { resourceName: client.contact?.resourceName ?? "" },
     ...(client.defaultFeeCents !== undefined ? { defaultFeeCents: client.defaultFeeCents } : {}),
     ...(client.homeVisits ? { homeVisits: true } : {}),
   };
