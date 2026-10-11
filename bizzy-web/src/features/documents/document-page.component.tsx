@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BanIcon, CircleAlertIcon, DownloadIcon, EyeIcon, PencilIcon, PencilLineIcon } from "lucide-react";
+import { BanIcon, CircleAlertIcon, DownloadIcon, EyeIcon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   DocumentIssueButton,
@@ -35,11 +35,6 @@ import { Input } from "~/components/ui/input";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
-
-/** "02" for revision 2, as the receipt prints it. */
-function revisionLabel(revision: number): string {
-  return String(revision).padStart(2, "0");
-}
 
 // The breadcrumb already says what kind of document this is.
 const parent = { to: "/receipts", label: "Receipts" } as const;
@@ -99,17 +94,8 @@ function DraftDocument({ doc, draft, revisions }: DraftDocumentProps) {
       >
         <SectionLayout
           banner={
-            (doc.number || editor.invalid) && (
-              <>
-                {doc.number && (
-                  <Banner tone="waiting" icon={PencilLineIcon} title={`Rev ${revisionLabel((doc.revision ?? 0) + 1)} draft.`}>
-                    {doc.revision ? `Rev ${revisionLabel(doc.revision)}` : "Original"} stays valid.
-                  </Banner>
-                )}
-                {editor.invalid && (
-                  <Banner tone="attention" icon={CircleAlertIcon} title={editor.invalid} role="alert" />
-                )}
-              </>
+            editor.invalid && (
+              <Banner tone="attention" icon={CircleAlertIcon} title={editor.invalid} role="alert" />
             )
           }
           sections={[...documentEditorSections(editor), ...(history ? [history] : [])]}

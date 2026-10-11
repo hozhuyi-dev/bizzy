@@ -88,12 +88,6 @@ export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: Client
           </>
         }
       />
-      {view === "follow-up" && (
-        <p className="mb-4 text-sm text-muted-foreground">
-          Past clients with nothing booked, most valuable first. Marking one as contacted hides
-          them for 30 days.
-        </p>
-      )}
 
       {queryMatch(clients, {
         pending: () => <Loading />,
