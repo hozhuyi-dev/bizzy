@@ -15,6 +15,7 @@ import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { creditsLeft } from "~/features/packages/packages.types";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
+import { Loading, useQuip } from "~/components/shared/quip/quip.component";
 import { Card, CardContent } from "~/components/ui/card";
 import {
   ChartContainer,
@@ -27,6 +28,7 @@ import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { addMonths, formatMonth, monthKey } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 // Bars: 4px rounded data end, anchored to the baseline.
 const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
@@ -38,7 +40,7 @@ function moneyRow(value: unknown, name: unknown, config: ChartConfig): ReactNode
   const key = String(name);
   return (
     <div className="flex w-full items-center gap-2">
-      <span className="size-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: `var(--color-${key})` }} />
+      <span className="size-2.5 shrink-0 rounded-xs" style={{ backgroundColor: `var(--color-${key})` }} />
       <span className="flex-1 text-muted-foreground">{config[key]?.label ?? key}</span>
       <span className="font-medium text-foreground tabular-nums">{formatCents(Number(value))}</span>
     </div>
@@ -59,24 +61,17 @@ export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
       <PageHeader
         title="Insights"
         toolbar={
-          <div className="flex flex-wrap items-center gap-3">
-            <Tabs value={basis} onValueChange={(value) => onBasisChange(value as Basis)}>
-              <TabsList>
-                <TabsTrigger value="received">Money received</TabsTrigger>
-                <TabsTrigger value="earned">Earned</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <span className="text-sm text-muted-foreground">
-              {basis === "received"
-                ? "Money in the month it was paid: packages count when bought."
-                : "Sessions valued when they happen: a package session counts as its share."}
-            </span>
-          </div>
+          <Tabs value={basis} onValueChange={(value) => onBasisChange(value as Basis)}>
+            <TabsList>
+              <TabsTrigger value="received">Money received</TabsTrigger>
+              <TabsTrigger value="earned">Earned</TabsTrigger>
+            </TabsList>
+          </Tabs>
         }
       />
 
       {queryMatch(clients, {
-        pending: () => <p className="text-sm text-muted-foreground">Loading…</p>,
+        pending: () => <Loading />,
         error: (error) => (
           <p role="alert" className="text-sm text-destructive">
             {error.message}
@@ -274,7 +269,7 @@ function Insights({ clients, basis, credits }: InsightsProps) {
 
       <ChartCard title="Top clients, last 12 months" subtitle="How much of the business rests on a few clients.">
         {top.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No sessions in the last 12 months.</p>
+          <TopClientsEmpty />
         ) : (
           <ul className="flex flex-col gap-2">
             {top.map((client) => (
@@ -282,7 +277,7 @@ function Insights({ clients, basis, credits }: InsightsProps) {
                 <span className="truncate">{client.name}</span>
                 <span className="h-2 rounded-full bg-muted">
                   <span
-                    className="block h-2 rounded-full bg-(--chart-1)"
+                    className="block h-2 rounded-full bg-chart-1"
                     style={{ width: `${Math.max(client.share * 100, 1)}%` }}
                   />
                 </span>
@@ -322,5 +317,16 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle?: st
         {children}
       </CardContent>
     </Card>
+  );
+}
+
+/** Left-aligned to sit with the card's other content. */
+function TopClientsEmpty() {
+  const quip = useQuip(QUIPS.insightsTopClients);
+  return (
+    <div className="flex flex-col gap-0.5 text-sm">
+      <span className="font-medium">{quip}</span>
+      <span className="text-muted-foreground">No sessions in the last 12 months.</span>
+    </div>
   );
 }

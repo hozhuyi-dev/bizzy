@@ -1,6 +1,6 @@
 import { useForm, useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
-import { EyeIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { EyeIcon, PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentsMutation } from "../../documents.query";
 import { toContent, toFormValues } from "../../documents.form";
@@ -8,8 +8,10 @@ import { DOCUMENT_TYPES } from "../../documents.registry";
 import { openDocumentPdf } from "../../pdf/download-pdf";
 import type { ContentValues } from "../../documents.form";
 import type { BizDocument, DocumentContent } from "../../documents.types";
+import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { Button } from "~/components/ui/button";
-import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "~/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { formatCents, parseCents } from "~/core/utils/money.util";
@@ -89,113 +91,205 @@ export function useDocumentEditor(doc: BizDocument, draft: DocumentContent) {
 
 export type DocumentEditorState = ReturnType<typeof useDocumentEditor>;
 
-export function DocumentEditorActions({ editor }: { editor: DocumentEditorState }) {
+/** Issue: what the page is for, so it stays in view on a phone. */
+export function DocumentIssueButton({ editor }: { editor: DocumentEditorState }) {
   const { doc, nextRevision, invalid, busy } = editor;
-  const title = DOCUMENT_TYPES[doc.type].title.toLowerCase();
-
   return (
-    <>
-      <Button variant="outline" disabled={invalid !== undefined} onClick={() => void editor.preview()}>
-        <EyeIcon /> Preview PDF
-      </Button>
-      <Button variant="ghost" disabled={busy} onClick={editor.discard}>
-        {doc.number ? "Discard revision" : "Discard draft"}
-      </Button>
-      <Button variant="outline" disabled={busy || invalid !== undefined} onClick={() => void editor.save()}>
-        {editor.saving && !editor.issuing ? "Saving…" : "Save draft"}
-      </Button>
-      <Button disabled={busy || invalid !== undefined} onClick={() => void editor.issue()}>
-        {editor.issuing
-          ? "Issuing…"
-          : nextRevision
-            ? `Issue Rev ${String(nextRevision).padStart(2, "0")}`
-            : `Issue ${title}`}
-      </Button>
-    </>
+    <Button disabled={busy || invalid !== undefined} onClick={() => void editor.issue()}>
+      {editor.issuing
+        ? "Issuing…"
+        : nextRevision
+          ? `Issue Rev ${String(nextRevision).padStart(2, "0")}`
+          : `Issue ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`}
+    </Button>
   );
 }
 
-export function DocumentEditorFields({ editor }: { editor: DocumentEditorState }) {
-  const { form, values, doc, invalid } = editor;
+/** The editor's other actions: beside Issue on wider screens, behind ⋯ on a phone. */
+export function documentEditorActions(editor: DocumentEditorState): Array<RowAction> {
+  const { doc, invalid, busy } = editor;
+  return [
+    {
+      label: "Preview PDF",
+      icon: EyeIcon,
+      disabled: invalid !== undefined,
+      onClick: () => void editor.preview(),
+    },
+    {
+      label: editor.saving && !editor.issuing ? "Saving…" : "Save draft",
+      icon: SaveIcon,
+      disabled: busy || invalid !== undefined,
+      onClick: () => void editor.save(),
+    },
+    {
+      label: doc.number ? "Discard revision" : "Discard draft",
+      icon: Trash2Icon,
+      destructive: true,
+      disabled: busy,
+      onClick: editor.discard,
+    },
+  ];
+}
+
+/**
+ * The editor's fields as page sections. The page wraps them in a form (Enter
+ * saves the draft) and adds its own sections around them.
+ */
+export function documentEditorSections(editor: DocumentEditorState): Array<PageSection> {
+  const { form, values, doc } = editor;
   const spec = DOCUMENT_TYPES[doc.type];
+  const title = spec.title.toLowerCase();
   const total = values.lines.reduce((sum, line) => sum + (parseCents(line.amount) ?? 0), 0);
 
-  return (
-    <form
-      className="flex flex-col gap-8"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void editor.save();
-      }}
-    >
-      {invalid && (
-        <p role="alert" className="text-sm text-destructive">
-          {invalid}
-        </p>
-      )}
-
-      <div className="grid gap-8 lg:grid-cols-2">
-        <FieldGroup>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <form.Field name="date">
+  return [
+    {
+      id: "details",
+      title: "Details",
+      content: (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <form.Field name="date">
+            {(field) => (
+              <Field>
+                <FieldLabel htmlFor={field.name}>{spec.title} date</FieldLabel>
+                <Input
+                  id={field.name}
+                  type="date"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                />
+              </Field>
+            )}
+          </form.Field>
+          {spec.paid && (
+            <form.Field name="paidBy">
               {(field) => (
                 <Field>
-                  <FieldLabel htmlFor={field.name}>{spec.title} date</FieldLabel>
+                  <FieldLabel htmlFor={field.name}>Paid by</FieldLabel>
                   <Input
                     id={field.name}
-                    type="date"
+                    list="paid-by-suggestions"
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                   />
+                  <datalist id="paid-by-suggestions">
+                    {PAID_BY_SUGGESTIONS.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
+                  </datalist>
                 </Field>
               )}
             </form.Field>
-            {spec.paid && (
-              <form.Field name="paidBy">
-                {(field) => (
-                  <Field>
-                    <FieldLabel htmlFor={field.name}>Paid by</FieldLabel>
-                    <Input
-                      id={field.name}
-                      list="paid-by-suggestions"
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                    />
-                    <datalist id="paid-by-suggestions">
-                      {PAID_BY_SUGGESTIONS.map((option) => (
-                        <option key={option} value={option} />
-                      ))}
-                    </datalist>
-                  </Field>
-                )}
-              </form.Field>
-            )}
-          </div>
-
-          <FieldSet>
-            <FieldLegend variant="label">{spec.recipientLabel}</FieldLegend>
-            <form.Field name="recipient.name">
-              {(field) => <TextInput field={field} label="Name" />}
-            </form.Field>
-            <form.Field name="recipient.address">
-              {(field) => <TextInput field={field} label="Address" multiline />}
-            </form.Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <form.Field name="recipient.phone">
-                {(field) => <TextInput field={field} label="Phone" />}
-              </form.Field>
-              <form.Field name="recipient.email">
-                {(field) => <TextInput field={field} label="Email" />}
-              </form.Field>
-            </div>
-          </FieldSet>
-        </FieldGroup>
-
-        <FieldSet>
-          <FieldLegend variant="label">Your details on this {spec.title.toLowerCase()}</FieldLegend>
-          <form.Field name="issuer.name">
-            {(field) => <TextInput field={field} label="Business name" />}
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "recipient",
+      title: spec.recipientLabel,
+      content: (
+        <FieldGroup>
+          <form.Field name="recipient.name">{(field) => <TextInput field={field} label="Name" />}</form.Field>
+          <form.Field name="recipient.address">
+            {(field) => <TextInput field={field} label="Address" multiline />}
           </form.Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <form.Field name="recipient.phone">{(field) => <TextInput field={field} label="Phone" />}</form.Field>
+            <form.Field name="recipient.email">{(field) => <TextInput field={field} label="Email" />}</form.Field>
+          </div>
+        </FieldGroup>
+      ),
+    },
+    {
+      id: "lines",
+      title: "Lines",
+      content: (
+        <form.Field name="lines" mode="array">
+          {(linesField) => (
+            <div className="flex flex-col gap-3">
+              {linesField.state.value.map((line, i) => (
+                <div key={i} className="flex flex-col gap-1 border-b pb-3">
+                  <div className="grid items-end gap-2 md:grid-cols-[minmax(0,1fr)_11rem_8rem_auto]">
+                    <form.Field name={`lines[${i}].description`}>
+                      {(field) => <TextInput field={field} label="Description" />}
+                    </form.Field>
+                    <form.Field name={`lines[${i}].date`}>
+                      {(field) => (
+                        <Field>
+                          <FieldLabel htmlFor={field.name}>Date</FieldLabel>
+                          <Input
+                            id={field.name}
+                            type="date"
+                            value={field.state.value}
+                            onChange={(e) => field.handleChange(e.target.value)}
+                          />
+                        </Field>
+                      )}
+                    </form.Field>
+                    <form.Field name={`lines[${i}].amount`}>
+                      {(field) => (
+                        <Field data-invalid={parseCents(field.state.value) === null}>
+                          <FieldLabel htmlFor={field.name}>Amount</FieldLabel>
+                          <Input
+                            id={field.name}
+                            inputMode="decimal"
+                            className="text-right"
+                            value={field.state.value}
+                            onChange={(e) => field.handleChange(e.target.value)}
+                          />
+                        </Field>
+                      )}
+                    </form.Field>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Remove line"
+                      disabled={linesField.state.value.length === 1}
+                      onClick={() => linesField.removeValue(i)}
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  </div>
+                  {line.source && (
+                    <span className="text-xs text-muted-foreground">
+                      Covers this {line.source.kind}. Removing the line releases it when issued.
+                    </span>
+                  )}
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    linesField.pushValue({ description: "", date: values.date, amount: "", source: undefined })
+                  }
+                >
+                  <PlusIcon /> Add line
+                </Button>
+                <span className="text-sm">
+                  {spec.paid ? "Total paid" : "Total"} <b className="text-base">{formatCents(total)}</b>
+                </span>
+              </div>
+            </div>
+          )}
+        </form.Field>
+      ),
+    },
+    {
+      id: "notes",
+      title: "Notes",
+      description: `Printed at the bottom of the ${title}.`,
+      content: <form.Field name="notes">{(field) => <TextInput field={field} label="Notes" multiline />}</form.Field>,
+    },
+    {
+      id: "issuer",
+      title: "Your details",
+      description: `Copied from Settings when the draft was made. Changes here only affect this ${title}.`,
+      content: (
+        <FieldGroup>
+          <form.Field name="issuer.name">{(field) => <TextInput field={field} label="Business name" />}</form.Field>
           <form.Field name="issuer.registrationNo">
             {(field) => <TextInput field={field} label="Registration no." />}
           </form.Field>
@@ -203,98 +297,13 @@ export function DocumentEditorFields({ editor }: { editor: DocumentEditorState }
             {(field) => <TextInput field={field} label="Address" multiline />}
           </form.Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <form.Field name="issuer.phone">
-              {(field) => <TextInput field={field} label="Phone" />}
-            </form.Field>
-            <form.Field name="issuer.email">
-              {(field) => <TextInput field={field} label="Email" />}
-            </form.Field>
+            <form.Field name="issuer.phone">{(field) => <TextInput field={field} label="Phone" />}</form.Field>
+            <form.Field name="issuer.email">{(field) => <TextInput field={field} label="Email" />}</form.Field>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Copied from Settings when the draft was made. Changes here only affect this document.
-          </p>
-        </FieldSet>
-      </div>
-
-      <form.Field name="lines" mode="array">
-        {(linesField) => (
-          <FieldSet>
-            <FieldLegend variant="label">Lines</FieldLegend>
-            {linesField.state.value.map((line, i) => (
-              <div key={i} className="flex flex-col gap-1 border-b pb-3">
-                <div className="grid items-end gap-2 md:grid-cols-[minmax(0,1fr)_11rem_8rem_auto]">
-                  <form.Field name={`lines[${i}].description`}>
-                    {(field) => <TextInput field={field} label="Description" />}
-                  </form.Field>
-                  <form.Field name={`lines[${i}].date`}>
-                    {(field) => (
-                      <Field>
-                        <FieldLabel htmlFor={field.name}>Date</FieldLabel>
-                        <Input
-                          id={field.name}
-                          type="date"
-                          value={field.state.value}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                        />
-                      </Field>
-                    )}
-                  </form.Field>
-                  <form.Field name={`lines[${i}].amount`}>
-                    {(field) => (
-                      <Field data-invalid={parseCents(field.state.value) === null}>
-                        <FieldLabel htmlFor={field.name}>Amount</FieldLabel>
-                        <Input
-                          id={field.name}
-                          inputMode="decimal"
-                          className="text-right"
-                          value={field.state.value}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                        />
-                      </Field>
-                    )}
-                  </form.Field>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Remove line"
-                    disabled={linesField.state.value.length === 1}
-                    onClick={() => linesField.removeValue(i)}
-                  >
-                    <Trash2Icon />
-                  </Button>
-                </div>
-                {line.source && (
-                  <span className="text-xs text-muted-foreground">
-                    Covers this {line.source.kind}. Removing the line releases it when issued.
-                  </span>
-                )}
-              </div>
-            ))}
-            <div className="flex items-center justify-between gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  linesField.pushValue({ description: "", date: values.date, amount: "", source: undefined })
-                }
-              >
-                <PlusIcon /> Add line
-              </Button>
-              <span className="text-sm">
-                {spec.paid ? "Total paid" : "Total"} <b className="text-base">{formatCents(total)}</b>
-              </span>
-            </div>
-          </FieldSet>
-        )}
-      </form.Field>
-
-      <form.Field name="notes">
-        {(field) => <TextInput field={field} label="Notes" multiline />}
-      </form.Field>
-    </form>
-  );
+        </FieldGroup>
+      ),
+    },
+  ];
 }
 
 function validate(values: ContentValues): string | undefined {

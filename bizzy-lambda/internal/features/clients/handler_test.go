@@ -89,10 +89,21 @@ func TestSave(t *testing.T) {
 		}
 	})
 
-	t.Run("requires a contact", func(t *testing.T) {
+	t.Run("requires a contact for a new client", func(t *testing.T) {
 		h := handler{repo: &memoryStore{}, contacts: linker}
 		_, err := h.save(ctx, Client{Name: "Jane"})
 		assertCode(t, err, apperr.CodeInvalid)
+	})
+
+	t.Run("unlinks an existing client sent without a contact", func(t *testing.T) {
+		h := handler{repo: &memoryStore{clients: []Client{{ID: "a", Name: "Jane", Aliases: []string{"jane"}, Contact: janeLink}}}, contacts: linker}
+		out, err := h.save(ctx, Client{ID: "a", Name: "Jane"})
+		if err != nil {
+			t.Fatalf("save error: %v", err)
+		}
+		if got := out.(Client).Contact; got != nil {
+			t.Errorf("Contact = %+v, want unlinked", got)
+		}
 	})
 
 	t.Run("keeps the contact copy when the link is unchanged", func(t *testing.T) {

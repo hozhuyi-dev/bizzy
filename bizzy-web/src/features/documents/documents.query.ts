@@ -6,10 +6,11 @@ import { DocumentKeys } from "~/core/keys.query";
 import { invalidateBilling } from "~/core/utils/query.util";
 
 export const DocumentsQuery = {
-  useList: (type: DocumentType) =>
+  /** One month ("2026-10") of one type. */
+  useList: (type: DocumentType, month: string) =>
     useQuery({
-      queryKey: DocumentKeys.list(type),
-      queryFn: () => DocumentsService.list(type),
+      queryKey: [...DocumentKeys.list(type), month],
+      queryFn: () => DocumentsService.list(type, month),
     }),
 
   useDetail: (id: string) =>

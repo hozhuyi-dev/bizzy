@@ -3,6 +3,7 @@ package documents
 import (
 	"context"
 	"errors"
+	"regexp"
 	"slices"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 
 type store interface {
 	Get(ctx context.Context, id string) (Document, bool, error)
-	ListByType(ctx context.Context, docType Type) ([]Document, error)
+	ListByMonth(ctx context.Context, docType Type, month string) ([]Document, error)
 	Revisions(ctx context.Context, id string) ([]Revision, error)
 	Counter(ctx context.Context, key string) (int64, error)
 	SetCounter(ctx context.Context, key string, last int64) (bool, error)
@@ -74,11 +75,33 @@ func (in typeInput) spec() (TypeSpec, error) {
 	return spec, nil
 }
 
-func (h handler) list(ctx context.Context, in typeInput) (any, error) {
-	if _, err := in.spec(); err != nil {
+type listInput struct {
+	Type Type `json:"type"`
+	// Month is "2026-10": a list covers one month of document dates, so it
+	// stays small however many years of documents there are.
+	Month string `json:"month"`
+}
+
+var monthPattern = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])$`)
+
+// list returns one month of one type of document, newest first, as summaries:
+// a list needs no printed content, which is most of a document's size.
+func (h handler) list(ctx context.Context, in listInput) (any, error) {
+	if _, err := (typeInput{Type: in.Type}).spec(); err != nil {
 		return nil, err
 	}
-	return h.Repo.ListByType(ctx, in.Type)
+	if !monthPattern.MatchString(in.Month) {
+		return nil, apperr.Invalid("choose a month like 2026-10")
+	}
+	docs, err := h.Repo.ListByMonth(ctx, in.Type, in.Month)
+	if err != nil {
+		return nil, err
+	}
+	summaries := make([]Summary, len(docs))
+	for i, d := range docs {
+		summaries[i] = d.Summary()
+	}
+	return summaries, nil
 }
 
 type idInput struct {

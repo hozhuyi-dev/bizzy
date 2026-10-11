@@ -33,7 +33,7 @@ export function profileOf(client: Client): SaveClientInput {
     id: client.id,
     name: client.name,
     aliases: client.aliases,
-    contact: { resourceName: client.contact?.resourceName ?? "" },
+    ...(client.contact ? { contact: { resourceName: client.contact.resourceName } } : {}),
     ...(client.defaultFeeCents !== undefined ? { defaultFeeCents: client.defaultFeeCents } : {}),
     ...(client.homeVisits ? { homeVisits: true } : {}),
   };

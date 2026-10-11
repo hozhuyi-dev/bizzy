@@ -2,17 +2,17 @@ import type { Session, SessionStatus } from "./sessions.types";
 import type { DocumentSource } from "~/features/documents/documents.types";
 import type { Package } from "~/features/packages/packages.types";
 
-type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+type StatusTone = "neutral" | "done" | "info" | "waiting" | "attention";
 
-export const SESSION_STATUS: Record<SessionStatus, { label: string; variant: BadgeVariant; hint?: string }> = {
-  tentative: { label: "Not confirmed", variant: "outline", hint: "Remove the ? in the calendar once it happened, then sync." },
-  parse_error: { label: "Can't read", variant: "destructive", hint: "Fix the title in the calendar, then sync." },
-  unmatched: { label: "Unmatched", variant: "destructive" },
-  missing_fee: { label: "No fee", variant: "destructive", hint: "Add an amount in the calendar or a default fee for the client." },
-  priced: { label: "Paid", variant: "secondary" },
-  package: { label: "Package", variant: "secondary" },
-  ignored: { label: "Ignored", variant: "outline" },
-  removed: { label: "Removed", variant: "outline" },
+export const SESSION_STATUS: Record<SessionStatus, { label: string; variant: StatusTone; hint?: string }> = {
+  tentative: { label: "Not confirmed", variant: "waiting" },
+  parse_error: { label: "Can't read", variant: "attention", hint: "Fix the title in the calendar, then sync." },
+  unmatched: { label: "Unmatched", variant: "attention" },
+  missing_fee: { label: "No fee", variant: "attention", hint: "Add an amount in the calendar or a default fee for the client." },
+  priced: { label: "Paid", variant: "done" },
+  package: { label: "Package", variant: "info" },
+  ignored: { label: "Ignored", variant: "neutral" },
+  removed: { label: "Removed", variant: "neutral" },
 };
 
 /** What the session is worth: its fee, or its share of a package. */

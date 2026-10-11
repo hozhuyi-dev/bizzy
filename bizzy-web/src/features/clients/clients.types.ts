@@ -48,9 +48,10 @@ export interface MonthActivity {
 
 /**
  * The fields she edits; a new client has no id yet. Only the contact's
- * resource name is sent: the API copies the details from Google.
+ * resource name is sent: the API copies the details from Google. An existing
+ * client saved without one is unlinked.
  */
 export type SaveClientInput = Pick<Client, "name" | "aliases" | "defaultFeeCents" | "homeVisits"> & {
   id?: string;
-  contact: { resourceName: string };
+  contact?: { resourceName: string };
 };

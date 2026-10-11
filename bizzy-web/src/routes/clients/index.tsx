@@ -7,7 +7,7 @@ export interface ClientsSearch {
   lapse?: "6" | "12" | undefined;
 }
 
-export const Route = createFileRoute("/clients")({
+export const Route = createFileRoute("/clients/")({
   validateSearch: (search: Record<string, unknown>): ClientsSearch => ({
     view: oneOf(search.view, ["follow-up"] as const),
     // Numbers in the URL parse as numbers.

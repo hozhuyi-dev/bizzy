@@ -1,17 +1,13 @@
-import { Link } from "@tanstack/react-router";
-import { MoreHorizontalIcon } from "lucide-react";
+import { PencilIcon, ReceiptIcon, Trash2Icon } from "lucide-react";
 import { creditsLeft } from "./packages.types";
+import type { ReactNode } from "react";
 import type { Package } from "./packages.types";
 import type { Client } from "~/features/clients/clients.types";
+import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.features";
+import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
+import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 
@@ -53,48 +49,42 @@ export function PackagePrice({ pkg }: { pkg: Package }) {
 export function PackageSource({ pkg }: { pkg: Package }) {
   return (
     <span className="flex flex-wrap items-center gap-1">
-      <Badge variant="outline">{pkg.source === "calendar" ? "Calendar" : "Added here"}</Badge>
+      <Badge variant="neutral">{pkg.source === "calendar" ? "Calendar" : "Added here"}</Badge>
       {pkg.note && <span className="text-xs text-muted-foreground">{pkg.note}</span>}
     </span>
   );
 }
 
-export function PackageReceipt({ pkg, onReceipt }: { pkg: Package; onReceipt: (pkg: Package) => void }) {
-  if (pkg.document) {
-    return (
-      <Link
-        to="/receipts/$id"
-        params={{ id: pkg.document.documentId }}
-        className="text-sm underline-offset-4 hover:underline"
-      >
-        {pkg.document.number ?? "Draft"}
-      </Link>
-    );
-  }
-  if (pkg.removed) return null;
+export function PackageReceipt({
+  pkg,
+  empty = "—",
+}: {
+  pkg: Package;
+  /** Shown when there is no receipt yet. */
+  empty?: ReactNode;
+}) {
+  if (!pkg.document) return empty;
   return (
-    <Button variant="outline" size="xs" onClick={() => onReceipt(pkg)}>
-      Receipt
-    </Button>
+    <TextLink to="/receipts/$id" params={{ id: pkg.document.documentId }} className="text-sm">
+      {pkg.document.number ?? "Draft"}
+    </TextLink>
   );
 }
 
 /** Calendar packages are changed in the calendar; only app ones are editable here. */
-export function PackageMenu({ pkg, handlers }: { pkg: Package; handlers: PackageHandlers }) {
-  if (pkg.source !== "app" || pkg.document) return null;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Actions" />}>
-        <MoreHorizontalIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto">
-        <DropdownMenuItem onClick={() => handlers.onEdit(pkg)}>Edit</DropdownMenuItem>
-        <DropdownMenuItem variant="destructive" onClick={() => handlers.onDelete(pkg)}>
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+export function packageActions(pkg: Package, handlers: PackageHandlers): Array<RowAction> {
+  const actions: Array<RowAction> = [];
+  if (pkg.document) return actions;
+  if (!pkg.removed) {
+    actions.push({ label: "New receipt", icon: ReceiptIcon, onClick: () => handlers.onReceipt(pkg) });
+  }
+  if (pkg.source === "app") {
+    actions.push(
+      { label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) },
+      { label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => handlers.onDelete(pkg) },
+    );
+  }
+  return actions;
 }
 
 export function createPackageColumns(handlers: PackageHandlers) {
@@ -108,33 +98,38 @@ export function createPackageColumns(handlers: PackageHandlers) {
     helper.accessor("purchasedAt", {
       header: "Bought",
       sortFn: "alphanumeric",
+      meta: { search: (pkg: Package) => formatDate(pkg.purchasedAt) },
       cell: ({ getValue }) => formatDate(getValue()),
     }),
     helper.accessor((pkg) => creditsLeft(pkg), {
       id: "credits",
       header: "Credits",
       sortFn: "basic",
+      meta: { search: (pkg: Package) => `${creditsLeft(pkg)} of ${pkg.sessions} left` },
       cell: ({ row }) => <PackageCredits pkg={row.original} />,
     }),
     helper.accessor("priceCents", {
       header: "Price",
       sortFn: "basic",
+      meta: { search: (pkg: Package) => formatCents(pkg.priceCents) },
       cell: ({ row }) => <PackagePrice pkg={row.original} />,
     }),
     helper.display({
       id: "source",
       header: "From",
+      meta: { search: (pkg: Package) => [pkg.source === "calendar" ? "Calendar" : "Added here", pkg.note] },
       cell: ({ row }) => <PackageSource pkg={row.original} />,
     }),
     helper.display({
       id: "receipt",
       header: "Receipt",
-      cell: ({ row }) => <PackageReceipt pkg={row.original} onReceipt={handlers.onReceipt} />,
+      meta: { search: (pkg: Package) => pkg.document?.number ?? (pkg.document ? "Draft" : undefined) },
+      cell: ({ row }) => <PackageReceipt pkg={row.original} />,
     }),
     helper.display({
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => <PackageMenu pkg={row.original} handlers={handlers} />,
+      cell: ({ row }) => <RowActionButtons actions={packageActions(row.original, handlers)} />,
     }),
   ]);
 }

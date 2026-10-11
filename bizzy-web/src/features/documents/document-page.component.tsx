@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { DownloadIcon, EyeIcon } from "lucide-react";
+import { BanIcon, CircleAlertIcon, DownloadIcon, EyeIcon, PencilIcon, PencilLineIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
-  DocumentEditorActions,
-  DocumentEditorFields,
+  DocumentIssueButton,
+  documentEditorActions,
+  documentEditorSections,
   useDocumentEditor,
 } from "./components/document-editor/document-editor.component";
 import { DocumentView } from "./components/document-view/document-view.component";
@@ -11,10 +12,15 @@ import { DocumentStatusBadge } from "./documents-page.component";
 import { DocumentsMutation, DocumentsQuery } from "./documents.query";
 import { DOCUMENT_TYPES, documentLabel } from "./documents.registry";
 import { downloadDocumentPdf, openDocumentPdf } from "./pdf/download-pdf";
-import type { ReactNode } from "react";
 import type { DocumentPdfProps } from "./pdf/document-pdf.component";
+import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import type { BizDocument, DocumentContent, DocumentRevision } from "./documents.types";
-import { BackLink, PageHeader } from "~/components/shared/page-header/page-header.component";
+import { Banner } from "~/components/shared/banner/banner.component";
+import { PageHeader } from "~/components/shared/page-header/page-header.component";
+import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
+import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
+import { Loading } from "~/components/shared/quip/quip.component";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -25,17 +31,18 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
 
-const back = <BackLink to="/receipts">Receipts</BackLink>;
-
-function documentTitle(doc: BizDocument): string {
-  return `${DOCUMENT_TYPES[doc.type].title} ${documentLabel(doc.number, doc.revision)}`;
+/** "02" for revision 2, as the receipt prints it. */
+function revisionLabel(revision: number): string {
+  return String(revision).padStart(2, "0");
 }
+
+// The breadcrumb already says what kind of document this is.
+const parent = { to: "/receipts", label: "Receipts" } as const;
 
 export function DocumentPage({ id }: { id: string }) {
   const detail = DocumentsQuery.useDetail(id);
@@ -43,25 +50,24 @@ export function DocumentPage({ id }: { id: string }) {
   return queryMatch(detail, {
     pending: () => (
       <>
-        <PageHeader back={back} title="Receipt" />
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <PageHeader parent={parent} title="…" />
+        <Loading />
       </>
     ),
     error: (error) => (
       <>
-        <PageHeader back={back} title="Receipt" />
+        <PageHeader parent={parent} title="Not available" />
         <p role="alert" className="text-sm text-destructive">
           {error.message}
         </p>
       </>
     ),
     success: ({ document: doc, revisions }) => {
-      const history = <Revisions doc={doc} revisions={revisions} />;
       if (doc.draft) {
         // Remount on every save so the form restarts from what was stored.
-        return <DraftDocument key={doc.version} doc={doc} draft={doc.draft} history={history} />;
+        return <DraftDocument key={doc.version} doc={doc} draft={doc.draft} revisions={revisions} />;
       }
-      return doc.content ? <IssuedDocument doc={doc} content={doc.content} history={history} /> : null;
+      return doc.content ? <IssuedDocument doc={doc} content={doc.content} revisions={revisions} /> : null;
     },
   });
 }
@@ -69,28 +75,46 @@ export function DocumentPage({ id }: { id: string }) {
 interface DraftDocumentProps {
   doc: BizDocument;
   draft: DocumentContent;
-  history: ReactNode;
+  revisions: Array<DocumentRevision>;
 }
 
-function DraftDocument({ doc, draft, history }: DraftDocumentProps) {
+function DraftDocument({ doc, draft, revisions }: DraftDocumentProps) {
   const editor = useDocumentEditor(doc, draft);
+  const history = revisionsSection(doc, revisions);
 
   return (
     <>
       <PageHeader
-        back={back}
-        title={documentTitle(doc)}
-        badges={<DocumentStatusBadge doc={doc} />}
-        actions={<DocumentEditorActions editor={editor} />}
+        parent={parent}
+        title={documentLabel(doc.number, doc.revision)}
+        badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
+        actions={<DocumentIssueButton editor={editor} />}
+        moreActions={documentEditorActions(editor)}
       />
-      {doc.number && (
-        <p className="mb-4 text-sm text-muted-foreground">
-          Editing the next revision. {documentLabel(doc.number, doc.revision)} stays the valid one
-          until you issue this.
-        </p>
-      )}
-      <DocumentEditorFields editor={editor} />
-      {history}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void editor.save();
+        }}
+      >
+        <SectionLayout
+          banner={
+            (doc.number || editor.invalid) && (
+              <>
+                {doc.number && (
+                  <Banner tone="waiting" icon={PencilLineIcon} title={`Rev ${revisionLabel((doc.revision ?? 0) + 1)} draft.`}>
+                    {doc.revision ? `Rev ${revisionLabel(doc.revision)}` : "Original"} stays valid.
+                  </Banner>
+                )}
+                {editor.invalid && (
+                  <Banner tone="attention" icon={CircleAlertIcon} title={editor.invalid} role="alert" />
+                )}
+              </>
+            )
+          }
+          sections={[...documentEditorSections(editor), ...(history ? [history] : [])]}
+        />
+      </form>
     </>
   );
 }
@@ -98,95 +122,113 @@ function DraftDocument({ doc, draft, history }: DraftDocumentProps) {
 interface IssuedDocumentProps {
   doc: BizDocument;
   content: DocumentContent;
-  history: ReactNode;
+  revisions: Array<DocumentRevision>;
 }
 
-function IssuedDocument({ doc, content, history }: IssuedDocumentProps) {
+function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
+  const history = revisionsSection(doc, revisions);
   const revise = DocumentsMutation.useRevise();
   const [cancelling, setCancelling] = useState(false);
   const cancelled = doc.status === "cancelled";
-  const pdf: DocumentPdfProps = {
+  const pdfActions = usePdfActions({
     type: doc.type,
     number: doc.number,
     revision: doc.revision,
     watermark: cancelled ? "CANCELLED" : undefined,
     content,
-  };
+  });
 
   return (
     <>
       <PageHeader
-        back={back}
-        title={documentTitle(doc)}
-        badges={<DocumentStatusBadge doc={doc} />}
-        actions={
-          <>
-            <PdfButtons pdf={pdf} />
-            {!cancelled && (
-              <>
-                <Button variant="ghost" onClick={() => setCancelling(true)}>
-                  Cancel {DOCUMENT_TYPES[doc.type].title.toLowerCase()}
-                </Button>
-                <Button
-                  disabled={revise.isPending}
-                  onClick={() => revise.mutate(doc, { onError: (error) => toast.error(error.message) })}
-                >
-                  Revise
-                </Button>
-              </>
-            )}
-          </>
+        parent={parent}
+        title={documentLabel(doc.number, doc.revision)}
+        badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
+        // An issued receipt is mostly viewed; revising is rare, so nothing
+        // claims the always-visible slot and the title keeps the room on a phone.
+        moreActions={
+          cancelled
+            ? pdfActions
+            : [
+                ...pdfActions,
+                {
+                  label: "Revise",
+                  icon: PencilIcon,
+                  disabled: revise.isPending,
+                  onClick: () => revise.mutate(doc, { onError: (error) => toast.error(error.message) }),
+                },
+                {
+                  label: `Cancel ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
+                  icon: BanIcon,
+                  destructive: true,
+                  onClick: () => setCancelling(true),
+                },
+              ]
         }
       />
-      {cancelled && (
-        <p className="mb-4 text-sm text-muted-foreground">
-          Cancelled {doc.cancelledAt ? formatDate(doc.cancelledAt) : ""}
-          {doc.cancelReason ? `: ${doc.cancelReason}` : ""}. The number stays used.
-        </p>
-      )}
-      <div className="max-w-3xl">
-        <DocumentView type={doc.type} content={content} number={doc.number} revision={doc.revision} cancelled={cancelled} />
-      </div>
-      {history}
+      <SectionLayout
+        banner={
+          cancelled && (
+            <Banner
+              tone="neutral"
+              icon={BanIcon}
+              title={`Cancelled${doc.cancelledAt ? ` ${formatDate(doc.cancelledAt)}` : ""}.`}
+            >
+              Number stays used.
+            </Banner>
+          )
+        }
+        sections={[
+          {
+            id: "document",
+            title: DOCUMENT_TYPES[doc.type].title,
+            description: cancelled && doc.cancelReason ? `Cancelled: ${doc.cancelReason}` : undefined,
+            bare: true,
+            content: (
+              <DocumentView
+                type={doc.type}
+                content={content}
+                number={doc.number}
+                revision={doc.revision}
+                cancelled={cancelled}
+              />
+            ),
+          },
+          ...(history ? [history] : []),
+        ]}
+      />
       <CancelDialog doc={doc} open={cancelling} onClose={() => setCancelling(false)} />
     </>
   );
 }
 
-function Revisions({ doc, revisions }: { doc: BizDocument; revisions: Array<DocumentRevision> }) {
-  if (revisions.length === 0) return null;
-  return (
-    <section className="mt-8 flex max-w-3xl flex-col gap-2">
-      <h2 className="text-sm font-semibold">Issued revisions</h2>
-      <Card size="sm">
-        <CardContent>
-          <ul className="flex flex-col divide-y">
-            {[...revisions].reverse().map((rev) => (
-              <li key={rev.revision} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                <span>
-                  {documentLabel(rev.number, rev.revision)}
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · issued {formatDate(rev.issuedAt)} · {formatCents(rev.content.totalCents)}
-                  </span>
-                </span>
-                <span className="flex gap-1">
-                  <PdfButtons
-                    size="sm"
-                    pdf={{ type: doc.type, number: rev.number, revision: rev.revision, content: rev.content }}
-                  />
-                </span>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-    </section>
-  );
+/** Earlier issued versions, each still viewable as the PDF it was. */
+function revisionsSection(doc: BizDocument, revisions: Array<DocumentRevision>): PageSection | undefined {
+  if (revisions.length === 0) return undefined;
+  return {
+    id: "revisions",
+    title: "Issued revisions",
+    content: (
+      <ul className="flex flex-col divide-y">
+        {[...revisions].reverse().map((rev) => (
+          <li key={rev.revision} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+            <span>
+              {documentLabel(rev.number, rev.revision)}
+              <span className="text-muted-foreground">
+                {" "}
+                · issued {formatDate(rev.issuedAt)} · {formatCents(rev.content.totalCents)}
+              </span>
+            </span>
+            <PdfButtons pdf={{ type: doc.type, number: rev.number, revision: rev.revision, content: rev.content }} />
+          </li>
+        ))}
+      </ul>
+    ),
+  };
 }
 
 /** View opens the real PDF in a new tab; Download saves it with a proper name. */
-function PdfButtons({ pdf, size = "default" }: { pdf: DocumentPdfProps; size?: "default" | "sm" }) {
+function usePdfActions(pdf: DocumentPdfProps): Array<RowAction> {
   const [busy, setBusy] = useState(false);
   const run = (action: (props: DocumentPdfProps) => Promise<void>) => {
     setBusy(true);
@@ -194,18 +236,14 @@ function PdfButtons({ pdf, size = "default" }: { pdf: DocumentPdfProps; size?: "
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Couldn't make the PDF"))
       .finally(() => setBusy(false));
   };
-  const variant = size === "sm" ? "ghost" : "outline";
+  return [
+    { label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => run(openDocumentPdf) },
+    { label: "Download", icon: DownloadIcon, disabled: busy, onClick: () => run(downloadDocumentPdf) },
+  ];
+}
 
-  return (
-    <>
-      <Button variant={variant} size={size} disabled={busy} onClick={() => run(openDocumentPdf)}>
-        <EyeIcon /> View PDF
-      </Button>
-      <Button variant={variant} size={size} disabled={busy} onClick={() => run(downloadDocumentPdf)}>
-        <DownloadIcon /> Download
-      </Button>
-    </>
-  );
+function PdfButtons({ pdf }: { pdf: DocumentPdfProps }) {
+  return <RowActionButtons actions={usePdfActions(pdf)} />;
 }
 
 function CancelDialog({ doc, open, onClose }: { doc: BizDocument; open: boolean; onClose: () => void }) {

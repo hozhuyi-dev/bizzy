@@ -65,6 +65,25 @@ export interface BizDocument {
   version: number;
 }
 
+/**
+ * A document as a list shows it, without the printed content. Mirrors
+ * Summary in bizzy-lambda/internal/features/documents/model.go.
+ */
+export interface DocumentSummary {
+  id: string;
+  type: DocumentType;
+  status: DocumentStatus;
+  number?: string;
+  revision?: number;
+  clientId?: string;
+  date: string;
+  totalCents: number;
+  /** Who the current content (issued, or the new draft) is for. */
+  recipientName: string;
+  /** An issued document with its next revision drafted. */
+  revising?: boolean;
+}
+
 export interface DocumentRevision {
   documentId: string;
   revision: number;

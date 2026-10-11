@@ -3,6 +3,7 @@ import type {
   DocumentContent,
   DocumentDetail,
   DocumentSource,
+  DocumentSummary,
   DocumentType,
   Numbering,
 } from "./documents.types";
@@ -12,7 +13,9 @@ import { invoke } from "~/core/lambda/lambda.client";
 export type Versioned = Pick<BizDocument, "id" | "version">;
 
 export const DocumentsService = {
-  list: (type: DocumentType) => invoke<Array<BizDocument>>("documents.list", { type }),
+  /** One month ("2026-10") of one type, newest first. */
+  list: (type: DocumentType, month: string) =>
+    invoke<Array<DocumentSummary>>("documents.list", { type, month }),
   get: (id: string) => invoke<DocumentDetail>("documents.get", { id }),
   createDraft: (type: DocumentType, sources: Array<DocumentSource>) =>
     invoke<BizDocument>("documents.createDraft", { type, sources }),

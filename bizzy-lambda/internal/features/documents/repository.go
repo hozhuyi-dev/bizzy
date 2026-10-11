@@ -72,10 +72,12 @@ func (r Repository) Get(ctx context.Context, id string) (Document, bool, error) 
 	return rec.Document, found, err
 }
 
-// ListByType returns one type of document, newest first.
-func (r Repository) ListByType(ctx context.Context, docType Type) ([]Document, error) {
+// ListByMonth returns one type of document dated in a month ("2026-10"),
+// newest first. The category index sorts by type#date, so the month is a
+// key prefix.
+func (r Repository) ListByMonth(ctx context.Context, docType Type, month string) ([]Document, error) {
 	records, err := dynamo.QueryAll[docRecord](ctx, r.store, dynamo.Query{
-		PK: docPartition, Index: dynamo.IndexCategory, Prefix: string(docType) + "#", Descending: true,
+		PK: docPartition, Index: dynamo.IndexCategory, Prefix: string(docType) + "#" + month + "-", Descending: true,
 	})
 	if err != nil {
 		return nil, err

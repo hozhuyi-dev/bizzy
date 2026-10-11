@@ -16,6 +16,18 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
+    --color-status-neutral: var(--status-neutral);
+    --color-status-neutral-foreground: var(--status-neutral-foreground);
+    --color-status-done: var(--status-done);
+    --color-status-done-foreground: var(--status-done-foreground);
+    --color-status-info: var(--status-info);
+    --color-status-info-foreground: var(--status-info-foreground);
+    --color-status-waiting: var(--status-waiting);
+    --color-status-waiting-foreground: var(--status-waiting-foreground);
+    --color-status-attention: var(--status-attention);
+    --color-status-attention-foreground: var(--status-attention-foreground);
+    --color-brand: var(--brand);
+    --color-brand-strong: var(--brand-strong);
     --color-chart-5: var(--chart-5);
     --color-chart-4: var(--chart-4);
     --color-chart-3: var(--chart-3);
@@ -67,14 +79,35 @@
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
     --ring: oklch(0.708 0 0);
-    /* Categorical slots in fixed order (blue, orange, aqua), validated for
-       colour-blind separation on each surface; slot 5 is the muted
-       comparison series (e.g. last year). */
-    --chart-1: #2a78d6;
-    --chart-2: #eb6834;
-    --chart-3: #1baf7a;
-    --chart-4: #eda100;
-    --chart-5: #c3c2b7;
+    /* Brand: honey for the bee mark, a deep honey brown for the wordmark.
+       Used for identity only; the rest of the UI stays neutral. favicon.svg
+       carries these as hex. */
+    --brand: oklch(0.70 0.15 68);
+    --brand-strong: oklch(0.38 0.07 60);
+    /* Status chips: soft, low-chroma natural tones (stone, sage, ash blue,
+       sand, clay) named by meaning, so a status picks a tone, not a colour.
+       Each pair keeps text at 5.5:1 or better. */
+    --status-neutral: oklch(0.95 0.005 80);
+    --status-neutral-foreground: oklch(0.46 0.01 70);
+    --status-done: oklch(0.945 0.02 135);
+    --status-done-foreground: oklch(0.43 0.045 140);
+    --status-info: oklch(0.945 0.014 240);
+    --status-info-foreground: oklch(0.44 0.035 245);
+    --status-waiting: oklch(0.945 0.028 85);
+    --status-waiting-foreground: oklch(0.47 0.055 75);
+    --status-attention: oklch(0.935 0.025 50);
+    --status-attention-foreground: oklch(0.48 0.075 40);
+    /* Chart series, in fixed order: indigo, clay, moss, ochre. MUJI-like
+       earth tones held just above the chroma floor so they still read as
+       colours; lightness alternates so neighbours stay apart for colour-blind
+       readers. Validated with the dataviz palette script (all checks pass,
+       light and dark). Slot 5 is the recessive comparison series (e.g. last
+       year), a warm stone. */
+    --chart-1: #2e5e9a;
+    --chart-2: #cc7a54;
+    --chart-3: #36692a;
+    --chart-4: #b8892d;
+    --chart-5: #cdc6bd;
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
@@ -105,15 +138,28 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
-    --chart-1: #3987e5;
-    --chart-2: #d95926;
-    --chart-3: #199e70;
-    --chart-4: #c98500;
-    --chart-5: #52514e;
+    /* Lighter on the dark surface: brighter honey, a warm cream wordmark. */
+    --brand: oklch(0.82 0.14 82);
+    --brand-strong: oklch(0.93 0.05 85);
+    --status-neutral: oklch(0.28 0.005 80);
+    --status-neutral-foreground: oklch(0.8 0.01 80);
+    --status-done: oklch(0.29 0.025 140);
+    --status-done-foreground: oklch(0.82 0.045 140);
+    --status-info: oklch(0.29 0.02 245);
+    --status-info-foreground: oklch(0.82 0.035 245);
+    --status-waiting: oklch(0.3 0.03 80);
+    --status-waiting-foreground: oklch(0.85 0.055 85);
+    --status-attention: oklch(0.3 0.035 45);
+    --status-attention-foreground: oklch(0.82 0.06 45);
+    --chart-1: #5d8ece;
+    --chart-2: #a14d2f;
+    --chart-3: #6da361;
+    --chart-4: #8a6000;
+    --chart-5: #4c4741;
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.922 0 0);
+    --sidebar-primary-foreground: oklch(0.205 0 0);
     --sidebar-accent: oklch(0.269 0 0);
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);

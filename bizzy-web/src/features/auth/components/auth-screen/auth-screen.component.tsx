@@ -1,4 +1,5 @@
 import { AmplifyService } from "../../amplify.service";
+import { Logo } from "~/components/shared/logo/logo.component";
 import { Button } from "~/components/ui/button";
 import {
   Card,
@@ -17,10 +18,12 @@ export function AuthScreen({ status }: AuthScreenProps) {
     <div className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Bizzy</CardTitle>
+          <CardTitle>
+            <Logo className="text-xl" />
+          </CardTitle>
           <CardDescription>
             {status === "signed-out"
-              ? "Sign in to manage sessions and invoices."
+              ? "Your practice, minus the busywork."
               : "This Google account doesn't have access."}
           </CardDescription>
         </CardHeader>

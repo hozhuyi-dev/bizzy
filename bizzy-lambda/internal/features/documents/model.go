@@ -79,6 +79,38 @@ type Document struct {
 	Version int `json:"version" dynamodbav:"version"`
 }
 
+// Summary is a document as a list shows it, without the printed content.
+type Summary struct {
+	ID         string `json:"id"`
+	Type       Type   `json:"type"`
+	Status     Status `json:"status"`
+	Number     string `json:"number,omitempty"`
+	Revision   *int   `json:"revision,omitempty"`
+	ClientID   string `json:"clientId,omitempty"`
+	Date       string `json:"date"`
+	TotalCents int64  `json:"totalCents"`
+	// RecipientName is who the current content is for: the issued content,
+	// or the draft while it is new.
+	RecipientName string `json:"recipientName"`
+	// Revising is set while an issued document has a next revision drafted.
+	Revising bool `json:"revising,omitempty"`
+}
+
+func (d Document) Summary() Summary {
+	s := Summary{
+		ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision,
+		ClientID: d.ClientID, Date: d.Date, TotalCents: d.TotalCents,
+		Revising: d.Status == StatusIssued && d.Draft != nil,
+	}
+	switch {
+	case d.Content != nil:
+		s.RecipientName = d.Content.Recipient.Name
+	case d.Draft != nil:
+		s.RecipientName = d.Draft.Recipient.Name
+	}
+	return s
+}
+
 // Content is everything printed on the document. Once issued it never
 // changes, so the PDF can be rebuilt exactly years later.
 type Content struct {

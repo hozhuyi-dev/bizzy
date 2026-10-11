@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { Logo } from "~/components/shared/logo/logo.component";
 import { AmplifyService } from "~/features/auth/amplify.service";
 
 const LINKS = [
@@ -50,7 +51,10 @@ export function NavBar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <span className="mr-3 font-semibold">Bizzy</span>
+        {/* Flex, not inline: an inline link sets the logo on a text line, which lifts it above the links. */}
+        <Link to="/" className="mr-3 flex rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <Logo />
+        </Link>
 
         <div className="hidden items-center gap-1 md:flex">
           {LINKS.map((link) => (

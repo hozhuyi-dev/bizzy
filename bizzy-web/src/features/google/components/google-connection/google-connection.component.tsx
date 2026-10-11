@@ -13,8 +13,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent } from "~/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { formatDate } from "~/core/utils/date.util";
@@ -24,38 +24,25 @@ import { queryMatch } from "~/core/utils/query.util";
  * The Google account bizzy acts as: sessions come from one of its
  * calendars, and clients link to its contacts.
  */
-export function GoogleConnectionCard() {
+export function GoogleConnectionSettings() {
   const status = GoogleQuery.useStatus();
 
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-4">
+  return queryMatch(status, {
+    pending: () => <Loading />,
+    error: (error) => (
+      <p role="alert" className="text-sm text-destructive">
+        {error.message}
+      </p>
+    ),
+    success: (connection) =>
+      connection ? (
+        <Connected connection={connection} />
+      ) : (
         <div>
-          <h2 className="font-medium">Google</h2>
-          <p className="text-sm text-muted-foreground">
-            Sessions are read from a calendar in this account, and every client is linked to one of
-            its contacts, so their details are on your phone too.
-          </p>
+          <Button onClick={startGoogleConsent}>Connect Google</Button>
         </div>
-        {queryMatch(status, {
-          pending: () => <p className="text-sm text-muted-foreground">Loading…</p>,
-          error: (error) => (
-            <p role="alert" className="text-sm text-destructive">
-              {error.message}
-            </p>
-          ),
-          success: (connection) =>
-            connection ? (
-              <Connected connection={connection} />
-            ) : (
-              <div>
-                <Button onClick={startGoogleConsent}>Connect Google</Button>
-              </div>
-            ),
-        })}
-      </CardContent>
-    </Card>
-  );
+      ),
+  });
 }
 
 function Connected({ connection }: { connection: GoogleConnection }) {

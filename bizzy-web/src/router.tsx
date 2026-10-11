@@ -1,5 +1,6 @@
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
+import { NotFound } from "~/components/shared/not-found/not-found.component";
 
 export function getRouter() {
   return createRouter({
@@ -10,9 +11,7 @@ export function getRouter() {
         {error instanceof Error ? error.message : "Something went wrong."}
       </p>
     ),
-    defaultNotFoundComponent: () => (
-      <p className="p-4 text-sm text-muted-foreground">Page not found.</p>
-    ),
+    defaultNotFoundComponent: NotFound,
     scrollRestoration: true,
   });
 }

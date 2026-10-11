@@ -6,9 +6,11 @@ import { ContactsMutation, ContactsQuery } from "../../contacts.query";
 import { searchContacts } from "../../contacts.types";
 import { ContactDetailsForm } from "../contact-details-form/contact-details-form.component";
 import type { Contact, ContactDetails } from "../../contacts.types";
+import { useQuip } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ApiError } from "~/core/lambda/lambda.client";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 const SHOWN = 6;
 
@@ -69,7 +71,7 @@ export function ContactPicker({ initialQuery, createFrom, onPick }: ContactPicke
       <ul className="flex flex-col divide-y rounded-md border">
         {contacts.isPending && <li className="p-2 text-sm text-muted-foreground">Loading your contacts…</li>}
         {!contacts.isPending && matches.length === 0 && (
-          <li className="p-2 text-sm text-muted-foreground">No contact matches “{query}”.</li>
+          <NoMatch query={query} />
         )}
         {matches.slice(0, SHOWN).map((contact) => (
           <li key={contact.resourceName}>
@@ -132,5 +134,15 @@ function NewContact({
         }}
       />
     </div>
+  );
+}
+
+function NoMatch({ query }: { query: string }) {
+  const quip = useQuip(QUIPS.contactSearch);
+  return (
+    <li className="flex flex-col gap-0.5 p-2 text-sm">
+      <span className="font-medium">{quip}</span>
+      <span className="text-muted-foreground">No contact matches “{query}”.</span>
+    </li>
   );
 }

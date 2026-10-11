@@ -1,9 +1,9 @@
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import type { Session } from "../../sessions.types";
 import { ClientsMutation, profileOf } from "~/features/clients/clients.mutation";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { ClientForm } from "~/features/clients/components/client-form/client-form.component";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -39,23 +39,9 @@ export function LinkClientDialog({ session, onClose }: LinkClientDialogProps) {
 function LinkClientBody({ session, onClose }: { session: Session; onClose: () => void }) {
   const clients = ClientsQuery.useList();
   const save = ClientsMutation.useSave();
-  const [mode, setMode] = useState<"link" | "new">("link");
+  const navigate = useNavigate();
   const [clientId, setClientId] = useState(session.suggestedClientId ?? "");
   const name = session.name ?? "";
-
-  if (mode === "new") {
-    // A contact the name matched, unless it already belongs to a client.
-    const suggested = session.suggestedContacts?.find((contact) => !contact.clientId);
-    return (
-      <>
-        <DialogHeader>
-          <DialogTitle>New client</DialogTitle>
-          <DialogDescription>Sessions written as “{name}” will match this client.</DialogDescription>
-        </DialogHeader>
-        <ClientForm initialName={name} initialContact={suggested} onDone={onClose} />
-      </>
-    );
-  }
 
   const items = (clients.data ?? [])
     .map((client) => ({ value: client.id, label: client.name }))
@@ -106,7 +92,23 @@ function LinkClientBody({ session, onClose }: { session: Session; onClose: () =>
       </Field>
 
       <DialogFooter className="gap-2">
-        <Button variant="outline" onClick={() => setMode("new")}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            // A contact the name matched, unless it already belongs to a client.
+            const suggested = session.suggestedContacts?.find((contact) => !contact.clientId);
+            onClose();
+            void navigate({
+              to: "/clients/new",
+              search: {
+                name,
+                contact: suggested?.resourceName,
+                contactName: suggested?.displayName,
+                from: "sessions",
+              },
+            });
+          }}
+        >
           New client
         </Button>
         <Button disabled={!clientId || save.isPending} onClick={link}>

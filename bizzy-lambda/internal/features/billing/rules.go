@@ -77,7 +77,6 @@ func Derive(s sessions.Session, env Env) Entry {
 		out.Reason = err.Error()
 	case title.Tentative:
 		out.Status = sessions.StatusTentative
-		out.Reason = "Not confirmed yet: remove the ? once it happened"
 	case out.ClientID == "":
 		out.Status = sessions.StatusUnmatched
 		switch {

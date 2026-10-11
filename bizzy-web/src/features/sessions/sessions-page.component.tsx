@@ -1,25 +1,23 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useTable } from "@tanstack/react-table";
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { toast } from "sonner";
 import { LinkClientDialog } from "./components/link-client-dialog/link-client-dialog.component";
 import {
   SessionAmount,
-  SessionMenu,
   SessionReceipt,
   SessionStatusCell,
   SessionSuggestions,
   SessionWho,
   createSessionColumns,
+  sessionActions,
 } from "./sessions.columns";
 import { SessionsMutation } from "./sessions.mutation";
 import { SessionsQuery } from "./sessions.query";
 import type { SessionHandlers } from "./sessions.columns";
-import type { ContactSuggestion, Session } from "./sessions.types";
-import type { Client } from "~/features/clients/clients.types";
+import type { Session } from "./sessions.types";
 import { ClientsMutation, profileOf } from "~/features/clients/clients.mutation";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { ClientForm } from "~/features/clients/components/client-form/client-form.component";
 import { ContactsMutation } from "~/features/contacts/contacts.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
 import { useCreateReceipt } from "~/features/documents/use-create-receipt";
@@ -27,13 +25,16 @@ import { PackagesQuery } from "~/features/packages/packages.query";
 import { SyncButton } from "~/features/sync/sync-button.component";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
+import { MonthPicker } from "~/components/shared/month-picker/month-picker.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { Button } from "~/components/ui/button";
+import { SearchInput } from "~/components/shared/search-input/search-input.component";
+import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
+import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
 import { Card, CardContent } from "~/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { addMonths, formatMonth, formatSessionTime, monthKey } from "~/core/utils/date.util";
+import { formatMonth, formatSessionTime } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 export type SessionsView = "todo" | "history";
 
@@ -48,16 +49,10 @@ interface SessionsPageProps {
 // Stable fallback: a fresh [] each render would rebuild the row models.
 const NO_SESSIONS: Array<Session> = [];
 
-/** A client to create from a calendar name and the contact it matched. */
-interface NewClient {
-  name: string;
-  contact: ContactSuggestion;
-}
-
 export function SessionsPage({ view, month, onViewChange, onMonthChange }: SessionsPageProps) {
   const [linking, setLinking] = useState<Session | null>(null);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [creating, setCreating] = useState<NewClient | null>(null);
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
 
   const open = SessionsQuery.useOpen();
   const history = SessionsQuery.useMonth(month);
@@ -79,7 +74,16 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
       clientsById,
       packagesById,
       onLink: setLinking,
-      onCreateClient: (session, contact) => setCreating({ name: session.name ?? "", contact }),
+      onCreateClient: (session, contact) =>
+        void navigate({
+          to: "/clients/new",
+          search: {
+            name: session.name,
+            contact: contact.resourceName,
+            contactName: contact.displayName,
+            from: "sessions",
+          },
+        }),
       onAddAlias: (session, client) => {
         const name = session.name ?? "";
         saveClient(
@@ -104,7 +108,8 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
             onError: (error) => toast.error(error.message),
           },
         ),
-      onEditClient: setEditingClient,
+      onEditClient: (client) =>
+        void navigate({ to: "/clients/$id", params: { id: client.id }, hash: "profile" }),
       onIgnore: (session, ignored) =>
         ignore(
           { eventId: session.eventId, ignored },
@@ -112,7 +117,7 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
         ),
       onReceipt: createReceipt,
     }),
-    [clientsById, packagesById, ignore, saveClient, dismissContact, createReceipt],
+    [clientsById, packagesById, ignore, saveClient, dismissContact, createReceipt, navigate],
   );
 
   const columns = useMemo(() => createSessionColumns(handlers), [handlers]);
@@ -127,7 +132,6 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
   });
 
   const todoCount = open.data?.length;
-  const thisMonth = monthKey(new Date());
 
   return (
     <>
@@ -136,34 +140,16 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
         actions={<SyncButton />}
         toolbar={
           <>
-            <Tabs value={view} onValueChange={(value) => onViewChange(value as SessionsView)}>
-              <TabsList>
-                <TabsTrigger value="todo">To do{todoCount ? ` (${todoCount})` : ""}</TabsTrigger>
-                <TabsTrigger value="history">History</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {view === "history" && (
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Previous month"
-                  onClick={() => onMonthChange(addMonths(month, -1))}
-                >
-                  <ChevronLeftIcon />
-                </Button>
-                <span className="w-24 text-center text-sm font-medium">{formatMonth(month)}</span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Next month"
-                  disabled={month >= thisMonth}
-                  onClick={() => onMonthChange(addMonths(month, 1))}
-                >
-                  <ChevronRightIcon />
-                </Button>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Tabs value={view} onValueChange={(value) => onViewChange(value as SessionsView)}>
+                <TabsList>
+                  <TabsTrigger value="todo">To do{todoCount ? ` (${todoCount})` : ""}</TabsTrigger>
+                  <TabsTrigger value="history">History</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {view === "history" && <MonthPicker value={month} onChange={onMonthChange} />}
+            </div>
+            <SearchInput label="Search sessions" value={search} onChange={setSearch} />
           </>
         }
       />
@@ -171,7 +157,7 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
       <GoogleNotice />
 
       {queryMatch(query, {
-        pending: () => <p className="text-sm text-muted-foreground">Loading…</p>,
+        pending: () => <Loading />,
         error: (error) => (
           <p role="alert" className="text-sm text-destructive">
             {error.message}
@@ -180,17 +166,25 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
         success: () => (
           <DataTable
             table={table}
-            emptyMessage={
-              view === "todo"
-                ? "Nothing to do. Sessions that need a client, a fee or a fix show up here."
-                : "No sessions this month."
+            query={search}
+            empty={
+              view === "todo" ? (
+                <EmptyState key="todo" quips={QUIPS.sessionsTodo}>
+                  Sessions that need a client, a fee or a fix show up here.
+                </EmptyState>
+              ) : (
+                // Keyed by month: each empty month gets its own line.
+                <EmptyState key={month} quips={QUIPS.sessionsHistory}>
+                  No sessions in {formatMonth(month)}.
+                </EmptyState>
+              )
             }
             renderCard={(row) => (
               <Card size="sm">
                 <CardContent className="flex flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
                     <SessionWho session={row.original} clientsById={clientsById} />
-                    <SessionMenu session={row.original} handlers={handlers} />
+                    <RowActionMenu actions={sessionActions(row.original, handlers)} />
                   </div>
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="text-muted-foreground">{formatSessionTime(row.original.start)}</span>
@@ -198,7 +192,7 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
                   </div>
                   <div className="flex items-end justify-between gap-2">
                     <SessionStatusCell session={row.original} />
-                    <SessionReceipt session={row.original} handlers={handlers} />
+                    <SessionReceipt session={row.original} handlers={handlers} empty={null} />
                   </div>
                   <SessionSuggestions session={row.original} handlers={handlers} />
                 </CardContent>
@@ -210,32 +204,7 @@ export function SessionsPage({ view, month, onViewChange, onMonthChange }: Sessi
 
       <LinkClientDialog session={linking} onClose={() => setLinking(null)} />
 
-      <Dialog open={creating !== null} onOpenChange={(isOpen) => !isOpen && setCreating(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>New client</DialogTitle>
-          </DialogHeader>
-          {creating && (
-            <ClientForm
-              key={creating.contact.resourceName}
-              initialName={creating.name}
-              initialContact={creating.contact}
-              onDone={() => setCreating(null)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
 
-      <Dialog open={editingClient !== null} onOpenChange={(isOpen) => !isOpen && setEditingClient(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit client</DialogTitle>
-          </DialogHeader>
-          {editingClient && (
-            <ClientForm key={editingClient.id} client={editingClient} onDone={() => setEditingClient(null)} />
-          )}
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -6,24 +7,19 @@ import { isLapsed } from "./clients.activity";
 import { ClientCard, createClientColumns, toClientRow } from "./clients.columns";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
-import { ClientForm } from "./components/client-form/client-form.component";
 import type { ClientRow } from "./clients.columns";
 import type { Client } from "./clients.types";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
+import { SearchInput } from "~/components/shared/search-input/search-input.component";
+import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "~/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { queryMatch } from "~/core/utils/query.util";
+import { QUIPS } from "~/core/constants/quips.constant";
 
-type Editing = { mode: "new" } | { mode: "edit"; client: Client } | null;
 export type ClientsView = "all" | "follow-up";
 
 export const LAPSE_MONTHS = ["3", "6", "12"] as const;
@@ -43,8 +39,7 @@ interface ClientsPageProps {
 
 export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: ClientsPageProps) {
   const clients = ClientsQuery.useList();
-  const [editing, setEditing] = useState<Editing>(null);
-  const onEdit = useCallback((client: Client) => setEditing({ mode: "edit", client }), []);
+  const [search, setSearch] = useState("");
 
   const rows = useMemo(() => {
     const now = new Date();
@@ -57,11 +52,12 @@ export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: Client
       <PageHeader
         title="Clients"
         actions={
-          <Button onClick={() => setEditing({ mode: "new" })}>
+          <Button render={<Link to="/clients/new" />} nativeButton={false}>
             <PlusIcon /> New client
           </Button>
         }
         toolbar={
+          <>
           <div className="flex flex-wrap items-center gap-2">
             <Tabs value={view} onValueChange={(value) => onViewChange(value as ClientsView)}>
               <TabsList>
@@ -88,6 +84,8 @@ export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: Client
               </Select>
             )}
           </div>
+            <SearchInput label="Search clients" value={search} onChange={setSearch} />
+          </>
         }
       />
       {view === "follow-up" && (
@@ -98,7 +96,7 @@ export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: Client
       )}
 
       {queryMatch(clients, {
-        pending: () => <p className="text-sm text-muted-foreground">Loading…</p>,
+        pending: () => <Loading />,
         error: (error) => (
           <p role="alert" className="text-sm text-destructive">
             {error.message}
@@ -106,25 +104,10 @@ export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: Client
         ),
         // Keyed by view: each view starts from its own sort order.
         success: () => (
-          <ClientsTable key={view} view={view} rows={rows} onEdit={onEdit} />
+          <ClientsTable key={view} view={view} rows={rows} search={search} />
         ),
       })}
 
-      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editing?.mode === "edit" ? "Edit client" : "New client"}</DialogTitle>
-          </DialogHeader>
-          {editing && (
-            <ClientForm
-              // Remount per client so the form starts from that client's values.
-              key={editing.mode === "edit" ? editing.client.id : "new"}
-              client={editing.mode === "edit" ? editing.client : undefined}
-              onDone={() => setEditing(null)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
@@ -132,10 +115,10 @@ export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: Client
 interface ClientsTableProps {
   view: ClientsView;
   rows: Array<ClientRow>;
-  onEdit: (client: Client) => void;
+  search: string;
 }
 
-function ClientsTable({ view, rows, onEdit }: ClientsTableProps) {
+function ClientsTable({ view, rows, search }: ClientsTableProps) {
   const { mutate: mark } = ClientsMutation.useMarkContacted();
   const followUp = view === "follow-up";
 
@@ -158,8 +141,8 @@ function ClientsTable({ view, rows, onEdit }: ClientsTableProps) {
   );
 
   const columns = useMemo(
-    () => createClientColumns({ onEdit, ...(followUp ? { onContacted } : {}) }),
-    [onEdit, onContacted, followUp],
+    () => createClientColumns(followUp ? { onContacted } : {}),
+    [onContacted, followUp],
   );
 
   const table = useTable({
@@ -176,13 +159,18 @@ function ClientsTable({ view, rows, onEdit }: ClientsTableProps) {
   return (
     <DataTable
       table={table}
-      emptyMessage={
-        followUp
-          ? "Nobody to follow up right now."
-          : "No clients yet. Add one, or link an unmatched calendar entry."
+      query={search}
+      empty={
+        followUp ? (
+          <EmptyState quips={QUIPS.clientsFollowUp}>Nobody to follow up right now.</EmptyState>
+        ) : (
+          <EmptyState quips={QUIPS.clients}>
+            No clients yet. Add one, or link an unmatched calendar entry.
+          </EmptyState>
+        )
       }
       renderCard={(row) => (
-        <ClientCard row={row.original} onEdit={onEdit} {...(followUp ? { onContacted } : {})} />
+        <ClientCard row={row.original} {...(followUp ? { onContacted } : {})} />
       )}
     />
   );

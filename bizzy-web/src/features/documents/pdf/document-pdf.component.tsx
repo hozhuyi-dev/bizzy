@@ -20,15 +20,17 @@ export interface DocumentPdfProps {
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 40, fontSize: 10, fontFamily: "Helvetica", color: "#1a1a1a" },
-  header: { flexDirection: "row", justifyContent: "space-between", marginBottom: 28 },
+  page: { padding: 40, fontSize: 10, lineHeight: 1.4, fontFamily: "Helvetica", color: "#1a1a1a" },
+  header: { flexDirection: "row", justifyContent: "space-between", marginBottom: 32 },
   business: { maxWidth: 280 },
-  businessName: { fontSize: 14, fontFamily: "Helvetica-Bold", marginBottom: 4 },
-  muted: { color: "#666666" },
-  title: { fontSize: 18, fontFamily: "Helvetica-Bold", textAlign: "right", marginBottom: 6 },
-  meta: { textAlign: "right" },
-  block: { marginBottom: 20 },
-  label: { fontSize: 8, color: "#666666", textTransform: "uppercase", marginBottom: 3 },
+  businessName: { fontSize: 14, lineHeight: 1.2, fontFamily: "Helvetica-Bold" },
+  registration: { fontSize: 9, color: "#666666", marginTop: 2 },
+  // Address, then phone and email: separate groups, so each reads at a glance.
+  section: { marginTop: 8 },
+  title: { fontSize: 18, lineHeight: 1.2, fontFamily: "Helvetica-Bold", textAlign: "right", marginBottom: 8 },
+  meta: { textAlign: "right", marginBottom: 2 },
+  block: { marginBottom: 24 },
+  label: { fontSize: 8, color: "#666666", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
   bold: { fontFamily: "Helvetica-Bold" },
   tableHead: {
     flexDirection: "row",
@@ -60,6 +62,17 @@ const styles = StyleSheet.create({
   },
 });
 
+/** Phone and email together, set apart from the address above. */
+function ContactLines({ phone, email }: { phone?: string | undefined; email?: string | undefined }) {
+  if (!phone && !email) return null;
+  return (
+    <View style={styles.section}>
+      {phone && <Text>{phone}</Text>}
+      {email && <Text>{email}</Text>}
+    </View>
+  );
+}
+
 export function DocumentPdf({ type, number, revision, watermark, content }: DocumentPdfProps) {
   const spec = DOCUMENT_TYPES[type];
   const { issuer, recipient } = content;
@@ -77,10 +90,9 @@ export function DocumentPdf({ type, number, revision, watermark, content }: Docu
         <View style={styles.header}>
           <View style={styles.business}>
             <Text style={styles.businessName}>{issuer.name}</Text>
-            {issuer.registrationNo && <Text style={styles.muted}>{issuer.registrationNo}</Text>}
-            {issuer.address && <Text>{issuer.address}</Text>}
-            {issuer.phone && <Text>{issuer.phone}</Text>}
-            {issuer.email && <Text>{issuer.email}</Text>}
+            {issuer.registrationNo && <Text style={styles.registration}>{issuer.registrationNo}</Text>}
+            {issuer.address && <Text style={styles.section}>{issuer.address}</Text>}
+            <ContactLines phone={issuer.phone} email={issuer.email} />
           </View>
           <View>
             <Text style={styles.title}>{spec.title}</Text>
@@ -98,9 +110,8 @@ export function DocumentPdf({ type, number, revision, watermark, content }: Docu
         <View style={styles.block}>
           <Text style={styles.label}>{spec.recipientLabel}</Text>
           <Text style={styles.bold}>{recipient.name}</Text>
-          {recipient.address && <Text>{recipient.address}</Text>}
-          {recipient.phone && <Text>{recipient.phone}</Text>}
-          {recipient.email && <Text>{recipient.email}</Text>}
+          {recipient.address && <Text style={styles.section}>{recipient.address}</Text>}
+          <ContactLines phone={recipient.phone} email={recipient.email} />
         </View>
 
         <View style={styles.tableHead}>

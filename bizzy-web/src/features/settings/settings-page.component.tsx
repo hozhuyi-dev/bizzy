@@ -9,17 +9,17 @@ import {
   DocumentsMutation,
   DocumentsQuery,
 } from "~/features/documents/documents.query";
-import { GoogleConnectionCard } from "~/features/google/components/google-connection/google-connection.component";
+import { GoogleConnectionSettings } from "~/features/google/components/google-connection/google-connection.component";
+import { AppearanceSettings } from "~/features/theme/components/appearance-settings/appearance-settings.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
+import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
+import { Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent } from "~/components/ui/card";
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import {
@@ -39,7 +39,7 @@ export function SettingsPage() {
     pending: () => (
       <>
         <PageHeader title="Settings" />
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <Loading />
       </>
     ),
     error: (error) => (
@@ -124,6 +124,7 @@ function SettingsForm({ saved }: { saved: Settings }) {
           {multiline ? (
             <Textarea
               id={field.name}
+              form={FORM_ID}
               rows={3}
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -131,6 +132,7 @@ function SettingsForm({ saved }: { saved: Settings }) {
           ) : (
             <Input
               id={field.name}
+              form={FORM_ID}
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
             />
@@ -155,83 +157,98 @@ function SettingsForm({ saved }: { saved: Settings }) {
           </form.Subscribe>
         }
       />
-      <div className="flex max-w-3xl flex-col gap-8">
-        <GoogleConnectionCard />
-        <form
-          id={FORM_ID}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void form.handleSubmit();
-          }}
-        >
-          <FieldGroup>
-            <FieldSet>
-              <FieldLegend>Your business</FieldLegend>
-              <FieldDescription>
-                Printed on every receipt. Issued receipts keep what they
-                printed.
-              </FieldDescription>
-              {BUSINESS_FIELDS.map(textField)}
-            </FieldSet>
-
-            <FieldSet>
-              <FieldLegend>Bank details</FieldLegend>
-              <FieldDescription>
-                Optional. Receipts confirm money already paid, so they don't
-                print these.
-              </FieldDescription>
-              <div className="grid gap-4 sm:grid-cols-3">
-                {BANK_FIELDS.map(textField)}
-              </div>
-            </FieldSet>
-
-            <FieldSet>
-              <FieldLegend>Sessions</FieldLegend>
-              {textField({
-                name: "serviceName",
-                label: "Session description",
-                hint: "How a session reads on a receipt line.",
-              })}
-              <form.Field name="homeVisitColorId">
-                {(field) => (
-                  <Field>
-                    <FieldLabel>Home visit colour</FieldLabel>
-                    <Select
-                      items={colourItems}
-                      value={field.state.value}
-                      onValueChange={(value) =>
-                        value && field.handleChange(value)
-                      }
-                    >
-                      <SelectTrigger className="w-48">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {EVENT_COLOURS.map((colour) => (
-                          <SelectItem key={colour.id} value={colour.id}>
-                            <span
-                              className="size-3 rounded-full"
-                              style={{ backgroundColor: colour.hex }}
-                            />
-                            {colour.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FieldDescription>
-                      Give a calendar entry this colour to mark a home visit.
-                      Any other colour means your place; no colour follows the
-                      client's usual.
-                    </FieldDescription>
-                  </Field>
-                )}
-              </form.Field>
-            </FieldSet>
-          </FieldGroup>
-        </form>
-        <ReceiptNumbering />
-        <DismissedContacts />
-      </div>
+      {/* Inputs join this form through their form attribute, so Enter saves. */}
+      <form
+        id={FORM_ID}
+        hidden
+        onSubmit={(event) => {
+          event.preventDefault();
+          void form.handleSubmit();
+        }}
+      />
+      <SectionLayout
+        sections={[
+          {
+            id: "google",
+            title: "Google",
+            description:
+              "Sessions are read from a calendar in this account, and every client is linked to one of its contacts, so their details are on your phone too.",
+            content: <GoogleConnectionSettings />,
+          },
+          {
+            id: "business",
+            title: "Your business",
+            description: "Printed on every receipt. Issued receipts keep what they printed.",
+            content: <FieldGroup>{BUSINESS_FIELDS.map(textField)}</FieldGroup>,
+          },
+          {
+            id: "bank",
+            title: "Bank details",
+            description: "Optional. Receipts confirm money already paid, so they don't print these.",
+            content: <div className="grid gap-4 sm:grid-cols-3">{BANK_FIELDS.map(textField)}</div>,
+          },
+          {
+            id: "sessions",
+            title: "Sessions",
+            content: (
+              <FieldGroup>
+                {textField({
+                  name: "serviceName",
+                  label: "Session description",
+                  hint: "How a session reads on a receipt line.",
+                })}
+                <form.Field name="homeVisitColorId">
+                  {(field) => (
+                    <Field>
+                      <FieldLabel>Home visit colour</FieldLabel>
+                      <Select
+                        items={colourItems}
+                        value={field.state.value}
+                        onValueChange={(value) => value && field.handleChange(value)}
+                      >
+                        <SelectTrigger className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {EVENT_COLOURS.map((colour) => (
+                            <SelectItem key={colour.id} value={colour.id}>
+                              <span className="size-3 rounded-full" style={{ backgroundColor: colour.hex }} />
+                              {colour.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FieldDescription>
+                        Give a calendar entry this colour to mark a home visit. Any other colour means
+                        your place; no colour follows the client's usual.
+                      </FieldDescription>
+                    </Field>
+                  )}
+                </form.Field>
+              </FieldGroup>
+            ),
+          },
+          {
+            id: "numbering",
+            title: "Receipt numbers",
+            description: "Numbers are taken when a receipt is issued and are never reused.",
+            content: <ReceiptNumbering />,
+          },
+          {
+            id: "not-clients",
+            title: "Not clients",
+            description: "Calendar entries with these contacts' names are treated as personal.",
+            content: <DismissedContacts />,
+          },
+          {
+            id: "appearance",
+            title: "Appearance",
+            description:
+              "Changes right away and is remembered on this device. System follows your phone or computer.",
+            content: <AppearanceSettings />,
+          },
+        ]}
+      />
     </>
   );
 }
@@ -251,96 +268,90 @@ function ReceiptNumbering() {
   const currentTemplate = template ?? numbering.data?.template ?? "";
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4">
-        <div>
-          <h2 className="font-medium">Receipt numbers</h2>
-          <p className="text-sm text-muted-foreground">
-            Next receipt: <b>{numbering.data?.next ?? "…"}</b>. Numbers are
-            taken when a receipt is issued and are never reused.
-          </p>
+    <>
+      <p className="text-sm">
+        Next receipt: <b>{numbering.data?.next ?? "…"}</b>
+      </p>
+
+      <Field>
+        <FieldLabel htmlFor="numbering-template">Format</FieldLabel>
+        <div className="flex gap-2">
+          <Input
+            id="numbering-template"
+            className="max-w-56"
+            value={currentTemplate}
+            onChange={(e) => setTemplate(e.target.value)}
+          />
+          <Button
+            variant="outline"
+            disabled={
+              !settings.data || template === null || saveSettings.isPending
+            }
+            onClick={() => {
+              if (!settings.data) return;
+              saveSettings.mutate(
+                {
+                  ...settings.data,
+                  numbering: {
+                    ...settings.data.numbering,
+                    receipt: currentTemplate,
+                  },
+                },
+                {
+                  onSuccess: () => {
+                    setTemplate(null);
+                    void numbering.refetch();
+                    toast.success("Format saved");
+                  },
+                  onError: (error) => toast.error(error.message),
+                },
+              );
+            }}
+          >
+            Save format
+          </Button>
         </div>
+        <FieldDescription>
+          {"{seq:4}"} is the running number padded to 4 digits; add {"{YYYY}"}{" "}
+          or {"{YY}"} to restart every year. For example RCP-{"{seq:4}"} or R
+          {"{YY}"}-{"{seq:3}"}.
+        </FieldDescription>
+      </Field>
 
-        <Field>
-          <FieldLabel htmlFor="numbering-template">Format</FieldLabel>
-          <div className="flex gap-2">
-            <Input
-              id="numbering-template"
-              className="max-w-56"
-              value={currentTemplate}
-              onChange={(e) => setTemplate(e.target.value)}
-            />
-            <Button
-              variant="outline"
-              disabled={
-                !settings.data || template === null || saveSettings.isPending
-              }
-              onClick={() => {
-                if (!settings.data) return;
-                saveSettings.mutate(
-                  {
-                    ...settings.data,
-                    numbering: {
-                      ...settings.data.numbering,
-                      receipt: currentTemplate,
-                    },
+      <Field>
+        <FieldLabel htmlFor="next-number">Continue from</FieldLabel>
+        <div className="flex gap-2">
+          <Input
+            id="next-number"
+            className="max-w-32"
+            inputMode="numeric"
+            placeholder={numbering.data ? String(numbering.data.seq) : ""}
+            value={next}
+            onChange={(e) => setNextValue(e.target.value)}
+          />
+          <Button
+            variant="outline"
+            disabled={!/^\d+$/.test(next) || setNext.isPending}
+            onClick={() =>
+              setNext.mutate(
+                { type: "receipt", next: Number(next) },
+                {
+                  onSuccess: (result) => {
+                    setNextValue("");
+                    toast.success(`Next receipt will be ${result.next}`);
                   },
-                  {
-                    onSuccess: () => {
-                      setTemplate(null);
-                      void numbering.refetch();
-                      toast.success("Format saved");
-                    },
-                    onError: (error) => toast.error(error.message),
-                  },
-                );
-              }}
-            >
-              Save format
-            </Button>
-          </div>
-          <FieldDescription>
-            {"{seq:4}"} is the running number padded to 4 digits; add {"{YYYY}"}{" "}
-            or {"{YY}"} to restart every year. For example RCP-{"{seq:4}"} or R
-            {"{YY}"}-{"{seq:3}"}.
-          </FieldDescription>
-        </Field>
-
-        <Field>
-          <FieldLabel htmlFor="next-number">Continue from</FieldLabel>
-          <div className="flex gap-2">
-            <Input
-              id="next-number"
-              className="max-w-32"
-              inputMode="numeric"
-              placeholder={numbering.data ? String(numbering.data.seq) : ""}
-              value={next}
-              onChange={(e) => setNextValue(e.target.value)}
-            />
-            <Button
-              variant="outline"
-              disabled={!/^\d+$/.test(next) || setNext.isPending}
-              onClick={() =>
-                setNext.mutate(
-                  { type: "receipt", next: Number(next) },
-                  {
-                    onSuccess: (result) => {
-                      setNextValue("");
-                      toast.success(`Next receipt will be ${result.next}`);
-                    },
-                    onError: (error) => toast.error(error.message),
-                  },
-                )
-              }
-            >
-              Set next number
-            </Button>
-          </div>
-          <FieldDescription>
-            Only moves forward, so a number can never be issued twice.
-          </FieldDescription>
-        </Field>
-      </CardContent>
-    </Card>
+                  onError: (error) => toast.error(error.message),
+                },
+              )
+            }
+          >
+            Set next number
+          </Button>
+        </div>
+        <FieldDescription>
+          Only moves forward, so a number can never be issued twice.
+        </FieldDescription>
+      </Field>
+    </>
   );
 }

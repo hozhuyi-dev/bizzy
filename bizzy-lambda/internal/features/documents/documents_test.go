@@ -58,7 +58,15 @@ func (f *fakeRepo) Get(_ context.Context, id string) (Document, bool, error) {
 	return d, ok, nil
 }
 
-func (f *fakeRepo) ListByType(context.Context, Type) ([]Document, error) { return nil, nil }
+func (f *fakeRepo) ListByMonth(_ context.Context, docType Type, month string) ([]Document, error) {
+	var out []Document
+	for _, d := range f.docs {
+		if d.Type == docType && strings.HasPrefix(d.Date, month+"-") {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
 
 func (f *fakeRepo) Revisions(_ context.Context, id string) ([]Revision, error) {
 	var out []Revision
@@ -267,5 +275,29 @@ func TestNormalizeRejectsForeignSources(t *testing.T) {
 	_, err := Normalize(c, map[Source]bool{{Kind: SourceSession, ID: "e1"}: true})
 	if err == nil || !strings.Contains(err.Error(), "does not cover") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestListIsOneMonthOfSummaries(t *testing.T) {
+	ctx := context.Background()
+	h, repo, _ := newHandler(t)
+
+	draft := must[Document](t)(h.createDraft(ctx, createDraftInput{Type: TypeReceipt, Sources: []Source{{Kind: SourceSession, ID: "e1"}}}))
+	issued := must[Document](t)(h.issue(ctx, idInput{ID: draft.ID, Version: draft.Version}))
+	must[Document](t)(h.revise(ctx, idInput{ID: issued.ID, Version: issued.Version}))
+	repo.docs["old"] = Document{ID: "old", Type: TypeReceipt, Status: StatusIssued, Date: "2026-09-30"}
+
+	list := must[[]Summary](t)(h.list(ctx, listInput{Type: TypeReceipt, Month: "2026-10"}))
+	if len(list) != 1 {
+		t.Fatalf("list = %+v, want only October's receipt", list)
+	}
+	if got := list[0]; got.Number != "RCP-0001" || got.RecipientName != "Jane Smith" || !got.Revising {
+		t.Errorf("summary = %+v, want RCP-0001 for Jane Smith, being revised", got)
+	}
+
+	for _, bad := range []string{"", "2026-1", "2026-13", "2026-10-01"} {
+		if _, err := h.list(ctx, listInput{Type: TypeReceipt, Month: bad}); err == nil {
+			t.Errorf("month %q should be rejected", bad)
+		}
 	}
 }

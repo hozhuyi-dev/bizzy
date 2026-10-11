@@ -49,7 +49,8 @@ func (h handler) list(ctx context.Context, _ json.RawMessage) (any, error) {
 
 // save creates a client when ID is empty, otherwise replaces it. Only the
 // contact's resource name is read from the input: the details are copied
-// from Google when the link is made or changes.
+// from Google when the link is made or changes, and an existing client sent
+// without one is unlinked.
 func (h handler) save(ctx context.Context, in Client) (any, error) {
 	client, err := prepare(in)
 	if err != nil {
@@ -73,12 +74,15 @@ func (h handler) save(ctx context.Context, in Client) (any, error) {
 		current = &existing[i]
 	}
 
-	if in.Contact == nil || in.Contact.ResourceName == "" {
-		return nil, apperr.Invalid("choose the client's Google contact, or create one")
-	}
-	if current != nil && current.Contact != nil && current.Contact.ResourceName == in.Contact.ResourceName {
+	switch {
+	case in.Contact == nil || in.Contact.ResourceName == "":
+		// Unlinking undoes a wrong link; a new client starts with one.
+		if current == nil {
+			return nil, apperr.Invalid("choose the client's Google contact, or create one")
+		}
+	case current != nil && current.Contact != nil && current.Contact.ResourceName == in.Contact.ResourceName:
 		client.Contact = current.Contact
-	} else {
+	default:
 		contact, err := h.contacts.Link(ctx, in.Contact.ResourceName)
 		if err != nil {
 			return nil, err
