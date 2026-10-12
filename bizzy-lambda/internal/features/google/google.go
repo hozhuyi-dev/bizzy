@@ -65,6 +65,23 @@ func (r Repository) Delete(ctx context.Context) error {
 	return err
 }
 
+// Calendar opens the calendar she chose, acting as her. It is read on every
+// call, since she can change it in Settings any time.
+func (r Repository) Calendar(ctx context.Context, client func(ctx context.Context) (*http.Client, error)) (*calendar.GoogleCalendar, error) {
+	conn, err := r.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if conn == nil {
+		return nil, googleauth.ErrNotConnected
+	}
+	httpClient, err := client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return calendar.NewGoogleCalendar(ctx, httpClient, conn.CalendarID)
+}
+
 type store interface {
 	Get(ctx context.Context) (*Connection, error)
 	Put(ctx context.Context, c Connection) error

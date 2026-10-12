@@ -70,8 +70,6 @@ func Derive(s sessions.Session, env Env) Entry {
 	switch {
 	case s.Removed:
 		out.Status = sessions.StatusRemoved
-	case s.Ignored:
-		out.Status = sessions.StatusIgnored
 	case err != nil:
 		out.Status = sessions.StatusParseError
 		out.Reason = err.Error()

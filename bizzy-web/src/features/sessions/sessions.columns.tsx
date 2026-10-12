@@ -1,14 +1,8 @@
-import {
-  BanknoteIcon,
-  EyeIcon,
-  EyeOffIcon,
-  HomeIcon,
-  LinkIcon,
-  ReceiptIcon,
-} from "lucide-react";
+import { BanknoteIcon, CheckIcon, HomeIcon, LinkIcon, ReceiptIcon } from "lucide-react";
 import { SESSION_STATUS, receiptSources, sessionAmount, sessionReceipts } from "./session-status";
 import type { ReactNode } from "react";
 import type { Session } from "./sessions.types";
+import type { SessionReturnTo } from "./session-page.component";
 import type { Client } from "~/features/clients/clients.types";
 import type { DocumentSource } from "~/features/documents/documents.types";
 import type { Package } from "~/features/packages/packages.types";
@@ -21,41 +15,44 @@ import { formatCents } from "~/core/utils/money.util";
 import { formatSessionTime } from "~/core/utils/date.util";
 
 export interface SessionHandlers {
+  /** Where the table is, for the session page to go back to. */
+  from?: SessionReturnTo | undefined;
   clientsById: ReadonlyMap<string, Client>;
   /** Packages by ID; one bought in a session's title has the session's ID. */
   packagesById: ReadonlyMap<string, Package>;
   onLink: (session: Session) => void;
   onEditClient: (client: Client) => void;
-  onIgnore: (session: Session, ignored: boolean) => void;
+  onConfirm: (session: Session) => void;
   onReceipt: (sources: Array<DocumentSource>) => void;
 }
 
 const helper = createDataTableColumnHelper<Session>();
 
-export function SessionWho({ session, clientsById }: { session: Session; clientsById: ReadonlyMap<string, Client> }) {
-  const client = session.clientId ? clientsById.get(session.clientId) : undefined;
+/** Who the session is with, linking to its page, where it's edited or deleted. */
+export function SessionWho({ session, handlers }: { session: Session; handlers: SessionHandlers }) {
+  const client = session.clientId ? handlers.clientsById.get(session.clientId) : undefined;
   return (
-    <div className="flex flex-col">
-      <span className={client ? "font-medium" : "font-medium text-muted-foreground italic"}>
+    <div className="flex flex-col items-start">
+      <TextLink
+        to="/sessions/$id"
+        params={{ id: session.eventId }}
+        search={{ from: handlers.from }}
+        className={client ? undefined : "text-muted-foreground italic"}
+      >
         {client?.name ?? (session.name || session.title)}
-      </span>
+      </TextLink>
       <span className="text-xs text-muted-foreground">{session.title}</span>
     </div>
   );
 }
 
+/** The badges alone; the session's page explains them. */
 export function SessionStatusCell({ session }: { session: Session }) {
   const status = SESSION_STATUS[session.status];
-  // The badge says enough for these; sessions synced earlier still carry a reason.
-  const quiet = session.status === "priced" || session.status === "package" || session.status === "tentative";
-  const note = session.drift ?? (quiet ? undefined : (session.reason ?? status.hint));
   return (
-    <div className="flex flex-col items-start gap-1">
-      <div className="flex flex-wrap gap-1">
-        <Badge variant={status.variant}>{status.label}</Badge>
-        {session.drift && <Badge variant="attention">Changed after receipt</Badge>}
-      </div>
-      {note && <span className="max-w-64 text-xs text-muted-foreground">{note}</span>}
+    <div className="flex flex-wrap gap-1">
+      <Badge variant={status.variant}>{status.label}</Badge>
+      {session.drift && <Badge variant="attention">Changed after receipt</Badge>}
     </div>
   );
 }
@@ -100,8 +97,14 @@ export function SessionReceipt({
 
 export function sessionActions(session: Session, handlers: SessionHandlers): Array<RowAction> {
   const client = session.clientId ? handlers.clientsById.get(session.clientId) : undefined;
+  const bought = handlers.packagesById.get(session.eventId);
+  // A receipt fixes what it covers: cancel it to change the session.
+  const editable = sessionReceipts(session, bought).length === 0;
   const actions: Array<RowAction> = [];
 
+  if (editable && session.status === "tentative" && client) {
+    actions.push({ label: "Confirm", icon: CheckIcon, onClick: () => handlers.onConfirm(session) });
+  }
   if (session.status === "unmatched") {
     actions.push({ label: "Link client", icon: LinkIcon, onClick: () => handlers.onLink(session) });
   }
@@ -109,14 +112,9 @@ export function sessionActions(session: Session, handlers: SessionHandlers): Arr
     actions.push({ label: "Set fee", icon: BanknoteIcon, onClick: () => handlers.onEditClient(client) });
   }
   // Covers whichever of the session and the package it bought has no receipt.
-  const sources = receiptSources(session, handlers.packagesById.get(session.eventId));
+  const sources = receiptSources(session, bought);
   if (sources.length > 0) {
     actions.push({ label: "New receipt", icon: ReceiptIcon, onClick: () => handlers.onReceipt(sources) });
-  }
-  if (session.status === "ignored") {
-    actions.push({ label: "Unignore", icon: EyeIcon, onClick: () => handlers.onIgnore(session, false) });
-  } else if (!session.document && session.status !== "removed") {
-    actions.push({ label: "Ignore", icon: EyeOffIcon, onClick: () => handlers.onIgnore(session, true) });
   }
   return actions;
 }
@@ -138,7 +136,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
           return [client?.name, session.name, session.title];
         },
       },
-      cell: ({ row }) => <SessionWho session={row.original} clientsById={handlers.clientsById} />,
+      cell: ({ row }) => <SessionWho session={row.original} handlers={handlers} />,
     }),
     helper.accessor("status", {
       header: "Status",

@@ -39,7 +39,7 @@ func sync(t *testing.T, m *memory.Store, events ...sessions.Session) {
 		var before *sessions.Session
 		if stored, ok := m.SessionMap[e.EventID]; ok {
 			before = &stored
-			after.Ignored, after.Document = stored.Ignored, stored.Document
+			after.Document = stored.Document
 		}
 		changes = append(changes, Change{Before: before, After: &after})
 	}

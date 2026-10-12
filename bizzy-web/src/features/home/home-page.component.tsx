@@ -37,6 +37,7 @@ function SessionsToFix() {
         success: (data) => (
           <SessionsTable
             sessions={data}
+            from="home"
             empty={
               <EmptyState quips={QUIPS.sessionsTodo}>
                 Sessions that need a client, a fee or a fix show up here.

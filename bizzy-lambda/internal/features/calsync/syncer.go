@@ -111,7 +111,7 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 	// Every timed event on her sessions calendar is a session; the billing
 	// reconcile works out whether it needs fixing.
 	for _, event := range events {
-		if event.AllDay || event.Cancelled {
+		if !isSession(event) {
 			continue
 		}
 		summary.Sessions++
@@ -124,16 +124,8 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 				return summary, err
 			}
 		}
-
-		after := before
-		after.EventID = event.ID
-		after.Title, after.Start, after.End, after.ColorID = event.Title, event.Start.UTC(), event.End.UTC(), event.ColorID
-		after.Removed = false
-
-		if !ok {
-			changes = append(changes, billing.Change{After: &after})
-		} else if calendarChanged(before, after) {
-			changes = append(changes, billing.Change{Before: &before, After: &after})
+		if change, changed := eventChange(&event, optional(before, ok)); changed {
+			changes = append(changes, change)
 		}
 	}
 
@@ -143,15 +135,9 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 		if seen[id] {
 			continue
 		}
-		if before.Document != nil {
-			if !before.Removed {
-				after := before
-				after.Removed = true
-				changes = append(changes, billing.Change{Before: &before, After: &after})
-			}
-			continue
+		if change, changed := eventChange(nil, &before); changed {
+			changes = append(changes, change)
 		}
-		changes = append(changes, billing.Change{Before: &before})
 	}
 
 	if len(changes) > 0 {
@@ -174,6 +160,53 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 		}
 	}
 	return summary, nil
+}
+
+// isSession reports whether an event is a session: every timed event on her
+// sessions calendar is one.
+func isSession(event calendar.Event) bool {
+	return !event.AllDay && !event.Cancelled
+}
+
+func optional(s sessions.Session, ok bool) *sessions.Session {
+	if !ok {
+		return nil
+	}
+	return &s
+}
+
+// eventChange is what an event means for the session stored for it: before
+// is nil when none is stored, and event nil when the event is no longer a
+// session. It reports false when nothing changed.
+func eventChange(event *calendar.Event, before *sessions.Session) (billing.Change, bool) {
+	if event == nil {
+		switch {
+		case before == nil:
+			return billing.Change{}, false
+		case before.Document == nil:
+			return billing.Change{Before: before}, true
+		case before.Removed:
+			return billing.Change{}, false
+		default:
+			// A receipt keeps the session, marked removed.
+			after := *before
+			after.Removed = true
+			return billing.Change{Before: before, After: &after}, true
+		}
+	}
+
+	var after sessions.Session
+	if before != nil {
+		after = *before
+	}
+	after.EventID = event.ID
+	after.Title, after.Start, after.End, after.ColorID = event.Title, event.Start.UTC(), event.End.UTC(), event.ColorID
+	after.Removed = false
+
+	if before == nil {
+		return billing.Change{After: &after}, true
+	}
+	return billing.Change{Before: before, After: &after}, calendarChanged(*before, after)
 }
 
 func calendarChanged(before, after sessions.Session) bool {
@@ -236,7 +269,7 @@ func (s Syncer) updateBookings(ctx context.Context, all []clients.Client, aliase
 
 	next := map[string]time.Time{}
 	for _, event := range events {
-		if event.AllDay || event.Cancelled || !event.Start.After(now) {
+		if !isSession(event) || !event.Start.After(now) {
 			continue
 		}
 		title, err := calendar.ParseTitle(event.Title)

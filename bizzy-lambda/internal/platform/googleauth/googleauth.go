@@ -26,12 +26,15 @@ import (
 
 const (
 	ScopeContacts = "https://www.googleapis.com/auth/contacts"
-	ScopeCalendar = "https://www.googleapis.com/auth/calendar.readonly"
+	// ScopeEvents reads and writes events; ScopeCalendarList only lists her
+	// calendars, to choose the one the sync reads.
+	ScopeEvents       = "https://www.googleapis.com/auth/calendar.events"
+	ScopeCalendarList = "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
 )
 
 // Scopes are what the app asks for. openid and email only name the account
 // in Settings.
-var Scopes = []string{"openid", "email", ScopeContacts, ScopeCalendar}
+var Scopes = []string{"openid", "email", ScopeContacts, ScopeEvents, ScopeCalendarList}
 
 var (
 	ErrNotConnected = apperr.Disconnected("Google isn't connected yet. Connect it in Settings.")
@@ -113,8 +116,10 @@ func (a *Auth) Exchange(ctx context.Context, code, redirectURI string) (Grant, e
 
 	granted, _ := token.Extra("scope").(string)
 	scopes := strings.Fields(granted)
-	if !slices.Contains(scopes, ScopeContacts) || !slices.Contains(scopes, ScopeCalendar) {
-		return Grant{}, apperr.Invalid("Allow access to both your contacts and your calendar, then connect again.")
+	for _, required := range []string{ScopeContacts, ScopeEvents, ScopeCalendarList} {
+		if !slices.Contains(scopes, required) {
+			return Grant{}, apperr.Invalid("Allow access to both your contacts and your calendar, then connect again.")
+		}
 	}
 
 	idToken, _ := token.Extra("id_token").(string)

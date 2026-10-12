@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { NewSessionButton } from "./components/new-session-button/new-session-button.component";
 import { SessionsTable } from "./components/sessions-table/sessions-table.component";
 import { SessionsQuery } from "./sessions.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
@@ -26,7 +27,12 @@ export function SessionsPage({ month, onMonthChange }: SessionsPageProps) {
     <>
       <PageHeader
         title="Sessions"
-        actions={<SyncButton />}
+        actions={
+          <>
+            <SyncButton />
+            <NewSessionButton />
+          </>
+        }
         toolbar={
           <>
             <MonthPicker value={month} onChange={onMonthChange} />

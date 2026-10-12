@@ -10,7 +10,8 @@ const SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/contacts",
-  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ];
 
 export const GOOGLE_CALLBACK_PATH = "/google-callback";

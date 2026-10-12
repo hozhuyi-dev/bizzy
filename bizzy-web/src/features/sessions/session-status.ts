@@ -6,12 +6,11 @@ type StatusTone = "neutral" | "done" | "info" | "waiting" | "attention";
 
 export const SESSION_STATUS: Record<SessionStatus, { label: string; variant: StatusTone; hint?: string }> = {
   tentative: { label: "Not confirmed", variant: "waiting" },
-  parse_error: { label: "Can't read", variant: "attention", hint: "Fix the title in the calendar, then sync." },
+  parse_error: { label: "Can't read", variant: "attention", hint: "Edit the session to fix it." },
   unmatched: { label: "Unmatched", variant: "attention" },
-  missing_fee: { label: "No fee", variant: "attention", hint: "Add an amount in the calendar or a default fee for the client." },
+  missing_fee: { label: "No fee", variant: "attention", hint: "Edit the session to add an amount, or set a default fee for the client." },
   priced: { label: "Paid", variant: "done" },
   package: { label: "Package", variant: "info" },
-  ignored: { label: "Ignored", variant: "neutral" },
   removed: { label: "Removed", variant: "neutral" },
 };
 

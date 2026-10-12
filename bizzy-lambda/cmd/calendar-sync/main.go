@@ -20,7 +20,6 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"bizzy-lambda/internal/features/billing"
-	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/calsync"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
@@ -33,10 +32,6 @@ import (
 	"bizzy-lambda/internal/platform/googleauth"
 	"bizzy-lambda/internal/router"
 )
-
-// lookahead is how far ahead the sync looks for bookings, so a client who
-// has rebooked is not suggested for a follow-up.
-const lookahead = 60 * 24 * time.Hour
 
 func main() {
 	ctx := context.Background()
@@ -80,30 +75,17 @@ func main() {
 		},
 		Status:    status,
 		Window:    time.Duration(days) * 24 * time.Hour,
-		Lookahead: lookahead,
+		Lookahead: calsync.BookingLookahead,
 		Now:       time.Now,
 	}
 
-	// The calendar is chosen in Settings, so it is read on every run.
 	run := func(ctx context.Context) (calsync.Summary, error) {
-		conn, err := connections.Get(ctx)
+		cal, err := connections.Calendar(ctx, auth.Client)
 		if err != nil {
 			return calsync.Summary{}, err
 		}
-		if conn == nil {
-			return calsync.Summary{}, googleauth.ErrNotConnected
-		}
-		client, err := auth.Client(ctx)
-		if err != nil {
-			return calsync.Summary{}, err
-		}
-		source, err := calendar.NewGoogleSource(ctx, client, conn.CalendarID)
-		if err != nil {
-			return calsync.Summary{}, err
-		}
-
 		syncer := base
-		syncer.Events = source
+		syncer.Events = cal
 		return syncer.Run(ctx)
 	}
 

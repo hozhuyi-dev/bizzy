@@ -12,6 +12,7 @@ export const SessionKeys = {
   all: ["sessions"] as const,
   open: () => [...SessionKeys.all, "open"] as const,
   range: (from: string, to: string) => [...SessionKeys.all, "range", from, to] as const,
+  detail: (eventId: string) => [...SessionKeys.all, "detail", eventId] as const,
 };
 
 export const PackageKeys = {

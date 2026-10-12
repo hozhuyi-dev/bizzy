@@ -153,3 +153,33 @@ func assertTitle(t *testing.T, got, want Title) {
 		t.Errorf("Package = %+v, want %+v", *got.Package, *want.Package)
 	}
 }
+
+func TestFormatTitleRoundTrips(t *testing.T) {
+	tests := []struct {
+		title Title
+		want  string
+	}{
+		{Title{Name: "Jane Smith"}, "Jane Smith"},
+		{Title{Name: "Jane Smith", Tentative: true}, "? Jane Smith"},
+		{Title{Name: "Jane Smith", FeeCents: cents(9550)}, "Jane Smith 95.50"},
+		{Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85000}}, "Jane Smith 10x85"},
+		{Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 3, PriceCents: 25000}}, "Jane Smith 3@250"},
+		{
+			Title{Name: "Jane Smith", Tentative: true, FeeCents: cents(9500), Package: &PackageSpec{Sessions: 3, PriceCents: 25001}},
+			"? Jane Smith 95 3@250.01",
+		},
+	}
+	for _, tt := range tests {
+		got := FormatTitle(tt.title)
+		if got != tt.want {
+			t.Errorf("FormatTitle(%+v) = %q, want %q", tt.title, got, tt.want)
+		}
+		parsed, err := ParseTitle(got)
+		if err != nil {
+			t.Fatalf("ParseTitle(%q): %v", got, err)
+		}
+		if FormatTitle(parsed) != got {
+			t.Errorf("%q parses back as %+v", got, parsed)
+		}
+	}
+}

@@ -67,8 +67,8 @@ function LinkClientBody({ session, onClose }: { session: Session; onClose: () =>
       <DialogHeader>
         <DialogTitle>Who is “{name}”?</DialogTitle>
         <DialogDescription>
-          If it's a typo, fixing it in the calendar is cleaner. Otherwise add it as one of a
-          client's calendar names.
+          If it's a typo, edit the session instead. Otherwise add it as one of a client's
+          calendar names.
         </DialogDescription>
       </DialogHeader>
 

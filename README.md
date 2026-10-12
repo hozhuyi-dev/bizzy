@@ -10,7 +10,7 @@ Back-office for a one-person physio practice. Sessions are read from Google Cale
 
 Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets AWS credentials (identity pool role mapping); the browser invokes the API Lambda directly with them.
 
-Separately, she **connects Google** once in Settings: an OAuth consent for her calendar (read only) and contacts (read and write). The API keeps the refresh token in SSM (`/<project>/<env>/google-refresh-token`), and both Lambdas act as her with it. A personal Gmail can't share its contacts with a service account, so this replaces the service account the calendar used to need. The connected account can differ from the sign-in account, e.g. a test account in development.
+Separately, she **connects Google** once in Settings: an OAuth consent for her calendar events and contacts (both read and write), and to list her calendars. The API keeps the refresh token in SSM (`/<project>/<env>/google-refresh-token`), and both Lambdas act as her with it. A personal Gmail can't share its contacts with a service account, so this replaces the service account the calendar used to need. The connected account can differ from the sign-in account, e.g. a test account in development.
 
 ## Calendar syntax
 
@@ -28,9 +28,10 @@ Separately, she **connects Google** once in Settings: an OAuth consent for her c
 | `? Jane Smith` | Not confirmed yet; on the to-do list until the `?` is removed |
 
 - Every timed event on the chosen calendar is a session; all-day and cancelled events are skipped. Keep personal events on another calendar.
-- Names match a client's aliases (case-insensitive). A title that can't be read, or a name that matches no client, goes on the to-do list on **Home** with the fix: link it to a client (a near-miss typo is suggested), create the client, or ignore the session.
+- Names match a client's aliases (case-insensitive). A title that can't be read, or a name that matches no client, goes on the to-do list on **Home** with the fix: edit the session, link the name to a client (a near-miss typo is suggested), or create the client.
+- **In the app** she can add sessions (**New session** on Sessions), confirm a tentative one from the table, or open one from the table to edit or delete it, instead of opening the calendar. Each writes to Google first (an edit carries the event's etag, so a change made on her phone meanwhile is never overwritten), then updates the session exactly as the next sync would. She fills in fields and the API writes the title in the syntax above, so app-made titles always parse and match. A session booked for later is a booking until it has happened. A session covered by a receipt can't be changed until the receipt is cancelled.
 - **Home visits**: give the event the home-visit colour (Tomato by default, changeable in Settings). Any other colour means her place; no colour follows the client's "usually a home visit" setting.
-- The sync re-reads the last 30 days every night (or on **Sync now**) and looks 60 days ahead for bookings. Fix the calendar, then sync again. A session with an issued receipt still follows the calendar, but a change that contradicts the receipt is flagged.
+- The sync re-reads the last 30 days every night (or on **Sync now**) and looks 60 days ahead for bookings. Changes made in the calendar show up after the next sync. A session with an issued receipt still follows the calendar, but a change that contradicts the receipt is flagged.
 
 ## Clients and Google Contacts
 

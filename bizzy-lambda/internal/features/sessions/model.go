@@ -1,7 +1,7 @@
 // Package sessions holds sessions imported from the calendar. The calendar is
-// the source of truth: the sync writes what the event says, the billing
-// reconcile derives everything else, and she only ever ignores a session or
-// issues a receipt for it.
+// the source of truth: the sync writes what the event says and the billing
+// reconcile derives everything else. Her edits in the app go to the calendar
+// first (see calsync.Editor); the only thing she keeps here is a receipt.
 package sessions
 
 import (
@@ -19,7 +19,6 @@ const (
 	StatusMissingFee Status = "missing_fee" // no amount, credit or default fee
 	StatusPriced     Status = "priced"      // fee known; nothing to do
 	StatusPackage    Status = "package"     // covered by a package credit
-	StatusIgnored    Status = "ignored"     // she dismissed it
 	// StatusRemoved is a session gone from the calendar that is kept only
 	// because a receipt covers it.
 	StatusRemoved Status = "removed"
@@ -84,7 +83,6 @@ type Session struct {
 	Drift string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
 
 	// Hers.
-	Ignored  bool        `json:"ignored,omitempty" dynamodbav:"ignored,omitempty"`
 	Document *docref.Ref `json:"document,omitempty" dynamodbav:"document,omitempty"`
 }
 

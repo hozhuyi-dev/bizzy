@@ -18,14 +18,14 @@ func TestEveryAttributeHasAnOwner(t *testing.T) {
 		EventID: "e", Title: "t", Start: time.Now(), End: time.Now(), ColorID: "1", Removed: true,
 		Status: StatusPriced, Name: "n", ClientID: "c", SuggestedClientID: "c", FeeCents: &fee,
 		FeeSource: FeeFromTitle, PackageID: "p", ValueCents: 1, Location: LocationHome,
-		LocationSource: "colour", Reason: "r", Drift: "d", Ignored: true, Document: &docref.Ref{DocumentID: "d"},
+		LocationSource: "colour", Reason: "r", Drift: "d", Document: &docref.Ref{DocumentID: "d"},
 	}
 	item, err := attributevalue.MarshalMap(toRecord(s))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for name := range item {
-		if !slices.Contains(ownedAttributes, name) && !slices.Contains([]string{"PK", "SK", "ignored", docref.Attribute}, name) {
+		if !slices.Contains(ownedAttributes, name) && !slices.Contains([]string{"PK", "SK", docref.Attribute}, name) {
 			t.Errorf("attribute %q has no owner", name)
 		}
 	}

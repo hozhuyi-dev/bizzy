@@ -42,6 +42,7 @@ func main() {
 		googleauth.ParamTokens(mustEnv("GOOGLE_TOKEN_PARAM")),
 	)
 	directory := contacts.NewGoogle(auth.Client)
+	connections := google.NewRepository(store)
 
 	clientsRepo := clients.NewRepository(store)
 	sessionsRepo := sessions.NewRepository(store)
@@ -69,9 +70,18 @@ func main() {
 		return reconcile(ctx, billing.Scope{ClientIDs: []string{id}, Unmatched: true})
 	})
 	contacts.Register(r, directory, clientsRepo)
-	google.Register(r, google.NewRepository(store), auth)
-	sessions.Register(r, sessionsRepo, func(ctx context.Context, before, after sessions.Session) error {
-		return reconcile(ctx, billing.Scope{Changes: []billing.Change{{Before: &before, After: &after}}})
+	google.Register(r, connections, auth)
+	sessions.Register(r, sessionsRepo)
+	calsync.RegisterEditor(r, calsync.Editor{
+		Calendar: func(ctx context.Context) (calsync.Calendar, error) {
+			return connections.Calendar(ctx, auth.Client)
+		},
+		Clients:   clientsRepo,
+		Sessions:  sessionsRepo,
+		Settings:  settingsRepo,
+		Billing:   reconciler,
+		Lookahead: calsync.BookingLookahead,
+		Now:       time.Now,
 	})
 	packages.Register(r, packagesRepo, reconcileClients)
 	settings.Register(r, settingsRepo, documents.ValidateTemplate, func(ctx context.Context) error {

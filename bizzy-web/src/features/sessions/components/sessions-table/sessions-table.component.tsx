@@ -15,6 +15,7 @@ import { SessionsMutation } from "../../sessions.mutation";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
 import type { Session } from "../../sessions.types";
+import type { SessionReturnTo } from "../../session-page.component";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { useCreateReceipt } from "~/features/documents/use-create-receipt";
 import { PackagesQuery } from "~/features/packages/packages.query";
@@ -29,19 +30,22 @@ interface SessionsTableProps {
   /** Shown when there are no sessions; usually an EmptyState. */
   empty: ReactNode;
   query?: string | undefined;
+  /** Where the table is, for a session's page to go back to. */
+  from?: SessionReturnTo | undefined;
 }
 
 /**
- * Sessions with every fix she can make to them: link a client, set a fee,
- * ignore, or make a receipt.
+ * Sessions with the quick fixes she can make to them: confirm, link a
+ * client, set a fee, or make a receipt. Each links to its page, where it's
+ * edited or deleted.
  */
-export function SessionsTable({ sessions, empty, query }: SessionsTableProps) {
+export function SessionsTable({ sessions, empty, query, from }: SessionsTableProps) {
   const [linking, setLinking] = useState<Session | null>(null);
   const navigate = useNavigate();
 
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
-  const { mutate: ignore } = SessionsMutation.useSetIgnored();
+  const { mutate: confirm } = SessionsMutation.useConfirm();
   const { create: createReceipt } = useCreateReceipt();
 
   const packagesById = useMemo(
@@ -51,19 +55,20 @@ export function SessionsTable({ sessions, empty, query }: SessionsTableProps) {
 
   const handlers = useMemo<SessionHandlers>(
     () => ({
+      from,
       clientsById,
       packagesById,
       onLink: setLinking,
       onEditClient: (client) =>
         void navigate({ to: "/clients/$id", params: { id: client.id }, hash: "profile" }),
-      onIgnore: (session, ignored) =>
-        ignore(
-          { eventId: session.eventId, ignored },
-          { onError: (error) => toast.error(error.message) },
-        ),
+      onConfirm: (session) =>
+        confirm(session.eventId, {
+          onSuccess: () => toast.success("Session confirmed"),
+          onError: (error) => toast.error(error.message),
+        }),
       onReceipt: createReceipt,
     }),
-    [clientsById, packagesById, ignore, createReceipt, navigate],
+    [from, clientsById, packagesById, confirm, createReceipt, navigate],
   );
 
   const columns = useMemo(() => createSessionColumns(handlers), [handlers]);
@@ -86,7 +91,7 @@ export function SessionsTable({ sessions, empty, query }: SessionsTableProps) {
           <Card size="sm">
             <CardContent className="flex flex-col gap-2">
               <div className="flex items-start justify-between gap-2">
-                <SessionWho session={row.original} clientsById={clientsById} />
+                <SessionWho session={row.original} handlers={handlers} />
                 <RowActionMenu actions={sessionActions(row.original, handlers)} />
               </div>
               <div className="flex items-center justify-between gap-2 text-sm">

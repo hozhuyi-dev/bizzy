@@ -103,3 +103,32 @@ func toCents(decimal string) int64 {
 	f, _ := strconv.ParseInt(frac, 10, 64)
 	return w*100 + f
 }
+
+// FormatTitle writes a title in the syntax, for sessions she adds or edits
+// in the app. A package is written per session (`10x85`) when the total
+// divides evenly, else as a total (`3@250`).
+func FormatTitle(t Title) string {
+	parts := []string{t.Name}
+	if t.Tentative {
+		parts[0] = "? " + t.Name
+	}
+	if t.FeeCents != nil {
+		parts = append(parts, formatCents(*t.FeeCents))
+	}
+	if p := t.Package; p != nil {
+		if p.PriceCents%int64(p.Sessions) == 0 {
+			parts = append(parts, fmt.Sprintf("%dx%s", p.Sessions, formatCents(p.PriceCents/int64(p.Sessions))))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d@%s", p.Sessions, formatCents(p.PriceCents)))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// formatCents is the inverse of toCents: 9500 → "95", 9550 → "95.50".
+func formatCents(cents int64) string {
+	if cents%100 == 0 {
+		return strconv.FormatInt(cents/100, 10)
+	}
+	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
+}

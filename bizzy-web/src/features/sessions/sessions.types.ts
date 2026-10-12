@@ -6,7 +6,6 @@ export type SessionStatus =
   | "missing_fee"
   | "priced"
   | "package"
-  | "ignored"
   | "removed";
 
 export interface DocumentRef {
@@ -41,6 +40,27 @@ export interface Session {
   reason?: string;
   drift?: string;
 
-  ignored?: boolean;
   document?: DocumentRef;
+}
+
+/**
+ * A session as she fills it in; mirrors calsync.Draft. The API writes the
+ * calendar title from it, so it always parses and matches the client.
+ */
+export interface SessionDraft {
+  clientId: string;
+  start: string;
+  minutes: number;
+  /** What she was paid; unset leaves it to a package credit or the default fee. */
+  feeCents?: number;
+  /** A package bought in this session. */
+  package?: { sessions: number; priceCents: number };
+  homeVisit: boolean;
+  tentative: boolean;
+}
+
+/** A stored session with the draft to start an edit from; mirrors calsync.Stored. */
+export interface StoredSession {
+  session: Session;
+  draft: SessionDraft;
 }

@@ -7,7 +7,7 @@ export interface SessionsSearch {
   month?: string | undefined;
 }
 
-export const Route = createFileRoute("/sessions")({
+export const Route = createFileRoute("/sessions/")({
   validateSearch: (search: Record<string, unknown>): SessionsSearch => ({
     month: monthParam(search.month),
   }),

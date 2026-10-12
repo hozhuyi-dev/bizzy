@@ -122,13 +122,9 @@ func (r *SessionRepo) ListOpen(context.Context) ([]sessions.Session, error) {
 	return r.sorted(sessions.Session.Open), nil
 }
 
-// Save keeps her fields (ignored, document), as the real repository does.
+// Save keeps her document link, as the real repository does.
 func (r *SessionRepo) Save(_ context.Context, s sessions.Session) error {
-	if existing, ok := r.SessionMap[s.EventID]; ok {
-		s.Ignored, s.Document = existing.Ignored, existing.Document
-	} else {
-		s.Ignored, s.Document = false, nil
-	}
+	s.Document = r.SessionMap[s.EventID].Document
 	r.SessionMap[s.EventID] = s
 	r.Writes++
 	return nil
@@ -140,16 +136,6 @@ func (r *SessionRepo) Delete(_ context.Context, id string) (bool, error) {
 	}
 	delete(r.SessionMap, id)
 	r.Writes++
-	return true, nil
-}
-
-func (r *SessionRepo) SetIgnored(_ context.Context, id string, ignored bool) (bool, error) {
-	s, ok := r.SessionMap[id]
-	if !ok {
-		return false, nil
-	}
-	s.Ignored = ignored
-	r.SessionMap[id] = s
 	return true, nil
 }
 

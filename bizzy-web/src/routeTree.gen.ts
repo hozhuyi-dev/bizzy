@@ -13,13 +13,15 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as GoogleCallbackRouteImport } from './routes/google-callback'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as PackagesRouteImport } from './routes/packages'
-import { Route as SessionsRouteImport } from './routes/sessions'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsIdRouteImport } from './routes/clients/$id'
 import { Route as ClientsNewRouteImport } from './routes/clients/new'
 import { Route as ReceiptsIndexRouteImport } from './routes/receipts/index'
 import { Route as ReceiptsIdRouteImport } from './routes/receipts/$id'
+import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
+import { Route as SessionsIdRouteImport } from './routes/sessions/$id'
+import { Route as SessionsNewRouteImport } from './routes/sessions/new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -39,11 +41,6 @@ const InsightsRoute = InsightsRouteImport.update({
 const PackagesRoute = PackagesRouteImport.update({
   id: '/packages',
   path: '/packages',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SessionsRoute = SessionsRouteImport.update({
-  id: '/sessions',
-  path: '/sessions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -76,32 +73,51 @@ const ReceiptsIdRoute = ReceiptsIdRouteImport.update({
   path: '/receipts/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SessionsIndexRoute = SessionsIndexRouteImport.update({
+  id: '/sessions/',
+  path: '/sessions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SessionsIdRoute = SessionsIdRouteImport.update({
+  id: '/sessions/$id',
+  path: '/sessions/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SessionsNewRoute = SessionsNewRouteImport.update({
+  id: '/sessions/new',
+  path: '/sessions/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
   '/packages': typeof PackagesRoute
-  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
   '/receipts/$id': typeof ReceiptsIdRoute
+  '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
   '/receipts/': typeof ReceiptsIndexRoute
+  '/sessions/': typeof SessionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
   '/packages': typeof PackagesRoute
-  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
   '/receipts/$id': typeof ReceiptsIdRoute
+  '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/new': typeof SessionsNewRoute
   '/clients': typeof ClientsIndexRoute
   '/receipts': typeof ReceiptsIndexRoute
+  '/sessions': typeof SessionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -109,13 +125,15 @@ export interface FileRoutesById {
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
   '/packages': typeof PackagesRoute
-  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
   '/receipts/$id': typeof ReceiptsIdRoute
+  '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
   '/receipts/': typeof ReceiptsIndexRoute
+  '/sessions/': typeof SessionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -124,39 +142,45 @@ export interface FileRouteTypes {
     | '/google-callback'
     | '/insights'
     | '/packages'
-    | '/sessions'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
     | '/receipts/$id'
+    | '/sessions/$id'
+    | '/sessions/new'
     | '/clients/'
     | '/receipts/'
+    | '/sessions/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/google-callback'
     | '/insights'
     | '/packages'
-    | '/sessions'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
     | '/receipts/$id'
+    | '/sessions/$id'
+    | '/sessions/new'
     | '/clients'
     | '/receipts'
+    | '/sessions'
   id:
     | '__root__'
     | '/'
     | '/google-callback'
     | '/insights'
     | '/packages'
-    | '/sessions'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
     | '/receipts/$id'
+    | '/sessions/$id'
+    | '/sessions/new'
     | '/clients/'
     | '/receipts/'
+    | '/sessions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -164,13 +188,15 @@ export interface RootRouteChildren {
   GoogleCallbackRoute: typeof GoogleCallbackRoute
   InsightsRoute: typeof InsightsRoute
   PackagesRoute: typeof PackagesRoute
-  SessionsRoute: typeof SessionsRoute
   SettingsRoute: typeof SettingsRoute
   ClientsIdRoute: typeof ClientsIdRoute
   ClientsNewRoute: typeof ClientsNewRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
+  SessionsIdRoute: typeof SessionsIdRoute
+  SessionsNewRoute: typeof SessionsNewRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
   ReceiptsIndexRoute: typeof ReceiptsIndexRoute
+  SessionsIndexRoute: typeof SessionsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -201,13 +227,6 @@ declare module '@tanstack/react-router' {
       path: '/packages'
       fullPath: '/packages'
       preLoaderRoute: typeof PackagesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sessions': {
-      id: '/sessions'
-      path: '/sessions'
-      fullPath: '/sessions'
-      preLoaderRoute: typeof SessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -252,6 +271,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReceiptsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sessions/': {
+      id: '/sessions/'
+      path: '/sessions'
+      fullPath: '/sessions/'
+      preLoaderRoute: typeof SessionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sessions/$id': {
+      id: '/sessions/$id'
+      path: '/sessions/$id'
+      fullPath: '/sessions/$id'
+      preLoaderRoute: typeof SessionsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sessions/new': {
+      id: '/sessions/new'
+      path: '/sessions/new'
+      fullPath: '/sessions/new'
+      preLoaderRoute: typeof SessionsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -260,13 +300,15 @@ const rootRouteChildren: RootRouteChildren = {
   GoogleCallbackRoute: GoogleCallbackRoute,
   InsightsRoute: InsightsRoute,
   PackagesRoute: PackagesRoute,
-  SessionsRoute: SessionsRoute,
   SettingsRoute: SettingsRoute,
   ClientsIdRoute: ClientsIdRoute,
   ClientsNewRoute: ClientsNewRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,
+  SessionsIdRoute: SessionsIdRoute,
+  SessionsNewRoute: SessionsNewRoute,
   ClientsIndexRoute: ClientsIndexRoute,
   ReceiptsIndexRoute: ReceiptsIndexRoute,
+  SessionsIndexRoute: SessionsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
