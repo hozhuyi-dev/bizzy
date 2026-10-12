@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { SessionsTable } from "~/features/sessions/components/sessions-table/sessions-table.component";
 import { SessionsQuery } from "~/features/sessions/sessions.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
-import { SyncButton } from "~/features/sync/sync-button.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { queryMatch } from "~/core/utils/query.util";
@@ -12,7 +11,7 @@ import { QUIPS } from "~/core/constants/quips.constant";
 export function HomePage() {
   return (
     <>
-      <PageHeader title="Home" actions={<SyncButton />} />
+      <PageHeader title="Home" />
       <GoogleNotice />
       <div className="flex flex-col gap-8">
         <SessionsToFix />

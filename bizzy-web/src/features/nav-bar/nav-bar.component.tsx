@@ -9,6 +9,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { Logo } from "~/components/shared/logo/logo.component";
 import { AmplifyService } from "~/features/auth/amplify.service";
+import { SyncButton } from "~/features/sync/sync-button.component";
 
 const LINKS = [
   { to: "/", label: "Home" },
@@ -71,14 +72,12 @@ export function NavBar() {
           ))}
         </div>
 
-        <Button
-          className="ml-auto"
-          variant="ghost"
-          size="sm"
-          onClick={() => void AmplifyService.signOut()}
-        >
-          Sign out
-        </Button>
+        <div className="ml-auto flex items-center gap-1">
+          <SyncButton />
+          <Button variant="ghost" size="sm" onClick={() => void AmplifyService.signOut()}>
+            Sign out
+          </Button>
+        </div>
       </nav>
     </header>
   );

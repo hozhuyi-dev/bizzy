@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { ChevronDownIcon, RefreshCwIcon } from "lucide-react";
+import { RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { SyncDatesDialog } from "./sync-dates-dialog.component";
 import { SyncMutation, SyncQuery } from "./sync.query";
-import type { ReactNode } from "react";
 import type { SyncRange, SyncRun, SyncSummary } from "./sync.types";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { GoogleQuery } from "~/features/google/google.query";
 import { formatRelative } from "~/core/utils/date.util";
 
 function describe(summary: SyncSummary): string {
@@ -19,29 +20,29 @@ function describe(summary: SyncSummary): string {
   return `${summary.sessions} sessions · ${changes ? `${changes} updated` : "nothing changed"}`;
 }
 
-function lastRun(run: SyncRun | null | undefined): ReactNode {
+function lastRun(run: SyncRun | null | undefined, running: boolean): string {
+  if (running) return "Syncing…";
   if (run === undefined) return "";
   if (run === null) return "Never synced";
-  if (run.error) {
-    return (
-      <span className="text-destructive" title={run.error}>
-        Sync failed {formatRelative(run.at)}
-      </span>
-    );
-  }
+  if (run.error) return `Sync failed ${formatRelative(run.at)}`;
   return `Synced ${formatRelative(run.at)}`;
 }
 
 /**
- * Syncs the last 60 days now, or dates she picks. The app already syncs on
- * load; this picks up changes made in the calendar since.
+ * Sits in the nav bar, so a failed sync shows on every page. The app already
+ * syncs the last 60 days on load; the menu syncs again, or dates she picks,
+ * to pick up changes made in the calendar since. Hidden until Google is
+ * connected, since there's nothing to sync.
  */
 export function SyncButton() {
+  const google = GoogleQuery.useStatus();
   const status = SyncQuery.useStatus();
   const run = SyncMutation.useRun();
   // Includes the sync on load, which runs outside this button.
   const running = SyncMutation.useIsRunning();
   const [picking, setPicking] = useState(false);
+
+  if (google.data === null) return null;
 
   const sync = (range?: SyncRange) =>
     run.mutate(range, {
@@ -49,41 +50,44 @@ export function SyncButton() {
       onError: (error) => toast.error(error.message),
     });
 
+  const failed = !running && Boolean(status.data?.error);
+  const label = lastRun(status.data, running);
+
   return (
-    <div className="flex items-center gap-2">
-      <span className="hidden text-xs text-muted-foreground sm:inline">
-        {lastRun(status.data)}
-      </span>
-      <div className="flex">
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-r-none"
-          disabled={running}
-          onClick={() => sync()}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="relative max-lg:size-7 max-lg:px-0"
+              aria-label={label ? `Calendar sync: ${label}` : "Calendar sync"}
+            />
+          }
         >
           <RefreshCwIcon className={running ? "animate-spin" : undefined} />
-          {running ? "Syncing…" : "Sync now"}
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="outline"
-                size="icon-sm"
-                className="-ml-px rounded-l-none"
-                disabled={running}
-                aria-label="More sync options"
-              />
-            }
-          >
-            <ChevronDownIcon />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setPicking(true)}>Sync dates…</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+          <span className={failed ? "hidden text-destructive lg:inline" : "hidden text-muted-foreground lg:inline"}>
+            {label}
+          </span>
+          {failed && (
+            <span className="absolute top-1 right-1 size-1.5 rounded-full bg-destructive lg:hidden" />
+          )}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <div className="px-1.5 py-1 text-xs">
+            <p className={failed ? "font-medium text-destructive" : "text-muted-foreground"}>{label}</p>
+            {failed && <p className="mt-0.5 text-muted-foreground">{status.data?.error}</p>}
+          </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={running} onClick={() => sync()}>
+            Sync now
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={running} onClick={() => setPicking(true)}>
+            Sync dates…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <SyncDatesDialog
         open={picking}
@@ -93,6 +97,6 @@ export function SyncButton() {
           sync(range);
         }}
       />
-    </div>
+    </>
   );
 }

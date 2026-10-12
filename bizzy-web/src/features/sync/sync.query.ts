@@ -29,7 +29,7 @@ export const SyncMutation = {
 
   /**
    * Syncs the last 60 days once per page load, so she never has to. A
-   * failure shows in the Sync button's status line rather than a toast.
+   * failure shows on the nav bar's Sync button rather than a toast.
    */
   useRunOnLoad: () => {
     const { mutate } = SyncMutation.useRun();

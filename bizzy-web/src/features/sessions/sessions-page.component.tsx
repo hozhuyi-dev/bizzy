@@ -3,7 +3,6 @@ import { NewSessionButton } from "./components/new-session-button/new-session-bu
 import { SessionsTable } from "./components/sessions-table/sessions-table.component";
 import { SessionsQuery } from "./sessions.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
-import { SyncButton } from "~/features/sync/sync-button.component";
 import { MonthPicker } from "~/components/shared/month-picker/month-picker.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { SearchInput } from "~/components/shared/search-input/search-input.component";
@@ -27,12 +26,7 @@ export function SessionsPage({ month, onMonthChange }: SessionsPageProps) {
     <>
       <PageHeader
         title="Sessions"
-        actions={
-          <>
-            <SyncButton />
-            <NewSessionButton />
-          </>
-        }
+        actions={<NewSessionButton />}
         toolbar={
           <>
             <MonthPicker value={month} onChange={onMonthChange} />
