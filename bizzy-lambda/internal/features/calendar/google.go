@@ -90,6 +90,7 @@ func Calendars(ctx context.Context, client *http.Client) ([]Calendar, error) {
 
 // Events lists event instances starting in [from, to). Recurring events are
 // expanded, and deleted instances are included so the sync can remove them.
+// A zero from reads from the start of the calendar.
 func (g *GoogleCalendar) Events(ctx context.Context, from, to time.Time) ([]Event, error) {
 	var events []Event
 
@@ -97,9 +98,11 @@ func (g *GoogleCalendar) Events(ctx context.Context, from, to time.Time) ([]Even
 		SingleEvents(true).
 		ShowDeleted(true).
 		OrderBy("startTime").
-		TimeMin(from.Format(time.RFC3339)).
 		TimeMax(to.Format(time.RFC3339)).
-		MaxResults(250)
+		MaxResults(2500)
+	if !from.IsZero() {
+		call = call.TimeMin(from.Format(time.RFC3339))
+	}
 
 	err := call.Pages(ctx, func(page *gcal.Events) error {
 		for _, item := range page.Items {

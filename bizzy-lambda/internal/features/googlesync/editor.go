@@ -1,4 +1,4 @@
-package calsync
+package googlesync
 
 import (
 	"cmp"

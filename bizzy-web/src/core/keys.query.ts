@@ -34,6 +34,7 @@ export const SettingsKeys = {
 export const SyncKeys = {
   all: ["sync"] as const,
   status: () => [...SyncKeys.all, "status"] as const,
+  run: () => [...SyncKeys.all, "run"] as const,
 };
 
 export const GoogleKeys = {

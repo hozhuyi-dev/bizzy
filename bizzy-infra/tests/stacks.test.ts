@@ -118,18 +118,21 @@ describe("data", () => {
 describe("api", () => {
   const { api } = synth("staging");
 
-  test("lets the signed-in role invoke only the api and sync functions", () => {
+  test("lets the signed-in role invoke only the api function", () => {
     const policies = api.findResources("AWS::IAM::Policy", {
       Properties: { PolicyName: Match.stringLikeRegexp("InvokeFunctions") },
     });
     const [policy] = Object.values(policies) as Array<{
-      Properties: { PolicyDocument: { Statement: Array<{ Resource: Array<unknown> }> } };
+      Properties: { PolicyDocument: { Statement: Array<{ Resource: unknown }> } };
     }>;
+    const [functionId] = Object.keys(api.findResources("AWS::Lambda::Function"));
     expect(policy?.Properties.PolicyDocument.Statement).toHaveLength(1);
-    expect(policy?.Properties.PolicyDocument.Statement[0]?.Resource).toHaveLength(2);
+    expect(policy?.Properties.PolicyDocument.Statement[0]?.Resource).toEqual({
+      "Fn::GetAtt": [functionId, "Arn"],
+    });
   });
 
-  test("lets only the api write her Google token", () => {
+  test("scopes the api's SSM access to her Google token", () => {
     type Policy = {
       Properties: {
         PolicyDocument: { Statement: Array<{ Action: unknown; Resource: unknown }> };
@@ -140,12 +143,9 @@ describe("api", () => {
     );
     const ssm = statements.filter((s) => JSON.stringify(s.Action).includes("ssm:"));
 
-    expect(ssm.map((s) => s.Action)).toEqual(
-      expect.arrayContaining([
-        ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter"],
-        "ssm:GetParameter",
-      ]),
-    );
+    expect(ssm.map((s) => s.Action)).toEqual([
+      ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter"],
+    ]);
     for (const s of ssm) {
       expect(JSON.stringify(s.Resource)).toContain(
         "parameter/bizzy/staging/google-refresh-token",
@@ -153,10 +153,8 @@ describe("api", () => {
     }
   });
 
-  test("runs the calendar sync daily in her time zone", () => {
-    api.hasResourceProperties("AWS::Scheduler::Schedule", {
-      ScheduleExpression: "cron(0 21 * * ? *)",
-      ScheduleExpressionTimezone: "Asia/Kuala_Lumpur",
-    });
+  test("has one function and no schedule; the app runs the sync", () => {
+    api.resourceCountIs("AWS::Lambda::Function", 1);
+    api.resourceCountIs("AWS::Scheduler::Schedule", 0);
   });
 });

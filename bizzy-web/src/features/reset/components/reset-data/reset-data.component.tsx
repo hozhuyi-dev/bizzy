@@ -31,8 +31,8 @@ export function ResetData() {
             <AlertDialogTitle>Reset all data?</AlertDialogTitle>
             <AlertDialogDescription>
               Deletes every session, client, package, receipt and setting here. Google stays
-              connected, and nothing in your calendar or contacts changes, so a sync brings the
-              sessions back. This can't be undone.
+              connected, and nothing in your calendar or contacts changes, so syncing all time
+              brings the sessions back. This can't be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

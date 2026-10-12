@@ -54,7 +54,7 @@ function GoogleCallback() {
     connect({ code, redirectUri: googleRedirectUri() })
       .then((connection) => {
         toast.success(`Connected ${connection.email}`, { description: `Syncing ${connection.calendarName}…` });
-        sync().catch((syncError: Error) => toast.error(syncError.message));
+        sync({ all: true }).catch((syncError: Error) => toast.error(syncError.message));
       })
       .catch((connectError: Error) => toast.error(connectError.message))
       .finally(done);

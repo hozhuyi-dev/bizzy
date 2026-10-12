@@ -20,7 +20,7 @@ export interface Client {
 
 /**
  * A read-only copy of the linked Google contact. Edits go to Google, and the
- * nightly sync refreshes the copy.
+ * sync refreshes the copy.
  */
 export interface ClientContact {
   resourceName: string;

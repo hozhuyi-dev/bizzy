@@ -1,4 +1,4 @@
-package calsync
+package googlesync
 
 import (
 	"context"
@@ -44,7 +44,6 @@ func newSyncer(m *memory.Store, cal *fakeCalendar) Syncer {
 			Clients: m.Clients(), Sessions: m.Sessions(), Packages: m.Packages(), Settings: m.Settings(),
 			Location: time.UTC,
 		},
-		Window:    30 * 24 * time.Hour,
 		Lookahead: 60 * 24 * time.Hour,
 		Now:       func() time.Time { return now },
 	}
@@ -68,7 +67,7 @@ func TestRunImportsAndIsIdempotent(t *testing.T) {
 	}
 	s := newSyncer(m, cal)
 
-	summary, err := s.Run(context.Background())
+	summary, err := s.Run(context.Background(), Range{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +88,7 @@ func TestRunImportsAndIsIdempotent(t *testing.T) {
 	}
 
 	m.Writes = 0
-	summary, err = s.Run(context.Background())
+	summary, err = s.Run(context.Background(), Range{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +101,7 @@ func TestRunRemovesDeletedEvents(t *testing.T) {
 	m, cal := setup()
 	cal.events = []calendar.Event{ev("e1", 3, "Jane Smith"), ev("e2", 2, "Jane Smith")}
 	s := newSyncer(m, cal)
-	if _, err := s.Run(context.Background()); err != nil {
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,7 +109,7 @@ func TestRunRemovesDeletedEvents(t *testing.T) {
 	e2 := ev("e2", 2, "Jane Smith")
 	e2.Cancelled = true
 	cal.events = []calendar.Event{e2}
-	if _, err := s.Run(context.Background()); err != nil {
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(m.SessionMap) != 0 {
@@ -122,7 +121,7 @@ func TestRunKeepsReceiptedSessionAsRemoved(t *testing.T) {
 	m, cal := setup()
 	cal.events = []calendar.Event{ev("e1", 3, "Jane Smith")}
 	s := newSyncer(m, cal)
-	if _, err := s.Run(context.Background()); err != nil {
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
 	stored := m.SessionMap["e1"]
@@ -130,7 +129,7 @@ func TestRunKeepsReceiptedSessionAsRemoved(t *testing.T) {
 	m.SessionMap["e1"] = stored
 
 	cal.events = nil
-	if _, err := s.Run(context.Background()); err != nil {
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -146,7 +145,7 @@ func TestRunRecordsNextBooking(t *testing.T) {
 	later := ev("f2", -9, "Jane Smith")
 	cal.events = []calendar.Event{later, soon}
 
-	if _, err := newSyncer(m, cal).Run(context.Background()); err != nil {
+	if _, err := newSyncer(m, cal).Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := m.ClientMap["jane"].NextBookedAt; got == nil || !got.Equal(soon.Start) {
@@ -168,7 +167,7 @@ func TestRunRefreshesContactCopies(t *testing.T) {
 	s := newSyncer(m, &fakeCalendar{})
 	s.Contacts = fakeContacts{{ResourceName: "people/jane", ETag: "j2", Phone: "013", DisplayName: "Jane"}}
 
-	summary, err := s.Run(context.Background())
+	summary, err := s.Run(context.Background(), Range{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +182,7 @@ func TestRunRefreshesContactCopies(t *testing.T) {
 	}
 
 	m.Writes = 0
-	if _, err := s.Run(context.Background()); err != nil {
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
 	if m.Writes != 0 {
@@ -194,4 +193,57 @@ func TestRunRefreshesContactCopies(t *testing.T) {
 func withContact(c clients.Client, contact clients.Contact) clients.Client {
 	c.Contact = &contact
 	return c
+}
+
+func TestRunOnlyTouchesItsRange(t *testing.T) {
+	m, cal := setup()
+	cal.events = []calendar.Event{ev("old", 90, "Jane Smith"), ev("new", 3, "Jane Smith")}
+	s := newSyncer(m, cal)
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both deleted in the calendar; a run over the last 60 days only
+	// removes the recent one.
+	cal.events = nil
+	if _, err := s.Run(context.Background(), Range{From: now.Add(-SyncWindow)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.SessionMap["old"]; !ok {
+		t.Error("a session before the range was removed")
+	}
+	if _, ok := m.SessionMap["new"]; ok {
+		t.Error("a session in the range was kept")
+	}
+}
+
+func TestRunInputRange(t *testing.T) {
+	loc := time.FixedZone("MYT", 8*60*60)
+	day := func(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, loc) }
+
+	tests := []struct {
+		name string
+		in   RunInput
+		want Range
+		err  bool
+	}{
+		{name: "default", in: RunInput{}, want: Range{From: now.Add(-SyncWindow)}},
+		{name: "all", in: RunInput{All: true, From: "2026-01-01"}, want: Range{}},
+		{name: "dates", in: RunInput{From: "2026-01-01", To: "2026-01-31"}, want: Range{From: day(2026, 1, 1), To: day(2026, 2, 1)}},
+		{name: "one day", in: RunInput{From: "2026-01-01", To: "2026-01-01"}, want: Range{From: day(2026, 1, 1), To: day(2026, 1, 2)}},
+		{name: "from only", in: RunInput{From: "2026-01-01"}, want: Range{From: day(2026, 1, 1)}},
+		{name: "to only", in: RunInput{To: "2026-01-01"}, err: true},
+		{name: "backwards", in: RunInput{From: "2026-02-01", To: "2026-01-01"}, err: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.in.Range(loc, now)
+			if (err != nil) != tt.err {
+				t.Fatalf("err = %v, want error %v", err, tt.err)
+			}
+			if !got.From.Equal(tt.want.From) || !got.To.Equal(tt.want.To) {
+				t.Errorf("range = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
 }

@@ -85,7 +85,8 @@ function Connected({ connection }: { connection: GoogleConnection }) {
             setCalendar.mutate(id, {
               onSuccess: (updated) => {
                 toast.success(`Reading ${updated.calendarName}`);
-                sync.mutate(undefined, { onError: (error) => toast.error(error.message) });
+                // A different calendar is read in full, replacing the old one's sessions.
+                sync.mutate({ all: true }, { onError: (error) => toast.error(error.message) });
               },
               onError: (error) => toast.error(error.message),
             })

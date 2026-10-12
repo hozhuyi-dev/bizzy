@@ -38,7 +38,7 @@ type Client struct {
 
 // Contact is the linked Google contact with a read-only copy of the details
 // bizzy uses. Google is the source of truth: edits in the app go straight to
-// Google, and the nightly sync refreshes the copy.
+// Google, and every sync refreshes the copy.
 type Contact struct {
 	// ResourceName is the contact's id in the People API ("people/c123").
 	ResourceName string `json:"resourceName" dynamodbav:"resourceName"`

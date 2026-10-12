@@ -1,8 +1,10 @@
-// Package calsync imports the calendar into sessions, and refreshes each
-// client's copy of their Google contact. It re-reads a fixed window on every
-// run instead of using sync tokens: running twice is harmless and a missed
-// day heals itself.
-package calsync
+// Package googlesync keeps bizzy in step with her Google account. The sync
+// imports the calendar into sessions and refreshes each client's copy of
+// their Google contact; the editor writes sessions she changes in the app to
+// the calendar first. Each sync re-reads a range of the calendar instead of
+// using sync tokens, so running twice is harmless and no state is kept
+// between runs.
+package googlesync
 
 import (
 	"context"
@@ -15,6 +17,20 @@ import (
 	"bizzy-lambda/internal/features/sessions"
 )
 
+// SyncWindow is how far back a run re-reads the calendar unless she picks
+// the dates.
+const SyncWindow = 60 * 24 * time.Hour
+
+// Range is the stretch of calendar a run re-reads for sessions. A zero From
+// reads from the start of the calendar. To is capped at now, since only an
+// event that has started is a session; a zero To means now.
+type Range struct {
+	From time.Time
+	To   time.Time
+}
+
+// EventSource lists events starting in [from, to); a zero from reads from
+// the start of the calendar.
 type EventSource interface {
 	Events(ctx context.Context, from, to time.Time) ([]calendar.Event, error)
 }
@@ -51,9 +67,8 @@ type Syncer struct {
 	Sessions SessionStore
 	Billing  Reconciler
 	Status   StatusStore
-	// Window is how far back each run re-reads; Lookahead how far forward it
-	// looks for bookings (which never become sessions).
-	Window    time.Duration
+	// Lookahead is how far forward each run looks for bookings (which never
+	// become sessions), whatever its range.
 	Lookahead time.Duration
 	Now       func() time.Time
 }
@@ -76,7 +91,7 @@ type Run struct {
 	Error string `json:"error,omitempty" dynamodbav:"error,omitempty"`
 }
 
-func (s Syncer) Run(ctx context.Context) (Summary, error) {
+func (s Syncer) Run(ctx context.Context, r Range) (Summary, error) {
 	var summary Summary
 
 	all, err := s.Clients.List(ctx)
@@ -86,17 +101,21 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 	aliases := calendar.AliasesOf(all)
 
 	now := s.Now().UTC()
-	from := now.Add(-s.Window)
+	from, to := r.From, now
+	if !r.To.IsZero() && r.To.Before(now) {
+		to = r.To
+	}
 
 	if err := s.refreshContacts(ctx, all, now, &summary); err != nil {
 		return summary, err
 	}
 
-	events, err := s.Events.Events(ctx, from, now)
+	events, err := s.Events.Events(ctx, from, to)
 	if err != nil {
 		return summary, err
 	}
-	stored, err := s.Sessions.ListByTime(ctx, from, now)
+	// ListByTime includes its end; the calendar's range does not.
+	stored, err := s.Sessions.ListByTime(ctx, from, to.Add(-time.Second))
 	if err != nil {
 		return summary, err
 	}
@@ -119,7 +138,7 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 
 		before, ok := byID[event.ID]
 		if !ok {
-			// Moved in from outside the window: same event, same item.
+			// Moved in from outside the range: same event, same item.
 			if before, ok, err = s.Sessions.Get(ctx, event.ID); err != nil {
 				return summary, err
 			}
@@ -129,7 +148,7 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 		}
 	}
 
-	// Stored sessions the calendar no longer has in the window: deleted,
+	// Stored sessions the calendar no longer has in the range: deleted,
 	// cancelled, moved out, or made all-day.
 	for id, before := range byID {
 		if seen[id] {

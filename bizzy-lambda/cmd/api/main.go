@@ -12,11 +12,11 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"bizzy-lambda/internal/features/billing"
-	"bizzy-lambda/internal/features/calsync"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/google"
+	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/reset"
 	"bizzy-lambda/internal/features/sessions"
@@ -72,15 +72,16 @@ func main() {
 	contacts.Register(r, directory, clientsRepo)
 	google.Register(r, connections, auth)
 	sessions.Register(r, sessionsRepo)
-	calsync.RegisterEditor(r, calsync.Editor{
-		Calendar: func(ctx context.Context) (calsync.Calendar, error) {
-			return connections.Calendar(ctx, auth.Client)
-		},
+	calendar := func(ctx context.Context) (googlesync.Calendar, error) {
+		return connections.Calendar(ctx, auth.Client)
+	}
+	googlesync.RegisterEditor(r, googlesync.Editor{
+		Calendar:  calendar,
 		Clients:   clientsRepo,
 		Sessions:  sessionsRepo,
 		Settings:  settingsRepo,
 		Billing:   reconciler,
-		Lookahead: calsync.BookingLookahead,
+		Lookahead: googlesync.BookingLookahead,
 		Now:       time.Now,
 	})
 	packages.Register(r, packagesRepo, reconcileClients)
@@ -97,7 +98,23 @@ func main() {
 		Location:    loc,
 		Now:         time.Now,
 	})
-	calsync.RegisterStatus(r, calsync.NewStatusRepository(store))
+	status := googlesync.NewStatusRepository(store)
+	googlesync.Register(r, status, loc, func(ctx context.Context, rng googlesync.Range) (googlesync.Summary, error) {
+		cal, err := calendar(ctx)
+		if err != nil {
+			return googlesync.Summary{}, err
+		}
+		return googlesync.Syncer{
+			Events:    cal,
+			Contacts:  directory,
+			Clients:   clientsRepo,
+			Sessions:  sessionsRepo,
+			Billing:   reconciler,
+			Status:    status,
+			Lookahead: googlesync.BookingLookahead,
+			Now:       time.Now,
+		}.Run(ctx, rng)
+	})
 	// Keeps the Google connection, so a sync can rebuild everything at once.
 	if reset.Allowed(os.Getenv("ENVIRONMENT")) {
 		reset.Register(r, store, google.Partition)

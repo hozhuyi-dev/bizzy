@@ -1,16 +1,16 @@
 # bizzy
 
-Back-office for a one-person physio practice. Sessions are read from Google Calendar every day and every client is linked to one of her Google contacts; she fixes what the sync couldn't read, issues receipts when a client asks (PDF, in the browser), tracks prepaid packages, follows up lapsed clients and sees how the business is doing.
+Back-office for a one-person physio practice. Sessions are read from Google Calendar whenever she opens the app, and every client is linked to one of her Google contacts; she fixes what the sync couldn't read, issues receipts when a client asks (PDF, in the browser), tracks prepaid packages, follows up lapsed clients and sees how the business is doing.
 
 | Folder | What | Stack |
 | --- | --- | --- |
 | `bizzy-web` | The app | React, Vite, TanStack Router / Query / Form / Table, Amplify auth, shadcn/ui |
-| `bizzy-lambda` | API + daily calendar sync | Go, DynamoDB |
+| `bizzy-lambda` | API, including the calendar and contacts sync | Go, DynamoDB |
 | `bizzy-infra` | AWS resources | CDK (TypeScript) |
 
 Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets AWS credentials (identity pool role mapping); the browser invokes the API Lambda directly with them.
 
-Separately, she **connects Google** once in Settings: an OAuth consent for her calendar events and contacts (both read and write), and to list her calendars. The API keeps the refresh token in SSM (`/<project>/<env>/google-refresh-token`), and both Lambdas act as her with it. A personal Gmail can't share its contacts with a service account, so this replaces the service account the calendar used to need. The connected account can differ from the sign-in account, e.g. a test account in development.
+Separately, she **connects Google** once in Settings: an OAuth consent for her calendar events and contacts (both read and write), and to list her calendars. The API keeps the refresh token in SSM (`/<project>/<env>/google-refresh-token`), and the API acts as her with it. A personal Gmail can't share its contacts with a service account, so this replaces the service account the calendar used to need. The connected account can differ from the sign-in account, e.g. a test account in development.
 
 ## Calendar syntax
 
@@ -31,7 +31,7 @@ Separately, she **connects Google** once in Settings: an OAuth consent for her c
 - Names match a client's aliases (case-insensitive). A title that can't be read, or a name that matches no client, goes on the to-do list on **Home** with the fix: edit the session, link the name to a client (a near-miss typo is suggested), or create the client.
 - **In the app** she can add sessions (**New session** on Sessions), confirm a tentative one from the table, or open one from the table to edit or delete it, instead of opening the calendar. Each writes to Google first (an edit carries the event's etag, so a change made on her phone meanwhile is never overwritten), then updates the session exactly as the next sync would. She fills in fields and the API writes the title in the syntax above, so app-made titles always parse and match. A session booked for later is a booking until it has happened. A session covered by a receipt can't be changed until the receipt is cancelled.
 - **Home visits**: give the event the home-visit colour (Tomato by default, changeable in Settings). Any other colour means her place; no colour follows the client's "usually a home visit" setting.
-- The sync re-reads the last 30 days every night (or on **Sync now**) and looks 60 days ahead for bookings. Changes made in the calendar show up after the next sync. A session with an issued receipt still follows the calendar, but a change that contradicts the receipt is flagged.
+- The app syncs when it opens and on **Sync now**, re-reading the last 60 days and looking 60 days ahead for bookings. **Sync now → Sync dates…** re-reads dates she picks, or **All time**; connecting Google or choosing another calendar syncs all time. Changes made in the calendar show up after the next sync. There is no schedule: nothing changes until she opens the app. A session with an issued receipt still follows the calendar, but a change that contradicts the receipt is flagged.
 
 ## Clients and Google Contacts
 
@@ -66,7 +66,7 @@ Development and staging have **Settings → Reset**, which deletes everything in
 1. **Google Cloud project**
    - Enable the **Google Calendar API** and the **People API**.
    - Branding: app name, support email, home page `<app URL>/` and privacy policy `<app URL>/privacy.html` (served from `bizzy-web/public/privacy.html`), with the CloudFront domain under authorized domains. Leave the logo empty: one triggers brand verification.
-   - OAuth consent screen: add the scopes `.../auth/calendar.readonly` and `.../auth/contacts`, and **publish it** ("In production"). In "Testing" these refresh tokens expire after 7 days and the nightly sync stops. Unverified is fine for a single user: she clicks through Google's "unverified app" warning once when connecting.
+   - OAuth consent screen: add the scopes `.../auth/calendar.readonly` and `.../auth/contacts`, and **publish it** ("In production"). In "Testing" these refresh tokens expire after 7 days and the sync stops until she reconnects. Unverified is fine for a single user: she clicks through Google's "unverified app" warning once when connecting.
    - OAuth client (Web application), two redirect URIs per environment:
      - `https://bizzy-<env>.auth.<region>.amazoncognito.com/oauth2/idpresponse` (sign-in)
      - `<app origin>/google-callback` (connecting Google), e.g. `http://localhost:4200/google-callback` for development

@@ -68,8 +68,3 @@ function unwrap<T>(text: string): T {
 export async function invoke<T>(action: string, payload?: unknown): Promise<T> {
   return unwrap<T>(await send(import.meta.env.VITE_API_FUNCTION_NAME, { action, payload }));
 }
-
-/** Runs the calendar sync Lambda, which replies in the same envelope. */
-export async function invokeCalendarSync<T>(): Promise<T> {
-  return unwrap<T>(await send(import.meta.env.VITE_CALENDAR_SYNC_FUNCTION_NAME, {}));
-}

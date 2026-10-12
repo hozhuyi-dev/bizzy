@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { ApiError, invoke, invokeCalendarSync } from "./lambda.client";
+import { ApiError, invoke } from "./lambda.client";
 
 const send = vi.hoisted(() => vi.fn());
 
@@ -55,17 +55,5 @@ describe("invoke", () => {
     await expect(invoke("clients.list")).rejects.toMatchObject({
       code: "internal",
     });
-  });
-});
-
-describe("invokeCalendarSync", () => {
-  test("returns the summary", async () => {
-    reply({ data: { sessions: 3 } });
-    await expect(invokeCalendarSync()).resolves.toEqual({ sessions: 3 });
-  });
-
-  test("throws why it failed", async () => {
-    reply({ error: { code: "disconnected", message: "Reconnect Google" } });
-    await expect(invokeCalendarSync()).rejects.toMatchObject({ code: "disconnected" });
   });
 });

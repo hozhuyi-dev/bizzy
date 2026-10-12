@@ -5,6 +5,7 @@ import { Toaster } from "~/components/ui/sonner";
 import { AuthQuery } from "~/features/auth/auth.query";
 import { AuthScreen } from "~/features/auth/components/auth-screen/auth-screen.component";
 import { NavBar } from "~/features/nav-bar/nav-bar.component";
+import { SyncOnLoad } from "~/features/sync/sync-on-load.component";
 import "~/styles/app.css";
 
 // Redirects follow whichever origin the app is served from, so localhost and
@@ -57,6 +58,7 @@ function AuthGate() {
 
   return (
     <div className="min-h-dvh">
+      <SyncOnLoad />
       <NavBar />
       <main className="mx-auto max-w-7xl px-4 pb-6">
         <Outlet />

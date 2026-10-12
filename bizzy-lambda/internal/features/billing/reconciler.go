@@ -37,8 +37,7 @@ type SettingsStore interface {
 }
 
 // Reconciler re-derives the sessions and packages a change can affect and
-// writes back only what differs, so a quiet nightly sync costs almost no
-// writes.
+// writes back only what differs, so a quiet sync costs almost no writes.
 type Reconciler struct {
 	Clients  ClientStore
 	Sessions SessionStore

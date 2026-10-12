@@ -19,7 +19,7 @@ type handler struct {
 }
 
 // Register serves sessions to the app. Adding, editing and deleting one goes
-// through the calendar; see calsync.RegisterEditor.
+// through the calendar; see googlesync.RegisterEditor.
 func Register(r *router.Router, repo store) {
 	h := handler{repo: repo}
 	r.Register("sessions.listOpen", h.listOpen)

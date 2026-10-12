@@ -1,7 +1,7 @@
 // Package sessions holds sessions imported from the calendar. The calendar is
 // the source of truth: the sync writes what the event says and the billing
 // reconcile derives everything else. Her edits in the app go to the calendar
-// first (see calsync.Editor); the only thing she keeps here is a receipt.
+// first (see googlesync.Editor); the only thing she keeps here is a receipt.
 package sessions
 
 import (

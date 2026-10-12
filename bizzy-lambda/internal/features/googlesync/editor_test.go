@@ -1,4 +1,4 @@
-package calsync
+package googlesync
 
 import (
 	"context"
@@ -86,7 +86,7 @@ func synced(t *testing.T, m *memory.Store, cal *fakeCalendar, events ...calendar
 		e.ETag = "1"
 		cal.events = append(cal.events, e)
 	}
-	if _, err := newSyncer(m, cal).Run(context.Background()); err != nil {
+	if _, err := newSyncer(m, cal).Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -95,7 +95,7 @@ func synced(t *testing.T, m *memory.Store, cal *fakeCalendar, events ...calendar
 func quiet(t *testing.T, m *memory.Store, cal *fakeCalendar) {
 	t.Helper()
 	m.Writes = 0
-	if _, err := newSyncer(m, cal).Run(context.Background()); err != nil {
+	if _, err := newSyncer(m, cal).Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
 	if m.Writes != 0 {

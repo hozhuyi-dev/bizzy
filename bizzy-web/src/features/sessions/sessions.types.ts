@@ -44,7 +44,7 @@ export interface Session {
 }
 
 /**
- * A session as she fills it in; mirrors calsync.Draft. The API writes the
+ * A session as she fills it in; mirrors googlesync.Draft. The API writes the
  * calendar title from it, so it always parses and matches the client.
  */
 export interface SessionDraft {
@@ -59,7 +59,7 @@ export interface SessionDraft {
   tentative: boolean;
 }
 
-/** A stored session with the draft to start an edit from; mirrors calsync.Stored. */
+/** A stored session with the draft to start an edit from; mirrors googlesync.Stored. */
 export interface StoredSession {
   session: Session;
   draft: SessionDraft;
