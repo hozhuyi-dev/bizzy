@@ -20,6 +20,8 @@ import (
 type store interface {
 	Get(ctx context.Context, id string) (Document, bool, error)
 	ListByMonth(ctx context.Context, docType Type, month string) ([]Document, error)
+	ListByClient(ctx context.Context, clientID string) ([]Document, error)
+	SharedID(ctx context.Context, token string) (string, bool, error)
 	Revisions(ctx context.Context, id string) ([]Revision, error)
 	Counter(ctx context.Context, key string) (int64, error)
 	SetCounter(ctx context.Context, key string, last int64) (bool, error)
@@ -52,6 +54,7 @@ type handler struct{ Deps }
 func Register(r *router.Router, deps Deps) {
 	h := handler{deps}
 	r.Register("documents.list", router.Typed(h.list))
+	r.Register("documents.listByClient", router.Typed(h.listByClient))
 	r.Register("documents.get", router.Typed(h.get))
 	r.Register("documents.createDraft", router.Typed(h.createDraft))
 	r.Register("documents.saveDraft", router.Typed(h.saveDraft))
@@ -61,6 +64,8 @@ func Register(r *router.Router, deps Deps) {
 	r.Register("documents.cancel", router.Typed(h.cancel))
 	r.Register("documents.numbering", router.Typed(h.numbering))
 	r.Register("documents.setNextNumber", router.Typed(h.setNextNumber))
+	r.Register("documents.share", router.Typed(h.share))
+	r.Register("documents.resetShare", router.Typed(h.resetShare))
 }
 
 type typeInput struct {
@@ -97,11 +102,31 @@ func (h handler) list(ctx context.Context, in listInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	summaries := make([]Summary, len(docs))
-	for i, d := range docs {
-		summaries[i] = d.Summary()
+	return summaries(docs), nil
+}
+
+type clientInput struct {
+	ClientID string `json:"clientId"`
+}
+
+// listByClient returns a client's documents of every type, newest first.
+func (h handler) listByClient(ctx context.Context, in clientInput) (any, error) {
+	if in.ClientID == "" {
+		return nil, apperr.Invalid("choose a client")
 	}
-	return summaries, nil
+	docs, err := h.Repo.ListByClient(ctx, in.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	return summaries(docs), nil
+}
+
+func summaries(docs []Document) []Summary {
+	out := make([]Summary, len(docs))
+	for i, d := range docs {
+		out[i] = d.Summary()
+	}
+	return out
 }
 
 type idInput struct {
@@ -293,6 +318,11 @@ func (h handler) prepareIssue(ctx context.Context, doc Document, cfg settings.Se
 	} else {
 		next := *doc.Revision + 1
 		updated.Revision = &next
+	}
+	// Ready to send the moment it is issued.
+	if doc.ShareToken == "" {
+		updated.ShareToken = newShareToken()
+		w.Share = &ShareChange{New: updated.ShareToken}
 	}
 
 	updated.Status = StatusIssued

@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { BanIcon, CircleAlertIcon, DownloadIcon, EyeIcon, PencilIcon } from "lucide-react";
+import {
+  BanIcon,
+  CircleAlertIcon,
+  DownloadIcon,
+  EyeIcon,
+  LinkIcon,
+  MessageCircleIcon,
+  PencilIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   DocumentIssueButton,
@@ -10,6 +19,7 @@ import {
 import { DocumentView } from "./components/document-view/document-view.component";
 import { DocumentStatusBadge } from "./documents-page.component";
 import { DocumentsMutation, DocumentsQuery } from "./documents.query";
+import { shareUrl } from "./documents.service";
 import { DOCUMENT_TYPES, documentLabel } from "./documents.registry";
 import { downloadDocumentPdf, openDocumentPdf } from "./pdf/download-pdf";
 import type { DocumentPdfProps } from "./pdf/document-pdf.component";
@@ -35,6 +45,8 @@ import { Input } from "~/components/ui/input";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
+import { ClientsQuery } from "~/features/clients/clients.query";
+import { useSendDocuments } from "~/features/whatsapp/use-whatsapp";
 
 // The breadcrumb already says what kind of document this is.
 const parent = { to: "/receipts", label: "Receipts" } as const;
@@ -123,6 +135,8 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
     watermark: cancelled ? "CANCELLED" : undefined,
     content,
   });
+  const [resettingLink, setResettingLink] = useState(false);
+  const shareActions = useShareActions(doc, content, () => setResettingLink(true));
 
   return (
     <>
@@ -134,8 +148,9 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
         // claims the always-visible slot and the title keeps the room on a phone.
         moreActions={
           cancelled
-            ? pdfActions
+            ? [...pdfActions, ...shareActions]
             : [
+                ...shareActions,
                 ...pdfActions,
                 {
                   label: "Revise",
@@ -184,7 +199,77 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
         ]}
       />
       <CancelDialog doc={doc} open={cancelling} onClose={() => setCancelling(false)} />
+      <ResetLinkDialog doc={doc} open={resettingLink} onClose={() => setResettingLink(false)} />
     </>
+  );
+}
+
+/**
+ * Sending the document's link: WhatsApp (the app on her phone, WhatsApp Web
+ * on her computer), Copy link, and Reset link for one sent to the wrong person. A cancelled document's
+ * link still opens (marked cancelled), so it can be reset but not sent.
+ */
+function useShareActions(doc: BizDocument, content: DocumentContent, onReset: () => void): Array<RowAction> {
+  const clientsById = ClientsQuery.useById();
+  const { send, busy } = useSendDocuments();
+  const client = doc.clientId ? clientsById.get(doc.clientId) : undefined;
+  const to = { name: client?.name ?? content.recipient.name, phone: client?.contact?.phone ?? content.recipient.phone };
+  const token = doc.shareToken;
+
+  const actions: Array<RowAction> = [];
+  if (doc.status === "issued") {
+    actions.push({ label: "WhatsApp", icon: MessageCircleIcon, disabled: busy, onClick: () => send(to, [doc]) });
+  }
+  if (token) {
+    actions.push(
+      {
+        label: "Copy link",
+        icon: LinkIcon,
+        onClick: () =>
+          void navigator.clipboard
+            .writeText(shareUrl(token))
+            .then(() => toast.success("Link copied"))
+            .catch(() => toast.error("Couldn't copy the link")),
+      },
+      { label: "Reset link", icon: RefreshCwIcon, onClick: onReset },
+    );
+  }
+  return actions;
+}
+
+function ResetLinkDialog({ doc, open, onClose }: { doc: BizDocument; open: boolean; onClose: () => void }) {
+  const reset = DocumentsMutation.useResetShare();
+
+  return (
+    <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Reset the link to {doc.number}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Links already sent stop working, for example one sent to the wrong person. Send the new link to
+            whoever should still have it.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep it</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            disabled={reset.isPending}
+            onClick={() =>
+              reset.mutate(doc, {
+                onSuccess: () => {
+                  toast.success("New link made; the old one no longer works");
+                  onClose();
+                },
+                onError: (error) => toast.error(error.message),
+              })
+            }
+          >
+            Reset link
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

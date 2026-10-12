@@ -75,6 +75,7 @@ const api = stackOutputs("api");
 const values = {
   VITE_AWS_REGION: region,
   VITE_API_FUNCTION_NAME: api("ApiFunctionName"),
+  VITE_PUBLIC_URL: api("PublicUrl"),
   VITE_GOOGLE_CLIENT_ID: api("GoogleClientId"),
   VITE_AMPLIFY_USER_POOL_ID: auth("UserPoolId"),
   VITE_AMPLIFY_USER_POOL_CLIENT_ID: auth("UserPoolClientId"),

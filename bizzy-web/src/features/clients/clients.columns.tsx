@@ -1,7 +1,8 @@
 import { CheckIcon, MessageCircleIcon } from "lucide-react";
-import { last12Months, monthsSinceLastSession, totals, whatsappLink } from "./clients.activity";
+import { last12Months, monthsSinceLastSession, totals } from "./clients.activity";
 import type { Client } from "./clients.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import { openWhatsApp, whatsappLink } from "~/features/whatsapp/whatsapp.link";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.features";
@@ -63,7 +64,7 @@ interface ClientActions {
 export function clientActions(client: Client, { onContacted }: ClientActions): Array<RowAction> {
   const actions: Array<RowAction> = [];
   const whatsapp = whatsappLink(client.contact?.phone);
-  if (whatsapp) actions.push({ label: "WhatsApp", icon: MessageCircleIcon, href: whatsapp });
+  if (whatsapp) actions.push({ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => openWhatsApp(whatsapp) });
   if (onContacted) actions.push({ label: "Contacted", icon: CheckIcon, onClick: () => onContacted(client) });
   return actions;
 }

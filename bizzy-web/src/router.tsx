@@ -20,4 +20,8 @@ declare module "@tanstack/react-router" {
   interface Register {
     router: ReturnType<typeof getRouter>;
   }
+  interface StaticDataRouteOption {
+    /** Open to anyone, without signing in or the app around it (share links). */
+    public?: boolean;
+  }
 }

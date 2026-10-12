@@ -32,6 +32,8 @@ import {
 } from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
 import { queryMatch } from "~/core/utils/query.util";
+import { DOCUMENT_PLACEHOLDERS, PAYMENT_PLACEHOLDERS } from "~/features/whatsapp/whatsapp.message";
+import { ComputerWhatsAppSettings } from "~/features/whatsapp/components/computer-whatsapp-settings/computer-whatsapp-settings.component";
 
 export function SettingsPage() {
   const settings = SettingsQuery.useGet();
@@ -58,6 +60,8 @@ export function SettingsPage() {
 const FORM_ID = "settings-form";
 
 type TextKey = Exclude<keyof Settings, "numbering" | "homeVisitColorId">;
+
+const placeholderList = (names: ReadonlyArray<string>) => names.map((name) => `{${name}}`).join(" ");
 
 const BUSINESS_FIELDS: Array<{
   name: TextKey;
@@ -228,6 +232,35 @@ function SettingsForm({ saved }: { saved: Settings }) {
                 </form.Field>
               </FieldGroup>
             ),
+          },
+          {
+            id: "whatsapp",
+            title: "WhatsApp messages",
+            description:
+              "WhatsApp opens the client's chat with the message typed in, ready to send. Leave one blank to go back to the default.",
+            content: (
+              <FieldGroup>
+                {textField({
+                  name: "paymentMessage",
+                  label: "Asking to pay",
+                  multiline: true,
+                  hint: `From a session. ${placeholderList(PAYMENT_PLACEHOLDERS)}`,
+                })}
+                {textField({
+                  name: "documentMessage",
+                  label: "Sending receipts",
+                  multiline: true,
+                  hint: `From a receipt, a session or a client; {documents} lists each with its link, and {title} reads "receipt", "receipts" or "documents". ${placeholderList(DOCUMENT_PLACEHOLDERS)}`,
+                })}
+              </FieldGroup>
+            ),
+          },
+          {
+            id: "whatsapp-computer",
+            title: "WhatsApp on PC",
+            description:
+              "Browser opens WhatsApp Web in a new tab each time; the desktop app needs WhatsApp installed. Changes right away and is remembered on this device. Your phone always uses the WhatsApp app.",
+            content: <ComputerWhatsAppSettings />,
           },
           {
             id: "numbering",

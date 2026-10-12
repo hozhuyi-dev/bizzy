@@ -1,4 +1,4 @@
-import { isLapsed, last12Months, totals, whatsappLink } from "./clients.activity";
+import { isLapsed, last12Months, totals } from "./clients.activity";
 import type { Client } from "./clients.types";
 
 const now = new Date(2026, 9, 11);
@@ -38,17 +38,5 @@ describe("client activity", () => {
 
   test("never lapsed without sessions", () => {
     expect(isLapsed(client({}), 3, now)).toBe(false);
-  });
-});
-
-describe("whatsappLink", () => {
-  test("turns a local number into the country code", () => {
-    expect(whatsappLink("012-345 6789")).toBe("https://wa.me/60123456789");
-    expect(whatsappLink("+60 12 345 6789")).toBe("https://wa.me/60123456789");
-  });
-
-  test("ignores what isn't a number", () => {
-    expect(whatsappLink("n/a")).toBeUndefined();
-    expect(whatsappLink(undefined)).toBeUndefined();
   });
 });

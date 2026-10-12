@@ -24,6 +24,8 @@ export const DocumentKeys = {
   all: ["documents"] as const,
   list: (type: string) => [...DocumentKeys.all, "list", type] as const,
   detail: (id: string) => [...DocumentKeys.all, "detail", id] as const,
+  client: (clientId: string) => [...DocumentKeys.all, "client", clientId] as const,
+  shared: (token: string) => [...DocumentKeys.all, "shared", token] as const,
   numbering: (type: string) => [...DocumentKeys.all, "numbering", type] as const,
 };
 

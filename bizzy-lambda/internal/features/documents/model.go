@@ -75,6 +75,9 @@ type Document struct {
 	IssuedAt     *time.Time `json:"issuedAt,omitempty" dynamodbav:"issuedAt,omitempty"`
 	CancelledAt  *time.Time `json:"cancelledAt,omitempty" dynamodbav:"cancelledAt,omitempty"`
 	CancelReason string     `json:"cancelReason,omitempty" dynamodbav:"cancelReason,omitempty"`
+	// ShareToken opens the issued content without signing in (see share.go).
+	// Set on the first issue; resetting it kills links already sent.
+	ShareToken string `json:"shareToken,omitempty" dynamodbav:"shareToken,omitempty"`
 	// Version guards against two tabs editing the same document.
 	Version int `json:"version" dynamodbav:"version"`
 }
@@ -93,14 +96,16 @@ type Summary struct {
 	// or the draft while it is new.
 	RecipientName string `json:"recipientName"`
 	// Revising is set while an issued document has a next revision drafted.
-	Revising bool `json:"revising,omitempty"`
+	Revising   bool   `json:"revising,omitempty"`
+	ShareToken string `json:"shareToken,omitempty"`
 }
 
 func (d Document) Summary() Summary {
 	s := Summary{
 		ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision,
 		ClientID: d.ClientID, Date: d.Date, TotalCents: d.TotalCents,
-		Revising: d.Status == StatusIssued && d.Draft != nil,
+		Revising:   d.Status == StatusIssued && d.Draft != nil,
+		ShareToken: d.ShareToken,
 	}
 	switch {
 	case d.Content != nil:

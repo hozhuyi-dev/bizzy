@@ -3,6 +3,7 @@ import { Construct } from "constructs";
 import { CfnOutput, Duration } from "aws-cdk-lib";
 import type { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { type IRole, Policy, PolicyStatement } from "aws-cdk-lib/aws-iam";
+import { FunctionUrlAuthType, HttpMethod } from "aws-cdk-lib/aws-lambda";
 import { GoFunction } from "./common/api/go-function";
 import type { Environment } from "../utils/environment.util";
 
@@ -24,6 +25,8 @@ interface ApiStackProps extends cdk.StackProps {
 
 export class ApiStack extends cdk.Stack {
   readonly api: GoFunction;
+  /** Serves share links to anyone who has one; see bizzy-lambda/cmd/public. */
+  readonly public: GoFunction;
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
@@ -94,8 +97,29 @@ export class ApiStack extends cdk.Stack {
       ],
     });
 
+    // The one thing reachable without signing in, so it is its own function
+    // with its own role: it can read single items from the table and nothing
+    // else, whatever its code does.
+    this.public = new GoFunction(this, "Public", {
+      projectName: projectName,
+      environment: environment,
+      command: "public",
+      environmentVariables: { TABLE_NAME: table.tableName },
+    });
+    table.grant(this.public.function, "dynamodb:GetItem");
+    const publicUrl = this.public.function.addFunctionUrl({
+      authType: FunctionUrlAuthType.NONE,
+      // The app on any origin (localhost, each CloudFront domain) reads it;
+      // the token in the path is the permission, so no credentials.
+      cors: { allowedOrigins: ["*"], allowedMethods: [HttpMethod.GET] },
+    });
+
     new CfnOutput(this, "ApiFunctionName", {
       value: this.api.function.functionName,
+    });
+
+    new CfnOutput(this, "PublicUrl", {
+      value: publicUrl.url,
     });
 
     // The browser sends her to Google's consent screen with it.

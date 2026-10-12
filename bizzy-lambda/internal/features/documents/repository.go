@@ -16,11 +16,19 @@ import (
 //	         is open, LSI4 type#date.
 //	DOCREV   SK = id#rev (zero-padded), one immutable item per issue.
 //	COUNTER  SK = type or type#year, attribute `last`.
+//	DOCSHARE SK = share token, attribute `documentId`: the public link's
+//	         lookup, so it needs no index.
 const (
 	docPartition      = "DOC"
 	revisionPartition = "DOCREV"
 	counterPartition  = "COUNTER"
+	sharePartition    = "DOCSHARE"
 )
+
+type shareRecord struct {
+	dynamo.Keys
+	DocumentID string `dynamodbav:"documentId"`
+}
 
 type docRecord struct {
 	dynamo.Keys
@@ -89,6 +97,29 @@ func (r Repository) ListByMonth(ctx context.Context, docType Type, month string)
 	return all, nil
 }
 
+// ListByClient returns every document for a client, of any type, newest
+// first.
+func (r Repository) ListByClient(ctx context.Context, clientID string) ([]Document, error) {
+	records, err := dynamo.QueryAll[docRecord](ctx, r.store, dynamo.Query{
+		PK: docPartition, Index: dynamo.IndexClient, Prefix: clientID + "#", Descending: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	all := make([]Document, len(records))
+	for i, rec := range records {
+		all[i] = rec.Document
+	}
+	return all, nil
+}
+
+// SharedID returns the document a share token opens.
+func (r Repository) SharedID(ctx context.Context, token string) (string, bool, error) {
+	var rec shareRecord
+	found, err := r.store.Get(ctx, sharePartition, token, &rec)
+	return rec.DocumentID, found, err
+}
+
 // Revisions returns a document's issued revisions, oldest first.
 func (r Repository) Revisions(ctx context.Context, id string) ([]Revision, error) {
 	records, err := dynamo.QueryAll[revisionRecord](ctx, r.store, dynamo.Query{PK: revisionPartition, Prefix: id + "#"})
@@ -140,6 +171,14 @@ type Write struct {
 	Revision *Revision
 	// Links are the patches to the sessions and packages it covers.
 	Links []dynamo.Patch
+	// Share points a new share token at the document, retiring the old one.
+	Share *ShareChange
+}
+
+type ShareChange struct {
+	New string
+	// Old is the token it replaces, if any; its link stops working.
+	Old string
 }
 
 type CounterBump struct {
@@ -188,6 +227,16 @@ func (r Repository) Commit(ctx context.Context, w Write) error {
 			Put:  revisionRecord{Keys: dynamo.Keys{PK: revisionPartition, SK: revisionKey(rev.DocumentID, rev.Revision)}, Revision: *rev},
 			When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
 		})
+	}
+
+	if s := w.Share; s != nil {
+		items = append(items, dynamo.TransactItem{
+			Put:  shareRecord{Keys: dynamo.Keys{PK: sharePartition, SK: s.New}, DocumentID: w.Doc.ID},
+			When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
+		})
+		if s.Old != "" {
+			items = append(items, dynamo.TransactItem{Delete: &[2]string{sharePartition, s.Old}})
+		}
 	}
 
 	for i := range w.Links {

@@ -3,15 +3,18 @@ import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, MessageCircleIcon } from "lucide-react";
 import { toast } from "sonner";
-import { totals, whatsappLink } from "./clients.activity";
+import { totals } from "./clients.activity";
 import { LastSeen, contactProblem, extraAliases, toClientRow } from "./clients.columns";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
 import { ClientContact } from "./components/client-contact/client-contact.component";
+import { ClientDocuments } from "./components/client-documents/client-documents.component";
 import type { ChosenContact } from "./components/client-contact/client-contact.component";
 import type { Client, SaveClientInput } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import { openWhatsApp, whatsappLink } from "~/features/whatsapp/whatsapp.link";
 import { PackagesQuery } from "~/features/packages/packages.query";
+import { DOCUMENT_TYPES } from "~/features/documents/documents.registry";
 import { creditsLeft } from "~/features/packages/packages.types";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -26,6 +29,10 @@ import { formatDate } from "~/core/utils/date.util";
 import { centsToInput, formatCents, parseCents } from "~/core/utils/money.util";
 
 const FORM_ID = "client-form";
+
+// "Receipts" while that is the only kind; "Documents" once there are more.
+const DOCUMENT_SPECS = Object.values(DOCUMENT_TYPES);
+const DOCUMENTS_TITLE = DOCUMENT_SPECS.length === 1 && DOCUMENT_SPECS[0] ? DOCUMENT_SPECS[0].plural : "Documents";
 const parent = { to: "/clients", label: "Clients" } as const;
 
 /** Where a new client was started from, to go back there once saved. */
@@ -240,6 +247,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
       ? [
           { id: "activity", title: "Activity", content: <Activity client={client} /> },
           { id: "packages", title: "Packages", content: <ClientPackages clientId={client.id} /> },
+          { id: "documents", title: DOCUMENTS_TITLE, content: <ClientDocuments client={client} /> },
         ]
       : []),
   ];
@@ -258,7 +266,9 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
             )}
           </form.Subscribe>
         }
-        moreActions={whatsapp ? [{ label: "WhatsApp", icon: MessageCircleIcon, href: whatsapp }] : undefined}
+        moreActions={
+          whatsapp ? [{ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => openWhatsApp(whatsapp) }] : undefined
+        }
       />
       {/* Inputs join this form through their form attribute, so Enter saves. */}
       <form

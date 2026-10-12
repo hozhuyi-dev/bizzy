@@ -125,7 +125,11 @@ describe("api", () => {
     const [policy] = Object.values(policies) as Array<{
       Properties: { PolicyDocument: { Statement: Array<{ Resource: unknown }> } };
     }>;
-    const [functionId] = Object.keys(api.findResources("AWS::Lambda::Function"));
+    const [functionId] = Object.keys(
+      api.findResources("AWS::Lambda::Function", {
+        Properties: { FunctionName: "bizzy-staging-api" },
+      }),
+    );
     expect(policy?.Properties.PolicyDocument.Statement).toHaveLength(1);
     expect(policy?.Properties.PolicyDocument.Statement[0]?.Resource).toEqual({
       "Fn::GetAtt": [functionId, "Arn"],
@@ -153,8 +157,34 @@ describe("api", () => {
     }
   });
 
-  test("has one function and no schedule; the app runs the sync", () => {
-    api.resourceCountIs("AWS::Lambda::Function", 1);
+  test("has the api and public functions and no schedule; the app runs the sync", () => {
+    api.resourceCountIs("AWS::Lambda::Function", 2);
     api.resourceCountIs("AWS::Scheduler::Schedule", 0);
+  });
+
+  test("serves share links publicly, GET only", () => {
+    api.resourceCountIs("AWS::Lambda::Url", 1);
+    api.hasResourceProperties("AWS::Lambda::Url", {
+      AuthType: "NONE",
+      Cors: Match.objectLike({ AllowMethods: ["GET"] }),
+    });
+  });
+
+  test("lets the public function only get items", () => {
+    const publicRole = Object.keys(api.findResources("AWS::IAM::Role")).find((id) =>
+      id.startsWith("Public"),
+    );
+    type Policy = {
+      Properties: {
+        Roles: Array<{ Ref: string }>;
+        PolicyDocument: { Statement: Array<{ Action: unknown }> };
+      };
+    };
+    const statements = Object.values(api.findResources("AWS::IAM::Policy"))
+      .filter((policy) => (policy as Policy).Properties.Roles.some((role) => role.Ref === publicRole))
+      .flatMap((policy) => (policy as Policy).Properties.PolicyDocument.Statement);
+
+    expect(publicRole).toBeDefined();
+    expect(statements.map((s) => s.Action)).toEqual(["dynamodb:GetItem"]);
   });
 });

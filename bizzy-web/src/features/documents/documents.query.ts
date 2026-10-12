@@ -19,6 +19,22 @@ export const DocumentsQuery = {
       queryFn: () => DocumentsService.get(id),
     }),
 
+  /** Every document for a client, of any type. */
+  useByClient: (clientId: string, enabled = true) =>
+    useQuery({
+      queryKey: DocumentKeys.client(clientId),
+      queryFn: () => DocumentsService.listByClient(clientId),
+      enabled: enabled && clientId !== "",
+    }),
+
+  /** A shared document, for the public page. */
+  useShared: (token: string) =>
+    useQuery({
+      queryKey: DocumentKeys.shared(token),
+      queryFn: () => DocumentsService.readShared(token),
+      retry: false,
+    }),
+
   useNumbering: (type: DocumentType) =>
     useQuery({
       queryKey: DocumentKeys.numbering(type),
@@ -62,6 +78,21 @@ export const DocumentsMutation = {
     useDocumentMutation(({ doc, reason }: { doc: Versioned; reason: string }) =>
       DocumentsService.cancel(doc, reason),
     ),
+  /** Share tokens by id; only writes for documents issued before links. */
+  useShare: () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: (ids: Array<string>) => DocumentsService.share(ids),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: DocumentKeys.all }),
+    });
+  },
+  useResetShare: () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: (doc: Versioned) => DocumentsService.resetShare(doc),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: DocumentKeys.all }),
+    });
+  },
   useSetNextNumber: () => {
     const queryClient = useQueryClient();
     return useMutation({

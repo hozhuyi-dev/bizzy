@@ -71,14 +71,3 @@ export function isLapsed(client: Client, months: number, now = new Date()): bool
   }
   return true;
 }
-
-/**
- * A wa.me link for a Malaysian number as she'd type it ("012-345 6789"):
- * the leading 0 becomes the 60 country code.
- */
-export function whatsappLink(phone: string | undefined): string | undefined {
-  if (!phone) return undefined;
-  let digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("0")) digits = `6${digits}`;
-  return digits.length >= 9 ? `https://wa.me/${digits}` : undefined;
-}

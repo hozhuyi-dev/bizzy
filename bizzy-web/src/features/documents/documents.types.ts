@@ -62,6 +62,8 @@ export interface BizDocument {
   issuedAt?: string;
   cancelledAt?: string;
   cancelReason?: string;
+  /** Opens the issued content at /d/<token> without signing in. */
+  shareToken?: string;
   version: number;
 }
 
@@ -82,6 +84,20 @@ export interface DocumentSummary {
   recipientName: string;
   /** An issued document with its next revision drafted. */
   revising?: boolean;
+  shareToken?: string;
+}
+
+/**
+ * What a share link shows: the issued content only. Mirrors Shared in
+ * bizzy-lambda/internal/features/documents/share.go.
+ */
+export interface SharedDocument {
+  type: DocumentType;
+  status: DocumentStatus;
+  number: string;
+  revision?: number;
+  content: DocumentContent;
+  cancelledAt?: string;
 }
 
 export interface DocumentRevision {

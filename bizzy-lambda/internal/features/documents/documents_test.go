@@ -51,6 +51,8 @@ type fakeRepo struct {
 	counters  map[string]int64
 	revisions []Revision
 	links     int
+	// shares maps a share token to its document id.
+	shares map[string]string
 }
 
 func (f *fakeRepo) Get(_ context.Context, id string) (Document, bool, error) {
@@ -66,6 +68,21 @@ func (f *fakeRepo) ListByMonth(_ context.Context, docType Type, month string) ([
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeRepo) ListByClient(_ context.Context, clientID string) ([]Document, error) {
+	var out []Document
+	for _, d := range f.docs {
+		if d.ClientID == clientID {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRepo) SharedID(_ context.Context, token string) (string, bool, error) {
+	id, ok := f.shares[token]
+	return id, ok, nil
 }
 
 func (f *fakeRepo) Revisions(_ context.Context, id string) ([]Revision, error) {
@@ -99,6 +116,13 @@ func (f *fakeRepo) Commit(_ context.Context, w Write) error {
 		}
 		f.counters[c.Key] = c.Next
 	}
+	if s := w.Share; s != nil {
+		if _, taken := f.shares[s.New]; taken {
+			return dynamo.ErrTransactionConflict
+		}
+		f.shares[s.New] = w.Doc.ID
+		delete(f.shares, s.Old)
+	}
 	if w.Revision != nil {
 		f.revisions = append(f.revisions, *w.Revision)
 	}
@@ -124,7 +148,7 @@ func newHandler(t *testing.T) (handler, *fakeRepo, *[]string) {
 	}
 	m.SettingsVal.BusinessName = "Physio Co"
 
-	repo := &fakeRepo{docs: map[string]Document{}, counters: map[string]int64{}}
+	repo := &fakeRepo{docs: map[string]Document{}, counters: map[string]int64{}, shares: map[string]string{}}
 	var reconciled []string
 	h := handler{Deps{
 		Repo:     repo,

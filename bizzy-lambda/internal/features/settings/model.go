@@ -23,11 +23,21 @@ type Settings struct {
 	// Numbering maps a document type to its number template, e.g.
 	// "RCP-{seq:4}". See documents/numbering.
 	Numbering map[string]string `json:"numbering" dynamodbav:"numbering"`
+
+	// PaymentMessage and DocumentMessage are the WhatsApp messages she sends
+	// from a session or client: asking to pay with her bank details, and
+	// links to issued documents. The app fills in the {placeholders}.
+	PaymentMessage  string `json:"paymentMessage" dynamodbav:"paymentMessage"`
+	DocumentMessage string `json:"documentMessage" dynamodbav:"documentMessage"`
 }
 
 const (
 	DefaultServiceName      = "Physiotherapy session"
 	DefaultHomeVisitColorID = "11" // Tomato
+
+	DefaultPaymentMessage = "Hi {firstName}, thanks for coming in on {date}. The session is {amount}.\n\n" +
+		"You can transfer it to:\n{bank}\n\nThank you!"
+	DefaultDocumentMessage = "Hi {firstName}, here's your {title} from {business}:\n\n{documents}\n\nThank you!"
 )
 
 // WithDefaults fills in whatever she has not set yet.
@@ -37,6 +47,12 @@ func (s Settings) WithDefaults() Settings {
 	}
 	if s.HomeVisitColorID == "" {
 		s.HomeVisitColorID = DefaultHomeVisitColorID
+	}
+	if s.PaymentMessage == "" {
+		s.PaymentMessage = DefaultPaymentMessage
+	}
+	if s.DocumentMessage == "" {
+		s.DocumentMessage = DefaultDocumentMessage
 	}
 	numbering := map[string]string{}
 	for docType, template := range s.Numbering {

@@ -1,17 +1,23 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
-import { CircleAlertIcon, LockIcon, Trash2Icon } from "lucide-react";
+import { CircleAlertIcon, LockIcon, MessageCircleIcon, SendIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
 import { paymentCover } from "./session-payment";
-import { SESSION_STATUS, sessionReceipts } from "./session-status";
+import { SESSION_STATUS, sessionAmount, sessionReceipts } from "./session-status";
 import { SessionsMutation, isStaleEdit } from "./sessions.mutation";
 import { SessionsQuery } from "./sessions.query";
-import type { SessionDraft, StoredSession } from "./sessions.types";
+import type { DocumentRef, Session, SessionDraft, StoredSession } from "./sessions.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { Client } from "~/features/clients/clients.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { DocumentsQuery } from "~/features/documents/documents.query";
+import { SettingsQuery } from "~/features/settings/settings.query";
+import { useSendDocuments } from "~/features/whatsapp/use-whatsapp";
+import { openWhatsApp, whatsappLink } from "~/features/whatsapp/whatsapp.link";
+import { documentsTitle, paymentMessage } from "~/features/whatsapp/whatsapp.message";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { creditsLeft } from "~/features/packages/packages.types";
 import { Banner } from "~/components/shared/banner/banner.component";
@@ -542,10 +548,11 @@ function SessionEditor({ stored, initial, returnTo }: SessionEditorProps) {
   const client = session?.clientId ? clientsById.get(session.clientId) : undefined;
   const status = session && SESSION_STATUS[session.status];
   const problem = session && (session.drift ?? session.reason ?? status?.hint);
+  const messages = useMessageActions(session, client, receipts);
   const more: Array<RowAction> =
     session && !locked
-      ? [{ label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => setDeleting(true) }]
-      : [];
+      ? [...messages, { label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => setDeleting(true) }]
+      : messages;
 
   return (
     <>
@@ -611,4 +618,53 @@ function SessionEditor({ stored, initial, returnTo }: SessionEditorProps) {
       )}
     </>
   );
+}
+
+/**
+ * WhatsApp messages to the client (the app on her phone, WhatsApp Web on her
+ * computer): asking to pay (with her
+ * bank details) until a receipt covers the session, then sending the issued
+ * receipts that do.
+ */
+function useMessageActions(
+  session: Session | undefined,
+  client: Client | undefined,
+  receipts: Array<DocumentRef>,
+): Array<RowAction> {
+  const settings = SettingsQuery.useGet();
+  const issuedIds = receipts.filter((ref) => ref.number).map((ref) => ref.documentId);
+  const docs = DocumentsQuery.useByClient(client?.id ?? "", issuedIds.length > 0);
+  const { send, busy } = useSendDocuments();
+
+  if (!session || !client) return [];
+  const to = { name: client.name, phone: client.contact?.phone };
+  const actions: Array<RowAction> = [];
+
+  if (receipts.length === 0 && settings.data) {
+    const text = paymentMessage(settings.data, {
+      clientName: client.name,
+      start: session.start,
+      amountCents: sessionAmount(session),
+    });
+    actions.push({
+      label: "Ask to pay",
+      icon: MessageCircleIcon,
+      onClick: () => {
+        const url = whatsappLink(to.phone, text);
+        if (url) openWhatsApp(url);
+        else toast.error(`${client.name} has no phone number WhatsApp can use.`);
+      },
+    });
+  }
+
+  const issued = (docs.data ?? []).filter((doc) => doc.status === "issued" && issuedIds.includes(doc.id));
+  if (issued.length > 0) {
+    actions.push({
+      label: `Send ${documentsTitle(issued)}`,
+      icon: SendIcon,
+      disabled: busy,
+      onClick: () => send(to, issued),
+    });
+  }
+  return actions;
 }

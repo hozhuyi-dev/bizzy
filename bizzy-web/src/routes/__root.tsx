@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Amplify } from "aws-amplify";
 import { Toaster } from "~/components/ui/sonner";
@@ -39,9 +39,10 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  const isPublic = useMatches({ select: (matches) => matches.some((match) => match.staticData.public) });
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthGate />
+      {isPublic ? <Outlet /> : <AuthGate />}
       <Toaster position="top-center" />
     </QueryClientProvider>
   );

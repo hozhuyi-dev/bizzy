@@ -6,6 +6,10 @@ import { Card, CardContent } from "~/components/ui/card";
 export interface PageSection {
   /** Used for the anchor; unique on the page. */
   id: string;
+  /**
+   * Also the contents label, on one line in a 10rem column: keep it to about
+   * 16 characters ("Receipt numbers") so it never truncates.
+   */
   title: string;
   description?: ReactNode;
   /** Beside the title, e.g. a section's own Save. */
@@ -114,12 +118,18 @@ function Contents({
             document.getElementById(section.id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
           }}
           className={cn(
-            "shrink-0 rounded-md px-2.5 py-1 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
-            "md:-ml-px md:rounded-none md:border-l-2 md:border-transparent md:py-1.5 md:pl-3 md:whitespace-normal",
+            "grid shrink-0 grid-cols-[minmax(0,1fr)] rounded-md px-2.5 py-1 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+            "md:-ml-px md:rounded-none md:border-l-2 md:border-transparent md:py-1.5 md:pl-3",
             "aria-[current]:bg-muted aria-[current]:font-medium aria-[current]:text-foreground md:aria-[current]:border-foreground md:aria-[current]:bg-transparent",
           )}
         >
-          {section.title}
+          {/* Sized for the bold label, so marking it current never changes its
+              width (the phone row shifting) or its lines (the column jumping).
+              One line always; a label too long for the column truncates. */}
+          <span aria-hidden="true" className="invisible col-start-1 row-start-1 truncate font-medium">
+            {section.title}
+          </span>
+          <span className="col-start-1 row-start-1 truncate">{section.title}</span>
         </a>
       ))}
     </nav>

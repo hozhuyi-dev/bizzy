@@ -56,6 +56,8 @@ func (h handler) save(ctx context.Context, in Settings) (any, error) {
 		ServiceName:      strings.TrimSpace(in.ServiceName),
 		HomeVisitColorID: strings.TrimSpace(in.HomeVisitColorID),
 		Numbering:        map[string]string{},
+		PaymentMessage:   strings.TrimSpace(in.PaymentMessage),
+		DocumentMessage:  strings.TrimSpace(in.DocumentMessage),
 	}
 	for docType, template := range in.Numbering {
 		template = strings.TrimSpace(template)

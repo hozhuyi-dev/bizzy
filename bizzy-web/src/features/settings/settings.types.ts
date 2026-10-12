@@ -14,6 +14,10 @@ export interface Settings {
   homeVisitColorId: string;
   /** Number template per document type, e.g. { receipt: "RCP-{seq:4}" }. */
   numbering: Record<string, string>;
+  /** WhatsApp message asking to pay for a session; {placeholders} filled in. */
+  paymentMessage: string;
+  /** WhatsApp message with links to issued documents. */
+  documentMessage: string;
 }
 
 /** Google Calendar's event colours, by colorId. */

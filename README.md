@@ -46,6 +46,18 @@ Every client links to a Google contact, picked or created when the client is add
 
 Issued on request, one per paid session or package purchase. A receipt starts as a draft prefilled from the session, where everything printed can be edited freely; **Issue** takes the next number (`RCP-0001`, format and starting number in Settings). Issued receipts can be **revised** (same number, `Rev 01`, earlier revisions kept) or **cancelled** (number stays used). The lifecycle and PDF layout are generic, so other document types slot in through `documents.Types` (API) and `DOCUMENT_TYPES` (web).
 
+### Sending on WhatsApp
+
+Every issued document gets a **share link**, `<app>/d/<token>`: anyone with it sees the issued content and can download the PDF, without signing in. It's served by a separate `public` Lambda (Function URL, no auth) whose role can only `GetItem`, so the signed-in API stays private. Links don't expire, because clients come back to old receipts for claims. A revision keeps the link, a cancelled document still opens marked cancelled, and **Reset link** on the document kills links already sent.
+
+WhatsApp opens the client's chat with the message typed in. On her phone (a touch screen) that's the app, through `wa.me`. On a computer, **Settings → WhatsApp on PC** (remembered per device) picks either the browser or the desktop app. The browser opens WhatsApp Web (`web.whatsapp.com/send`), signed in there, in a new tab each time, because WhatsApp Web's security headers stop a site from reusing one tab. The desktop app opens through `whatsapp://send`, with no tab:
+
+- **Session → Ask to pay**: the session's amount and her bank details, until a receipt covers it; then **Send receipt**.
+- **Receipt → WhatsApp**: that receipt's link. **Copy link** copies just the link.
+- **Client → Receipts**: tick any issued documents, of any types, and send them in one message (or **Copy message**).
+
+Both messages are templates in **Settings → WhatsApp messages**. `{documents}` lists each document with its link, and `{title}` reads "receipt", "receipts" or "documents".
+
 ## Data
 
 One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `PACKAGE`, `DOC`, `GOOGLE`, …) and five generic local secondary indexes created up front, because LSIs can't be added later (see `bizzy-lambda/internal/platform/dynamo`). Each writer owns its fields on a shared item (the sync, the billing reconcile, her actions), so they never overwrite each other. Client items carry monthly activity, which the follow-up list and Insights are summed from.

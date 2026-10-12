@@ -17,6 +17,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsIdRouteImport } from './routes/clients/$id'
 import { Route as ClientsNewRouteImport } from './routes/clients/new'
+import { Route as DTokenRouteImport } from './routes/d/$token'
 import { Route as ReceiptsIndexRouteImport } from './routes/receipts/index'
 import { Route as ReceiptsIdRouteImport } from './routes/receipts/$id'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
@@ -63,6 +64,11 @@ const ClientsNewRoute = ClientsNewRouteImport.update({
   path: '/clients/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DTokenRoute = DTokenRouteImport.update({
+  id: '/d/$token',
+  path: '/d/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReceiptsIndexRoute = ReceiptsIndexRouteImport.update({
   id: '/receipts/',
   path: '/receipts/',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
+  '/d/$token': typeof DTokenRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
   '/sessions/new': typeof SessionsNewRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
+  '/d/$token': typeof DTokenRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
   '/sessions/new': typeof SessionsNewRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
+  '/d/$token': typeof DTokenRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
   '/sessions/new': typeof SessionsNewRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
+    | '/d/$token'
     | '/receipts/$id'
     | '/sessions/$id'
     | '/sessions/new'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
+    | '/d/$token'
     | '/receipts/$id'
     | '/sessions/$id'
     | '/sessions/new'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
+    | '/d/$token'
     | '/receipts/$id'
     | '/sessions/$id'
     | '/sessions/new'
@@ -191,6 +203,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   ClientsIdRoute: typeof ClientsIdRoute
   ClientsNewRoute: typeof ClientsNewRoute
+  DTokenRoute: typeof DTokenRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
   SessionsIdRoute: typeof SessionsIdRoute
   SessionsNewRoute: typeof SessionsNewRoute
@@ -257,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/d/$token': {
+      id: '/d/$token'
+      path: '/d/$token'
+      fullPath: '/d/$token'
+      preLoaderRoute: typeof DTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/receipts/': {
       id: '/receipts/'
       path: '/receipts'
@@ -303,6 +323,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   ClientsIdRoute: ClientsIdRoute,
   ClientsNewRoute: ClientsNewRoute,
+  DTokenRoute: DTokenRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,
   SessionsIdRoute: SessionsIdRoute,
   SessionsNewRoute: SessionsNewRoute,
