@@ -1,13 +1,8 @@
-import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { SettingsMutation, SettingsQuery } from "./settings.query";
 import { EVENT_COLOURS } from "./settings.types";
 import type { Settings } from "./settings.types";
-import {
-  DocumentsMutation,
-  DocumentsQuery,
-} from "~/features/documents/documents.query";
 import { CAN_RESET } from "~/features/reset/reset.query";
 import { ResetData } from "~/features/reset/components/reset-data/reset-data.component";
 import { GoogleConnectionSettings } from "~/features/google/components/google-connection/google-connection.component";
@@ -59,7 +54,7 @@ export function SettingsPage() {
 
 const FORM_ID = "settings-form";
 
-type TextKey = Exclude<keyof Settings, "numbering" | "homeVisitColorId">;
+type TextKey = Exclude<keyof Settings, "homeVisitColorId" | "confirmAheadDays" | "followUpAheadDays" | "trackFrom">;
 
 const placeholderList = (names: ReadonlyArray<string>) => names.map((name) => `{${name}}`).join(" ");
 
@@ -95,6 +90,7 @@ function SettingsForm({ saved }: { saved: Settings }) {
       bankName: saved.bankName ?? "",
       accountName: saved.accountName ?? "",
       accountNo: saved.accountNo ?? "",
+      trackFrom: saved.trackFrom ?? "",
     },
     onSubmit: async ({ value }) => {
       try {
@@ -183,13 +179,13 @@ function SettingsForm({ saved }: { saved: Settings }) {
           {
             id: "business",
             title: "Your business",
-            description: "Printed on every receipt. Issued receipts keep what they printed.",
+            description: "Printed on every invoice and receipt. Issued ones keep what they printed.",
             content: <FieldGroup>{BUSINESS_FIELDS.map(textField)}</FieldGroup>,
           },
           {
             id: "bank",
             title: "Bank details",
-            description: "Optional. Receipts confirm money already paid, so they don't print these.",
+            description: "Optional. Printed on invoices and sent when asking to pay; receipts confirm money already paid, so they don't print them.",
             content: <div className="grid gap-4 sm:grid-cols-3">{BANK_FIELDS.map(textField)}</div>,
           },
           {
@@ -200,7 +196,7 @@ function SettingsForm({ saved }: { saved: Settings }) {
                 {textField({
                   name: "serviceName",
                   label: "Session description",
-                  hint: "How a session reads on a receipt line.",
+                  hint: "How a session reads on an invoice or receipt line.",
                 })}
                 <form.Field name="homeVisitColorId">
                   {(field) => (
@@ -263,10 +259,76 @@ function SettingsForm({ saved }: { saved: Settings }) {
             content: <ComputerWhatsAppSettings />,
           },
           {
-            id: "numbering",
-            title: "Receipt numbers",
-            description: "Numbers are taken when a receipt is issued and are never reused.",
-            content: <ReceiptNumbering />,
+            id: "todo",
+            title: "To do",
+            description: "What goes on your to-do list on Home, and how far ahead.",
+            content: (
+              <FieldGroup>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <form.Field name="confirmAheadDays">
+                    {(field) => (
+                      <Field>
+                        <FieldLabel htmlFor={field.name}>Confirm sessions</FieldLabel>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id={field.name}
+                            form={FORM_ID}
+                            type="number"
+                            min={1}
+                            max={30}
+                            className="w-20"
+                            value={field.state.value}
+                            onChange={(e) => field.handleChange(Number(e.target.value))}
+                          />
+                          <span className="text-sm text-muted-foreground">days ahead</span>
+                        </div>
+                        <FieldDescription>When an unconfirmed (?) session comes up, to check the time with the client.</FieldDescription>
+                      </Field>
+                    )}
+                  </form.Field>
+                  <form.Field name="followUpAheadDays">
+                    {(field) => (
+                      <Field>
+                        <FieldLabel htmlFor={field.name}>Follow-ups</FieldLabel>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id={field.name}
+                            form={FORM_ID}
+                            type="number"
+                            min={1}
+                            max={30}
+                            className="w-20"
+                            value={field.state.value}
+                            onChange={(e) => field.handleChange(Number(e.target.value))}
+                          />
+                          <span className="text-sm text-muted-foreground">days ahead</span>
+                        </div>
+                        <FieldDescription>When a follow-up comes up before it is due.</FieldDescription>
+                      </Field>
+                    )}
+                  </form.Field>
+                </div>
+                <form.Field name="trackFrom">
+                  {(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Track notes and payments from</FieldLabel>
+                      <Input
+                        id={field.name}
+                        form={FORM_ID}
+                        type="date"
+                        className="w-auto"
+                        value={field.state.value}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                      <FieldDescription>
+                        Sessions before this day need no notes or payment here; their fees count as received.
+                        Leave blank to track every session.
+                      </FieldDescription>
+                    </Field>
+                  )}
+                </form.Field>
+              </FieldGroup>
+            ),
           },
           {
             id: "appearance",
@@ -287,109 +349,6 @@ function SettingsForm({ saved }: { saved: Settings }) {
             : []),
         ]}
       />
-    </>
-  );
-}
-
-/**
- * The receipt number format and where the sequence is. Moving the sequence
- * forward lets her continue from her old receipt book.
- */
-function ReceiptNumbering() {
-  const settings = SettingsQuery.useGet();
-  const numbering = DocumentsQuery.useNumbering("receipt");
-  const saveSettings = SettingsMutation.useSave();
-  const setNext = DocumentsMutation.useSetNextNumber();
-  const [template, setTemplate] = useState<string | null>(null);
-  const [next, setNextValue] = useState("");
-
-  const currentTemplate = template ?? numbering.data?.template ?? "";
-
-  return (
-    <>
-      <p className="text-sm">
-        Next receipt: <b>{numbering.data?.next ?? "…"}</b>
-      </p>
-
-      <Field>
-        <FieldLabel htmlFor="numbering-template">Format</FieldLabel>
-        <div className="flex gap-2">
-          <Input
-            id="numbering-template"
-            className="max-w-56"
-            value={currentTemplate}
-            onChange={(e) => setTemplate(e.target.value)}
-          />
-          <Button
-            variant="outline"
-            disabled={
-              !settings.data || template === null || saveSettings.isPending
-            }
-            onClick={() => {
-              if (!settings.data) return;
-              saveSettings.mutate(
-                {
-                  ...settings.data,
-                  numbering: {
-                    ...settings.data.numbering,
-                    receipt: currentTemplate,
-                  },
-                },
-                {
-                  onSuccess: () => {
-                    setTemplate(null);
-                    void numbering.refetch();
-                    toast.success("Format saved");
-                  },
-                  onError: (error) => toast.error(error.message),
-                },
-              );
-            }}
-          >
-            Save format
-          </Button>
-        </div>
-        <FieldDescription>
-          {"{seq:4}"} is the running number padded to 4 digits; add {"{YYYY}"}{" "}
-          or {"{YY}"} to restart every year. For example RCP-{"{seq:4}"} or R
-          {"{YY}"}-{"{seq:3}"}.
-        </FieldDescription>
-      </Field>
-
-      <Field>
-        <FieldLabel htmlFor="next-number">Continue from</FieldLabel>
-        <div className="flex gap-2">
-          <Input
-            id="next-number"
-            className="max-w-32"
-            inputMode="numeric"
-            placeholder={numbering.data ? String(numbering.data.seq) : ""}
-            value={next}
-            onChange={(e) => setNextValue(e.target.value)}
-          />
-          <Button
-            variant="outline"
-            disabled={!/^\d+$/.test(next) || setNext.isPending}
-            onClick={() =>
-              setNext.mutate(
-                { type: "receipt", next: Number(next) },
-                {
-                  onSuccess: (result) => {
-                    setNextValue("");
-                    toast.success(`Next receipt will be ${result.next}`);
-                  },
-                  onError: (error) => toast.error(error.message),
-                },
-              )
-            }
-          >
-            Set next number
-          </Button>
-        </div>
-        <FieldDescription>
-          Only moves forward, so a number can never be issued twice.
-        </FieldDescription>
-      </Field>
     </>
   );
 }

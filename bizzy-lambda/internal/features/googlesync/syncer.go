@@ -1,29 +1,39 @@
 // Package googlesync keeps bizzy in step with her Google account. The sync
-// imports the calendar into sessions and refreshes each client's copy of
-// their Google contact; the editor writes sessions she changes in the app to
-// the calendar first. Each sync re-reads a range of the calendar instead of
-// using sync tokens, so running twice is harmless and no state is kept
-// between runs.
+// imports the calendar into sessions and follow-ups and refreshes each
+// client's copy of their Google contact; the editors write sessions and
+// follow-ups she changes in the app to the calendar first. Each sync
+// re-reads a range of the calendar instead of using sync tokens, so running
+// twice is harmless and no state is kept between runs.
 package googlesync
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 
 	"bizzy-lambda/internal/features/billing"
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
+	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/platform/dynamo"
 )
 
 // SyncWindow is how far back a run re-reads the calendar unless she picks
 // the dates.
 const SyncWindow = 60 * 24 * time.Hour
 
-// Range is the stretch of calendar a run re-reads for sessions. A zero From
-// reads from the start of the calendar. To is capped at now, since only an
-// event that has started is a session; a zero To means now.
+// Lookahead is how far ahead every run reads, whatever its range: bookings
+// are sessions too, and an unconfirmed one goes on her to-do list a few
+// days before it.
+const Lookahead = 60 * 24 * time.Hour
+
+// Range is the stretch of calendar a run re-reads. A zero From reads from
+// the start of the calendar; a zero To reads up to Lookahead from now.
 type Range struct {
 	From time.Time
 	To   time.Time
@@ -42,13 +52,19 @@ type ContactSource interface {
 
 type ClientStore interface {
 	List(ctx context.Context) ([]clients.Client, error)
-	SetNextBooked(ctx context.Context, id string, at *time.Time) error
 	RefreshContact(ctx context.Context, id string, previous, next clients.Contact) (bool, error)
 }
 
 type SessionStore interface {
 	Get(ctx context.Context, eventID string) (sessions.Session, bool, error)
 	ListByTime(ctx context.Context, from, to time.Time) ([]sessions.Session, error)
+}
+
+type FollowUpStore interface {
+	Get(ctx context.Context, eventID string) (followups.FollowUp, bool, error)
+	ListByTime(ctx context.Context, from, to time.Time) ([]followups.FollowUp, error)
+	Save(ctx context.Context, f followups.FollowUp) (followups.FollowUp, error)
+	Delete(ctx context.Context, eventID string) error
 }
 
 type Reconciler interface {
@@ -62,33 +78,15 @@ type StatusStore interface {
 type Syncer struct {
 	Events EventSource
 	// Contacts may be nil, which skips refreshing clients' contact copies.
-	Contacts ContactSource
-	Clients  ClientStore
-	Sessions SessionStore
-	Billing  Reconciler
-	Status   StatusStore
-	// Lookahead is how far forward each run looks for bookings (which never
-	// become sessions), whatever its range.
-	Lookahead time.Duration
-	Now       func() time.Time
-}
-
-type Summary struct {
-	// Sessions is how many timed events the window holds.
-	Sessions int `json:"sessions"`
-	// Writes this run made.
-	Saved   int `json:"saved"`
-	Deleted int `json:"deleted"`
-	// Contacts is how many clients' contact copies changed.
-	Contacts int `json:"contacts"`
-}
-
-// Run is the record of the last sync, shown in the app.
-type Run struct {
-	At      time.Time `json:"at" dynamodbav:"at"`
-	Summary Summary   `json:"summary" dynamodbav:"summary"`
-	// Error is why the run failed, e.g. Google was disconnected.
-	Error string `json:"error,omitempty" dynamodbav:"error,omitempty"`
+	Contacts  ContactSource
+	Clients   ClientStore
+	Sessions  SessionStore
+	FollowUps FollowUpStore
+	Billing   Reconciler
+	Status    StatusStore
+	// Location is her time zone, which all-day follow-ups fall in.
+	Location *time.Location
+	Now      func() time.Time
 }
 
 func (s Syncer) Run(ctx context.Context, r Range) (Summary, error) {
@@ -98,11 +96,10 @@ func (s Syncer) Run(ctx context.Context, r Range) (Summary, error) {
 	if err != nil {
 		return summary, err
 	}
-	aliases := calendar.AliasesOf(all)
 
 	now := s.Now().UTC()
-	from, to := r.From, now
-	if !r.To.IsZero() && r.To.Before(now) {
+	from, to := r.From, now.Add(Lookahead)
+	if !r.To.IsZero() && r.To.Before(to) {
 		to = r.To
 	}
 
@@ -127,8 +124,8 @@ func (s Syncer) Run(ctx context.Context, r Range) (Summary, error) {
 	var changes []billing.Change
 	seen := map[string]bool{}
 
-	// Every timed event on her sessions calendar is a session; the billing
-	// reconcile works out whether it needs fixing.
+	// Every timed event on her sessions calendar is a session, bar
+	// follow-ups; the billing reconcile works out whether it needs fixing.
 	for _, event := range events {
 		if !isSession(event) {
 			continue
@@ -143,19 +140,16 @@ func (s Syncer) Run(ctx context.Context, r Range) (Summary, error) {
 				return summary, err
 			}
 		}
-		if change, changed := eventChange(&event, optional(before, ok)); changed {
-			changes = append(changes, change)
+		if !ok || changed(before, event, now) {
+			changes = append(changes, billing.Change{EventID: event.ID, Event: &event})
 		}
 	}
 
 	// Stored sessions the calendar no longer has in the range: deleted,
-	// cancelled, moved out, or made all-day.
+	// cancelled, moved out, made all-day, or now a follow-up.
 	for id, before := range byID {
-		if seen[id] {
-			continue
-		}
-		if change, changed := eventChange(nil, &before); changed {
-			changes = append(changes, change)
+		if !seen[id] && before.RemovedAt == nil {
+			changes = append(changes, billing.Change{EventID: id})
 		}
 	}
 
@@ -167,10 +161,8 @@ func (s Syncer) Run(ctx context.Context, r Range) (Summary, error) {
 		summary.Saved, summary.Deleted = result.Saved, result.Deleted
 	}
 
-	if s.Lookahead > 0 {
-		if err := s.updateBookings(ctx, all, aliases, now); err != nil {
-			return summary, err
-		}
+	if err := s.syncFollowUps(ctx, events, from, to, calendar.AliasesOf(all), &summary); err != nil {
+		return summary, err
 	}
 
 	if s.Status != nil {
@@ -182,58 +174,85 @@ func (s Syncer) Run(ctx context.Context, r Range) (Summary, error) {
 }
 
 // isSession reports whether an event is a session: every timed event on her
-// sessions calendar is one.
+// sessions calendar is one, except follow-ups.
 func isSession(event calendar.Event) bool {
-	return !event.AllDay && !event.Cancelled
+	return !event.AllDay && !event.Cancelled && !calendar.IsFollowUp(event.Title)
 }
 
-func optional(s sessions.Session, ok bool) *sessions.Session {
-	if !ok {
-		return nil
+// isFollowUp reports whether an event is a follow-up, timed or all-day.
+func isFollowUp(event calendar.Event) bool {
+	return !event.Cancelled && calendar.IsFollowUp(event.Title)
+}
+
+// changed reports whether a stored session needs reconciling: its event
+// changed, or it has happened since.
+func changed(before sessions.Session, event calendar.Event, now time.Time) bool {
+	return calendarChanged(before, event) || (before.Upcoming && !event.Start.After(now))
+}
+
+// calendarChanged reports whether the event says something else than the
+// stored session, or it was deleted and is back.
+func calendarChanged(before sessions.Session, event calendar.Event) bool {
+	return before.Title != event.Title ||
+		!before.Start.Equal(event.Start) ||
+		!before.End.Equal(event.End) ||
+		before.ColorID != event.ColorID ||
+		before.RemovedAt != nil
+}
+
+// syncFollowUps stores the follow-up events in the range and removes the
+// ones gone from it. Marking one done is hers and is kept.
+func (s Syncer) syncFollowUps(ctx context.Context, events []calendar.Event, from, to time.Time, aliases calendar.Aliases, summary *Summary) error {
+	stored, err := s.FollowUps.ListByTime(ctx, from, to.Add(-time.Second))
+	if err != nil {
+		return err
 	}
-	return &s
-}
+	byID := make(map[string]followups.FollowUp, len(stored))
+	for _, f := range stored {
+		byID[f.EventID] = f
+	}
 
-// eventChange is what an event means for the session stored for it: before
-// is nil when none is stored, and event nil when the event is no longer a
-// session. It reports false when nothing changed.
-func eventChange(event *calendar.Event, before *sessions.Session) (billing.Change, bool) {
-	if event == nil {
-		switch {
-		case before == nil:
-			return billing.Change{}, false
-		case before.Document == nil:
-			return billing.Change{Before: before}, true
-		case before.Removed:
-			return billing.Change{}, false
-		default:
-			// A receipt keeps the session, marked removed.
-			after := *before
-			after.Removed = true
-			return billing.Change{Before: before, After: &after}, true
+	seen := map[string]bool{}
+	for _, event := range events {
+		if !isFollowUp(event) {
+			continue
 		}
+		seen[event.ID] = true
+		if before, ok := byID[event.ID]; ok && same(before, followups.FromEvent(before, event, aliases, s.Location)) {
+			continue
+		}
+		if _, err := s.saveFollowUp(ctx, event, aliases); err != nil {
+			return err
+		}
+		summary.FollowUps++
 	}
 
-	var after sessions.Session
-	if before != nil {
-		after = *before
+	for id := range byID {
+		if seen[id] {
+			continue
+		}
+		if err := s.FollowUps.Delete(ctx, id); err != nil {
+			return err
+		}
+		summary.FollowUps++
 	}
-	after.EventID = event.ID
-	after.Title, after.Start, after.End, after.ColorID = event.Title, event.Start.UTC(), event.End.UTC(), event.ColorID
-	after.Removed = false
-
-	if before == nil {
-		return billing.Change{After: &after}, true
-	}
-	return billing.Change{Before: before, After: &after}, calendarChanged(*before, after)
+	return nil
 }
 
-func calendarChanged(before, after sessions.Session) bool {
-	return before.Title != after.Title ||
-		!before.Start.Equal(after.Start) ||
-		!before.End.Equal(after.End) ||
-		before.ColorID != after.ColorID ||
-		before.Removed != after.Removed
+// saveFollowUp writes a follow-up as its event says, over whatever is
+// stored (she may have just marked it done).
+func (s Syncer) saveFollowUp(ctx context.Context, event calendar.Event, aliases calendar.Aliases) (followups.FollowUp, error) {
+	for attempt := 0; ; attempt++ {
+		before, _, err := s.FollowUps.Get(ctx, event.ID)
+		if err != nil {
+			return followups.FollowUp{}, err
+		}
+		saved, err := s.FollowUps.Save(ctx, followups.FromEvent(before, event, aliases, s.Location))
+		if errors.Is(err, dynamo.ErrConflict) && attempt < 3 {
+			continue
+		}
+		return saved, err
+	}
 }
 
 // refreshContacts reads her contacts and refreshes each client's copy.
@@ -278,45 +297,9 @@ func (s Syncer) refreshContacts(ctx context.Context, all []clients.Client, now t
 	return nil
 }
 
-// updateBookings records each client's next booked session, so a client
-// who has already rebooked is not on the follow-up list.
-func (s Syncer) updateBookings(ctx context.Context, all []clients.Client, aliases calendar.Aliases, now time.Time) error {
-	events, err := s.Events.Events(ctx, now, now.Add(s.Lookahead))
-	if err != nil {
-		return err
-	}
-
-	next := map[string]time.Time{}
-	for _, event := range events {
-		if !isSession(event) || !event.Start.After(now) {
-			continue
-		}
-		title, err := calendar.ParseTitle(event.Title)
-		if err != nil {
-			continue
-		}
-		match := calendar.MatchName(title.Name, aliases)
-		if match.Kind != calendar.MatchExact {
-			continue
-		}
-		id := match.ClientID
-		if at, ok := next[id]; !ok || event.Start.Before(at) {
-			next[id] = event.Start.UTC()
-		}
-	}
-
-	for _, client := range all {
-		at, booked := next[client.ID]
-		switch {
-		case booked && (client.NextBookedAt == nil || !client.NextBookedAt.Equal(at)):
-			if err := s.Clients.SetNextBooked(ctx, client.ID, &at); err != nil {
-				return err
-			}
-		case !booked && client.NextBookedAt != nil:
-			if err := s.Clients.SetNextBooked(ctx, client.ID, nil); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+// same compares two items the way DynamoDB stores them.
+func same(a, b any) bool {
+	am, errA := attributevalue.MarshalMap(a)
+	bm, errB := attributevalue.MarshalMap(b)
+	return errA == nil && errB == nil && reflect.DeepEqual(am, bm)
 }

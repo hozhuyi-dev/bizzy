@@ -30,7 +30,10 @@ type Patch struct {
 	// Set holds attributes to write; Remove names attributes to delete.
 	Set    map[string]types.AttributeValue
 	Remove []string
-	When   *Condition
+	// Increment adds 1 to each named number attribute, e.g. the version of
+	// an item other writers put whole, so their next put sees the change.
+	Increment []string
+	When      *Condition
 }
 
 // Owned builds a patch from a marshalled item: each attribute in owned is set
@@ -79,12 +82,24 @@ func (p Patch) expression() (string, map[string]string, map[string]types.Attribu
 		removes = append(removes, fmt.Sprintf("#r%d", i))
 	}
 
+	var adds []string
+	for i, name := range p.Increment {
+		names[fmt.Sprintf("#a%d", i)] = name
+		adds = append(adds, fmt.Sprintf("#a%d :one", i))
+	}
+	if len(adds) > 0 {
+		values[":one"] = &types.AttributeValueMemberN{Value: "1"}
+	}
+
 	var parts []string
 	if len(sets) > 0 {
 		parts = append(parts, "SET "+strings.Join(sets, ", "))
 	}
 	if len(removes) > 0 {
 		parts = append(parts, "REMOVE "+strings.Join(removes, ", "))
+	}
+	if len(adds) > 0 {
+		parts = append(parts, "ADD "+strings.Join(adds, ", "))
 	}
 
 	if p.When != nil {

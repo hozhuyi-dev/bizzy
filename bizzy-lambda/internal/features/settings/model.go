@@ -20,9 +20,15 @@ type Settings struct {
 	// HomeVisitColorID is the Google Calendar event colour that marks a home
 	// visit ("1" Lavender … "11" Tomato).
 	HomeVisitColorID string `json:"homeVisitColorId" dynamodbav:"homeVisitColorId"`
-	// Numbering maps a document type to its number template, e.g.
-	// "RCP-{seq:4}". See documents/numbering.
-	Numbering map[string]string `json:"numbering" dynamodbav:"numbering"`
+
+	// ConfirmAheadDays is how many days ahead an unconfirmed session goes
+	// on her to-do list, to confirm the time with the client.
+	ConfirmAheadDays int `json:"confirmAheadDays" dynamodbav:"confirmAheadDays"`
+	// FollowUpAheadDays is how many days ahead a follow-up goes on it.
+	FollowUpAheadDays int `json:"followUpAheadDays" dynamodbav:"followUpAheadDays"`
+	// TrackFrom (YYYY-MM-DD) is when she started keeping notes and payments
+	// here: sessions before it need neither. Empty tracks every session.
+	TrackFrom string `json:"trackFrom,omitempty" dynamodbav:"trackFrom,omitempty"`
 
 	// PaymentMessage and DocumentMessage are the WhatsApp messages she sends
 	// from a session or client: asking to pay with her bank details, and
@@ -32,8 +38,12 @@ type Settings struct {
 }
 
 const (
-	DefaultServiceName      = "Physiotherapy session"
-	DefaultHomeVisitColorID = "11" // Tomato
+	DefaultServiceName       = "Physiotherapy session"
+	DefaultHomeVisitColorID  = "11" // Tomato
+	DefaultConfirmAheadDays  = 2
+	DefaultFollowUpAheadDays = 7
+	// MaxAheadDays bounds both: the to-do list reads that far ahead.
+	MaxAheadDays = 30
 
 	DefaultPaymentMessage = "Hi {firstName}, thanks for coming in on {date}. The session is {amount}.\n\n" +
 		"You can transfer it to:\n{bank}\n\nThank you!"
@@ -54,12 +64,11 @@ func (s Settings) WithDefaults() Settings {
 	if s.DocumentMessage == "" {
 		s.DocumentMessage = DefaultDocumentMessage
 	}
-	numbering := map[string]string{}
-	for docType, template := range s.Numbering {
-		if template != "" {
-			numbering[docType] = template
-		}
+	if s.ConfirmAheadDays == 0 {
+		s.ConfirmAheadDays = DefaultConfirmAheadDays
 	}
-	s.Numbering = numbering
+	if s.FollowUpAheadDays == 0 {
+		s.FollowUpAheadDays = DefaultFollowUpAheadDays
+	}
 	return s
 }

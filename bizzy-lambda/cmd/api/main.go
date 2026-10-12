@@ -15,12 +15,14 @@ import (
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/google"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/reset"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
+	"bizzy-lambda/internal/features/todo"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/platform/googleauth"
 	"bizzy-lambda/internal/router"
@@ -46,6 +48,7 @@ func main() {
 
 	clientsRepo := clients.NewRepository(store)
 	sessionsRepo := sessions.NewRepository(store)
+	followUpsRepo := followups.NewRepository(store)
 	packagesRepo := packages.NewRepository(store)
 	settingsRepo := settings.NewRepository(store)
 
@@ -55,6 +58,7 @@ func main() {
 		Packages: packagesRepo,
 		Settings: settingsRepo,
 		Location: loc,
+		Now:      time.Now,
 	}
 	reconcile := func(ctx context.Context, scope billing.Scope) error {
 		_, err := reconciler.Reconcile(ctx, scope)
@@ -71,21 +75,27 @@ func main() {
 	})
 	contacts.Register(r, directory, clientsRepo)
 	google.Register(r, connections, auth)
-	sessions.Register(r, sessionsRepo)
+	sessions.Register(r, sessionsRepo, reconcileClients, loc)
+	followups.Register(r, followUpsRepo)
+	todo.Register(r, sessionsRepo, followUpsRepo, settingsRepo)
 	calendar := func(ctx context.Context) (googlesync.Calendar, error) {
 		return connections.Calendar(ctx, auth.Client)
 	}
 	googlesync.RegisterEditor(r, googlesync.Editor{
+		Calendar: calendar,
+		Clients:  clientsRepo,
+		Sessions: sessionsRepo,
+		Settings: settingsRepo,
+		Billing:  reconciler,
+	})
+	googlesync.RegisterFollowUpEditor(r, googlesync.FollowUpEditor{
 		Calendar:  calendar,
 		Clients:   clientsRepo,
-		Sessions:  sessionsRepo,
-		Settings:  settingsRepo,
-		Billing:   reconciler,
-		Lookahead: googlesync.BookingLookahead,
-		Now:       time.Now,
+		FollowUps: followUpsRepo,
+		Location:  loc,
 	})
 	packages.Register(r, packagesRepo, reconcileClients)
-	settings.Register(r, settingsRepo, documents.ValidateTemplate, func(ctx context.Context) error {
+	settings.Register(r, settingsRepo, func(ctx context.Context) error {
 		return reconcile(ctx, billing.Scope{AllClients: true, Unmatched: true})
 	})
 	documents.Register(r, documents.Deps{
@@ -109,9 +119,10 @@ func main() {
 			Contacts:  directory,
 			Clients:   clientsRepo,
 			Sessions:  sessionsRepo,
+			FollowUps: followUpsRepo,
 			Billing:   reconciler,
 			Status:    status,
-			Lookahead: googlesync.BookingLookahead,
+			Location:  loc,
 			Now:       time.Now,
 		}.Run(ctx, rng)
 	})

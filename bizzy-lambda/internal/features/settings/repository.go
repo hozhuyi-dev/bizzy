@@ -4,11 +4,7 @@ import (
 	"context"
 
 	"bizzy-lambda/internal/platform/dynamo"
-)
-
-const (
-	partition = "SETTINGS"
-	sortKey   = "BUSINESS"
+	"bizzy-lambda/internal/schema"
 )
 
 type record struct {
@@ -28,12 +24,13 @@ func NewRepository(store *dynamo.Store) Repository {
 // saved any.
 func (r Repository) Get(ctx context.Context) (Settings, error) {
 	var rec record
-	if _, err := r.store.Get(ctx, partition, sortKey, &rec); err != nil {
+	keys := schema.SettingsKeys()
+	if _, err := r.store.Get(ctx, keys.PK, keys.SK, &rec); err != nil {
 		return Settings{}, err
 	}
 	return rec.Settings.WithDefaults(), nil
 }
 
 func (r Repository) Put(ctx context.Context, s Settings) error {
-	return r.store.Put(ctx, record{Keys: dynamo.Keys{PK: partition, SK: sortKey}, Settings: s})
+	return r.store.Put(ctx, record{Keys: schema.SettingsKeys(), Settings: s})
 }

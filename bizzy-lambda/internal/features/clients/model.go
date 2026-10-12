@@ -7,8 +7,8 @@ import (
 
 // Client is written by several parties, each owning its own fields (see the
 // repository): the app (profile), the billing reconcile (Activity,
-// LastSessionAt), the calendar sync (NextBookedAt, and refreshing Contact)
-// and her follow-ups.
+// LastSessionAt, NextBookedAt), the contacts sync (refreshing Contact) and
+// Reconnect (LastContactedAt).
 type Client struct {
 	ID string `json:"id" dynamodbav:"id"`
 	// Name is hers to choose; the Google contact may be named differently.
@@ -70,8 +70,8 @@ func (c Contact) SameDetails(other Contact) bool {
 type MonthActivity struct {
 	Sessions     int `json:"sessions" dynamodbav:"sessions"`
 	HomeSessions int `json:"homeSessions,omitempty" dynamodbav:"homeSessions,omitempty"`
-	// ReceivedCents is money paid that month: session fees, and packages in
-	// the month they were bought.
+	// ReceivedCents is money paid that month: payments she recorded on
+	// sessions, packages bought in the app, and fees from before tracking.
 	ReceivedCents int64 `json:"receivedCents" dynamodbav:"receivedCents"`
 	// EarnedCents values sessions as they happen; a package session counts
 	// as its share of the package price.

@@ -18,12 +18,18 @@ var now = time.Date(2026, 10, 11, 13, 0, 0, 0, time.UTC)
 
 type fakeCalendar struct {
 	events []calendar.Event
+	// trash holds deleted events, which Restore brings back.
+	trash []calendar.Event
 }
 
 func (f *fakeCalendar) Events(_ context.Context, from, to time.Time) ([]calendar.Event, error) {
 	var out []calendar.Event
 	for _, e := range f.events {
-		if !e.Start.Before(from) && e.Start.Before(to) {
+		start := e.Start
+		if e.AllDay {
+			start, _ = time.Parse(time.DateOnly, e.Date)
+		}
+		if !start.Before(from) && start.Before(to) {
 			out = append(out, e)
 		}
 	}
@@ -37,15 +43,21 @@ func ev(id string, daysAgo int, title string) calendar.Event {
 
 func newSyncer(m *memory.Store, cal *fakeCalendar) Syncer {
 	return Syncer{
-		Events:   cal,
-		Clients:  m.Clients(),
-		Sessions: m.Sessions(),
-		Billing: &billing.Reconciler{
-			Clients: m.Clients(), Sessions: m.Sessions(), Packages: m.Packages(), Settings: m.Settings(),
-			Location: time.UTC,
-		},
-		Lookahead: 60 * 24 * time.Hour,
+		Events:    cal,
+		Clients:   m.Clients(),
+		Sessions:  m.Sessions(),
+		FollowUps: m.FollowUps(),
+		Billing:   newReconciler(m),
+		Location:  time.UTC,
 		Now:       func() time.Time { return now },
+	}
+}
+
+func newReconciler(m *memory.Store) *billing.Reconciler {
+	return &billing.Reconciler{
+		Clients: m.Clients(), Sessions: m.Sessions(), Packages: m.Packages(), Settings: m.Settings(),
+		Location: time.UTC,
+		Now:      func() time.Time { return now },
 	}
 }
 
@@ -125,7 +137,7 @@ func TestRunKeepsReceiptedSessionAsRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored := m.SessionMap["e1"]
-	stored.Document = &docref.Ref{DocumentID: "d1", Number: "RCP-0001", ClientID: "jane"}
+	stored.Receipt = &docref.Ref{DocumentID: "d1", Number: "RCP260001", ClientID: "jane"}
 	m.SessionMap["e1"] = stored
 
 	cal.events = nil
@@ -151,8 +163,81 @@ func TestRunRecordsNextBooking(t *testing.T) {
 	if got := m.ClientMap["jane"].NextBookedAt; got == nil || !got.Equal(soon.Start) {
 		t.Errorf("NextBookedAt = %v, want %v", got, soon.Start)
 	}
-	if len(m.SessionMap) != 0 {
-		t.Error("future events must not become sessions")
+	if s := m.SessionMap["f1"]; !s.Upcoming || s.Status != sessions.StatusPriced {
+		t.Errorf("booking = %+v, want an upcoming session", s)
+	}
+}
+
+func TestRunReconcilesSessionsOnceTheyHappen(t *testing.T) {
+	m, cal := setup()
+	cal.events = []calendar.Event{ev("f1", -1, "Jane Smith")}
+	s := newSyncer(m, cal)
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
+		t.Fatal(err)
+	}
+	if m.ClientMap["jane"].Activity != nil {
+		t.Fatal("a booking is not activity yet")
+	}
+
+	later := now.Add(48 * time.Hour)
+	s.Now = func() time.Time { return later }
+	s.Billing = &billing.Reconciler{
+		Clients: m.Clients(), Sessions: m.Sessions(), Packages: m.Packages(), Settings: m.Settings(),
+		Location: time.UTC, Now: s.Now,
+	}
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.SessionMap["f1"]; got.Upcoming {
+		t.Error("still upcoming after it happened")
+	}
+	if a := m.ClientMap["jane"].Activity; len(a) != 1 {
+		t.Errorf("activity = %v, want the session counted", a)
+	}
+}
+
+func TestRunSyncsFollowUps(t *testing.T) {
+	m, cal := setup()
+	timed := ev("u1", 1, "! Jane Smith: Check MRI results")
+	timed.Description = "Ask about the left knee too"
+	timed.Private = map[string]string{calendar.PropSessionID: "e9"}
+	allDay := calendar.Event{ID: "u2", Title: "! Bob: call", AllDay: true, Date: now.AddDate(0, 0, 3).Format(time.DateOnly)}
+	cal.events = []calendar.Event{timed, allDay, ev("e1", 1, "Jane Smith")}
+	s := newSyncer(m, cal)
+
+	summary, err := s.Run(context.Background(), Range{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Sessions != 1 || summary.FollowUps != 2 || len(m.SessionMap) != 1 {
+		t.Errorf("summary = %+v, sessions %d, want one session and two follow-ups", summary, len(m.SessionMap))
+	}
+	f := m.FollowUpMap["u1"]
+	if f.ClientID != "jane" || f.Summary != "Check MRI results" || f.Notes != "Ask about the left knee too" || f.SessionID != "e9" {
+		t.Errorf("follow-up = %+v", f)
+	}
+	if b := m.FollowUpMap["u2"]; !b.AllDay || b.ClientID != "" || b.Problem == "" || b.Due.Format(time.DateOnly) != allDay.Date {
+		t.Errorf("all-day = %+v, want unmatched on its day", b)
+	}
+
+	// Done is hers: a quiet run keeps it and writes nothing.
+	f.DoneAt = &now
+	m.FollowUpMap["u1"] = f
+	m.Writes = 0
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
+		t.Fatal(err)
+	}
+	if m.Writes != 0 || m.FollowUpMap["u1"].DoneAt == nil {
+		t.Errorf("writes = %d, done = %v", m.Writes, m.FollowUpMap["u1"].DoneAt)
+	}
+
+	// Deleted in the calendar.
+	cal.events = cal.events[1:]
+	if _, err := s.Run(context.Background(), Range{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.FollowUpMap["u1"]; ok {
+		t.Error("deleted follow-up kept")
 	}
 }
 

@@ -7,15 +7,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"bizzy-lambda/internal/platform/dynamo"
+	"bizzy-lambda/internal/schema"
 )
 
-const partition = "CLIENT"
+// Keys: see schema.ClientKeys.
+const partition = schema.Client
 
 // Attributes each writer owns. A profile save from the app must not wipe the
 // activity the reconcile computed, and the other way round.
 var (
 	profileAttributes  = []string{"id", "name", "contact", "aliases", "defaultFeeCents", "homeVisits"}
-	activityAttributes = []string{"activity", "lastSessionAt"}
+	activityAttributes = []string{"activity", "lastSessionAt", "nextBookedAt"}
 )
 
 type record struct {
@@ -57,10 +59,6 @@ func (r Repository) SaveProfile(ctx context.Context, client Client) error {
 // SaveActivity writes the fields the billing reconcile derives.
 func (r Repository) SaveActivity(ctx context.Context, client Client) error {
 	return r.patch(ctx, client, activityAttributes)
-}
-
-func (r Repository) SetNextBooked(ctx context.Context, id string, at *time.Time) error {
-	return r.patch(ctx, Client{ID: id, NextBookedAt: at}, []string{"nextBookedAt"})
 }
 
 // RefreshContact replaces the contact copy, but only while the client is

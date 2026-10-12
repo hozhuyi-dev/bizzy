@@ -35,11 +35,6 @@ export const DocumentsQuery = {
       retry: false,
     }),
 
-  useNumbering: (type: DocumentType) =>
-    useQuery({
-      queryKey: DocumentKeys.numbering(type),
-      queryFn: () => DocumentsService.numbering(type),
-    }),
 };
 
 /**
@@ -90,14 +85,6 @@ export const DocumentsMutation = {
     const queryClient = useQueryClient();
     return useMutation({
       mutationFn: (doc: Versioned) => DocumentsService.resetShare(doc),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: DocumentKeys.all }),
-    });
-  },
-  useSetNextNumber: () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-      mutationFn: ({ type, next }: { type: DocumentType; next: number }) =>
-        DocumentsService.setNextNumber(type, next),
       onSuccess: () => queryClient.invalidateQueries({ queryKey: DocumentKeys.all }),
     });
   },

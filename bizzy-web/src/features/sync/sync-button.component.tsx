@@ -16,7 +16,7 @@ import { GoogleQuery } from "~/features/google/google.query";
 import { formatRelative } from "~/core/utils/date.util";
 
 function describe(summary: SyncSummary): string {
-  const changes = summary.saved + summary.deleted + summary.contacts;
+  const changes = summary.saved + summary.deleted + summary.followUps + summary.contacts;
   return `${summary.sessions} sessions · ${changes ? `${changes} updated` : "nothing changed"}`;
 }
 

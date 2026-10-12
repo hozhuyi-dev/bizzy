@@ -16,31 +16,18 @@ import (
 )
 
 func TestNumbering(t *testing.T) {
-	date := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
-	tests := []struct {
-		template, want, key string
-	}{
-		{"RCP-{seq:4}", "RCP-0042", "receipt"},
-		{"R{YY}-{seq:3}", "R26-042", "receipt#2026"},
-		{"{YYYY}/{seq}", "2026/42", "receipt#2026"},
+	if got := Number(Types[TypeReceipt], 2026, 42); got != "RCP260042" {
+		t.Errorf("Number = %q, want RCP260042", got)
 	}
-	for _, tt := range tests {
-		n := Numbering{Template: tt.template}
-		if err := ValidateTemplate(tt.template); err != nil {
-			t.Errorf("ValidateTemplate(%q) = %v", tt.template, err)
-		}
-		if got := n.Format(42, date); got != tt.want {
-			t.Errorf("Format(%q) = %q, want %q", tt.template, got, tt.want)
-		}
-		if got := n.CounterKey(TypeReceipt, date); got != tt.key {
-			t.Errorf("CounterKey(%q) = %q, want %q", tt.template, got, tt.key)
-		}
+	if got := Number(Types[TypeInvoice], 2031, 1234); got != "INV311234" {
+		t.Errorf("Number = %q, want INV311234", got)
 	}
-
-	for _, bad := range []string{"RCP-0001", "{seq}-{seq}", "{seq} {MM}"} {
-		if ValidateTemplate(bad) == nil {
-			t.Errorf("ValidateTemplate(%q) should fail", bad)
-		}
+	if got := Label("RCP260042", 0); got != "RCP260042-00" {
+		t.Errorf("Label = %q", got)
+	}
+	issued := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
+	if got := counterKey(TypeInvoice, issued); got != "invoice#2027" {
+		t.Errorf("counterKey = %q", got)
 	}
 }
 
@@ -97,14 +84,6 @@ func (f *fakeRepo) Revisions(_ context.Context, id string) ([]Revision, error) {
 
 func (f *fakeRepo) Counter(_ context.Context, key string) (int64, error) { return f.counters[key], nil }
 
-func (f *fakeRepo) SetCounter(_ context.Context, key string, last int64) (bool, error) {
-	if f.counters[key] > last {
-		return false, nil
-	}
-	f.counters[key] = last
-	return true, nil
-}
-
 func (f *fakeRepo) Commit(_ context.Context, w Write) error {
 	existing, exists := f.docs[w.Doc.ID]
 	if (w.PreviousVersion == 0 && exists) || (w.PreviousVersion > 0 && existing.Version != w.PreviousVersion) {
@@ -143,7 +122,8 @@ func newHandler(t *testing.T) (handler, *fakeRepo, *[]string) {
 	for _, id := range []string{"e1", "e2"} {
 		m.SessionMap[id] = sessions.Session{
 			EventID: id, ClientID: "jane", Status: sessions.StatusPriced, FeeCents: &fee,
-			Start: time.Date(2026, 10, 5, 2, 0, 0, 0, time.UTC),
+			Start:   time.Date(2026, 10, 5, 2, 0, 0, 0, time.UTC),
+			Payment: &sessions.Payment{Status: sessions.PaymentPaid, Method: sessions.MethodTNG, AmountCents: fee, PaidOn: "2026-10-05"},
 		}
 	}
 	m.SettingsVal.BusinessName = "Physio Co"
@@ -188,6 +168,9 @@ func TestLifecycle(t *testing.T) {
 	if line := draft.Draft.Lines[0]; line.Date != "2026-10-05" || line.Description != "Physiotherapy session" {
 		t.Errorf("prefilled line = %+v", line)
 	}
+	if draft.Draft.PaidBy != "Touch 'n Go eWallet" {
+		t.Errorf("paid by = %q, want what she recorded", draft.Draft.PaidBy)
+	}
 
 	// She edits freely before issuing.
 	content := *draft.Draft
@@ -196,7 +179,7 @@ func TestLifecycle(t *testing.T) {
 	draft = must[Document](t)(h.saveDraft(ctx, saveDraftInput{ID: draft.ID, Version: draft.Version, Content: content}))
 
 	issued := must[Document](t)(h.issue(ctx, idInput{ID: draft.ID, Version: draft.Version}))
-	if issued.Number != "RCP-0001" || *issued.Revision != 0 || issued.Content.TotalCents != 9000 || issued.Draft != nil {
+	if issued.Number != "RCP260001" || *issued.Revision != 0 || issued.Content.TotalCents != 9000 || issued.Draft != nil {
 		t.Fatalf("issued = %+v", issued)
 	}
 	if len(*reconciled) == 0 {
@@ -212,7 +195,7 @@ func TestLifecycle(t *testing.T) {
 		t.Error("the issued content must not change while a revision is drafted")
 	}
 	rev1 := must[Document](t)(h.issue(ctx, idInput{ID: revising.ID, Version: revising.Version}))
-	if rev1.Number != "RCP-0001" || *rev1.Revision != 1 || rev1.Content.Recipient.Name != "Jane A. Smith" {
+	if rev1.Number != "RCP260001" || *rev1.Revision != 1 || rev1.Content.Recipient.Name != "Jane A. Smith" {
 		t.Errorf("rev1 = %+v", rev1)
 	}
 	if len(repo.revisions) != 2 || repo.revisions[0].Content.Recipient.Name != "Jane Smith" {
@@ -227,14 +210,13 @@ func TestLifecycle(t *testing.T) {
 	if _, ok := repo.docs[other.ID]; ok {
 		t.Error("discarded draft should be deleted")
 	}
-	next := must[numberingOutput](t)(h.numbering(ctx, typeInput{Type: TypeReceipt}))
-	if next.Next != "RCP-0002" {
-		t.Errorf("next number = %q, want RCP-0002", next.Next)
+	if got := repo.counters["receipt#2026"]; got != 1 {
+		t.Errorf("counter = %d, want 1", got)
 	}
 
 	// Cancel keeps the number used.
 	cancelled := must[Document](t)(h.cancel(ctx, cancelInput{ID: rev1.ID, Version: rev1.Version, Reason: "session cancelled"}))
-	if cancelled.Status != StatusCancelled || cancelled.Number != "RCP-0001" {
+	if cancelled.Status != StatusCancelled || cancelled.Number != "RCP260001" {
 		t.Errorf("cancelled = %+v", cancelled)
 	}
 }
@@ -315,13 +297,35 @@ func TestListIsOneMonthOfSummaries(t *testing.T) {
 	if len(list) != 1 {
 		t.Fatalf("list = %+v, want only October's receipt", list)
 	}
-	if got := list[0]; got.Number != "RCP-0001" || got.RecipientName != "Jane Smith" || !got.Revising {
-		t.Errorf("summary = %+v, want RCP-0001 for Jane Smith, being revised", got)
+	if got := list[0]; got.Number != "RCP260001" || got.RecipientName != "Jane Smith" || !got.Revising {
+		t.Errorf("summary = %+v, want RCP260001 for Jane Smith, being revised", got)
 	}
 
 	for _, bad := range []string{"", "2026-1", "2026-13", "2026-10-01"} {
 		if _, err := h.list(ctx, listInput{Type: TypeReceipt, Month: bad}); err == nil {
 			t.Errorf("month %q should be rejected", bad)
 		}
+	}
+}
+
+func TestInvoiceBeforePaymentReceiptAfter(t *testing.T) {
+	ctx := context.Background()
+	h, _, _ := newHandler(t)
+	edit := h.Sessions.(*memory.SessionRepo).SessionMap
+	s := edit["e1"]
+	s.Payment = nil
+	edit["e1"] = s
+
+	src := []Source{{Kind: SourceSession, ID: "e1"}}
+	if _, err := h.createDraft(ctx, createDraftInput{Type: TypeReceipt, Sources: src}); !isCode(err, apperr.CodeConflict) {
+		t.Errorf("receipt before payment: err = %v, want conflict", err)
+	}
+	invoice := must[Document](t)(h.createDraft(ctx, createDraftInput{Type: TypeInvoice, Sources: src}))
+	issued := must[Document](t)(h.issue(ctx, idInput{ID: invoice.ID, Version: invoice.Version}))
+	if issued.Number != "INV260001" || issued.Draft != nil {
+		t.Errorf("invoice = %+v", issued)
+	}
+	if issued.Content.PaidBy != "" {
+		t.Error("an invoice has no paid by")
 	}
 }

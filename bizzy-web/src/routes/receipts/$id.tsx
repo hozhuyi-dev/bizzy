@@ -7,5 +7,5 @@ export const Route = createFileRoute("/receipts/$id")({
 
 function ReceiptRoute() {
   const { id } = Route.useParams();
-  return <DocumentPage key={id} id={id} />;
+  return <DocumentPage key={id} id={id} type="receipt" />;
 }

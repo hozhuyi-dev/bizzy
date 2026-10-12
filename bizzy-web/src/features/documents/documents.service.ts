@@ -5,7 +5,6 @@ import type {
   DocumentSource,
   DocumentSummary,
   DocumentType,
-  Numbering,
   SharedDocument,
 } from "./documents.types";
 import { ApiError, invoke } from "~/core/lambda/lambda.client";
@@ -34,9 +33,6 @@ export const DocumentsService = {
     invoke<BizDocument | null>("documents.discardDraft", { id: doc.id, version: doc.version }),
   cancel: (doc: Versioned, reason: string) =>
     invoke<BizDocument>("documents.cancel", { id: doc.id, version: doc.version, reason }),
-  numbering: (type: DocumentType) => invoke<Numbering>("documents.numbering", { type }),
-  setNextNumber: (type: DocumentType, next: number) =>
-    invoke<Numbering>("documents.setNextNumber", { type, next }),
   /** Share tokens by id, giving one to any issued document without. */
   share: (ids: Array<string>) => invoke<Record<string, string>>("documents.share", { ids }),
   /** A new share token: links already sent stop working. */

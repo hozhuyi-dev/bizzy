@@ -1,8 +1,9 @@
-import { PencilIcon, ReceiptIcon, Trash2Icon } from "lucide-react";
+import { FileTextIcon, PencilIcon, ReceiptIcon, Trash2Icon } from "lucide-react";
 import { creditsLeft } from "./packages.types";
 import type { ReactNode } from "react";
 import type { Package } from "./packages.types";
 import type { Client } from "~/features/clients/clients.types";
+import type { DocumentType } from "~/features/documents/documents.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.features";
@@ -10,13 +11,16 @@ import { RowActionButtons } from "~/components/shared/row-actions/row-actions.co
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
+import { documentLabel, documentRoute } from "~/features/documents/documents.registry";
 
 export interface PackageHandlers {
   clientsById: ReadonlyMap<string, Client>;
   onEdit: (pkg: Package) => void;
   onDelete: (pkg: Package) => void;
-  onReceipt: (pkg: Package) => void;
+  onDocument: (type: DocumentType, pkg: Package) => void;
 }
+
+const DOCUMENT_TYPES_ORDER: ReadonlyArray<DocumentType> = ["invoice", "receipt"];
 
 const helper = createDataTableColumnHelper<Package>();
 
@@ -55,29 +59,41 @@ export function PackageSource({ pkg }: { pkg: Package }) {
   );
 }
 
-export function PackageReceipt({
+/** The invoice and receipt covering the package, if any. */
+export function PackageDocuments({
   pkg,
   empty = "—",
 }: {
   pkg: Package;
-  /** Shown when there is no receipt yet. */
+  /** Shown when there is none yet. */
   empty?: ReactNode;
 }) {
-  if (!pkg.document) return empty;
+  const docs = DOCUMENT_TYPES_ORDER.flatMap((type) => {
+    const ref = pkg[type];
+    return ref ? [{ type, ref }] : [];
+  });
+  if (docs.length === 0) return empty;
   return (
-    <TextLink to="/receipts/$id" params={{ id: pkg.document.documentId }} className="text-sm">
-      {pkg.document.number ?? "Draft"}
-    </TextLink>
+    <span className="flex flex-wrap items-center gap-2">
+      {docs.map(({ type, ref }) => (
+        <TextLink key={ref.documentId} to={documentRoute(type)} params={{ id: ref.documentId }} className="text-sm">
+          {documentLabel(ref.number, ref.revision)}
+        </TextLink>
+      ))}
+    </span>
   );
 }
 
 /** Calendar packages are changed in the calendar; only app ones are editable here. */
 export function packageActions(pkg: Package, handlers: PackageHandlers): Array<RowAction> {
   const actions: Array<RowAction> = [];
-  if (pkg.document) return actions;
-  if (!pkg.removed) {
-    actions.push({ label: "New receipt", icon: ReceiptIcon, onClick: () => handlers.onReceipt(pkg) });
+  if (!pkg.removed && !pkg.invoice) {
+    actions.push({ label: "New invoice", icon: FileTextIcon, onClick: () => handlers.onDocument("invoice", pkg) });
   }
+  if (!pkg.removed && !pkg.receipt) {
+    actions.push({ label: "New receipt", icon: ReceiptIcon, onClick: () => handlers.onDocument("receipt", pkg) });
+  }
+  if (pkg.invoice || pkg.receipt) return actions;
   if (pkg.source === "app") {
     actions.push(
       { label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) },
@@ -121,10 +137,13 @@ export function createPackageColumns(handlers: PackageHandlers) {
       cell: ({ row }) => <PackageSource pkg={row.original} />,
     }),
     helper.display({
-      id: "receipt",
-      header: "Receipt",
-      meta: { search: (pkg: Package) => pkg.document?.number ?? (pkg.document ? "Draft" : undefined) },
-      cell: ({ row }) => <PackageReceipt pkg={row.original} />,
+      id: "documents",
+      header: "Documents",
+      meta: {
+        search: (pkg: Package) =>
+          DOCUMENT_TYPES_ORDER.map((type) => pkg[type]).flatMap((ref) => (ref ? [documentLabel(ref.number, ref.revision)] : [])),
+      },
+      cell: ({ row }) => <PackageDocuments pkg={row.original} />,
     }),
     helper.display({
       id: "actions",

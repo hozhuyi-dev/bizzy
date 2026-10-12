@@ -10,9 +10,22 @@ export const ClientKeys = {
 
 export const SessionKeys = {
   all: ["sessions"] as const,
-  open: () => [...SessionKeys.all, "open"] as const,
   range: (from: string, to: string) => [...SessionKeys.all, "range", from, to] as const,
   detail: (eventId: string) => [...SessionKeys.all, "detail", eventId] as const,
+  client: (clientId: string) => [...SessionKeys.all, "client", clientId] as const,
+  removed: () => [...SessionKeys.all, "removed"] as const,
+};
+
+export const FollowUpKeys = {
+  all: ["followUps"] as const,
+  list: (view: string) => [...FollowUpKeys.all, "list", view] as const,
+  client: (clientId: string) => [...FollowUpKeys.all, "client", clientId] as const,
+  session: (sessionId: string) => [...FollowUpKeys.all, "session", sessionId] as const,
+};
+
+export const TodoKeys = {
+  all: ["todo"] as const,
+  list: () => [...TodoKeys.all, "list"] as const,
 };
 
 export const PackageKeys = {
@@ -26,7 +39,6 @@ export const DocumentKeys = {
   detail: (id: string) => [...DocumentKeys.all, "detail", id] as const,
   client: (clientId: string) => [...DocumentKeys.all, "client", clientId] as const,
   shared: (token: string) => [...DocumentKeys.all, "shared", token] as const,
-  numbering: (type: string) => [...DocumentKeys.all, "numbering", type] as const,
 };
 
 export const SettingsKeys = {
@@ -56,7 +68,9 @@ export const ContactKeys = {
  * change any of these, so they are refreshed together.
  */
 export const BILLING_KEYS = [
+  TodoKeys.all,
   SessionKeys.all,
+  FollowUpKeys.all,
   PackageKeys.all,
   ClientKeys.all,
   DocumentKeys.all,

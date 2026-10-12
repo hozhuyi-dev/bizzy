@@ -22,10 +22,10 @@ import { DocumentsMutation, DocumentsQuery } from "./documents.query";
 import { shareUrl } from "./documents.service";
 import { DOCUMENT_TYPES, documentLabel } from "./documents.registry";
 import { downloadDocumentPdf, openDocumentPdf } from "./pdf/download-pdf";
+import type { BizDocument, DocumentContent, DocumentRevision, DocumentType  } from "./documents.types";
 import type { DocumentPdfProps } from "./pdf/document-pdf.component";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
-import type { BizDocument, DocumentContent, DocumentRevision } from "./documents.types";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
@@ -48,11 +48,15 @@ import { queryMatch } from "~/core/utils/query.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { useSendDocuments } from "~/features/whatsapp/use-whatsapp";
 
-// The breadcrumb already says what kind of document this is.
-const parent = { to: "/receipts", label: "Receipts" } as const;
+/** The breadcrumb, which already says what kind of document this is. */
+function parentOf(type: DocumentType) {
+  const spec = DOCUMENT_TYPES[type];
+  return { to: spec.path, label: spec.plural } as const;
+}
 
-export function DocumentPage({ id }: { id: string }) {
+export function DocumentPage({ id, type }: { id: string; type: DocumentType }) {
   const detail = DocumentsQuery.useDetail(id);
+  const parent = parentOf(type);
 
   return queryMatch(detail, {
     pending: () => (
@@ -87,6 +91,7 @@ interface DraftDocumentProps {
 
 function DraftDocument({ doc, draft, revisions }: DraftDocumentProps) {
   const editor = useDocumentEditor(doc, draft);
+  const parent = parentOf(doc.type);
   const history = revisionsSection(doc, revisions);
 
   return (
@@ -125,6 +130,7 @@ interface IssuedDocumentProps {
 
 function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
   const history = revisionsSection(doc, revisions);
+  const parent = parentOf(doc.type);
   const revise = DocumentsMutation.useRevise();
   const [cancelling, setCancelling] = useState(false);
   const cancelled = doc.status === "cancelled";
@@ -244,7 +250,7 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: BizDocument; open: boole
     <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Reset the link to {doc.number}?</AlertDialogTitle>
+          <AlertDialogTitle>Reset the link to {documentLabel(doc.number, doc.revision)}?</AlertDialogTitle>
           <AlertDialogDescription>
             Links already sent stop working, for example one sent to the wrong person. Send the new link to
             whoever should still have it.
@@ -326,7 +332,7 @@ function CancelDialog({ doc, open, onClose }: { doc: BizDocument; open: boolean;
     <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Cancel {doc.number}?</AlertDialogTitle>
+          <AlertDialogTitle>Cancel {documentLabel(doc.number, doc.revision)}?</AlertDialogTitle>
           <AlertDialogDescription>
             The {title} is kept, marked cancelled, and its number is never reused. The session or
             package it covered is free for a new {title}.
@@ -343,7 +349,7 @@ function CancelDialog({ doc, open, onClose }: { doc: BizDocument; open: boolean;
                 { doc, reason },
                 {
                   onSuccess: () => {
-                    toast.success(`${doc.number ?? "Document"} cancelled`);
+                    toast.success(`${documentLabel(doc.number, doc.revision)} cancelled`);
                     onClose();
                   },
                   onError: (error) => toast.error(error.message),

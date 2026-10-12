@@ -10,11 +10,7 @@ import (
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/router"
-)
-
-const (
-	statusPartition = "SYNC"
-	statusSortKey   = "LAST"
+	"bizzy-lambda/internal/schema"
 )
 
 type statusRecord struct {
@@ -32,13 +28,14 @@ func NewStatusRepository(store *dynamo.Store) StatusRepository {
 }
 
 func (r StatusRepository) Put(ctx context.Context, run Run) error {
-	return r.store.Put(ctx, statusRecord{Keys: dynamo.Keys{PK: statusPartition, SK: statusSortKey}, Run: run})
+	return r.store.Put(ctx, statusRecord{Keys: schema.SyncStatusKeys(), Run: run})
 }
 
 // Get returns nil before the first sync.
 func (r StatusRepository) Get(ctx context.Context) (*Run, error) {
 	var rec statusRecord
-	found, err := r.store.Get(ctx, statusPartition, statusSortKey, &rec)
+	keys := schema.SyncStatusKeys()
+	found, err := r.store.Get(ctx, keys.PK, keys.SK, &rec)
 	if err != nil || !found {
 		return nil, err
 	}

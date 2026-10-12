@@ -132,3 +132,43 @@ func formatCents(cents int64) string {
 	}
 	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
 }
+
+// FollowUpTitle is a follow-up event title:
+//
+//	! <name>: <summary>
+//
+// A reminder to get back to a client, kept in the same calendar as her
+// sessions; the `!` is what keeps the sync from reading it as one. The
+// summary is optional, and the event's description holds any longer notes.
+type FollowUpTitle struct {
+	Name    string
+	Summary string
+}
+
+// IsFollowUp reports whether an event title is a follow-up rather than a
+// session.
+func IsFollowUp(raw string) bool {
+	return strings.HasPrefix(strings.TrimSpace(raw), "!")
+}
+
+// ParseFollowUp reads a follow-up title. The name runs to the first colon.
+func ParseFollowUp(raw string) (FollowUpTitle, error) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(raw), "!")
+	if !ok {
+		return FollowUpTitle{}, &ParseError{Reason: "a follow-up starts with !"}
+	}
+	name, summary, _ := strings.Cut(rest, ":")
+	title := FollowUpTitle{Name: strings.Join(strings.Fields(name), " "), Summary: strings.TrimSpace(summary)}
+	if title.Name == "" {
+		return title, &ParseError{Reason: "missing client name after the !"}
+	}
+	return title, nil
+}
+
+// FormatFollowUp writes a follow-up title, for ones she makes in the app.
+func FormatFollowUp(t FollowUpTitle) string {
+	if t.Summary == "" {
+		return "! " + t.Name
+	}
+	return "! " + t.Name + ": " + t.Summary
+}

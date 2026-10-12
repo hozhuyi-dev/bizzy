@@ -12,23 +12,38 @@ export interface DocumentTypeSpec {
   plural: string;
   /** Label for the party it is addressed to. */
   recipientLabel: string;
-  /** Whether "Paid by" applies. */
+  /** Whether it confirms a payment ("Paid by", "Total paid"); an invoice asks for one. */
   paid: boolean;
+  /** Its list, under Documents. */
+  path: "/invoices" | "/receipts";
 }
 
 export const DOCUMENT_TYPES: Record<DocumentType, DocumentTypeSpec> = {
+  invoice: {
+    title: "Invoice",
+    plural: "Invoices",
+    recipientLabel: "Bill to",
+    paid: false,
+    path: "/invoices",
+  },
   receipt: {
     title: "Receipt",
     plural: "Receipts",
     recipientLabel: "Received from",
     paid: true,
+    path: "/receipts",
   },
 };
 
-/** "RCP-0001", "RCP-0001 Rev 01"; the first revision shows no label. */
+/** The route of one document's page. */
+export function documentRoute(type: DocumentType) {
+  return type === "invoice" ? ("/invoices/$id" as const) : ("/receipts/$id" as const);
+}
+
+/** "RCP260042-00": the number and its revision, from -00. A draft has no number yet. */
 export function documentLabel(number: string | undefined, revision: number | undefined): string {
   if (!number) return "Draft";
-  return revision ? `${number} Rev ${String(revision).padStart(2, "0")}` : number;
+  return `${number}-${String(revision ?? 0).padStart(2, "0")}`;
 }
 
 /** The content a reader sees: the draft while it is new, else the issued one. */

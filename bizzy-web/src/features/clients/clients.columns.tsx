@@ -1,4 +1,4 @@
-import { CheckIcon, MessageCircleIcon } from "lucide-react";
+import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
 import { last12Months, monthsSinceLastSession, totals } from "./clients.activity";
 import type { Client } from "./clients.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
@@ -58,14 +58,17 @@ export function LastSeen({ row }: { row: ClientRow }) {
 
 interface ClientActions {
   onContacted?: (client: Client) => void;
+  /** Makes a follow-up to get back to them on a day. */
+  onRemind?: (client: Client) => void;
 }
 
 /** The client's name links to their page, so editing needs no action here. */
-export function clientActions(client: Client, { onContacted }: ClientActions): Array<RowAction> {
+export function clientActions(client: Client, { onContacted, onRemind }: ClientActions): Array<RowAction> {
   const actions: Array<RowAction> = [];
   const whatsapp = whatsappLink(client.contact?.phone);
   if (whatsapp) actions.push({ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => openWhatsApp(whatsapp) });
   if (onContacted) actions.push({ label: "Contacted", icon: CheckIcon, onClick: () => onContacted(client) });
+  if (onRemind) actions.push({ label: "Remind me", icon: BellIcon, onClick: () => onRemind(client) });
   return actions;
 }
 

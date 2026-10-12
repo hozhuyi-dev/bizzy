@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import { PackageForm } from "./components/package-form/package-form.component";
 import {
   PackageCredits,
+  PackageDocuments,
   PackagePrice,
-  PackageReceipt,
   PackageSource,
   clientName,
   createPackageColumns,
@@ -16,7 +16,7 @@ import { PackagesMutation, PackagesQuery } from "./packages.query";
 import type { PackageHandlers } from "./packages.columns";
 import type { Package } from "./packages.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { useCreateReceipt } from "~/features/documents/use-create-receipt";
+import { useCreateDocument } from "~/features/documents/use-create-document";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -49,7 +49,7 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
   const packages = PackagesQuery.useList(view === "all");
   const clientsById = ClientsQuery.useById();
   const { mutate: remove } = PackagesMutation.useDelete();
-  const { create: createReceipt } = useCreateReceipt();
+  const { create: createDocument } = useCreateDocument();
 
   const handlers = useMemo<PackageHandlers>(
     () => ({
@@ -60,9 +60,9 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
           onSuccess: () => toast.success("Package deleted"),
           onError: (error) => toast.error(error.message),
         }),
-      onReceipt: (pkg) => createReceipt([{ kind: "package", id: pkg.id }]),
+      onDocument: (type, pkg) => createDocument(type, [{ kind: "package", id: pkg.id }]),
     }),
-    [clientsById, remove, createReceipt],
+    [clientsById, remove, createDocument],
   );
 
   const columns = useMemo(() => createPackageColumns(handlers), [handlers]);
@@ -131,7 +131,7 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <PackageSource pkg={row.original} />
-                    <PackageReceipt pkg={row.original} empty={null} />
+                    <PackageDocuments pkg={row.original} empty={null} />
                   </div>
                 </CardContent>
               </Card>

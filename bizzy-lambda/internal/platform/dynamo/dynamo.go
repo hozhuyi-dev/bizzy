@@ -32,7 +32,8 @@ const (
 	IndexOpen = "LSI3"
 	// IndexCategory groups by a kind or status: "<category>#<time>".
 	IndexCategory = "LSI4"
-	// LSI5 is spare.
+	// IndexRelation groups by a related item: "<id>#<time>".
+	IndexRelation = "LSI5"
 )
 
 // Keys are the key attributes every item carries. Entities embed it in their
@@ -44,11 +45,12 @@ type Keys struct {
 	LSI2SK string `dynamodbav:"LSI2SK,omitempty"`
 	LSI3SK string `dynamodbav:"LSI3SK,omitempty"`
 	LSI4SK string `dynamodbav:"LSI4SK,omitempty"`
+	LSI5SK string `dynamodbav:"LSI5SK,omitempty"`
 }
 
 // IndexAttributes are the LSI sort keys, which whoever writes an entity's
 // derived fields also owns.
-var IndexAttributes = []string{"LSI1SK", "LSI2SK", "LSI3SK", "LSI4SK"}
+var IndexAttributes = []string{"LSI1SK", "LSI2SK", "LSI3SK", "LSI4SK", "LSI5SK"}
 
 type Store struct {
 	Client *dynamodb.Client

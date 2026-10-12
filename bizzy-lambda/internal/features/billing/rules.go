@@ -1,7 +1,8 @@
 // Package billing derives everything about sessions and packages that is not
 // written in the calendar: which client, what fee, which package credit,
-// where it happened, and each client's monthly activity. The rules here are
-// pure; Reconciler loads, applies and writes them.
+// where it happened, whether it is still ahead, and each client's monthly
+// activity. The rules here are pure; Reconciler loads, applies and writes
+// them.
 package billing
 
 import (
@@ -12,8 +13,10 @@ import (
 
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/docref"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/features/settings"
 )
 
 // Env is what derivation depends on besides the session itself.
@@ -21,15 +24,23 @@ type Env struct {
 	Aliases     calendar.Aliases
 	Clients     map[string]clients.Client
 	HomeColorID string
-	Location    *time.Location
+	// TrackFrom is when she started recording notes and payments here;
+	// zero tracks everything.
+	TrackFrom time.Time
+	Location  *time.Location
+	Now       time.Time
 }
 
-func NewEnv(all []clients.Client, homeColorID string, loc *time.Location) Env {
+func NewEnv(all []clients.Client, cfg settings.Settings, loc *time.Location, now time.Time) Env {
 	byID := make(map[string]clients.Client, len(all))
 	for _, c := range all {
 		byID[c.ID] = c
 	}
-	return Env{Aliases: calendar.AliasesOf(all), Clients: byID, HomeColorID: homeColorID, Location: loc}
+	env := Env{Aliases: calendar.AliasesOf(all), Clients: byID, HomeColorID: cfg.HomeVisitColorID, Location: loc, Now: now}
+	if cfg.TrackFrom != "" {
+		env.TrackFrom, _ = time.ParseInLocation(time.DateOnly, cfg.TrackFrom, loc)
+	}
+	return env
 }
 
 // Entry is a session with its parsed title, carried between the steps.
@@ -51,8 +62,10 @@ func (e Entry) allocatable() bool {
 func Derive(s sessions.Session, env Env) Entry {
 	out := s
 	out.Status, out.Name, out.ClientID, out.SuggestedClientID = "", "", "", ""
-	out.FeeCents, out.FeeSource, out.PackageID, out.ValueCents = nil, "", "", 0
+	out.FeeCents, out.FeeSource, out.PackageID, out.ValueCents, out.BoughtCents = nil, "", "", 0, 0
 	out.Reason, out.Drift = "", ""
+	out.Upcoming = s.Start.After(env.Now)
+	out.Untracked = !env.TrackFrom.IsZero() && s.Start.Before(env.TrackFrom)
 
 	title, err := calendar.ParseTitle(s.Title)
 	out.Name = title.Name
@@ -65,10 +78,21 @@ func Derive(s sessions.Session, env Env) Entry {
 		case calendar.MatchNearMiss:
 			out.SuggestedClientID = match.ClientID
 		}
+		switch {
+		case title.Tentative:
+			out.ConfirmedAt = nil
+		case out.ConfirmedAt == nil:
+			// First seen confirmed: now, or its start for history.
+			at := env.Now.UTC()
+			if s.Start.Before(at) {
+				at = s.Start.UTC()
+			}
+			out.ConfirmedAt = &at
+		}
 	}
 
 	switch {
-	case s.Removed:
+	case s.RemovedAt != nil:
 		out.Status = sessions.StatusRemoved
 	case err != nil:
 		out.Status = sessions.StatusParseError
@@ -118,15 +142,18 @@ func CalendarPackage(e Entry) (packages.Package, bool) {
 	}, true
 }
 
-// Allocate prices one client's sessions in date order:
+// Allocate prices one client's sessions in date order, booked ones
+// included (a booking holds its credit):
 //
-//  1. an amount in the title is what she was paid;
+//  1. an amount in the title is the fee;
 //  2. otherwise the oldest package bought at or before the session with a
-//     credit left covers it (a receipted session never takes a credit);
+//     credit left covers it (one already paid or on a document keeps its
+//     fee rather than switch to a credit);
 //  3. otherwise the client's default fee;
 //  4. otherwise the fee is missing.
 //
-// It sets CreditsUsed on the packages it is given.
+// A package bought in the session is due with it. It sets CreditsUsed on
+// the packages it is given.
 func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package) {
 	slices.SortFunc(entries, func(a, b *Entry) int {
 		return cmp.Or(a.Session.Start.Compare(b.Session.Start), cmp.Compare(a.Session.EventID, b.Session.EventID))
@@ -143,13 +170,16 @@ func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package)
 			continue
 		}
 		s := &e.Session
+		if p := e.Title.Package; p != nil {
+			s.BoughtCents = p.PriceCents
+		}
 
 		if fee := e.Title.FeeCents; fee != nil {
 			s.Status, s.FeeSource, s.FeeCents, s.ValueCents = sessions.StatusPriced, sessions.FeeFromTitle, ptr(*fee), *fee
 			continue
 		}
 
-		if s.Document == nil {
+		if !s.HasDocuments() && s.Payment == nil {
 			if p := firstWithCredit(pkgs, s.Start); p != nil {
 				s.Status, s.FeeSource, s.PackageID = sessions.StatusPackage, sessions.FeeFromPackage, p.ID
 				s.ValueCents = p.ShareCents(p.CreditsUsed)
@@ -177,86 +207,102 @@ func firstWithCredit(pkgs []*packages.Package, at time.Time) *packages.Package {
 	return nil
 }
 
-// SessionDrift explains how a session now contradicts its issued receipt.
+// SessionDrift explains how a session now contradicts an issued document
+// covering it.
 func SessionDrift(s sessions.Session, loc *time.Location) string {
-	ref := s.Document
-	if !ref.Issued() {
+	for _, slot := range docref.Slots {
+		ref := s.Ref(slot)
+		if !ref.Issued() {
+			continue
+		}
+		label := fmt.Sprintf("%s %s", slot, ref.Number)
+		switch {
+		case s.RemovedAt != nil:
+			return fmt.Sprintf("Deleted from the calendar after %s", label)
+		case s.ClientID != ref.ClientID:
+			return fmt.Sprintf("Now matches a different client than %s", label)
+		case ref.Date != "" && LocalDate(s.Start, loc) != ref.Date:
+			return fmt.Sprintf("Moved to %s after %s", LocalDate(s.Start, loc), label)
+		}
+	}
+	return ""
+}
+
+// PackageDrift explains how a calendar package contradicts its documents.
+func PackageDrift(p packages.Package) string {
+	if !p.Removed {
 		return ""
 	}
-	switch {
-	case s.Removed:
-		return fmt.Sprintf("Removed from the calendar after receipt %s", ref.Number)
-	case s.ClientID != ref.ClientID:
-		return fmt.Sprintf("Now matches a different client than receipt %s", ref.Number)
-	case ref.Date != "" && LocalDate(s.Start, loc) != ref.Date:
-		return fmt.Sprintf("Moved to %s after receipt %s", LocalDate(s.Start, loc), ref.Number)
+	for _, slot := range docref.Slots {
+		if ref := p.Ref(slot); ref.Issued() {
+			return fmt.Sprintf("Removed from the calendar after %s %s", slot, ref.Number)
+		}
 	}
 	return ""
 }
 
-// PackageDrift explains how a calendar package contradicts its receipt.
-func PackageDrift(p packages.Package) string {
-	if p.Removed && p.Document.Issued() {
-		return fmt.Sprintf("Removed from the calendar after receipt %s", p.Document.Number)
+// Activity sums one client's sessions and packages by month, and finds
+// their last session and next booking.
+//
+// Earned values sessions in the month they happen (a package session at its
+// share). Received is money in the month it was paid: what she recorded,
+// and packages bought in the app. History from before she tracked payments
+// counts its fees (and any package it bought) as received that day.
+func Activity(entries []*Entry, pkgs []*packages.Package, loc *time.Location) (activity map[string]clients.MonthActivity, last, next *time.Time) {
+	activity = map[string]clients.MonthActivity{}
+	add := func(month string, f func(*clients.MonthActivity)) {
+		a := activity[month]
+		f(&a)
+		activity[month] = a
 	}
-	return ""
-}
-
-// Activity sums one client's sessions and packages by month.
-func Activity(entries []*Entry, pkgs []*packages.Package, loc *time.Location) (map[string]clients.MonthActivity, *time.Time) {
-	activity := map[string]clients.MonthActivity{}
-	var last *time.Time
 
 	for _, e := range entries {
 		s := e.Session
-		if !s.Status.Delivered() {
+		if s.RemovedAt != nil {
 			continue
 		}
-		month := MonthKey(s.Start, loc)
-		a := activity[month]
-
-		earned := s.ValueCents
-		var received int64
-		if s.FeeCents != nil {
-			received = *s.FeeCents
-		}
-		// What the receipt says beats what the calendar says.
-		if s.Document.Issued() && s.Document.AmountCents != nil {
-			earned, received = *s.Document.AmountCents, *s.Document.AmountCents
+		if s.Upcoming {
+			if next == nil || s.Start.Before(*next) {
+				next = ptr(s.Start)
+			}
 		}
 
-		a.Sessions++
-		a.EarnedCents += earned
-		a.ReceivedCents += received
-		if s.Location == sessions.LocationHome {
-			a.HomeSessions++
-			a.HomeEarnedCents += earned
+		switch {
+		case s.Payment != nil && s.Payment.Status == sessions.PaymentPaid:
+			day, _ := time.ParseInLocation(time.DateOnly, s.Payment.PaidOn, loc)
+			add(MonthKey(day, loc), func(a *clients.MonthActivity) { a.ReceivedCents += s.Payment.AmountCents })
+		case s.Untracked && s.Payment == nil && s.Status.Delivered():
+			add(MonthKey(s.Start, loc), func(a *clients.MonthActivity) { a.ReceivedCents += s.DueCents() })
 		}
-		activity[month] = a
 
+		if !s.Status.Delivered() || s.Upcoming {
+			continue
+		}
+		add(MonthKey(s.Start, loc), func(a *clients.MonthActivity) {
+			a.Sessions++
+			a.EarnedCents += s.ValueCents
+			if s.Location == sessions.LocationHome {
+				a.HomeSessions++
+				a.HomeEarnedCents += s.ValueCents
+			}
+		})
 		if last == nil || s.Start.After(*last) {
 			last = ptr(s.Start)
 		}
 	}
 
 	for _, p := range pkgs {
-		if p.Removed {
+		// A calendar package is paid with the session that bought it.
+		if p.Removed || p.Source != packages.SourceApp {
 			continue
 		}
-		month := MonthKey(p.PurchasedAt, loc)
-		a := activity[month]
-		price := p.PriceCents
-		if p.Document.Issued() && p.Document.AmountCents != nil {
-			price = *p.Document.AmountCents
-		}
-		a.ReceivedCents += price
-		activity[month] = a
+		add(MonthKey(p.PurchasedAt, loc), func(a *clients.MonthActivity) { a.ReceivedCents += p.PriceCents })
 	}
 
 	if len(activity) == 0 {
 		activity = nil
 	}
-	return activity, last
+	return activity, last, next
 }
 
 // MonthKey is the month a time falls in, in her time zone.

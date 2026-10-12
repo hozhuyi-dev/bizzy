@@ -9,6 +9,7 @@ import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
 import type { ClientRow } from "./clients.columns";
 import type { Client } from "./clients.types";
+import type { FollowUpTarget } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -16,11 +17,12 @@ import { SearchInput } from "~/components/shared/search-input/search-input.compo
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
+import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
-export type ClientsView = "all" | "follow-up";
+/** Everyone, or the lapsed clients worth getting back in touch with. */
+export type ClientsView = "all" | "reconnect";
 
 export const LAPSE_MONTHS = ["3", "6", "12"] as const;
 export type LapseMonths = (typeof LAPSE_MONTHS)[number];
@@ -33,11 +35,10 @@ const LAPSE_OPTIONS = LAPSE_MONTHS.map((months) => ({
 interface ClientsPageProps {
   view: ClientsView;
   lapse: LapseMonths;
-  onViewChange: (view: ClientsView) => void;
-  onLapseChange: (lapse: LapseMonths) => void;
+  onLapseChange?: (lapse: LapseMonths) => void;
 }
 
-export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: ClientsPageProps) {
+export function ClientsPage({ view, lapse, onLapseChange }: ClientsPageProps) {
   const clients = ClientsQuery.useList();
   const [search, setSearch] = useState("");
 
@@ -50,7 +51,7 @@ export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: Client
   return (
     <>
       <PageHeader
-        title="Clients"
+        title={view === "all" ? "All clients" : "Reconnect"}
         actions={
           <Button render={<Link to="/clients/new" />} nativeButton={false}>
             <PlusIcon /> New client
@@ -59,17 +60,11 @@ export function ClientsPage({ view, lapse, onViewChange, onLapseChange }: Client
         toolbar={
           <>
           <div className="flex flex-wrap items-center gap-2">
-            <Tabs value={view} onValueChange={(value) => onViewChange(value as ClientsView)}>
-              <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="follow-up">Follow up</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {view === "follow-up" && (
+            {view === "reconnect" && (
               <Select
                 items={LAPSE_OPTIONS}
                 value={lapse}
-                onValueChange={(value) => value && onLapseChange(value)}
+                onValueChange={(value) => value && onLapseChange?.(value)}
               >
                 <SelectTrigger size="sm">
                   <SelectValue />
@@ -114,7 +109,9 @@ interface ClientsTableProps {
 
 function ClientsTable({ view, rows, search }: ClientsTableProps) {
   const { mutate: mark } = ClientsMutation.useMarkContacted();
-  const followUp = view === "follow-up";
+  const reconnect = view === "reconnect";
+  const [remind, setRemind] = useState<FollowUpTarget | null>(null);
+  const onRemind = useCallback((client: Client) => setRemind({ mode: "new", clientId: client.id }), []);
 
   const onContacted = useCallback(
     (client: Client) =>
@@ -135,8 +132,8 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
   );
 
   const columns = useMemo(
-    () => createClientColumns(followUp ? { onContacted } : {}),
-    [onContacted, followUp],
+    () => createClientColumns(reconnect ? { onContacted, onRemind } : {}),
+    [onContacted, onRemind, reconnect],
   );
 
   const table = useTable({
@@ -144,19 +141,20 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
     columns,
     data: rows,
     getRowId: (row) => row.client.id,
-    // Follow-ups are worked through most valuable first.
+    // Lapsed clients are worked through most valuable first.
     initialState: {
-      sorting: followUp ? [{ id: "lifetimeCents", desc: true }] : [{ id: "name", desc: false }],
+      sorting: reconnect ? [{ id: "lifetimeCents", desc: true }] : [{ id: "name", desc: false }],
     },
   });
 
   return (
+    <>
     <DataTable
       table={table}
       query={search}
       empty={
-        followUp ? (
-          <EmptyState quips={QUIPS.clientsFollowUp}>Nobody to follow up right now.</EmptyState>
+        reconnect ? (
+          <EmptyState quips={QUIPS.clientsReconnect}>Nobody to get back in touch with right now.</EmptyState>
         ) : (
           <EmptyState quips={QUIPS.clients}>
             No clients yet. Add one, or link an unmatched calendar entry.
@@ -164,8 +162,10 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
         )
       }
       renderCard={(row) => (
-        <ClientCard row={row.original} {...(followUp ? { onContacted } : {})} />
+        <ClientCard row={row.original} {...(reconnect ? { onContacted, onRemind } : {})} />
       )}
     />
+    <FollowUpDialog target={remind} onClose={() => setRemind(null)} />
+    </>
   );
 }

@@ -1,9 +1,11 @@
 // Mirrors bizzy-lambda/internal/features/googlesync.
 export interface SyncSummary {
-  /** Timed events in the range; every one is a session. */
+  /** Sessions in the range: every timed event bar follow-ups. */
   sessions: number;
   saved: number;
   deleted: number;
+  /** Follow-ups added, changed or removed. */
+  followUps: number;
   /** Clients whose contact copy changed. */
   contacts: number;
 }

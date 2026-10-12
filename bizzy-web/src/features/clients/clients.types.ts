@@ -39,7 +39,7 @@ export interface ClientContact {
 export interface MonthActivity {
   sessions: number;
   homeSessions?: number;
-  /** Paid that month: session fees, and packages when bought. */
+  /** Paid that month: payments recorded on sessions, packages bought in the app, and fees from before tracking. */
   receivedCents: number;
   /** Sessions valued as they happen; package sessions at their share. */
   earnedCents: number;

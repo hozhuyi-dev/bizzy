@@ -12,8 +12,12 @@ export interface Settings {
   serviceName: string;
   /** The Google Calendar event colour that marks a home visit. */
   homeVisitColorId: string;
-  /** Number template per document type, e.g. { receipt: "RCP-{seq:4}" }. */
-  numbering: Record<string, string>;
+  /** Days ahead an unconfirmed session goes on the to-do list. */
+  confirmAheadDays: number;
+  /** Days ahead a follow-up goes on the to-do list. */
+  followUpAheadDays: number;
+  /** YYYY-MM-DD: sessions before it need no notes or payment. */
+  trackFrom?: string;
   /** WhatsApp message asking to pay for a session; {placeholders} filled in. */
   paymentMessage: string;
   /** WhatsApp message with links to issued documents. */

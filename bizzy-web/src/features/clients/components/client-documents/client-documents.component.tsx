@@ -4,7 +4,7 @@ import type { Client } from "../../clients.types";
 import type { DocumentSummary } from "~/features/documents/documents.types";
 import { DocumentsQuery } from "~/features/documents/documents.query";
 import { DocumentStatusBadge } from "~/features/documents/documents-page.component";
-import { DOCUMENT_TYPES, documentLabel } from "~/features/documents/documents.registry";
+import { DOCUMENT_TYPES, documentLabel, documentRoute } from "~/features/documents/documents.registry";
 import { useSendDocuments } from "~/features/whatsapp/use-whatsapp";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
@@ -33,7 +33,7 @@ export function ClientDocuments({ client }: { client: Client }) {
     );
   }
   if (docs.data.length === 0) {
-    return <p className="text-sm text-muted-foreground">No receipts yet. Make one from a paid session.</p>;
+    return <p className="text-sm text-muted-foreground">No invoices or receipts yet. Make them from a session.</p>;
   }
 
   const sendable = docs.data.filter((doc) => doc.status === "issued");
@@ -109,7 +109,7 @@ function DocumentRow({ doc, selectable, checked, onCheckedChange }: DocumentRowP
       <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
         <span>
           <span className="text-muted-foreground">{DOCUMENT_TYPES[doc.type].title} </span>
-          <TextLink to="/receipts/$id" params={{ id: doc.id }}>
+          <TextLink to={documentRoute(doc.type)} params={{ id: doc.id }}>
             {documentLabel(doc.number, doc.revision)}
           </TextLink>
           <span className="text-muted-foreground"> · {formatDate(doc.date)}</span>

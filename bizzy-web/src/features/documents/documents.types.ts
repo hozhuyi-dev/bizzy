@@ -1,5 +1,5 @@
 // Mirrors bizzy-lambda/internal/features/documents/model.go.
-export type DocumentType = "receipt";
+export type DocumentType = "invoice" | "receipt";
 export type DocumentStatus = "draft" | "issued" | "cancelled";
 
 export interface DocumentSource {
@@ -111,10 +111,4 @@ export interface DocumentRevision {
 export interface DocumentDetail {
   document: BizDocument;
   revisions: Array<DocumentRevision>;
-}
-
-export interface Numbering {
-  template: string;
-  next: string;
-  seq: number;
 }

@@ -17,11 +17,17 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsIdRouteImport } from './routes/clients/$id'
 import { Route as ClientsNewRouteImport } from './routes/clients/new'
+import { Route as ClientsReconnectRouteImport } from './routes/clients/reconnect'
 import { Route as DTokenRouteImport } from './routes/d/$token'
+import { Route as FollowUpsIndexRouteImport } from './routes/follow-ups/index'
+import { Route as FollowUpsDoneRouteImport } from './routes/follow-ups/done'
+import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
+import { Route as InvoicesIdRouteImport } from './routes/invoices/$id'
 import { Route as ReceiptsIndexRouteImport } from './routes/receipts/index'
 import { Route as ReceiptsIdRouteImport } from './routes/receipts/$id'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as SessionsIdRouteImport } from './routes/sessions/$id'
+import { Route as SessionsDeletedRouteImport } from './routes/sessions/deleted'
 import { Route as SessionsNewRouteImport } from './routes/sessions/new'
 
 const IndexRoute = IndexRouteImport.update({
@@ -64,9 +70,34 @@ const ClientsNewRoute = ClientsNewRouteImport.update({
   path: '/clients/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClientsReconnectRoute = ClientsReconnectRouteImport.update({
+  id: '/clients/reconnect',
+  path: '/clients/reconnect',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DTokenRoute = DTokenRouteImport.update({
   id: '/d/$token',
   path: '/d/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FollowUpsIndexRoute = FollowUpsIndexRouteImport.update({
+  id: '/follow-ups/',
+  path: '/follow-ups/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FollowUpsDoneRoute = FollowUpsDoneRouteImport.update({
+  id: '/follow-ups/done',
+  path: '/follow-ups/done',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
+  id: '/invoices/',
+  path: '/invoices/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvoicesIdRoute = InvoicesIdRouteImport.update({
+  id: '/invoices/$id',
+  path: '/invoices/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReceiptsIndexRoute = ReceiptsIndexRouteImport.update({
@@ -89,6 +120,11 @@ const SessionsIdRoute = SessionsIdRouteImport.update({
   path: '/sessions/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SessionsDeletedRoute = SessionsDeletedRouteImport.update({
+  id: '/sessions/deleted',
+  path: '/sessions/deleted',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SessionsNewRoute = SessionsNewRouteImport.update({
   id: '/sessions/new',
   path: '/sessions/new',
@@ -103,11 +139,17 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
+  '/clients/reconnect': typeof ClientsReconnectRoute
   '/d/$token': typeof DTokenRoute
+  '/follow-ups/done': typeof FollowUpsDoneRoute
+  '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/deleted': typeof SessionsDeletedRoute
   '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
+  '/follow-ups/': typeof FollowUpsIndexRoute
+  '/invoices/': typeof InvoicesIndexRoute
   '/receipts/': typeof ReceiptsIndexRoute
   '/sessions/': typeof SessionsIndexRoute
 }
@@ -119,11 +161,17 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
+  '/clients/reconnect': typeof ClientsReconnectRoute
   '/d/$token': typeof DTokenRoute
+  '/follow-ups/done': typeof FollowUpsDoneRoute
+  '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/deleted': typeof SessionsDeletedRoute
   '/sessions/new': typeof SessionsNewRoute
   '/clients': typeof ClientsIndexRoute
+  '/follow-ups': typeof FollowUpsIndexRoute
+  '/invoices': typeof InvoicesIndexRoute
   '/receipts': typeof ReceiptsIndexRoute
   '/sessions': typeof SessionsIndexRoute
 }
@@ -136,11 +184,17 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
+  '/clients/reconnect': typeof ClientsReconnectRoute
   '/d/$token': typeof DTokenRoute
+  '/follow-ups/done': typeof FollowUpsDoneRoute
+  '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/deleted': typeof SessionsDeletedRoute
   '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
+  '/follow-ups/': typeof FollowUpsIndexRoute
+  '/invoices/': typeof InvoicesIndexRoute
   '/receipts/': typeof ReceiptsIndexRoute
   '/sessions/': typeof SessionsIndexRoute
 }
@@ -154,11 +208,17 @@ export interface FileRouteTypes {
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
+    | '/clients/reconnect'
     | '/d/$token'
+    | '/follow-ups/done'
+    | '/invoices/$id'
     | '/receipts/$id'
     | '/sessions/$id'
+    | '/sessions/deleted'
     | '/sessions/new'
     | '/clients/'
+    | '/follow-ups/'
+    | '/invoices/'
     | '/receipts/'
     | '/sessions/'
   fileRoutesByTo: FileRoutesByTo
@@ -170,11 +230,17 @@ export interface FileRouteTypes {
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
+    | '/clients/reconnect'
     | '/d/$token'
+    | '/follow-ups/done'
+    | '/invoices/$id'
     | '/receipts/$id'
     | '/sessions/$id'
+    | '/sessions/deleted'
     | '/sessions/new'
     | '/clients'
+    | '/follow-ups'
+    | '/invoices'
     | '/receipts'
     | '/sessions'
   id:
@@ -186,11 +252,17 @@ export interface FileRouteTypes {
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
+    | '/clients/reconnect'
     | '/d/$token'
+    | '/follow-ups/done'
+    | '/invoices/$id'
     | '/receipts/$id'
     | '/sessions/$id'
+    | '/sessions/deleted'
     | '/sessions/new'
     | '/clients/'
+    | '/follow-ups/'
+    | '/invoices/'
     | '/receipts/'
     | '/sessions/'
   fileRoutesById: FileRoutesById
@@ -203,11 +275,17 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   ClientsIdRoute: typeof ClientsIdRoute
   ClientsNewRoute: typeof ClientsNewRoute
+  ClientsReconnectRoute: typeof ClientsReconnectRoute
   DTokenRoute: typeof DTokenRoute
+  FollowUpsDoneRoute: typeof FollowUpsDoneRoute
+  InvoicesIdRoute: typeof InvoicesIdRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
   SessionsIdRoute: typeof SessionsIdRoute
+  SessionsDeletedRoute: typeof SessionsDeletedRoute
   SessionsNewRoute: typeof SessionsNewRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
+  FollowUpsIndexRoute: typeof FollowUpsIndexRoute
+  InvoicesIndexRoute: typeof InvoicesIndexRoute
   ReceiptsIndexRoute: typeof ReceiptsIndexRoute
   SessionsIndexRoute: typeof SessionsIndexRoute
 }
@@ -270,11 +348,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients/reconnect': {
+      id: '/clients/reconnect'
+      path: '/clients/reconnect'
+      fullPath: '/clients/reconnect'
+      preLoaderRoute: typeof ClientsReconnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/d/$token': {
       id: '/d/$token'
       path: '/d/$token'
       fullPath: '/d/$token'
       preLoaderRoute: typeof DTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/follow-ups/': {
+      id: '/follow-ups/'
+      path: '/follow-ups'
+      fullPath: '/follow-ups/'
+      preLoaderRoute: typeof FollowUpsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/follow-ups/done': {
+      id: '/follow-ups/done'
+      path: '/follow-ups/done'
+      fullPath: '/follow-ups/done'
+      preLoaderRoute: typeof FollowUpsDoneRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invoices/': {
+      id: '/invoices/'
+      path: '/invoices'
+      fullPath: '/invoices/'
+      preLoaderRoute: typeof InvoicesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invoices/$id': {
+      id: '/invoices/$id'
+      path: '/invoices/$id'
+      fullPath: '/invoices/$id'
+      preLoaderRoute: typeof InvoicesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/receipts/': {
@@ -305,6 +418,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SessionsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sessions/deleted': {
+      id: '/sessions/deleted'
+      path: '/sessions/deleted'
+      fullPath: '/sessions/deleted'
+      preLoaderRoute: typeof SessionsDeletedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sessions/new': {
       id: '/sessions/new'
       path: '/sessions/new'
@@ -323,11 +443,17 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   ClientsIdRoute: ClientsIdRoute,
   ClientsNewRoute: ClientsNewRoute,
+  ClientsReconnectRoute: ClientsReconnectRoute,
   DTokenRoute: DTokenRoute,
+  FollowUpsDoneRoute: FollowUpsDoneRoute,
+  InvoicesIdRoute: InvoicesIdRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,
   SessionsIdRoute: SessionsIdRoute,
+  SessionsDeletedRoute: SessionsDeletedRoute,
   SessionsNewRoute: SessionsNewRoute,
   ClientsIndexRoute: ClientsIndexRoute,
+  FollowUpsIndexRoute: FollowUpsIndexRoute,
+  InvoicesIndexRoute: InvoicesIndexRoute,
   ReceiptsIndexRoute: ReceiptsIndexRoute,
   SessionsIndexRoute: SessionsIndexRoute,
 }

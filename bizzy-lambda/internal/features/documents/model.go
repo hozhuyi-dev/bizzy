@@ -1,5 +1,5 @@
-// Package documents issues business documents (receipts for now) with a
-// generic lifecycle:
+// Package documents issues business documents (invoices and receipts) with
+// a generic lifecycle:
 //
 //	draft ──issue──▶ issued rev 0 ──revise──▶ (draft on top) ──issue──▶ rev 1 …
 //	  │                    │
@@ -11,7 +11,11 @@
 // it was, and the PDF is rendered in the browser from that content.
 package documents
 
-import "time"
+import (
+	"time"
+
+	"bizzy-lambda/internal/features/docref"
+)
 
 type Status string
 
@@ -21,20 +25,28 @@ const (
 	StatusCancelled Status = "cancelled"
 )
 
-// Type is a kind of document. Each has its own numbering sequence.
+// Type is a kind of document. Each has its own numbering sequence, and its
+// own slot on the sessions and packages it covers, so one session can have
+// both an invoice and a receipt.
 type Type string
 
-const TypeReceipt Type = "receipt"
+const (
+	TypeInvoice Type = "invoice"
+	TypeReceipt Type = "receipt"
+)
 
-// TypeSpec is what differs between document types.
+// TypeSpec is what differs between document types. The content, lifecycle
+// and layout are shared.
 type TypeSpec struct {
 	Title string
-	// DefaultNumbering is used until she sets her own in Settings.
-	DefaultNumbering string
+	// Code starts every number of the type (see Number).
+	Code string
+	Slot docref.Slot
 }
 
 var Types = map[Type]TypeSpec{
-	TypeReceipt: {Title: "Receipt", DefaultNumbering: "RCP-{seq:4}"},
+	TypeInvoice: {Title: "Invoice", Code: "INV", Slot: docref.SlotInvoice},
+	TypeReceipt: {Title: "Receipt", Code: "RCP", Slot: docref.SlotReceipt},
 }
 
 // SourceKind is what a document line was created from.

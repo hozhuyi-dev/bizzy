@@ -18,20 +18,11 @@ import (
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/platform/googleauth"
 	"bizzy-lambda/internal/router"
+	"bizzy-lambda/internal/schema"
 )
 
-// Connection is the connected account.
-type Connection struct {
-	Email        string    `json:"email" dynamodbav:"email"`
-	CalendarID   string    `json:"calendarId" dynamodbav:"calendarId"`
-	CalendarName string    `json:"calendarName" dynamodbav:"calendarName"`
-	ConnectedAt  time.Time `json:"connectedAt" dynamodbav:"connectedAt"`
-}
-
-const (
-	Partition = "GOOGLE"
-	sortKey   = "CONNECTION"
-)
+// Partition is kept by Reset.
+const Partition = schema.Google
 
 type record struct {
 	dynamo.Keys
@@ -49,7 +40,8 @@ func NewRepository(store *dynamo.Store) Repository {
 // Get returns nil until she connects.
 func (r Repository) Get(ctx context.Context) (*Connection, error) {
 	var rec record
-	found, err := r.store.Get(ctx, Partition, sortKey, &rec)
+	keys := schema.GoogleKeys()
+	found, err := r.store.Get(ctx, keys.PK, keys.SK, &rec)
 	if err != nil || !found {
 		return nil, err
 	}
@@ -57,11 +49,12 @@ func (r Repository) Get(ctx context.Context) (*Connection, error) {
 }
 
 func (r Repository) Put(ctx context.Context, c Connection) error {
-	return r.store.Put(ctx, record{Keys: dynamo.Keys{PK: Partition, SK: sortKey}, Connection: c})
+	return r.store.Put(ctx, record{Keys: schema.GoogleKeys(), Connection: c})
 }
 
 func (r Repository) Delete(ctx context.Context) error {
-	_, err := r.store.Delete(ctx, Partition, sortKey, nil)
+	keys := schema.GoogleKeys()
+	_, err := r.store.Delete(ctx, keys.PK, keys.SK, nil)
 	return err
 }
 

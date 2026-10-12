@@ -4,7 +4,7 @@ import { EyeIcon, PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentsMutation } from "../../documents.query";
 import { toContent, toFormValues } from "../../documents.form";
-import { DOCUMENT_TYPES } from "../../documents.registry";
+import { DOCUMENT_TYPES, documentLabel } from "../../documents.registry";
 import { openDocumentPdf } from "../../pdf/download-pdf";
 import type { ContentValues } from "../../documents.form";
 import type { BizDocument, DocumentContent } from "../../documents.types";
@@ -15,8 +15,10 @@ import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { formatCents, parseCents } from "~/core/utils/money.util";
+import { PAYMENT_METHODS } from "~/features/sessions/sessions.types";
 
-const PAID_BY_SUGGESTIONS = ["Cash", "Bank transfer", "DuitNow QR", "Card"];
+// The methods she takes; she can still type something else.
+const PAID_BY_SUGGESTIONS = PAYMENT_METHODS.map((method) => method.label);
 
 /**
  * Free editing of everything printed on the document. Nothing is final until
@@ -61,7 +63,7 @@ export function useDocumentEditor(doc: BizDocument, draft: DocumentContent) {
         const saved = await saveDraft();
         if (!saved) return;
         const issued = await issue.mutateAsync(saved);
-        toast.success(`Issued ${issued?.number ?? ""}`);
+        toast.success(`Issued ${issued ? documentLabel(issued.number, issued.revision) : ""}`);
       } catch (error) {
         toast.error((error as Error).message);
       }
@@ -76,7 +78,7 @@ export function useDocumentEditor(doc: BizDocument, draft: DocumentContent) {
           }
           // A draft never issued is deleted, so its page is gone too.
           toast.success("Draft discarded");
-          void navigate({ to: "/receipts" });
+          void navigate({ to: DOCUMENT_TYPES[doc.type].path });
         },
         onError: (error) => toast.error(error.message),
       }),

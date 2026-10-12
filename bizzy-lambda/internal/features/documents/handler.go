@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
@@ -24,7 +25,6 @@ type store interface {
 	SharedID(ctx context.Context, token string) (string, bool, error)
 	Revisions(ctx context.Context, id string) ([]Revision, error)
 	Counter(ctx context.Context, key string) (int64, error)
-	SetCounter(ctx context.Context, key string, last int64) (bool, error)
 	Commit(ctx context.Context, w Write) error
 }
 
@@ -62,8 +62,6 @@ func Register(r *router.Router, deps Deps) {
 	r.Register("documents.revise", router.Typed(h.revise))
 	r.Register("documents.discardDraft", router.Typed(h.discardDraft))
 	r.Register("documents.cancel", router.Typed(h.cancel))
-	r.Register("documents.numbering", router.Typed(h.numbering))
-	r.Register("documents.setNextNumber", router.Typed(h.setNextNumber))
 	r.Register("documents.share", router.Typed(h.share))
 	r.Register("documents.resetShare", router.Typed(h.resetShare))
 }
@@ -159,10 +157,29 @@ type createDraftInput struct {
 	Sources []Source `json:"sources"`
 }
 
+// paidBy is how a receipt says what it covers was paid, from what she
+// recorded on the sessions.
+func paidBy(payments []*sessions.Payment) string {
+	seen := map[string]bool{}
+	var labels []string
+	for _, p := range payments {
+		if p == nil || p.Status != sessions.PaymentPaid {
+			continue
+		}
+		label := sessions.MethodLabels[p.Method]
+		if !seen[label] {
+			seen[label] = true
+			labels = append(labels, label)
+		}
+	}
+	return strings.Join(labels, ", ")
+}
+
 // createDraft starts a document from sessions and packages and reserves
-// them, so none can end up on two documents.
+// them, so none can end up on two documents of the type.
 func (h handler) createDraft(ctx context.Context, in createDraftInput) (any, error) {
-	if _, err := (typeInput{Type: in.Type}).spec(); err != nil {
+	spec, err := (typeInput{Type: in.Type}).spec()
+	if err != nil {
 		return nil, err
 	}
 	sources := uniqueSources(in.Sources)
@@ -179,10 +196,11 @@ func (h handler) createDraft(ctx context.Context, in createDraftInput) (any, err
 
 	var lines []Line
 	var links []dynamo.Patch
+	var payments []*sessions.Payment
 	clientID := ""
 
 	for _, src := range sources {
-		line, owner, err := h.sourceLine(ctx, src, cfg)
+		line, owner, payment, err := h.sourceLine(ctx, src, spec, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -191,18 +209,22 @@ func (h handler) createDraft(ctx context.Context, in createDraftInput) (any, err
 		}
 		clientID = owner
 
-		link, err := linkPatch(src, ref)
+		link, err := linkPatch(src, spec.Slot, ref)
 		if err != nil {
 			return nil, err
 		}
-		lines, links = append(lines, line), append(links, link)
+		lines, links, payments = append(lines, line), append(links, link), append(payments, payment)
 	}
 
 	client, err := h.client(ctx, clientID)
 	if err != nil {
 		return nil, err
 	}
-	content, err := Normalize(NewContent(cfg, client, today, lines), sourceSet(sources))
+	draft := NewContent(cfg, client, today, lines)
+	if in.Type == TypeReceipt {
+		draft.PaidBy = paidBy(payments)
+	}
+	content, err := Normalize(draft, sourceSet(sources))
 	if err != nil {
 		return nil, err
 	}
@@ -261,11 +283,6 @@ func (h handler) saveDraft(ctx context.Context, in saveDraftInput) (any, error) 
 // issue makes the draft final: the first time it takes a number (rev 0),
 // afterwards it becomes the next revision under the same number.
 func (h handler) issue(ctx context.Context, in idInput) (any, error) {
-	cfg, err := h.Settings.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	// A conflict on the counter means another document took the number
 	// first; read it again and retry.
 	for attempt := 0; ; attempt++ {
@@ -277,7 +294,7 @@ func (h handler) issue(ctx context.Context, in idInput) (any, error) {
 			return nil, apperr.Conflict("there is nothing to issue")
 		}
 
-		updated, w, err := h.prepareIssue(ctx, doc, cfg)
+		updated, w, err := h.prepareIssue(ctx, doc)
 		if err != nil {
 			return nil, err
 		}
@@ -296,22 +313,22 @@ func (h handler) issue(ctx context.Context, in idInput) (any, error) {
 	}
 }
 
-func (h handler) prepareIssue(ctx context.Context, doc Document, cfg settings.Settings) (Document, Write, error) {
+func (h handler) prepareIssue(ctx context.Context, doc Document) (Document, Write, error) {
 	now := h.Now().UTC()
 	content := *doc.Draft
-	date, _ := time.Parse(time.DateOnly, content.Date)
+	spec := Types[doc.Type]
 
 	updated := doc
 	w := Write{PreviousVersion: doc.Version}
 
 	if doc.Number == "" {
-		numbering := h.numberingFor(doc.Type, cfg)
-		key := numbering.CounterKey(doc.Type, date)
+		issued := now.In(h.Location)
+		key := counterKey(doc.Type, issued)
 		last, err := h.Repo.Counter(ctx, key)
 		if err != nil {
 			return doc, w, err
 		}
-		updated.Number = numbering.Format(last+1, date)
+		updated.Number = Number(spec, issued.Year(), last+1)
 		updated.Revision = new(int)
 		updated.IssuedAt = &now
 		w.Counter = &CounterBump{Key: key, Prev: last, Next: last + 1}
@@ -338,18 +355,19 @@ func (h handler) prepareIssue(ctx context.Context, doc Document, cfg settings.Se
 	for _, src := range doc.Sources {
 		amount, ok := amounts[src]
 		if !ok {
-			w.Links = append(w.Links, unlinkPatch(src, doc.ID))
+			w.Links = append(w.Links, unlinkPatch(src, spec.Slot, doc.ID))
 			continue
 		}
 		kept = append(kept, src)
 		ref := docref.Ref{
 			DocumentID:  doc.ID,
 			Number:      updated.Number,
+			Revision:    *updated.Revision,
 			AmountCents: &amount,
 			Date:        lineDate(content, src),
 			ClientID:    doc.ClientID,
 		}
-		link, err := linkPatch(src, ref)
+		link, err := linkPatch(src, spec.Slot, ref)
 		if err != nil {
 			return doc, w, err
 		}
@@ -409,7 +427,7 @@ func (h handler) discardDraft(ctx context.Context, in idInput) (any, error) {
 	if doc.Number == "" {
 		w := Write{Doc: doc, PreviousVersion: doc.Version, Delete: true}
 		for _, src := range doc.Sources {
-			w.Links = append(w.Links, unlinkPatch(src, doc.ID))
+			w.Links = append(w.Links, unlinkPatch(src, Types[doc.Type].Slot, doc.ID))
 		}
 		if err := h.commit(ctx, w); err != nil {
 			return nil, err
@@ -454,7 +472,7 @@ func (h handler) cancel(ctx context.Context, in cancelInput) (any, error) {
 
 	w := Write{Doc: updated, PreviousVersion: doc.Version}
 	for _, src := range doc.Sources {
-		w.Links = append(w.Links, unlinkPatch(src, doc.ID))
+		w.Links = append(w.Links, unlinkPatch(src, Types[doc.Type].Slot, doc.ID))
 	}
 	if err := h.commit(ctx, w); err != nil {
 		return nil, err
@@ -463,67 +481,6 @@ func (h handler) cancel(ctx context.Context, in cancelInput) (any, error) {
 		return nil, err
 	}
 	return updated, nil
-}
-
-type numberingOutput struct {
-	Template string `json:"template"`
-	// Next is the number the next document of this type will get.
-	Next string `json:"next"`
-	Seq  int64  `json:"seq"`
-}
-
-// numbering previews the next number, for Settings.
-func (h handler) numbering(ctx context.Context, in typeInput) (any, error) {
-	if _, err := in.spec(); err != nil {
-		return nil, err
-	}
-	cfg, err := h.Settings.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-	n := h.numberingFor(in.Type, cfg)
-	today := h.Now().In(h.Location)
-	last, err := h.Repo.Counter(ctx, n.CounterKey(in.Type, today))
-	if err != nil {
-		return nil, err
-	}
-	return numberingOutput{Template: n.Template, Next: n.Format(last+1, today), Seq: last + 1}, nil
-}
-
-type setNextNumberInput struct {
-	Type Type  `json:"type"`
-	Next int64 `json:"next"`
-}
-
-// setNextNumber continues an existing sequence, e.g. from her old receipt
-// book. It can only move forward.
-func (h handler) setNextNumber(ctx context.Context, in setNextNumberInput) (any, error) {
-	if _, err := (typeInput{Type: in.Type}).spec(); err != nil {
-		return nil, err
-	}
-	if in.Next < 1 {
-		return nil, apperr.Invalid("the next number must be at least 1")
-	}
-	cfg, err := h.Settings.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-	n := h.numberingFor(in.Type, cfg)
-	ok, err := h.Repo.SetCounter(ctx, n.CounterKey(in.Type, h.Now().In(h.Location)), in.Next-1)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, apperr.Conflict("numbers can only move forward; that one may already be used")
-	}
-	return h.numbering(ctx, typeInput{Type: in.Type})
-}
-
-func (h handler) numberingFor(docType Type, cfg settings.Settings) Numbering {
-	if template := cfg.Numbering[string(docType)]; template != "" {
-		return Numbering{Template: template}
-	}
-	return Numbering{Template: Types[docType].DefaultNumbering}
 }
 
 func (h handler) load(ctx context.Context, id string, version int) (Document, error) {
@@ -540,36 +497,51 @@ func (h handler) load(ctx context.Context, id string, version int) (Document, er
 	return doc, nil
 }
 
-// sourceLine checks a source can go on a document and prefills its line. It
-// returns the client the source belongs to.
-func (h handler) sourceLine(ctx context.Context, src Source, cfg settings.Settings) (Line, string, error) {
+// sourceLine checks a source can go on a document of the type and prefills
+// its line. It returns the client the source belongs to and, for a session
+// or a package bought in one, what she recorded as paid.
+func (h handler) sourceLine(ctx context.Context, src Source, spec TypeSpec, cfg settings.Settings) (Line, string, *sessions.Payment, error) {
 	switch src.Kind {
 	case SourceSession:
 		s, found, err := h.Sessions.Get(ctx, src.ID)
 		if err != nil {
-			return Line{}, "", err
+			return Line{}, "", nil, err
 		}
 		if !found {
-			return Line{}, "", apperr.NotFound("session not found")
+			return Line{}, "", nil, apperr.NotFound("session not found")
 		}
-		if !s.Billable() {
-			return Line{}, "", apperr.Conflict("only a paid session without a receipt can get one")
+		switch {
+		case spec.Slot == docref.SlotInvoice && !s.CanInvoice():
+			return Line{}, "", nil, apperr.Conflict("only a confirmed session with a fee and no invoice yet can get one")
+		case spec.Slot == docref.SlotReceipt && !s.CanReceipt():
+			return Line{}, "", nil, apperr.Conflict("only a paid session without a receipt can get one")
 		}
-		return SessionLine(s, cfg, h.Location), s.ClientID, nil
+		return SessionLine(s, cfg, h.Location), s.ClientID, s.Payment, nil
 	case SourcePackage:
 		p, found, err := h.Packages.Get(ctx, src.ID)
 		if err != nil {
-			return Line{}, "", err
+			return Line{}, "", nil, err
 		}
 		if !found {
-			return Line{}, "", apperr.NotFound("package not found")
+			return Line{}, "", nil, apperr.NotFound("package not found")
 		}
-		if !p.Billable() {
-			return Line{}, "", apperr.Conflict("this package already has a receipt")
+		if !p.Billable(spec.Slot) {
+			return Line{}, "", nil, apperr.Conflict("this package already has a %s", strings.ToLower(spec.Title))
 		}
-		return PackageLine(p, cfg, h.Location), p.ClientID, nil
+		var payment *sessions.Payment
+		if p.Source == packages.SourceCalendar {
+			// Bought in a session (same ID), and paid with it.
+			s, found, err := h.Sessions.Get(ctx, p.ID)
+			if err != nil {
+				return Line{}, "", nil, err
+			}
+			if found {
+				payment = s.Payment
+			}
+		}
+		return PackageLine(p, cfg, h.Location), p.ClientID, payment, nil
 	default:
-		return Line{}, "", apperr.Invalid("unknown source kind %q", src.Kind)
+		return Line{}, "", nil, apperr.Invalid("unknown source kind %q", src.Kind)
 	}
 }
 
@@ -635,16 +607,16 @@ func lineDate(c Content, src Source) string {
 	return ""
 }
 
-func linkPatch(src Source, ref docref.Ref) (dynamo.Patch, error) {
+func linkPatch(src Source, slot docref.Slot, ref docref.Ref) (dynamo.Patch, error) {
 	if src.Kind == SourcePackage {
-		return packages.LinkPatch(src.ID, ref)
+		return packages.LinkPatch(src.ID, slot, ref)
 	}
-	return sessions.LinkPatch(src.ID, ref)
+	return sessions.LinkPatch(src.ID, slot, ref)
 }
 
-func unlinkPatch(src Source, documentID string) dynamo.Patch {
+func unlinkPatch(src Source, slot docref.Slot, documentID string) dynamo.Patch {
 	if src.Kind == SourcePackage {
-		return packages.UnlinkPatch(src.ID, documentID)
+		return packages.UnlinkPatch(src.ID, slot, documentID)
 	}
-	return sessions.UnlinkPatch(src.ID, documentID)
+	return sessions.UnlinkPatch(src.ID, slot, documentID)
 }

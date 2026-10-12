@@ -9,14 +9,18 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
+	"bizzy-lambda/internal/platform/dynamo"
 )
 
 type Store struct {
 	ClientMap   map[string]clients.Client
 	SessionMap  map[string]sessions.Session
+	NotesMap    map[string]sessions.Notes
+	FollowUpMap map[string]followups.FollowUp
 	PackageMap  map[string]packages.Package
 	SettingsVal settings.Settings
 
@@ -26,20 +30,21 @@ type Store struct {
 
 func New() *Store {
 	return &Store{
-		ClientMap:  map[string]clients.Client{},
-		SessionMap: map[string]sessions.Session{},
-		PackageMap: map[string]packages.Package{},
+		ClientMap:   map[string]clients.Client{},
+		SessionMap:  map[string]sessions.Session{},
+		NotesMap:    map[string]sessions.Notes{},
+		FollowUpMap: map[string]followups.FollowUp{},
+		PackageMap:  map[string]packages.Package{},
 	}
 }
 
-// Clients, Sessions, Packages and Settings expose the store as each
-// repository interface; the method sets overlap (Get, Save, …).
-func (m *Store) Clients() *ClientRepo   { return (*ClientRepo)(m) }
-func (m *Store) Sessions() *SessionRepo { return (*SessionRepo)(m) }
-func (m *Store) Packages() *PackageRepo { return (*PackageRepo)(m) }
-func (m *Store) Settings() *SettingsRepo {
-	return (*SettingsRepo)(m)
-}
+// Clients, Sessions, FollowUps, Packages and Settings expose the store as
+// each repository interface; the method sets overlap (Get, Save, …).
+func (m *Store) Clients() *ClientRepo     { return (*ClientRepo)(m) }
+func (m *Store) Sessions() *SessionRepo   { return (*SessionRepo)(m) }
+func (m *Store) FollowUps() *FollowUpRepo { return (*FollowUpRepo)(m) }
+func (m *Store) Packages() *PackageRepo   { return (*PackageRepo)(m) }
+func (m *Store) Settings() *SettingsRepo  { return (*SettingsRepo)(m) }
 
 type ClientRepo Store
 
@@ -67,16 +72,8 @@ func (r *ClientRepo) SaveProfile(_ context.Context, c clients.Client) error {
 
 func (r *ClientRepo) SaveActivity(_ context.Context, c clients.Client) error {
 	existing := r.ClientMap[c.ID]
-	existing.Activity, existing.LastSessionAt = c.Activity, c.LastSessionAt
+	existing.Activity, existing.LastSessionAt, existing.NextBookedAt = c.Activity, c.LastSessionAt, c.NextBookedAt
 	r.ClientMap[c.ID] = existing
-	r.Writes++
-	return nil
-}
-
-func (r *ClientRepo) SetNextBooked(_ context.Context, id string, at *time.Time) error {
-	c := r.ClientMap[id]
-	c.NextBookedAt = at
-	r.ClientMap[id] = c
 	r.Writes++
 	return nil
 }
@@ -118,25 +115,110 @@ func (r *SessionRepo) ListByClient(_ context.Context, id string) ([]sessions.Ses
 	return r.sorted(func(s sessions.Session) bool { return s.ClientID == id }), nil
 }
 
-func (r *SessionRepo) ListOpen(context.Context) ([]sessions.Session, error) {
-	return r.sorted(sessions.Session.Open), nil
+func (r *SessionRepo) PageByClient(_ context.Context, id, _ string, _ int) (dynamo.Page[sessions.Session], error) {
+	all := r.sorted(func(s sessions.Session) bool { return s.ClientID == id })
+	slices.Reverse(all)
+	return dynamo.Page[sessions.Session]{Items: all}, nil
 }
 
-// Save keeps her document link, as the real repository does.
-func (r *SessionRepo) Save(_ context.Context, s sessions.Session) error {
-	s.Document = r.SessionMap[s.EventID].Document
+func (r *SessionRepo) ListTodo(_ context.Context, until time.Time) ([]sessions.Session, error) {
+	return r.sorted(func(s sessions.Session) bool { return s.Open() && !s.Start.After(until) }), nil
+}
+
+func (r *SessionRepo) ListByStatus(_ context.Context, status sessions.Status) ([]sessions.Session, error) {
+	all := r.sorted(func(s sessions.Session) bool { return s.Status == status })
+	slices.Reverse(all)
+	return all, nil
+}
+
+func (r *SessionRepo) ListWithoutClient(context.Context) ([]sessions.Session, error) {
+	return r.sorted(func(s sessions.Session) bool {
+		return s.ClientID == "" && (s.Status == sessions.StatusParseError || s.Status == sessions.StatusUnmatched || s.Status == sessions.StatusTentative)
+	}), nil
+}
+
+// Save checks the version as the real repository does.
+func (r *SessionRepo) Save(_ context.Context, s sessions.Session) (sessions.Session, error) {
+	stored, exists := r.SessionMap[s.EventID]
+	if exists != (s.Version > 0) || (exists && stored.Version != s.Version) {
+		return sessions.Session{}, dynamo.ErrConflict
+	}
+	s.Version++
 	r.SessionMap[s.EventID] = s
+	r.Writes++
+	return s, nil
+}
+
+func (r *SessionRepo) Delete(_ context.Context, s sessions.Session) error {
+	stored, ok := r.SessionMap[s.EventID]
+	if !ok || stored.Version != s.Version || stored.HasDocuments() {
+		return dynamo.ErrConflict
+	}
+	delete(r.SessionMap, s.EventID)
+	delete(r.NotesMap, s.EventID)
 	r.Writes++
 	return nil
 }
 
-func (r *SessionRepo) Delete(_ context.Context, id string) (bool, error) {
-	if s, ok := r.SessionMap[id]; ok && s.Document != nil {
-		return false, nil
+func (r *SessionRepo) Notes(_ context.Context, id string) (sessions.Notes, error) {
+	return r.NotesMap[id], nil
+}
+
+func (r *SessionRepo) SaveNotes(_ context.Context, n sessions.Notes) error {
+	if n.Text == "" {
+		delete(r.NotesMap, n.EventID)
+	} else {
+		r.NotesMap[n.EventID] = n
 	}
-	delete(r.SessionMap, id)
+	return nil
+}
+
+type FollowUpRepo Store
+
+func (r *FollowUpRepo) Get(_ context.Context, id string) (followups.FollowUp, bool, error) {
+	f, ok := r.FollowUpMap[id]
+	return f, ok, nil
+}
+
+func (r *FollowUpRepo) sorted(keep func(followups.FollowUp) bool) []followups.FollowUp {
+	var out []followups.FollowUp
+	for _, f := range r.FollowUpMap {
+		if keep(f) {
+			out = append(out, f)
+		}
+	}
+	slices.SortFunc(out, func(a, b followups.FollowUp) int { return a.Due.Compare(b.Due) })
+	return out
+}
+
+func (r *FollowUpRepo) ListByTime(_ context.Context, from, to time.Time) ([]followups.FollowUp, error) {
+	return r.sorted(func(f followups.FollowUp) bool { return !f.Due.Before(from) && !f.Due.After(to) }), nil
+}
+
+func (r *FollowUpRepo) ListOpen(_ context.Context, until time.Time) ([]followups.FollowUp, error) {
+	return r.sorted(func(f followups.FollowUp) bool { return f.DoneAt == nil && !f.Due.After(until) }), nil
+}
+
+func (r *FollowUpRepo) ListBySession(_ context.Context, id string) ([]followups.FollowUp, error) {
+	return r.sorted(func(f followups.FollowUp) bool { return f.SessionID == id }), nil
+}
+
+// Save checks the version as the real repository does.
+func (r *FollowUpRepo) Save(_ context.Context, f followups.FollowUp) (followups.FollowUp, error) {
+	stored, exists := r.FollowUpMap[f.EventID]
+	if exists != (f.Version > 0) || (exists && stored.Version != f.Version) {
+		return followups.FollowUp{}, dynamo.ErrConflict
+	}
+	f.Version++
+	r.FollowUpMap[f.EventID] = f
 	r.Writes++
-	return true, nil
+	return f, nil
+}
+
+func (r *FollowUpRepo) Delete(_ context.Context, id string) error {
+	delete(r.FollowUpMap, id)
+	r.Writes++
+	return nil
 }
 
 type PackageRepo Store
@@ -174,15 +256,16 @@ func (r *PackageRepo) ListByClient(_ context.Context, id string) ([]packages.Pac
 	return out, nil
 }
 
+// Save keeps the document links, as the real repository does.
 func (r *PackageRepo) Save(_ context.Context, p packages.Package) error {
-	p.Document = r.PackageMap[p.ID].Document
+	p.Invoice, p.Receipt = r.PackageMap[p.ID].Invoice, r.PackageMap[p.ID].Receipt
 	r.PackageMap[p.ID] = p
 	r.Writes++
 	return nil
 }
 
 func (r *PackageRepo) Delete(_ context.Context, id string) (bool, error) {
-	if p, ok := r.PackageMap[id]; ok && p.Document != nil {
+	if p, ok := r.PackageMap[id]; ok && p.HasDocuments() {
 		return false, nil
 	}
 	delete(r.PackageMap, id)

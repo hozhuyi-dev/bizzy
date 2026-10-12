@@ -34,12 +34,42 @@ export const QUIPS = {
     "No bees yet. Just a very tidy hive.",
     "First client gets the best seat.",
   ],
-  clientsFollowUp: [
+  clientsReconnect: [
     "Nobody's wandered off.",
     "Everyone's been buzzed.",
     "The whole hive is accounted for.",
     "No strays today.",
     "Everyone's coming back. Probably.",
+  ],
+  followUps: [
+    "No one to chase. Lovely.",
+    "The reminder jar is empty.",
+    "Nothing to buzz back about.",
+    "All quiet on the follow-up front.",
+  ],
+  followUpsDone: [
+    "Nothing ticked off yet.",
+    "The done pile is waiting.",
+    "No finished buzzing so far.",
+    "A clean slate of done.",
+  ],
+  sessionsDeleted: [
+    "Nothing in the bin.",
+    "No lost sessions. Tidy hive.",
+    "The bin is spotless.",
+    "Nothing fell out of the calendar.",
+  ],
+  timeline: [
+    "The story starts with a first visit.",
+    "No visits on record yet.",
+    "A blank page in the hive diary.",
+    "Nothing written down. Yet.",
+  ],
+  invoices: [
+    "No invoices out. Nothing owed.",
+    "The bill book is untouched.",
+    "Not an invoice in the hive.",
+    "Nobody's been billed. Yet.",
   ],
   packages: [
     "The honey jar is empty.",

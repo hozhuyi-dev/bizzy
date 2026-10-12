@@ -15,7 +15,8 @@ const settings: Settings = {
   accountNo: "1234 5678",
   serviceName: "Physiotherapy session",
   homeVisitColorId: "11",
-  numbering: {},
+  confirmAheadDays: 2,
+  followUpAheadDays: 7,
   paymentMessage: "Hi {firstName}, {date}: {amount}.\n{bank}",
   documentMessage: "Hi {firstName}, your {title} ({total}):\n{documents}",
 };
@@ -55,12 +56,12 @@ describe("paymentMessage", () => {
 
 describe("documentsMessage", () => {
   test("lists each document with its link", () => {
-    const text = documentsMessage(settings, "Jane Smith", [receipt("RCP-0001", 9500), receipt("RCP-0002", 8500)]);
+    const text = documentsMessage(settings, "Jane Smith", [receipt("RCP260001", 9500), receipt("RCP260002", 8500)]);
     expect(text).toContain("Hi Jane, your receipts (RM");
     expect(text).toContain("180.00");
-    expect(text).toContain("Receipt RCP-0001 · 5 Oct 2026 · ");
-    expect(text).toContain("/d/token-RCP-0001");
-    expect(text).toContain("/d/token-RCP-0002");
+    expect(text).toContain("Receipt RCP260001-00 · 5 Oct 2026 · ");
+    expect(text).toContain("/d/token-RCP260001");
+    expect(text).toContain("/d/token-RCP260002");
   });
 
   test("reads {title} from what is sent", () => {

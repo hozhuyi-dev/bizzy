@@ -1,59 +1,102 @@
-import type { ReactNode } from "react";
-import { SessionsTable } from "~/features/sessions/components/sessions-table/sessions-table.component";
-import { SessionsQuery } from "~/features/sessions/sessions.query";
+import { useMemo } from "react";
+import { HomeIcon } from "lucide-react";
+import { ClientsQuery } from "~/features/clients/clients.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
+import { NewSessionButton } from "~/features/sessions/components/new-session-button/new-session-button.component";
+import { stageBadges } from "~/features/sessions/session-stage";
+import { SessionsQuery } from "~/features/sessions/sessions.query";
+import { TodoList } from "~/features/todo/components/todo-list/todo-list.component";
+import { TodoQuery } from "~/features/todo/todo.query";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
+import { Loading } from "~/components/shared/quip/quip.component";
+import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
+import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { Badge } from "~/components/ui/badge";
 import { queryMatch } from "~/core/utils/query.util";
-import { QUIPS } from "~/core/constants/quips.constant";
 
-/** Everything that needs her attention, one section per kind of thing. */
+/**
+ * Her day: today's sessions, then everything that needs her (sessions and
+ * follow-ups in one list). The contents list doubles as the counts.
+ */
 export function HomePage() {
+  const todo = TodoQuery.useList();
+  const count = todo.data?.length;
+
   return (
     <>
-      <PageHeader title="Home" />
+      <PageHeader title="Home" actions={<NewSessionButton />} />
       <GoogleNotice />
-      <div className="flex flex-col gap-8">
-        <SessionsToFix />
-      </div>
+      <SectionLayout
+        sections={[
+          { id: "today", title: "Today", content: <Today /> },
+          {
+            id: "todo",
+            title: count ? `To do (${count})` : "To do",
+            bare: true,
+            content: queryMatch(todo, {
+              pending: () => <Loading />,
+              error: (error) => (
+                <p role="alert" className="text-sm text-destructive">
+                  {error.message}
+                </p>
+              ),
+              success: (items) => <TodoList items={items} />,
+            }),
+          },
+        ]}
+      />
     </>
   );
 }
 
-function SessionsToFix() {
-  const open = SessionsQuery.useOpen();
-  const count = open.data?.length;
+/** Today's sessions, in order: a schedule to glance at, not tasks. */
+function Today() {
+  const { from, to } = useMemo(() => {
+    const now = new Date();
+    return {
+      from: new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString(),
+      to: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString(),
+    };
+  }, []);
+  const sessions = SessionsQuery.useRange(from, to);
+  const clientsById = ClientsQuery.useById();
+  const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
-  return (
-    <HomeSection title={`Sessions to fix${count ? ` (${count})` : ""}`}>
-      {queryMatch(open, {
-        pending: () => <Loading />,
-        error: (error) => (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
-        ),
-        success: (data) => (
-          <SessionsTable
-            sessions={data}
-            from="home"
-            empty={
-              <EmptyState quips={QUIPS.sessionsTodo}>
-                Sessions that need a client, a fee or a fix show up here.
-              </EmptyState>
-            }
-          />
-        ),
-      })}
-    </HomeSection>
-  );
-}
-
-function HomeSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
+  return queryMatch(sessions, {
+    pending: () => <Loading />,
+    error: (error) => (
+      <p role="alert" className="text-sm text-destructive">
+        {error.message}
+      </p>
+    ),
+    success: (data) => {
+      const today = data.filter((s) => !s.removedAt).sort((a, b) => a.start.localeCompare(b.start));
+      if (today.length === 0) return <p className="text-sm text-muted-foreground">No sessions today.</p>;
+      return (
+        <ul className="flex flex-col divide-y">
+          {today.map((session) => {
+            const client = session.clientId ? clientsById.get(session.clientId) : undefined;
+            return (
+              <li key={session.eventId} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
+                <span className="w-16 shrink-0 text-sm text-muted-foreground tabular-nums">
+                  {time.format(new Date(session.start))}
+                </span>
+                <TextLink to="/sessions/$id" params={{ id: session.eventId }} search={{ from: "home" }}>
+                  {client?.name ?? (session.name || session.title)}
+                </TextLink>
+                {session.location === "home" && <HomeIcon className="size-3.5 text-muted-foreground" aria-label="Home visit" />}
+                <span className="flex flex-wrap gap-1">
+                  {stageBadges(session).map((badge) => (
+                    <Badge key={badge.label} variant={badge.tone}>
+                      {badge.label}
+                    </Badge>
+                  ))}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      );
+    },
+  });
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
-import { DOCUMENT_TYPES, documentLabel } from "./documents.registry";
+import { DOCUMENT_TYPES, documentLabel, documentRoute } from "./documents.registry";
 import { DocumentsQuery } from "./documents.query";
 import type { DocumentStatus, DocumentSummary, DocumentType } from "./documents.types";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
@@ -39,7 +39,7 @@ export function DocumentStatusBadge({ status, revising }: { status: DocumentStat
 
 function DocumentLink({ doc }: { doc: DocumentSummary }) {
   return (
-    <TextLink to="/receipts/$id" params={{ id: doc.id }}>
+    <TextLink to={documentRoute(doc.type)} params={{ id: doc.id }}>
       {documentLabel(doc.number, doc.revision)}
     </TextLink>
   );
@@ -89,8 +89,8 @@ interface DocumentsPageProps {
 }
 
 /**
- * One month of one type of document, newest first. Receipts are made from a
- * session or a package, so there is no "new" button here.
+ * One month of one type of document, newest first. Invoices and receipts
+ * are made from a session or a package, so there is no "new" button here.
  */
 export function DocumentsPage({ type, month, onMonthChange }: DocumentsPageProps) {
   const documents = DocumentsQuery.useList(type, month);
@@ -130,9 +130,9 @@ export function DocumentsPage({ type, month, onMonthChange }: DocumentsPageProps
             query={search}
             empty={
               // Keyed by month: each empty month gets its own line.
-              <EmptyState key={month} quips={QUIPS.receipts}>
-                No {spec.plural.toLowerCase()} in {formatMonth(month)}. Make one from a paid session or a
-                package.
+              <EmptyState key={month} quips={type === "invoice" ? QUIPS.invoices : QUIPS.receipts}>
+                No {spec.plural.toLowerCase()} in {formatMonth(month)}. Make one from{" "}
+                {type === "invoice" ? "a session" : "a paid session"} or a package.
               </EmptyState>
             }
             renderCard={(row) => (

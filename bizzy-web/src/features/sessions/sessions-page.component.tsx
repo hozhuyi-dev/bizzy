@@ -25,7 +25,7 @@ export function SessionsPage({ month, onMonthChange }: SessionsPageProps) {
   return (
     <>
       <PageHeader
-        title="Sessions"
+        title="All sessions"
         actions={<NewSessionButton />}
         toolbar={
           <>

@@ -5,17 +5,14 @@ import (
 
 	"bizzy-lambda/internal/features/docref"
 	"bizzy-lambda/internal/platform/dynamo"
+	"bizzy-lambda/internal/schema"
 )
 
-// Partition holds every package, SK = id.
-//
-//	LSI1 (time)     purchasedAt
-//	LSI2 (client)   clientId#purchasedAt
-//	LSI3 (open)     purchasedAt, while credits are left or it has drifted
-//	LSI4 (category) source#purchasedAt
-const Partition = "PACKAGE"
+// Keys: see schema.PackageKeys.
+const Partition = schema.Package
 
-// ownedAttributes are written by Save; `document` is the documents feature's.
+// ownedAttributes are written by Save; the document slots (and the version
+// their links bump) are the documents feature's.
 var ownedAttributes = append([]string{
 	"id", "clientId", "sessions", "priceCents", "purchasedAt", "source", "note",
 	"creditsUsed", "removed", "drift",
@@ -27,18 +24,7 @@ type record struct {
 }
 
 func toRecord(p Package) record {
-	at := dynamo.TimeKey(p.PurchasedAt)
-	keys := dynamo.Keys{
-		PK:     Partition,
-		SK:     p.ID,
-		LSI1SK: at,
-		LSI2SK: p.ClientID + "#" + at,
-		LSI4SK: string(p.Source) + "#" + at,
-	}
-	if p.Open() {
-		keys.LSI3SK = at
-	}
-	return record{Keys: keys, Package: p}
+	return record{Keys: schema.PackageKeys(p.ID, p.PurchasedAt, p.ClientID, string(p.Source), p.Open()), Package: p}
 }
 
 type Repository struct {
@@ -92,18 +78,15 @@ func (r Repository) Save(ctx context.Context, p Package) error {
 	return err
 }
 
-// Delete removes a package unless a receipt has claimed it.
+// Delete removes a package unless a document has claimed it.
 func (r Repository) Delete(ctx context.Context, id string) (bool, error) {
-	return r.store.Delete(ctx, Partition, id, &dynamo.Condition{
-		Expression: "attribute_not_exists(#doc)",
-		Names:      map[string]string{"#doc": docref.Attribute},
-	})
+	return r.store.Delete(ctx, Partition, id, docref.NoDocuments())
 }
 
-func LinkPatch(id string, ref docref.Ref) (dynamo.Patch, error) {
-	return docref.LinkPatch(Partition, id, ref)
+func LinkPatch(id string, slot docref.Slot, ref docref.Ref) (dynamo.Patch, error) {
+	return docref.LinkPatch(Partition, id, slot, ref)
 }
 
-func UnlinkPatch(id, documentID string) dynamo.Patch {
-	return docref.UnlinkPatch(Partition, id, documentID)
+func UnlinkPatch(id string, slot docref.Slot, documentID string) dynamo.Patch {
+	return docref.UnlinkPatch(Partition, id, slot, documentID)
 }

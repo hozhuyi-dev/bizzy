@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import type { CSSProperties, ReactNode } from "react";
 import { Card, CardContent } from "~/components/ui/card";
+import { scrollToSection, stickyTop, useActiveSection, useHeight } from "~/components/shared/scroll-spy/scroll-spy";
 
 export interface PageSection {
   /** Used for the anchor; unique on the page. */
@@ -30,13 +30,6 @@ interface SectionLayoutProps {
   side?: "left" | "right";
 }
 
-// The nav bar (h-12) and the page header (h-14) stick above everything here.
-const HEADERS = 104;
-// Air between the stuck headers and a section heading scrolled to.
-const DESKTOP_GAP = 24;
-// Phones also have the sticky row of section links (h-11), plus air.
-const PHONE_GAP = 44 + 16;
-
 /**
  * A long page split into sections, with a contents list to jump between them:
  * a sticky column beside the sections on wider screens, a sticky row of links
@@ -46,17 +39,17 @@ const PHONE_GAP = 44 + 16;
  */
 export function SectionLayout({ sections, banner, side = "left" }: SectionLayoutProps) {
   const [bannerRef, bannerHeight] = useHeight<HTMLDivElement>();
-  const stickyTop = HEADERS + (banner ? bannerHeight : 0);
-  const active = useActiveSection(sections, stickyTop);
+  const bannerSpace = banner ? bannerHeight : 0;
+  const active = useActiveSection(sections.map((section) => section.id), bannerSpace);
   // Read by the sticky and scroll-margin classes below.
-  const style = { "--sticky-top": `${stickyTop}px` } as CSSProperties;
+  const style = { "--sticky-top": stickyTop(bannerSpace) } as CSSProperties;
   const withContents = sections.length > 1;
 
   return (
     <div style={style}>
       {banner && (
         // Its own background, so the translucent dark-mode border isn't see-through.
-        <div ref={bannerRef} className="sticky top-26 z-20 -mx-4 -mt-4 mb-4 flex flex-col border-b bg-background">
+        <div ref={bannerRef} className="sticky top-[calc(var(--nav-height)+3.5rem)] z-20 -mx-4 -mt-4 mb-4 flex flex-col border-b bg-background">
           {banner}
         </div>
       )}
@@ -114,8 +107,7 @@ function Contents({
           aria-current={active === section.id ? "location" : undefined}
           onClick={(event) => {
             event.preventDefault();
-            const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-            document.getElementById(section.id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+            scrollToSection(section.id);
           }}
           className={cn(
             "grid shrink-0 grid-cols-[minmax(0,1fr)] rounded-md px-2.5 py-1 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -163,55 +155,4 @@ function SectionBlock({ section }: { section: PageSection }) {
       )}
     </section>
   );
-}
-
-/** An element's height, kept current as its content changes. */
-function useHeight<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [height, setHeight] = useState(0);
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return undefined;
-    // Rounded down: a fractional height (high-density phones) would otherwise
-    // leave a sliver between the banner and what sticks below it, and content
-    // would show through. Tucking under by a fraction is invisible.
-    const observer = new ResizeObserver(() => setHeight(Math.floor(element.getBoundingClientRect().height)));
-    observer.observe(element);
-    return () => observer.disconnect();
-  });
-  return [ref, height] as const;
-}
-
-/**
- * The section being read: the last whose top has passed under the sticky
- * bars, or the last section once the page is scrolled to the bottom (a short
- * last section never reaches the top).
- */
-function useActiveSection(sections: ReadonlyArray<PageSection>, stickyTop: number): string | undefined {
-  const [active, setActive] = useState(sections[0]?.id);
-  const ids = sections.map((section) => section.id).join(" ");
-
-  useEffect(() => {
-    const list = ids.split(" ");
-    // A handful of sections: measuring on every scroll event is cheap.
-    const update = () => {
-      const offset = stickyTop + (window.matchMedia("(min-width: 48rem)").matches ? DESKTOP_GAP : PHONE_GAP);
-      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
-      let current = list[0];
-      for (const id of list) {
-        const top = document.getElementById(id)?.getBoundingClientRect().top;
-        if (top !== undefined && top - offset <= 8) current = id;
-      }
-      setActive(atBottom ? list.at(-1) : current);
-    };
-    update();
-    window.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [ids, stickyTop]);
-
-  return active;
 }

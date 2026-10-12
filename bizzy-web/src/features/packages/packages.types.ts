@@ -13,7 +13,8 @@ export interface Package {
   creditsUsed: number;
   removed?: boolean;
   drift?: string;
-  document?: DocumentRef;
+  invoice?: DocumentRef;
+  receipt?: DocumentRef;
 }
 
 export interface SavePackageInput {

@@ -19,7 +19,10 @@ interface DeleteSessionDialogProps {
   onDeleted: () => void;
 }
 
-/** Deletes a session that didn't happen, from her calendar too. */
+/**
+ * Deletes a session that didn't happen (or a booking the client cancelled),
+ * from her calendar too.
+ */
 export function DeleteSessionDialog({ session, onClose, onDeleted }: DeleteSessionDialogProps) {
   const remove = SessionsMutation.useDelete();
 
@@ -29,7 +32,8 @@ export function DeleteSessionDialog({ session, onClose, onDeleted }: DeleteSessi
         <AlertDialogHeader>
           <AlertDialogTitle>Delete “{session?.title}”?</AlertDialogTitle>
           <AlertDialogDescription>
-            {session && formatSessionTime(session.start)}. The event is deleted from your calendar too.
+            {session && formatSessionTime(session.start)}. The event is deleted from your calendar too
+            {session?.record || session?.payment ? ", with the notes and payment recorded here" : ""}.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

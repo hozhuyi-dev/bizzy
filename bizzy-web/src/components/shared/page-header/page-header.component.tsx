@@ -1,10 +1,11 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import { ArrowLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { LinkProps } from "@tanstack/react-router";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
 import { Button } from "~/components/ui/button";
+import { moduleOf } from "~/features/nav-bar/modules";
 
 interface PageHeaderProps {
   title: ReactNode;
@@ -26,18 +27,23 @@ interface PageHeaderProps {
 /**
  * The top of every page: one row of fixed height with the title on the left
  * and the page's actions on the right, so the title sits in the same place on
- * every page. Nothing in it wraps: long titles truncate, and extra actions
- * fold into a menu on phones. It sticks under the nav bar (h-12) so actions
- * stay in reach on long tables; the toolbar scrolls with the page.
+ * every page. The title is a breadcrumb: its list for a page inside one (a
+ * client, a receipt), or its module for one of a module's several pages
+ * ("Documents › Receipts"). Nothing in it wraps: long titles truncate, and extra actions
+ * fold into a menu on phones. It sticks under the nav bar (--nav-height) so
+ * actions stay in reach on long tables; the toolbar scrolls with the page.
  */
 export function PageHeader({ title, parent, badges, actions, moreActions, toolbar }: PageHeaderProps) {
   const more = moreActions ?? [];
+  const { pathname } = useLocation();
+  const module = parent ? undefined : moduleOf(pathname);
 
   return (
     <>
-      <header className="sticky top-12 z-20 -mx-4 mb-4 flex h-14 items-center gap-3 border-b bg-background px-4">
+      <header className="sticky top-(--nav-height) z-20 -mx-4 mb-4 flex h-14 items-center gap-3 border-b bg-background px-4">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {parent && <ParentLink {...parent} />}
+          {module && module.pages.length > 1 && <ModuleCrumb label={module.label} />}
           <h1 className="truncate text-lg font-semibold">{title}</h1>
           {badges && <div className="flex shrink-0 items-center gap-1">{badges}</div>}
         </div>
@@ -82,6 +88,16 @@ function ParentLink({ to, label }: { to: NonNullable<LinkProps["to"]>; label: st
       >
         {label}
       </Link>
+      <ChevronRightIcon aria-hidden="true" className="hidden size-4 shrink-0 text-muted-foreground sm:block" />
+    </>
+  );
+}
+
+/** The module a page is one of: text, since its pages are in the nav's menu. Hidden on a phone, for room. */
+function ModuleCrumb({ label }: { label: string }) {
+  return (
+    <>
+      <span className="hidden shrink-0 text-lg font-semibold text-muted-foreground sm:inline">{label}</span>
       <ChevronRightIcon aria-hidden="true" className="hidden size-4 shrink-0 text-muted-foreground sm:block" />
     </>
   );

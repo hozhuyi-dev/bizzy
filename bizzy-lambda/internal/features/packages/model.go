@@ -30,12 +30,26 @@ type Package struct {
 	// Derived by the billing reconcile.
 	CreditsUsed int `json:"creditsUsed" dynamodbav:"creditsUsed"`
 	// Removed is set when the calendar entry that bought it no longer does,
-	// but a receipt keeps it.
+	// but a document keeps it.
 	Removed bool   `json:"removed,omitempty" dynamodbav:"removed,omitempty"`
 	Drift   string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
 
-	// Hers.
-	Document *docref.Ref `json:"document,omitempty" dynamodbav:"document,omitempty"`
+	// The documents covering it, written by the documents feature.
+	Invoice *docref.Ref `json:"invoice,omitempty" dynamodbav:"invoice,omitempty"`
+	Receipt *docref.Ref `json:"receipt,omitempty" dynamodbav:"receipt,omitempty"`
+}
+
+// Ref returns the document in a slot.
+func (p Package) Ref(slot docref.Slot) *docref.Ref {
+	if slot == docref.SlotInvoice {
+		return p.Invoice
+	}
+	return p.Receipt
+}
+
+// HasDocuments reports whether any document (draft or issued) covers it.
+func (p Package) HasDocuments() bool {
+	return p.Invoice != nil || p.Receipt != nil
 }
 
 func (p Package) CreditsLeft() int {
@@ -47,9 +61,10 @@ func (p Package) Open() bool {
 	return (!p.Removed && p.CreditsLeft() > 0) || p.Drift != ""
 }
 
-// Billable reports whether a receipt can be issued for the package.
-func (p Package) Billable() bool {
-	return !p.Removed && p.Document == nil
+// Billable reports whether a document of the slot's type can be made for
+// the package.
+func (p Package) Billable(slot docref.Slot) bool {
+	return !p.Removed && p.Ref(slot) == nil
 }
 
 // ShareCents is the value of credit i (0-based): the price split evenly, with

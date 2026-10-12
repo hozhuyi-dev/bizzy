@@ -1,42 +1,72 @@
 import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
-import { useNavigate } from "@tanstack/react-router";
-import { CircleAlertIcon, LockIcon, MessageCircleIcon, SendIcon, Trash2Icon } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  ArrowRightIcon,
+  BanIcon,
+  CalendarPlusIcon,
+  CheckIcon,
+  CircleAlertIcon,
+  FileTextIcon,
+  LockIcon,
+  MessageCircleIcon,
+  PencilIcon,
+  PlusIcon,
+  ReceiptIcon,
+  SendIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { toast } from "sonner";
+import { BookingForm } from "./components/booking-form/booking-form.component";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
-import { paymentCover } from "./session-payment";
-import { SESSION_STATUS, sessionAmount, sessionReceipts } from "./session-status";
+import { NextVisitDialog } from "./components/next-visit-dialog/next-visit-dialog.component";
+import { PaymentEditor } from "./components/payment-editor/payment-editor.component";
+import { PipelineLayout } from "./components/pipeline-layout/pipeline-layout.component";
+import { RecordEditor, useRecordDraft } from "./components/record-editor/record-editor.component";
+import { DiscardDialog } from "./deleted-sessions-page.component";
+import {
+  allSessionDocuments,
+  documentSources,
+  dueCents,
+  hasHappened,
+  isPaid,
+  needsFix,
+  sessionDocuments,
+} from "./session-stage";
 import { SessionsMutation, isStaleEdit } from "./sessions.mutation";
 import { SessionsQuery } from "./sessions.query";
-import type { DocumentRef, Session, SessionDraft, StoredSession } from "./sessions.types";
-import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import { methodLabel } from "./sessions.types";
+import type { PipelineStep, StepState } from "./components/pipeline-layout/pipeline-layout.component";
+import type { RecordDraft } from "./components/record-editor/record-editor.component";
+import type { SessionDocument } from "./session-stage";
+import type { Session, SessionDraft, StoredSession } from "./sessions.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import type { Client } from "~/features/clients/clients.types";
+import type { DocumentType } from "~/features/documents/documents.types";
+import type { FollowUpTarget } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import type { Package } from "~/features/packages/packages.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { DocumentsQuery } from "~/features/documents/documents.query";
+import { DOCUMENT_TYPES, documentLabel, documentRoute } from "~/features/documents/documents.registry";
+import { useCreateDocument } from "~/features/documents/use-create-document";
+import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { FollowUpRow, formatDue } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
+import { FollowUpsQuery } from "~/features/follow-ups/follow-ups.query";
+import { PackagesQuery } from "~/features/packages/packages.query";
 import { SettingsQuery } from "~/features/settings/settings.query";
+import { TodoQuery, nextTodoSession } from "~/features/todo/todo.query";
 import { useSendDocuments } from "~/features/whatsapp/use-whatsapp";
 import { openWhatsApp, whatsappLink } from "~/features/whatsapp/whatsapp.link";
 import { documentsTitle, paymentMessage } from "~/features/whatsapp/whatsapp.message";
-import { PackagesQuery } from "~/features/packages/packages.query";
-import { creditsLeft } from "~/features/packages/packages.types";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
-import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
-import { formatDate, formatSessionTime, monthKey, toISODate } from "~/core/utils/date.util";
-import { centsToInput, formatCents, parseCents } from "~/core/utils/money.util";
+import { Card, CardContent } from "~/components/ui/card";
+import { formatDate, formatSessionTime } from "~/core/utils/date.util";
+import { formatCents } from "~/core/utils/money.util";
 
-const FORM_ID = "session-form";
-
-/** Where the session was opened from, to go back there once saved. */
+/** Where the session was opened from, to go back there. */
 export type SessionReturnTo = "home";
 
 export type SessionPageProps = { returnTo?: SessionReturnTo | undefined } & (
@@ -49,12 +79,51 @@ function parentOf(returnTo: SessionReturnTo | undefined) {
 }
 
 /**
- * A session's own page, to add one or change it. Every save goes to her
- * calendar; she fills in fields and the API writes the title.
+ * A session's own page. A new one is just its booking; an existing one
+ * walks through its steps: booking, notes, payment, then the optional
+ * documents and follow-ups.
  */
 export function SessionPage(props: SessionPageProps) {
-  if (props.mode === "new") return <SessionEditor returnTo={props.returnTo} initial={newDraft()} />;
+  if (props.mode === "new") return <NewSession returnTo={props.returnTo} />;
   return <ExistingSession eventId={props.eventId} returnTo={props.returnTo} />;
+}
+
+/** Now, on the hour: most often she's adding the session she just had. */
+function newDraft(): SessionDraft {
+  const start = new Date();
+  start.setMinutes(0, 0, 0);
+  return { clientId: "", start: start.toISOString(), minutes: 60, homeVisit: false, tentative: false };
+}
+
+function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
+  const create = SessionsMutation.useCreate();
+  const navigate = useNavigate();
+
+  return (
+    <>
+      <PageHeader parent={parentOf(returnTo)} title="New session" />
+      {create.error && (
+        <div className="-mx-4 -mt-4 mb-4">
+          <Banner tone="attention" icon={CircleAlertIcon} title={create.error.message} role="alert" />
+        </div>
+      )}
+      <Card className="max-w-3xl">
+        <CardContent>
+          <BookingForm
+            initial={newDraft()}
+            submitLabel="Add session"
+            onSubmit={async (draft) => {
+              const created = await create.mutateAsync(draft);
+              const booked = new Date(draft.start) > new Date();
+              toast.success(booked ? `Booked for ${formatSessionTime(draft.start)}` : "Session added");
+              // Straight to its notes and payment.
+              void navigate({ to: "/sessions/$id", params: { id: created.eventId }, search: { from: returnTo }, replace: true });
+            }}
+          />
+        </CardContent>
+      </Card>
+    </>
+  );
 }
 
 function ExistingSession({ eventId, returnTo }: { eventId: string; returnTo: SessionReturnTo | undefined }) {
@@ -79,573 +148,442 @@ function ExistingSession({ eventId, returnTo }: { eventId: string; returnTo: Ses
       </>
     );
   }
-  // Keyed by when it was read: an edit refused because the calendar changed
-  // reloads the session, and the form starts again from the latest.
-  return (
-    <SessionEditor
-      key={detail.dataUpdatedAt}
-      stored={detail.data}
-      initial={detail.data.draft}
-      returnTo={returnTo}
-    />
-  );
+  return <SessionPipeline stored={detail.data} returnTo={returnTo} />;
 }
 
-/** Now, on the hour: most often she's adding the session she just had. */
-function newDraft(): SessionDraft {
-  const start = new Date();
-  start.setMinutes(0, 0, 0);
-  return { clientId: "", start: start.toISOString(), minutes: 60, homeVisit: false, tentative: false };
-}
-
-type PriceIs = "each" | "total";
-
-const PRICE_IS_ITEMS: Array<{ value: PriceIs; label: string }> = [
-  { value: "each", label: "per session" },
-  { value: "total", label: "in total" },
-];
-
-interface SessionFormValues {
-  clientId: string;
-  date: string;
-  time: string;
-  minutes: string;
-  /** Blank leaves it to a package credit or the default fee. */
-  fee: string;
-  packageSessions: string;
-  packagePrice: string;
-  /** Whether the price is per session (`10x180`) or the total (`10@1800`). */
-  packagePriceIs: PriceIs;
-  homeVisit: boolean;
-  tentative: boolean;
-}
-
-function toValues(draft: SessionDraft): SessionFormValues {
-  const start = new Date(draft.start);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    clientId: draft.clientId,
-    date: toISODate(start),
-    time: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
-    minutes: String(draft.minutes),
-    fee: centsToInput(draft.feeCents),
-    ...packageValues(draft.package),
-    homeVisit: draft.homeVisit,
-    tentative: draft.tentative,
-  };
-}
-
-/** Per session when the total divides evenly, as the title writes it. */
-function packageValues(
-  pkg: SessionDraft["package"],
-): Pick<SessionFormValues, "packageSessions" | "packagePrice" | "packagePriceIs"> {
-  if (!pkg) return { packageSessions: "", packagePrice: "", packagePriceIs: "each" };
-  const each = pkg.priceCents % pkg.sessions === 0;
-  return {
-    packageSessions: String(pkg.sessions),
-    packagePrice: centsToInput(each ? pkg.priceCents / pkg.sessions : pkg.priceCents),
-    packagePriceIs: each ? "each" : "total",
-  };
-}
-
-function toDraft(values: SessionFormValues): SessionDraft {
-  const fee = parseCents(values.fee);
-  const sessions = Number(values.packageSessions);
-  const price = parseCents(values.packagePrice);
-  return {
-    clientId: values.clientId,
-    // Read as her local time.
-    start: new Date(`${values.date}T${values.time}`).toISOString(),
-    minutes: Number(values.minutes),
-    ...(fee !== null ? { feeCents: fee } : {}),
-    ...(values.packageSessions.trim() && sessions >= 1 && price !== null && price > 0
-      ? { package: { sessions, priceCents: values.packagePriceIs === "each" ? price * sessions : price } }
-      : {}),
-    homeVisit: values.homeVisit,
-    tentative: values.tentative,
-  };
-}
-
-/** Adapts TanStack Form's string errors to the shape FieldError renders. */
-function fieldErrors(errors: ReadonlyArray<string | undefined>) {
-  return errors.flatMap((message) => (message ? [{ message }] : []));
-}
-
-interface SessionEditorProps {
-  /** Omitted for a new session. */
-  stored?: StoredSession | undefined;
-  initial: SessionDraft;
-  returnTo: SessionReturnTo | undefined;
-}
-
-function SessionEditor({ stored, initial, returnTo }: SessionEditorProps) {
-  const session = stored?.session;
-  const clients = ClientsQuery.useList();
+function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo: SessionReturnTo | undefined }) {
+  const { session } = stored;
+  const navigate = useNavigate();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
-  const create = SessionsMutation.useCreate();
-  const update = SessionsMutation.useUpdate();
-  const save = session ? update : create;
-  const navigate = useNavigate();
+  const todo = TodoQuery.useList();
+  const record = useRecordDraft(session, stored.notes);
   const [deleting, setDeleting] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
+  const [nextVisit, setNextVisit] = useState<SessionDraft | null>(null);
+  const restore = SessionsMutation.useRestore();
 
   const parent = parentOf(returnTo);
-  const bought = session && packages.data?.find((pkg) => pkg.id === session.eventId);
-  // A receipt fixes what it covers: cancel it to change the session.
-  const receipts = session ? sessionReceipts(session, bought) : [];
-  const locked = receipts.length > 0;
+  const client = session.clientId ? clientsById.get(session.clientId) : undefined;
+  const bought = packages.data?.find((pkg) => pkg.id === session.eventId);
+  const covering = session.packageId ? packages.data?.find((pkg) => pkg.id === session.packageId) : undefined;
+  const documents = allSessionDocuments(session, bought);
+  const locked = documents.length > 0;
+  const next = nextTodoSession(todo.data, session.eventId);
+  const leave = () => void navigate(returnTo === "home" ? { to: "/" } : { to: "/sessions" });
 
-  /** Back where she came from; from Sessions, to the month of the session. */
-  const leave = (start?: string) => {
-    if (returnTo === "home") {
-      void navigate({ to: "/" });
-      return;
-    }
-    const when = start ? new Date(Math.min(new Date(start).getTime(), Date.now())) : new Date();
-    void navigate({ to: "/sessions", search: { month: monthKey(when) } });
-  };
+  const messages = useMessageActions(session, client, documents);
+  const more: Array<RowAction> = [...messages];
+  if (!locked && !session.removedAt) {
+    more.push({ label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => setDeleting(true) });
+  }
 
-  const form = useForm({
-    defaultValues: toValues(initial),
-    onSubmit: async ({ value }) => {
-      const draft = toDraft(value);
-      try {
-        if (session) await update.mutateAsync({ eventId: session.eventId, draft });
-        else await create.mutateAsync(draft);
-      } catch (error) {
-        // The page reloads with the calendar's latest (or leaves, if the
-        // event is gone); anything else is shown in the banner.
-        if (isStaleEdit(error)) {
-          toast.error(error.message);
-          if (error.code === "not_found") leave();
-        }
-        return;
-      }
-      const booked = new Date(draft.start) > new Date();
-      toast.success(
-        booked ? `Booked for ${formatSessionTime(draft.start)}` : session ? "Session updated" : "Session added",
-      );
-      leave(draft.start);
-    },
-  });
-
-  const items = (clients.data ?? [])
-    .map((client) => ({ value: client.id, label: client.name }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-
-  const coverOf = (values: SessionFormValues) => {
-    const draft = toDraft(values);
-    return paymentCover({
-      client: clientsById.get(values.clientId),
-      start: new Date(draft.start),
-      packages: packages.data ?? [],
-      boughtHere: draft.package !== undefined,
-      session,
-    });
-  };
-
-  const describeCover = (values: SessionFormValues): string => {
-    const name = clientsById.get(values.clientId)?.name;
-    if (!name) return "Choose a client to see what covers it.";
-    const prefix = values.fee.trim() ? "Takes priority over" : "Leave blank to use";
-    const cover = coverOf(values);
-    switch (cover.kind) {
-      case "bought":
-        return `${prefix} the package bought in this session.`;
-      case "credit":
-        return `${prefix} ${name}'s package bought ${formatDate(cover.pkg.purchasedAt)}: ${creditsLeft(cover.pkg)} of ${cover.pkg.sessions} credits left.`;
-      case "default":
-        return `${prefix} ${name}'s default fee of ${formatCents(cover.feeCents)}; no package credits left.`;
-      case "none":
-        return `${name} has no package credits left and no default fee.`;
-    }
-  };
-
-  const sections: Array<PageSection> = [
-    {
-      id: "session",
-      title: "Session",
-      content: (
-        <FieldGroup>
-          <form.Field
-            name="clientId"
-            validators={{ onChange: ({ value }) => (value ? undefined : "Choose a client") }}
-            listeners={{
-              // A new choice of client starts from their usual place.
-              onChange: ({ value }) => form.setFieldValue("homeVisit", clientsById.get(value)?.homeVisits ?? false),
-            }}
-          >
-            {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel>Client</FieldLabel>
-                <Select
-                  items={items}
-                  value={field.state.value}
-                  disabled={locked}
-                  onValueChange={(value) => field.handleChange(value ?? "")}
-                >
-                  <SelectTrigger className="w-full max-w-sm">
-                    <SelectValue placeholder="Choose a client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {items.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {session && (
-                  <FieldDescription>
-                    In the calendar as “{session.title}”.
-                  </FieldDescription>
-                )}
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
-            )}
-          </form.Field>
-
-          <div className="flex flex-wrap gap-4">
-            <form.Field name="date" validators={{ onChange: ({ value }) => (value ? undefined : "Pick a day") }}>
-              {(field) => (
-                <Field data-invalid={field.state.meta.errors.length > 0} className="w-auto">
-                  <FieldLabel htmlFor={field.name}>Day</FieldLabel>
-                  <Input
-                    id={field.name}
-                    form={FORM_ID}
-                    type="date"
-                    disabled={locked}
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                  />
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                </Field>
-              )}
-            </form.Field>
-
-            <form.Field name="time" validators={{ onChange: ({ value }) => (value ? undefined : "Pick a time") }}>
-              {(field) => (
-                <Field data-invalid={field.state.meta.errors.length > 0} className="w-auto">
-                  <FieldLabel htmlFor={field.name}>Start</FieldLabel>
-                  <Input
-                    id={field.name}
-                    form={FORM_ID}
-                    type="time"
-                    step={300}
-                    disabled={locked}
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                  />
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                </Field>
-              )}
-            </form.Field>
-
-            <form.Field
-              name="minutes"
-              validators={{
-                onChange: ({ value }) =>
-                  /^\d+$/.test(value.trim()) && Number(value) >= 5 && Number(value) <= 720 ? undefined : "5 to 720",
-              }}
-            >
-              {(field) => (
-                <Field data-invalid={field.state.meta.errors.length > 0} className="w-24">
-                  <FieldLabel htmlFor={field.name}>Minutes</FieldLabel>
-                  <Input
-                    id={field.name}
-                    form={FORM_ID}
-                    inputMode="numeric"
-                    disabled={locked}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                  />
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                </Field>
-              )}
-            </form.Field>
-          </div>
-
-          <form.Field name="homeVisit">
-            {(field) => (
-              <Field orientation="horizontal">
-                <Checkbox
-                  id={field.name}
-                  disabled={locked}
-                  checked={field.state.value}
-                  onCheckedChange={(checked) => field.handleChange(checked)}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor={field.name}>Home visit</FieldLabel>
-                  <FieldDescription>Saved as the event's colour.</FieldDescription>
-                </FieldContent>
-              </Field>
-            )}
-          </form.Field>
-
-          <form.Field name="tentative">
-            {(field) => (
-              <Field orientation="horizontal">
-                <Checkbox
-                  id={field.name}
-                  disabled={locked}
-                  checked={field.state.value}
-                  onCheckedChange={(checked) => field.handleChange(checked)}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor={field.name}>Not confirmed</FieldLabel>
-                  <FieldDescription>Stays on Home until you confirm it.</FieldDescription>
-                </FieldContent>
-              </Field>
-            )}
-          </form.Field>
-        </FieldGroup>
-      ),
-    },
-    {
-      id: "payment",
-      title: "Payment",
-      content: (
-        <FieldGroup>
-          <form.Field
-            name="fee"
-            validators={{
-              onChangeListenTo: ["clientId", "date", "time", "packageSessions", "packagePrice"],
-              onChange: ({ value }) => {
-                if (value.trim()) return parseCents(value) !== null ? undefined : "Like 95 or 95.50";
-                return coverOf(form.state.values).kind === "none"
-                  ? "Enter what was paid: no package credit or default fee covers it"
-                  : undefined;
-              },
-            }}
-          >
-            {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel htmlFor={field.name}>Paid for this session</FieldLabel>
-                <Input
-                  id={field.name}
-                  form={FORM_ID}
-                  inputMode="decimal"
-                  disabled={locked}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  className="max-w-40"
-                />
-                <form.Subscribe selector={(state) => state.values}>
-                  {(values) => <FieldDescription>{describeCover(values)}</FieldDescription>}
-                </form.Subscribe>
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
-            )}
-          </form.Field>
-
-          <div className="flex flex-wrap items-start gap-4">
-            <form.Field
-              name="packageSessions"
-              validators={{
-                onChangeListenTo: ["packagePrice"],
-                onChange: ({ value, fieldApi }) => {
-                  if (!value.trim()) {
-                    return fieldApi.form.getFieldValue("packagePrice").trim() ? "How many sessions?" : undefined;
-                  }
-                  return /^\d+$/.test(value.trim()) && Number(value) >= 1 && Number(value) <= 1000
-                    ? undefined
-                    : "1 to 1000";
-                },
-              }}
-            >
-              {(field) => (
-                <Field data-invalid={field.state.meta.errors.length > 0} className="w-32">
-                  <FieldLabel htmlFor={field.name}>Package bought</FieldLabel>
-                  <Input
-                    id={field.name}
-                    form={FORM_ID}
-                    inputMode="numeric"
-                    placeholder="Sessions"
-                    disabled={locked}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                  />
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                </Field>
-              )}
-            </form.Field>
-
-            <form.Field
-              name="packagePrice"
-              validators={{
-                onChangeListenTo: ["packageSessions"],
-                onChange: ({ value, fieldApi }) => {
-                  if (!value.trim()) {
-                    return fieldApi.form.getFieldValue("packageSessions").trim() ? "What did it cost?" : undefined;
-                  }
-                  const cents = parseCents(value);
-                  return cents !== null && cents > 0 ? undefined : "Like 180 or 1800";
-                },
-              }}
-            >
-              {(field) => (
-                <Field data-invalid={field.state.meta.errors.length > 0} className="w-32">
-                  <FieldLabel htmlFor={field.name}>Price</FieldLabel>
-                  <Input
-                    id={field.name}
-                    form={FORM_ID}
-                    inputMode="decimal"
-                    disabled={locked}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                  />
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                </Field>
-              )}
-            </form.Field>
-
-            <form.Field name="packagePriceIs">
-              {(field) => (
-                <Field className="w-36">
-                  <FieldLabel aria-hidden="true">&nbsp;</FieldLabel>
-                  <Select
-                    items={PRICE_IS_ITEMS}
-                    value={field.state.value}
-                    disabled={locked}
-                    onValueChange={(value) => value && field.handleChange(value)}
-                  >
-                    <SelectTrigger className="w-full" aria-label="The price is">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PRICE_IS_ITEMS.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
-            </form.Field>
-          </div>
-          <form.Subscribe selector={(state) => state.values}>
-            {(values) => {
-              const pkg = toDraft(values).package;
-              return (
-                <FieldDescription>
-                  {pkg
-                    ? `${pkg.sessions} sessions for ${formatCents(pkg.priceCents)} (${formatCents(Math.round(pkg.priceCents / pkg.sessions))} each). This session uses the first.`
-                    : "Only if one was bought in this session; it uses the first credit."}
-                </FieldDescription>
-              );
-            }}
-          </form.Subscribe>
-        </FieldGroup>
-      ),
-    },
+  const steps: Array<PipelineStep> = [
+    bookingStep(session, stored.draft, locked, () => setDeleting(true)),
+    recordStep(session, record),
+    paymentStep(session, covering),
+    documentsStep(session, bought),
+    followUpsStep(session, client, stored.draft, setFollowUp, setNextVisit),
   ];
 
-  const client = session?.clientId ? clientsById.get(session.clientId) : undefined;
-  const status = session && SESSION_STATUS[session.status];
-  const problem = session && (session.drift ?? session.reason ?? status?.hint);
-  const messages = useMessageActions(session, client, receipts);
-  const more: Array<RowAction> =
-    session && !locked
-      ? [...messages, { label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => setDeleting(true) }]
-      : messages;
+  const problem = session.drift ?? (needsFix(session) ? session.reason : undefined);
 
   return (
     <>
       <PageHeader
         parent={parent}
-        title={session ? (client?.name ?? (session.name || session.title)) : "New session"}
-        badges={status && <Badge variant={status.variant}>{status.label}</Badge>}
+        title={client?.name ?? (session.name || session.title)}
         actions={
-          !locked && (
-            <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
-              {([canSubmit, isSubmitting]) => (
-                <Button type="submit" form={FORM_ID} disabled={!canSubmit || isSubmitting}>
-                  {isSubmitting ? "Saving…" : session ? "Save" : "Add session"}
-                </Button>
-              )}
-            </form.Subscribe>
+          next && (
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link to="/sessions/$id" params={{ id: next }} search={{ from: returnTo ?? "home" }} />}
+              nativeButton={false}
+            >
+              <span className="hidden sm:inline">Next to-do</span> <ArrowRightIcon />
+            </Button>
           )
         }
         moreActions={more}
       />
-      {/* Inputs join this form through their form attribute, so Enter saves. */}
-      <form
-        id={FORM_ID}
-        hidden
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.handleSubmit();
-        }}
-      />
-      <SectionLayout
+      <PipelineLayout
         banner={
-          (locked || problem || save.error) && (
+          (session.removedAt || locked || problem) && (
             <>
-              {locked && (
-                <Banner tone="neutral" icon={LockIcon} title="Covered by a receipt.">
-                  Cancel{" "}
-                  {receipts.map((ref, i) => (
-                    <span key={ref.documentId}>
-                      {i > 0 && " and "}
-                      <TextLink to="/receipts/$id" params={{ id: ref.documentId }}>
-                        {ref.number ?? "the draft"}
-                      </TextLink>
-                    </span>
-                  ))}{" "}
-                  to change it.
+              {session.removedAt && (
+                <Banner tone="attention" icon={BanIcon} title="Deleted from your calendar.">
+                  Kept for what you recorded.{" "}
+                  <button
+                    type="button"
+                    className="font-medium underline underline-offset-4"
+                    disabled={restore.isPending}
+                    onClick={() =>
+                      restore.mutate(session.eventId, {
+                        onSuccess: () => toast.success("Restored to your calendar"),
+                        onError: (error) => toast.error(error.message),
+                      })
+                    }
+                  >
+                    Restore
+                  </button>{" "}
+                  or{" "}
+                  <button type="button" className="font-medium underline underline-offset-4" onClick={() => setDiscarding(true)}>
+                    discard
+                  </button>
+                  .
+                </Banner>
+              )}
+              {locked && !session.removedAt && (
+                <Banner tone="neutral" icon={LockIcon} title="The booking is on a document.">
+                  Cancel {documentLinks(documents)} to change it.
                 </Banner>
               )}
               {problem && <Banner tone="attention" icon={CircleAlertIcon} title={problem} />}
-              {save.error && !isStaleEdit(save.error) && (
-                <Banner tone="attention" icon={CircleAlertIcon} title={save.error.message} role="alert" />
-              )}
             </>
           )
         }
-        sections={sections}
+        steps={steps}
       />
-      {session && (
-        <DeleteSessionDialog
-          session={deleting ? session : null}
-          onClose={() => setDeleting(false)}
-          onDeleted={() => leave(session.start)}
+      <DeleteSessionDialog session={deleting ? session : null} onClose={() => setDeleting(false)} onDeleted={leave} />
+      <DiscardDialog session={discarding ? session : null} onClose={() => setDiscarding(false)} onDiscarded={leave} />
+      <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
+      <NextVisitDialog from={nextVisit} clientName={client?.name ?? "the client"} onClose={() => setNextVisit(null)} />
+    </>
+  );
+}
+
+function documentLinks(documents: ReadonlyArray<SessionDocument>) {
+  return documents.map(({ type, ref }, i) => (
+    <span key={ref.documentId}>
+      {i > 0 && " and "}
+      <TextLink to={documentRoute(type)} params={{ id: ref.documentId }}>
+        {ref.number ? documentLabel(ref.number, ref.revision) : `the draft ${DOCUMENT_TYPES[type].title.toLowerCase()}`}
+      </TextLink>
+    </span>
+  ));
+}
+
+function Lines({ children }: { children: Array<string | false | undefined> }) {
+  return (
+    <>
+      {children.filter(Boolean).map((line) => (
+        <span key={line as string} className="block">
+          {line}
+        </span>
+      ))}
+    </>
+  );
+}
+
+// Steps.
+
+function bookingStep(session: Session, draft: SessionDraft, locked: boolean, onCancel: () => void): PipelineStep {
+  const tentative = session.status === "tentative";
+  const problem = tentative || needsFix(session);
+  const happened = hasHappened(session);
+  return {
+    id: "booking",
+    title: "Booking",
+    state: problem ? "current" : "done",
+    meta: (
+      <Lines>
+        {[
+          tentative ? "Not confirmed" : session.confirmedAt ? `Confirmed ${formatDate(session.confirmedAt)}` : undefined,
+          session.removedAt
+            ? `Deleted ${formatDate(session.removedAt)}`
+            : happened
+              ? `Happened ${formatDate(session.start)}`
+              : `Booked for ${formatSessionTime(session.start)}`,
+        ]}
+      </Lines>
+    ),
+    content: <BookingStep session={session} draft={draft} locked={locked} onCancel={onCancel} />,
+  };
+}
+
+function BookingStep({
+  session,
+  draft,
+  locked,
+  onCancel,
+}: {
+  session: Session;
+  draft: SessionDraft;
+  locked: boolean;
+  onCancel: () => void;
+}) {
+  const update = SessionsMutation.useUpdate();
+  const confirm = SessionsMutation.useConfirm();
+  const [editing, setEditing] = useState(needsFix(session));
+  const tentative = session.status === "tentative";
+  const end = new Date(session.end);
+  const minutes = Math.round((end.getTime() - new Date(session.start).getTime()) / 60_000);
+  // Restarts from the calendar whenever the event changes.
+  const calendarKey = `${session.title}|${session.start}|${session.end}|${session.colorId ?? ""}`;
+
+  return (
+    <>
+      {tentative && !session.removedAt && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-status-waiting px-3 py-2 text-sm text-status-waiting-foreground">
+          <span>Not confirmed with the client yet.</span>
+          <span className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={confirm.isPending || locked}
+              onClick={() =>
+                confirm.mutate(session.eventId, {
+                  onSuccess: () => toast.success("Confirmed"),
+                  onError: (error) => toast.error(error.message),
+                })
+              }
+            >
+              <CheckIcon /> Confirm
+            </Button>
+            <Button size="sm" variant="outline" disabled={locked} onClick={onCancel}>
+              Cancel booking
+            </Button>
+          </span>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <span>
+          {formatSessionTime(session.start)} · {minutes} min · {session.location === "home" ? "Home visit" : "Your place"}
+          {session.feeCents !== undefined && <> · {formatCents(session.feeCents)}</>}
+          {session.status === "package" && <> · package credit</>}
+        </span>
+        {!locked && !session.removedAt && !editing && (
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+            <PencilIcon /> Edit booking
+          </Button>
+        )}
+      </div>
+
+      {editing && (
+        <BookingForm
+          key={calendarKey}
+          initial={draft}
+          session={session}
+          locked={locked}
+          submitLabel="Save booking"
+          onSubmit={async (next) => {
+            try {
+              await update.mutateAsync({ eventId: session.eventId, draft: next });
+            } catch (error) {
+              toast.error((error as Error).message);
+              throw error;
+            }
+            toast.success(new Date(next.start) > new Date() ? `Booked for ${formatSessionTime(next.start)}` : "Booking saved");
+            setEditing(false);
+          }}
+          extraActions={
+            <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          }
         />
       )}
+      {update.error && !isStaleEdit(update.error) && <p className="text-sm text-destructive">{update.error.message}</p>}
     </>
+  );
+}
+
+function recordStep(session: Session, record: RecordDraft): PipelineStep {
+  const started = new Date(session.start) <= new Date();
+  const blocked = session.status === "tentative" || needsFix(session);
+  const summary = record.summary.trim();
+  let state: StepState = "todo";
+  if (summary) state = "done";
+  else if (started && !blocked) state = "current";
+  return {
+    id: "record",
+    title: "Notes",
+    state,
+    meta: summary ? <span className="line-clamp-2">{summary}</span> : started ? "Not written yet" : "Once it has started",
+    content: (
+      <RecordEditor draft={record} disabled={started ? undefined : "Notes open once the session has started."} />
+    ),
+  };
+}
+
+function paymentStep(session: Session, covering: Package | undefined): PipelineStep {
+  const due = dueCents(session);
+  const delivered = session.status === "priced" || session.status === "package" || session.status === "missing_fee";
+  const { payment } = session;
+  let blocked: string | undefined;
+  if (session.removedAt) blocked = "Restore the session to record its payment.";
+  else if (session.status === "tentative") blocked = "Confirm the booking first.";
+  else if (!delivered) blocked = "Fix the calendar entry first.";
+
+  let state: StepState = "todo";
+  if (session.untracked || (delivered && isPaid(session))) state = "done";
+  else if (!blocked && hasHappened(session)) state = "current";
+
+  let meta: string;
+  if (payment?.status === "paid") {
+    meta = `${formatCents(payment.amountCents)} · ${methodLabel(payment.method)} · ${formatDate(payment.paidOn)}`;
+  } else if (payment?.status === "waived") {
+    meta = `Waived ${formatDate(payment.paidOn)}`;
+  } else if (session.untracked) {
+    meta = "Before you tracked payments here";
+  } else if (delivered && due === 0) {
+    meta = "Covered by a package";
+  } else {
+    meta = due > 0 ? `${formatCents(due)} due` : "Fee not known yet";
+  }
+
+  return {
+    id: "payment",
+    title: "Payment",
+    state,
+    meta,
+    content: <PaymentEditor session={session} coveringPackage={covering} blocked={blocked} />,
+  };
+}
+
+function documentsStep(session: Session, bought: Package | undefined): PipelineStep {
+  const docs = allSessionDocuments(session, bought);
+  const issued = docs.filter(({ ref }) => ref.number);
+  return {
+    id: "documents",
+    title: "Documents",
+    state: issued.length > 0 ? "done" : "optional",
+    meta:
+      docs.length > 0
+        ? docs.map(({ ref }) => documentLabel(ref.number, ref.revision)).join(", ")
+        : "Invoice and receipt, if asked",
+    content: <DocumentsStep session={session} bought={bought} />,
+  };
+}
+
+const DOCUMENT_HINTS: Record<DocumentType, string> = {
+  invoice: "Once confirmed, with a fee.",
+  receipt: "Once paid.",
+};
+
+function DocumentsStep({ session, bought }: { session: Session; bought: Package | undefined }) {
+  const { create, isPending } = useCreateDocument();
+  const nothingDue = dueCents(session) === 0 && !bought;
+
+  return (
+    <ul className="flex flex-col divide-y text-sm">
+      {(["invoice", "receipt"] as const).map((type) => {
+        const spec = DOCUMENT_TYPES[type];
+        const existing = sessionDocuments(type, session, bought);
+        const sources = session.removedAt ? [] : documentSources(type, session, bought);
+        const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
+        return (
+          <li key={type} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+              <span className="font-medium">{spec.title}</span>
+              {existing.map(({ ref }) => (
+                <TextLink key={ref.documentId} to={documentRoute(type)} params={{ id: ref.documentId }}>
+                  {ref.number ? documentLabel(ref.number, ref.revision) : "Draft"}
+                </TextLink>
+              ))}
+            </span>
+            {sources.length > 0 ? (
+              <Button variant="outline" size="sm" disabled={isPending} onClick={() => create(type, sources)}>
+                <PlusIcon /> {existing.length > 0 ? `Another ${spec.title.toLowerCase()}` : `Make ${spec.title.toLowerCase()}`}
+              </Button>
+            ) : (
+              existing.length === 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {nothingDue ? "Nothing to bill: a package credit covers it." : DOCUMENT_HINTS[type]}
+                </span>
+              )
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function followUpsStep(
+  session: Session,
+  client: Client | undefined,
+  draft: SessionDraft,
+  onFollowUp: (target: FollowUpTarget) => void,
+  onNextVisit: (draft: SessionDraft) => void,
+): PipelineStep {
+  return {
+    id: "follow-ups",
+    title: "Follow-ups",
+    state: "optional",
+    meta: <FollowUpsMeta sessionId={session.eventId} />,
+    actions: client && !session.removedAt && (
+      <>
+        <Button variant="outline" size="sm" onClick={() => onNextVisit(draft)}>
+          <CalendarPlusIcon /> Next visit
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onFollowUp({ mode: "new", clientId: client.id, sessionId: session.eventId })}
+        >
+          <PlusIcon /> Follow-up
+        </Button>
+      </>
+    ),
+    content: <FollowUpsStep sessionId={session.eventId} onEdit={(f) => onFollowUp({ mode: "edit", followUp: f })} />,
+  };
+}
+
+function FollowUpsMeta({ sessionId }: { sessionId: string }) {
+  const followUps = FollowUpsQuery.useBySession(sessionId);
+  const open = (followUps.data ?? []).filter((f) => !f.doneAt);
+  const [first] = open;
+  if (!first) return <>{followUps.data?.length ? "All done" : "Reminders and the next visit"}</>;
+  return <>{open.length === 1 ? `Due ${formatDue(first)}` : `${open.length}, next ${formatDue(first)}`}</>;
+}
+
+function FollowUpsStep({ sessionId, onEdit }: { sessionId: string; onEdit: Parameters<typeof FollowUpRow>[0]["onEdit"] }) {
+  const followUps = FollowUpsQuery.useBySession(sessionId);
+  if (followUps.isPending) return <Loading />;
+  if (!followUps.data?.length) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Anything to get back to the client about, like results to check. It goes in your calendar as a reminder.
+      </p>
+    );
+  }
+  return (
+    <ul className="flex flex-col divide-y">
+      {followUps.data.map((f) => (
+        <li key={f.eventId} className="py-3 first:pt-0 last:pb-0">
+          <FollowUpRow followUp={f} onEdit={onEdit} hideClient showSession={false} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
 /**
  * WhatsApp messages to the client (the app on her phone, WhatsApp Web on her
- * computer): asking to pay (with her
- * bank details) until a receipt covers the session, then sending the issued
- * receipts that do.
+ * computer): asking to pay (with her bank details) while it is unpaid, and
+ * sending the issued documents that cover it.
  */
 function useMessageActions(
-  session: Session | undefined,
+  session: Session,
   client: Client | undefined,
-  receipts: Array<DocumentRef>,
+  documents: ReadonlyArray<SessionDocument>,
 ): Array<RowAction> {
   const settings = SettingsQuery.useGet();
-  const issuedIds = receipts.filter((ref) => ref.number).map((ref) => ref.documentId);
+  const issuedIds = documents.filter(({ ref }) => ref.number).map(({ ref }) => ref.documentId);
   const docs = DocumentsQuery.useByClient(client?.id ?? "", issuedIds.length > 0);
   const { send, busy } = useSendDocuments();
 
-  if (!session || !client) return [];
+  if (!client) return [];
   const to = { name: client.name, phone: client.contact?.phone };
   const actions: Array<RowAction> = [];
 
-  if (receipts.length === 0 && settings.data) {
-    const text = paymentMessage(settings.data, {
-      clientName: client.name,
-      start: session.start,
-      amountCents: sessionAmount(session),
-    });
+  const due = dueCents(session);
+  if (!isPaid(session) && due > 0 && settings.data) {
+    const text = paymentMessage(settings.data, { clientName: client.name, start: session.start, amountCents: due });
     actions.push({
       label: "Ask to pay",
       icon: MessageCircleIcon,

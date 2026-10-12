@@ -9,12 +9,14 @@ import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
 import { ClientContact } from "./components/client-contact/client-contact.component";
 import { ClientDocuments } from "./components/client-documents/client-documents.component";
+import { ClientFollowUps } from "./components/client-follow-ups/client-follow-ups.component";
+import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
 import type { ChosenContact } from "./components/client-contact/client-contact.component";
 import type { Client, SaveClientInput } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { openWhatsApp, whatsappLink } from "~/features/whatsapp/whatsapp.link";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { DOCUMENT_TYPES } from "~/features/documents/documents.registry";
+import { documentLabel, documentRoute } from "~/features/documents/documents.registry";
 import { creditsLeft } from "~/features/packages/packages.types";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -30,9 +32,6 @@ import { centsToInput, formatCents, parseCents } from "~/core/utils/money.util";
 
 const FORM_ID = "client-form";
 
-// "Receipts" while that is the only kind; "Documents" once there are more.
-const DOCUMENT_SPECS = Object.values(DOCUMENT_TYPES);
-const DOCUMENTS_TITLE = DOCUMENT_SPECS.length === 1 && DOCUMENT_SPECS[0] ? DOCUMENT_SPECS[0].plural : "Documents";
 const parent = { to: "/clients", label: "Clients" } as const;
 
 /** Where a new client was started from, to go back there once saved. */
@@ -47,7 +46,11 @@ export type ClientPageProps =
       returnTo?: ClientReturnTo | undefined;
     };
 
-/** A client's own page: their profile, Google contact, activity and packages. */
+/**
+ * A client's own page: their profile and Google contact, then their story:
+ * activity, a timeline of their sessions with her notes, follow-ups,
+ * packages and documents.
+ */
 export function ClientPage(props: ClientPageProps) {
   const clients = ClientsQuery.useList();
 
@@ -246,8 +249,10 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
     ...(client
       ? [
           { id: "activity", title: "Activity", content: <Activity client={client} /> },
+          { id: "timeline", title: "Sessions", content: <ClientTimeline client={client} /> },
+          { id: "follow-ups", title: "Follow-ups", content: <ClientFollowUps client={client} /> },
           { id: "packages", title: "Packages", content: <ClientPackages clientId={client.id} /> },
-          { id: "documents", title: DOCUMENTS_TITLE, content: <ClientDocuments client={client} /> },
+          { id: "documents", title: "Documents", content: <ClientDocuments client={client} /> },
         ]
       : []),
   ];
@@ -364,10 +369,17 @@ function ClientPackages({ clientId }: { clientId: string }) {
             <span className={creditsLeft(pkg) > 0 ? undefined : "text-muted-foreground"}>
               {creditsLeft(pkg)} of {pkg.sessions} left
             </span>
-            {pkg.document ? (
-              <TextLink to="/receipts/$id" params={{ id: pkg.document.documentId }}>
-                {pkg.document.number ?? "Draft"}
-              </TextLink>
+            {pkg.invoice || pkg.receipt ? (
+              (["invoice", "receipt"] as const).map((type) => {
+                const ref = pkg[type];
+                return (
+                  ref && (
+                    <TextLink key={type} to={documentRoute(type)} params={{ id: ref.documentId }}>
+                      {documentLabel(ref.number, ref.revision)}
+                    </TextLink>
+                  )
+                );
+              })
             ) : (
               <span className="text-muted-foreground">—</span>
             )}

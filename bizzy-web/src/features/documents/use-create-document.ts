@@ -2,20 +2,21 @@ import { useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { DocumentsMutation } from "./documents.query";
-import type { DocumentSource } from "./documents.types";
+import { documentRoute } from "./documents.registry";
+import type { DocumentSource, DocumentType } from "./documents.types";
 
-/** Starts a receipt draft for sessions and packages and opens it to edit. */
-export function useCreateReceipt() {
+/** Starts a draft invoice or receipt for sessions and packages and opens it to edit. */
+export function useCreateDocument() {
   const navigate = useNavigate();
   const { mutate, isPending } = DocumentsMutation.useCreateDraft();
 
   const create = useCallback(
-    (sources: Array<DocumentSource>) =>
+    (type: DocumentType, sources: Array<DocumentSource>) =>
       mutate(
-        { type: "receipt", sources },
+        { type, sources },
         {
           onSuccess: (doc) => {
-            if (doc) void navigate({ to: "/receipts/$id", params: { id: doc.id } });
+            if (doc) void navigate({ to: documentRoute(type), params: { id: doc.id } });
           },
           onError: (error) => toast.error(error.message),
         },

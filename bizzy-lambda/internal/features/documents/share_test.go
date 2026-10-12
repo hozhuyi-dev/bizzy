@@ -37,7 +37,7 @@ func TestIssueGivesAShareLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shared.Number != "RCP-0001" || shared.Content.Recipient.Name != "Jane Smith" || shared.Status != StatusIssued {
+	if shared.Number != "RCP260001" || shared.Content.Recipient.Name != "Jane Smith" || shared.Status != StatusIssued {
 		t.Errorf("shared = %+v", shared)
 	}
 

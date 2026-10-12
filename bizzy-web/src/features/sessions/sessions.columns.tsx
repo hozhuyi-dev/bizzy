@@ -1,16 +1,16 @@
-import { BanknoteIcon, CheckIcon, HomeIcon, LinkIcon, ReceiptIcon } from "lucide-react";
-import { SESSION_STATUS, receiptSources, sessionAmount, sessionReceipts } from "./session-status";
+import { BanknoteIcon, CheckIcon, HomeIcon, LinkIcon } from "lucide-react";
+import { allSessionDocuments, sessionAmount, stageBadges } from "./session-stage";
 import type { ReactNode } from "react";
 import type { Session } from "./sessions.types";
 import type { SessionReturnTo } from "./session-page.component";
 import type { Client } from "~/features/clients/clients.types";
-import type { DocumentSource } from "~/features/documents/documents.types";
 import type { Package } from "~/features/packages/packages.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.features";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { documentLabel, documentRoute } from "~/features/documents/documents.registry";
 import { formatCents } from "~/core/utils/money.util";
 import { formatSessionTime } from "~/core/utils/date.util";
 
@@ -23,12 +23,11 @@ export interface SessionHandlers {
   onLink: (session: Session) => void;
   onEditClient: (client: Client) => void;
   onConfirm: (session: Session) => void;
-  onReceipt: (sources: Array<DocumentSource>) => void;
 }
 
 const helper = createDataTableColumnHelper<Session>();
 
-/** Who the session is with, linking to its page, where it's edited or deleted. */
+/** Who the session is with, linking to its page, where everything about it is. */
 export function SessionWho({ session, handlers }: { session: Session; handlers: SessionHandlers }) {
   const client = session.clientId ? handlers.clientsById.get(session.clientId) : undefined;
   return (
@@ -41,18 +40,20 @@ export function SessionWho({ session, handlers }: { session: Session; handlers: 
       >
         {client?.name ?? (session.name || session.title)}
       </TextLink>
-      <span className="text-xs text-muted-foreground">{session.title}</span>
+      <span className="text-xs text-muted-foreground">{session.record?.summary ?? session.title}</span>
     </div>
   );
 }
 
-/** The badges alone; the session's page explains them. */
-export function SessionStatusCell({ session }: { session: Session }) {
-  const status = SESSION_STATUS[session.status];
+/** Where it stands, or what is left to do; the session's page explains. */
+export function SessionStageCell({ session }: { session: Session }) {
   return (
     <div className="flex flex-wrap gap-1">
-      <Badge variant={status.variant}>{status.label}</Badge>
-      {session.drift && <Badge variant="attention">Changed after receipt</Badge>}
+      {stageBadges(session).map((badge) => (
+        <Badge key={badge.label} variant={badge.tone}>
+          {badge.label}
+        </Badge>
+      ))}
     </div>
   );
 }
@@ -67,39 +68,36 @@ export function SessionAmount({ session }: { session: Session }) {
   );
 }
 
-/**
- * The receipts covering the session and the package its title bought; making
- * a missing one is an action.
- */
-export function SessionReceipt({
+/** The invoices and receipts covering the session and the package its title bought. */
+export function SessionDocuments({
   session,
   handlers,
   empty = "—",
 }: {
   session: Session;
   handlers: SessionHandlers;
-  /** Shown when there is no receipt yet. */
+  /** Shown when there are none. */
   empty?: ReactNode;
 }) {
-  const receipts = sessionReceipts(session, handlers.packagesById.get(session.eventId));
-  if (receipts.length === 0) return empty;
+  const docs = allSessionDocuments(session, handlers.packagesById.get(session.eventId));
+  if (docs.length === 0) return empty;
 
   return (
     <span className="flex flex-wrap items-center gap-2">
-      {receipts.map((ref) => (
-        <TextLink key={ref.documentId} to="/receipts/$id" params={{ id: ref.documentId }} className="text-sm">
-          {ref.number ?? "Draft"}
+      {docs.map(({ type, ref }) => (
+        <TextLink key={ref.documentId} to={documentRoute(type)} params={{ id: ref.documentId }} className="text-sm">
+          {documentLabel(ref.number, ref.revision)}
         </TextLink>
       ))}
     </span>
   );
 }
 
+/** The quick fixes a list can make; everything else is on the session's page. */
 export function sessionActions(session: Session, handlers: SessionHandlers): Array<RowAction> {
   const client = session.clientId ? handlers.clientsById.get(session.clientId) : undefined;
-  const bought = handlers.packagesById.get(session.eventId);
-  // A receipt fixes what it covers: cancel it to change the session.
-  const editable = sessionReceipts(session, bought).length === 0;
+  // A document fixes what it covers: cancel it to change the booking.
+  const editable = allSessionDocuments(session, handlers.packagesById.get(session.eventId)).length === 0;
   const actions: Array<RowAction> = [];
 
   if (editable && session.status === "tentative" && client) {
@@ -110,11 +108,6 @@ export function sessionActions(session: Session, handlers: SessionHandlers): Arr
   }
   if (client && session.status === "missing_fee") {
     actions.push({ label: "Set fee", icon: BanknoteIcon, onClick: () => handlers.onEditClient(client) });
-  }
-  // Covers whichever of the session and the package it bought has no receipt.
-  const sources = receiptSources(session, bought);
-  if (sources.length > 0) {
-    actions.push({ label: "New receipt", icon: ReceiptIcon, onClick: () => handlers.onReceipt(sources) });
   }
   return actions;
 }
@@ -133,21 +126,16 @@ export function createSessionColumns(handlers: SessionHandlers) {
       meta: {
         search: (session: Session) => {
           const client = session.clientId ? handlers.clientsById.get(session.clientId) : undefined;
-          return [client?.name, session.name, session.title];
+          return [client?.name, session.name, session.title, session.record?.summary];
         },
       },
       cell: ({ row }) => <SessionWho session={row.original} handlers={handlers} />,
     }),
-    helper.accessor("status", {
-      header: "Status",
-      sortFn: "alphanumeric",
-      meta: {
-        search: (session: Session) => [
-          SESSION_STATUS[session.status].label,
-          session.drift ? "Changed after receipt" : undefined,
-        ],
-      },
-      cell: ({ row }) => <SessionStatusCell session={row.original} />,
+    helper.display({
+      id: "stage",
+      header: "Stage",
+      meta: { search: (session: Session) => stageBadges(session).map((badge) => badge.label) },
+      cell: ({ row }) => <SessionStageCell session={row.original} />,
     }),
     helper.display({
       id: "amount",
@@ -161,13 +149,15 @@ export function createSessionColumns(handlers: SessionHandlers) {
       cell: ({ row }) => <SessionAmount session={row.original} />,
     }),
     helper.display({
-      id: "receipt",
-      header: "Receipt",
+      id: "documents",
+      header: "Documents",
       meta: {
         search: (session: Session) =>
-          sessionReceipts(session, handlers.packagesById.get(session.eventId)).map((ref) => ref.number ?? "Draft"),
+          allSessionDocuments(session, handlers.packagesById.get(session.eventId)).map(({ ref }) =>
+            documentLabel(ref.number, ref.revision),
+          ),
       },
-      cell: ({ row }) => <SessionReceipt session={row.original} handlers={handlers} />,
+      cell: ({ row }) => <SessionDocuments session={row.original} handlers={handlers} />,
     }),
     helper.display({
       id: "actions",

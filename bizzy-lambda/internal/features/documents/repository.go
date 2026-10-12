@@ -2,27 +2,21 @@ package documents
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"bizzy-lambda/internal/platform/dynamo"
+	"bizzy-lambda/internal/schema"
 )
 
-// Partitions:
-//
-//	DOC      SK = id. LSI1 date, LSI2 clientId#date, LSI3 date while a draft
-//	         is open, LSI4 type#date.
-//	DOCREV   SK = id#rev (zero-padded), one immutable item per issue.
-//	COUNTER  SK = type or type#year, attribute `last`.
-//	DOCSHARE SK = share token, attribute `documentId`: the public link's
-//	         lookup, so it needs no index.
+// Keys: see schema.DocumentKeys and the DOCREV, COUNTER and DOCSHARE rows
+// there.
 const (
-	docPartition      = "DOC"
-	revisionPartition = "DOCREV"
-	counterPartition  = "COUNTER"
-	sharePartition    = "DOCSHARE"
+	docPartition      = schema.Document
+	revisionPartition = schema.DocumentRevision
+	counterPartition  = schema.Counter
+	sharePartition    = schema.DocumentShare
 )
 
 type shareRecord struct {
@@ -36,29 +30,13 @@ type docRecord struct {
 }
 
 func toDocRecord(d Document) docRecord {
-	sortKey := d.Date + "#" + dynamo.TimeKey(d.CreatedAt)
-	keys := dynamo.Keys{
-		PK:     docPartition,
-		SK:     d.ID,
-		LSI1SK: sortKey,
-		LSI4SK: string(d.Type) + "#" + sortKey,
-	}
-	if d.ClientID != "" {
-		keys.LSI2SK = d.ClientID + "#" + sortKey
-	}
-	if d.Draft != nil && d.Status != StatusCancelled {
-		keys.LSI3SK = sortKey
-	}
-	return docRecord{Keys: keys, Document: d}
+	draftOpen := d.Draft != nil && d.Status != StatusCancelled
+	return docRecord{Keys: schema.DocumentKeys(d.ID, d.Date, d.CreatedAt, d.ClientID, string(d.Type), draftOpen), Document: d}
 }
 
 type revisionRecord struct {
 	dynamo.Keys
 	Revision
-}
-
-func revisionKey(documentID string, rev int) string {
-	return fmt.Sprintf("%s#%02d", documentID, rev)
 }
 
 type counterRecord struct {
@@ -140,22 +118,6 @@ func (r Repository) Counter(ctx context.Context, key string) (int64, error) {
 	return rec.Last, err
 }
 
-// SetCounter moves a sequence forward so the next number is last+1, for
-// continuing her existing numbering. It never moves backwards, which could
-// reuse a number.
-func (r Repository) SetCounter(ctx context.Context, key string, last int64) (bool, error) {
-	n := &types.AttributeValueMemberN{Value: strconv.FormatInt(last, 10)}
-	return r.store.Apply(ctx, dynamo.Patch{
-		PK: counterPartition, SK: key,
-		Set: map[string]types.AttributeValue{"last": n},
-		When: &dynamo.Condition{
-			Expression: "attribute_not_exists(#last) OR #last <= :last",
-			Names:      map[string]string{"#last": "last"},
-			Values:     map[string]types.AttributeValue{":last": n},
-		},
-	})
-}
-
 // Write is one change to a document, committed atomically with the links
 // and counters it implies.
 type Write struct {
@@ -224,14 +186,14 @@ func (r Repository) Commit(ctx context.Context, w Write) error {
 
 	if rev := w.Revision; rev != nil {
 		items = append(items, dynamo.TransactItem{
-			Put:  revisionRecord{Keys: dynamo.Keys{PK: revisionPartition, SK: revisionKey(rev.DocumentID, rev.Revision)}, Revision: *rev},
+			Put:  revisionRecord{Keys: schema.DocumentRevisionKeys(rev.DocumentID, rev.Revision), Revision: *rev},
 			When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
 		})
 	}
 
 	if s := w.Share; s != nil {
 		items = append(items, dynamo.TransactItem{
-			Put:  shareRecord{Keys: dynamo.Keys{PK: sharePartition, SK: s.New}, DocumentID: w.Doc.ID},
+			Put:  shareRecord{Keys: schema.DocumentShareKeys(s.New), DocumentID: w.Doc.ID},
 			When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
 		})
 		if s.Old != "" {

@@ -183,3 +183,33 @@ func TestFormatTitleRoundTrips(t *testing.T) {
 		}
 	}
 }
+
+func TestParseFollowUp(t *testing.T) {
+	tests := []struct {
+		raw     string
+		want    FollowUpTitle
+		wantErr bool
+	}{
+		{"! Jane Smith: Check MRI results", FollowUpTitle{Name: "Jane Smith", Summary: "Check MRI results"}, false},
+		{"!Jane  Smith", FollowUpTitle{Name: "Jane Smith"}, false},
+		{"  ! Jane: call back: about knee ", FollowUpTitle{Name: "Jane", Summary: "call back: about knee"}, false},
+		{"! : no name", FollowUpTitle{Summary: "no name"}, true},
+		{"Jane Smith", FollowUpTitle{}, true},
+	}
+	for _, tt := range tests {
+		got, err := ParseFollowUp(tt.raw)
+		if (err != nil) != tt.wantErr || got != tt.want {
+			t.Errorf("ParseFollowUp(%q) = %+v, %v; want %+v, error %v", tt.raw, got, err, tt.want, tt.wantErr)
+		}
+	}
+
+	for _, title := range []FollowUpTitle{{Name: "Jane Smith", Summary: "Check MRI"}, {Name: "Jane Smith"}} {
+		got, err := ParseFollowUp(FormatFollowUp(title))
+		if err != nil || got != title {
+			t.Errorf("round trip %+v = %+v, %v", title, got, err)
+		}
+	}
+	if !IsFollowUp(" ! Jane") || IsFollowUp("? Jane") || IsFollowUp("Jane !") {
+		t.Error("IsFollowUp misreads")
+	}
+}

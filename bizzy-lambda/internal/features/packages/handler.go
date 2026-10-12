@@ -81,8 +81,8 @@ func (h handler) save(ctx context.Context, in saveInput) (any, error) {
 		if existing.Source != SourceApp {
 			return nil, apperr.Conflict("this package comes from the calendar; change it there")
 		}
-		if existing.Document != nil {
-			return nil, apperr.Conflict("cancel the receipt for this package first")
+		if existing.HasDocuments() {
+			return nil, apperr.Conflict("cancel the documents for this package first")
 		}
 		p, previousClient = existing, existing.ClientID
 	} else {
@@ -121,7 +121,7 @@ func (h handler) delete(ctx context.Context, in deleteInput) (any, error) {
 		return nil, err
 	}
 	if !deleted {
-		return nil, apperr.Conflict("cancel the receipt for this package first")
+		return nil, apperr.Conflict("cancel the documents for this package first")
 	}
 	return nil, h.afterChange(ctx, existing.ClientID)
 }

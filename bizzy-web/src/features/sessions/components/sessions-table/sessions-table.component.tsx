@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import { LinkClientDialog } from "../link-client-dialog/link-client-dialog.component";
 import {
   SessionAmount,
-  SessionReceipt,
-  SessionStatusCell,
+  SessionDocuments,
+  SessionStageCell,
   SessionWho,
   createSessionColumns,
   sessionActions,
@@ -17,7 +17,6 @@ import type { SessionHandlers } from "../../sessions.columns";
 import type { Session } from "../../sessions.types";
 import type { SessionReturnTo } from "../../session-page.component";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { useCreateReceipt } from "~/features/documents/use-create-receipt";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
@@ -36,8 +35,7 @@ interface SessionsTableProps {
 
 /**
  * Sessions with the quick fixes she can make to them: confirm, link a
- * client, set a fee, or make a receipt. Each links to its page, where it's
- * edited or deleted.
+ * client, or set a fee. Each links to its page, where everything else is.
  */
 export function SessionsTable({ sessions, empty, query, from }: SessionsTableProps) {
   const [linking, setLinking] = useState<Session | null>(null);
@@ -46,7 +44,6 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   const { mutate: confirm } = SessionsMutation.useConfirm();
-  const { create: createReceipt } = useCreateReceipt();
 
   const packagesById = useMemo(
     () => new Map((packages.data ?? []).map((pkg) => [pkg.id, pkg])),
@@ -66,9 +63,8 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
           onSuccess: () => toast.success("Session confirmed"),
           onError: (error) => toast.error(error.message),
         }),
-      onReceipt: createReceipt,
     }),
-    [from, clientsById, packagesById, confirm, createReceipt, navigate],
+    [from, clientsById, packagesById, confirm, navigate],
   );
 
   const columns = useMemo(() => createSessionColumns(handlers), [handlers]);
@@ -99,8 +95,8 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
                 <SessionAmount session={row.original} />
               </div>
               <div className="flex items-end justify-between gap-2">
-                <SessionStatusCell session={row.original} />
-                <SessionReceipt session={row.original} handlers={handlers} empty={null} />
+                <SessionStageCell session={row.original} />
+                <SessionDocuments session={row.original} handlers={handlers} empty={null} />
               </div>
             </CardContent>
           </Card>

@@ -2,15 +2,18 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 
+	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
+	"bizzy-lambda/internal/platform/dynamo"
 )
 
 type ClientStore interface {
@@ -19,10 +22,11 @@ type ClientStore interface {
 }
 
 type SessionStore interface {
+	Get(ctx context.Context, eventID string) (sessions.Session, bool, error)
 	ListByClient(ctx context.Context, clientID string) ([]sessions.Session, error)
-	ListOpen(ctx context.Context) ([]sessions.Session, error)
-	Save(ctx context.Context, s sessions.Session) error
-	Delete(ctx context.Context, eventID string) (bool, error)
+	ListWithoutClient(ctx context.Context) ([]sessions.Session, error)
+	Save(ctx context.Context, s sessions.Session) (sessions.Session, error)
+	Delete(ctx context.Context, s sessions.Session) error
 }
 
 type PackageStore interface {
@@ -44,12 +48,19 @@ type Reconciler struct {
 	Packages PackageStore
 	Settings SettingsStore
 	Location *time.Location
+	// Now defaults to time.Now.
+	Now func() time.Time
 }
 
-// Change is a session as stored (Before, nil when new) and as it should now
-// read from the calendar (After, nil when it is gone).
+// Change is what the calendar now says about one session's event: Event is
+// nil when it is gone (deleted, cancelled, or no longer a session).
 type Change struct {
-	Before, After *sessions.Session
+	EventID string
+	Event   *calendar.Event
+	// Discard drops a gone session with her data on it too, instead of
+	// keeping it as deleted: she deleted it in the app. A session with a
+	// document is always kept.
+	Discard bool
 }
 
 // Scope says what to reconcile. A client's sessions are always reconciled
@@ -57,7 +68,7 @@ type Change struct {
 type Scope struct {
 	Changes   []Change
 	ClientIDs []string
-	// Unmatched re-derives every open session without a client, for when a
+	// Unmatched re-derives every session without a client, for when a
 	// client gains an alias.
 	Unmatched bool
 	// AllClients reconciles everything, for settings that affect every
@@ -70,7 +81,28 @@ type Result struct {
 	Deleted int `json:"deleted"`
 }
 
+// maxAttempts bounds the retries when a session changed while reconciling
+// (her edit, or another sync): each attempt reads everything afresh.
+const maxAttempts = 4
+
 func (r *Reconciler) Reconcile(ctx context.Context, scope Scope) (Result, error) {
+	for attempt := 1; ; attempt++ {
+		result, err := r.reconcile(ctx, scope)
+		if errors.Is(err, dynamo.ErrConflict) && attempt < maxAttempts {
+			continue
+		}
+		return result, err
+	}
+}
+
+func (r *Reconciler) now() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
+}
+
+func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error) {
 	var result Result
 
 	cfg, err := r.Settings.Get(ctx)
@@ -81,7 +113,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, scope Scope) (Result, error)
 	if err != nil {
 		return result, err
 	}
-	env := NewEnv(allClients, cfg.HomeVisitColorID, r.Location)
+	now := r.now()
+	env := NewEnv(allClients, cfg, r.Location, now)
 
 	affected := map[string]bool{}
 	for _, id := range scope.ClientIDs {
@@ -93,40 +126,46 @@ func (r *Reconciler) Reconcile(ctx context.Context, scope Scope) (Result, error)
 		}
 	}
 
-	// original is what is stored, to diff against; current is what to derive.
+	// original is what is stored, to diff against and to carry the version;
+	// current is what to derive from.
 	original := map[string]sessions.Session{}
 	current := map[string]sessions.Session{}
 	gone := map[string]bool{}
 
 	for _, c := range scope.Changes {
-		if c.Before != nil {
-			original[c.Before.EventID] = *c.Before
-			if c.Before.ClientID != "" {
-				affected[c.Before.ClientID] = true
+		stored, found, err := r.Sessions.Get(ctx, c.EventID)
+		if err != nil {
+			return result, err
+		}
+		if found {
+			original[c.EventID] = stored
+			if stored.ClientID != "" {
+				affected[stored.ClientID] = true
 			}
 		}
-		if c.After != nil {
-			current[c.After.EventID] = *c.After
-		} else if c.Before != nil {
-			gone[c.Before.EventID] = true
+
+		switch {
+		case c.Event != nil:
+			current[c.EventID] = withEvent(stored, *c.Event)
+		case !found:
+		case stored.HasDocuments() || (stored.HasHerData() && !c.Discard):
+			// Kept for what she recorded, until she restores or discards it.
+			if stored.RemovedAt == nil {
+				stored.RemovedAt = ptr(now.UTC())
+			}
+			current[c.EventID] = stored
+		default:
+			gone[c.EventID] = true
 		}
 	}
 
 	if scope.Unmatched || scope.AllClients {
-		open, err := r.Sessions.ListOpen(ctx)
+		unmatched, err := r.Sessions.ListWithoutClient(ctx)
 		if err != nil {
 			return result, err
 		}
-		for _, s := range open {
-			if s.ClientID != "" {
-				continue
-			}
-			if _, ok := original[s.EventID]; !ok {
-				original[s.EventID] = s
-			}
-			if _, ok := current[s.EventID]; !ok && !gone[s.EventID] {
-				current[s.EventID] = s
-			}
+		for _, s := range unmatched {
+			keep(original, current, gone, s)
 		}
 	}
 
@@ -153,12 +192,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, scope Scope) (Result, error)
 				return result, err
 			}
 			for _, s := range history {
-				if _, ok := original[s.EventID]; !ok {
-					original[s.EventID] = s
-				}
-				if _, ok := current[s.EventID]; !ok && !gone[s.EventID] {
-					current[s.EventID] = s
-				}
+				keep(original, current, gone, s)
 			}
 
 			pkgs, err := r.Packages.ListByClient(ctx, id)
@@ -206,30 +240,28 @@ func (r *Reconciler) Reconcile(ctx context.Context, scope Scope) (Result, error)
 		s := e.Session
 		s.Drift = SessionDrift(s, r.Location)
 
-		if s.Removed && s.Document == nil {
+		// Deleted, and nothing of hers is left to keep it for.
+		if s.RemovedAt != nil && !s.HasHerData() {
 			gone[id] = true
 			continue
 		}
 		if before, ok := original[id]; ok && same(before, s) {
 			continue
 		}
-		if err := r.Sessions.Save(ctx, s); err != nil {
+		if _, err := r.Sessions.Save(ctx, s); err != nil {
 			return result, err
 		}
 		result.Saved++
 	}
 	for id := range gone {
-		if _, stored := original[id]; !stored {
+		stored, ok := original[id]
+		if !ok {
 			continue
 		}
-		// False means a receipt claimed it meanwhile; the next sync keeps it.
-		deleted, err := r.Sessions.Delete(ctx, id)
-		if err != nil {
+		if err := r.Sessions.Delete(ctx, stored); err != nil {
 			return result, err
 		}
-		if deleted {
-			result.Deleted++
-		}
+		result.Deleted++
 	}
 
 	// Write packages.
@@ -254,9 +286,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, scope Scope) (Result, error)
 		if !ok {
 			continue
 		}
-		activity, last := Activity(entriesByClient[id], packagesByClient[id], r.Location)
+		activity, last, next := Activity(entriesByClient[id], packagesByClient[id], r.Location)
 		updated := client
-		updated.Activity, updated.LastSessionAt = activity, last
+		updated.Activity, updated.LastSessionAt, updated.NextBookedAt = activity, last, next
 		if same(client, updated) {
 			continue
 		}
@@ -268,9 +300,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, scope Scope) (Result, error)
 	return result, nil
 }
 
+// keep adds a stored session to reconcile as it is, unless a change already
+// covers it.
+func keep(original, current map[string]sessions.Session, gone map[string]bool, s sessions.Session) {
+	if _, ok := original[s.EventID]; !ok {
+		original[s.EventID] = s
+	}
+	if _, ok := current[s.EventID]; !ok && !gone[s.EventID] {
+		current[s.EventID] = s
+	}
+}
+
+// withEvent is the stored session (zero when new) as the calendar event now
+// says it is. A deleted session whose event is back is restored.
+func withEvent(stored sessions.Session, event calendar.Event) sessions.Session {
+	s := stored
+	s.EventID = event.ID
+	s.Title, s.Start, s.End, s.ColorID = event.Title, event.Start.UTC(), event.End.UTC(), event.ColorID
+	s.RemovedAt = nil
+	return s
+}
+
 // calendarPackages lines up the packages bought in session titles with the
 // stored ones: new ones are added, changed ones updated, and ones no longer
-// in any title deleted (or kept as removed when a receipt covers them).
+// in any title deleted (or kept as removed when a document covers them).
 func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*Entry, stored map[string]packages.Package) (map[string]*packages.Package, []string, error) {
 	final := map[string]*packages.Package{}
 	var deletes []string
@@ -292,7 +345,7 @@ func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*E
 		case ok:
 			merged := mergeCalendarPackage(p, want)
 			final[id] = &merged
-		case p.Document != nil:
+		case p.HasDocuments():
 			p.Removed = true
 			final[id] = &p
 		default:
@@ -307,7 +360,7 @@ func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*E
 			continue
 		}
 		// Stored under a client this run did not load: fetch it so its
-		// receipt link is kept.
+		// document links are kept.
 		existing, found, err := r.Packages.Get(ctx, id)
 		if err != nil {
 			return nil, nil, err
