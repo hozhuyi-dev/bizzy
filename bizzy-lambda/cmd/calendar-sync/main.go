@@ -68,10 +68,9 @@ func main() {
 	status := calsync.NewStatusRepository(store)
 
 	base := calsync.Syncer{
-		Contacts:  contacts.NewGoogle(auth.Client),
-		Dismissed: contacts.NewDismissedRepository(store),
-		Clients:   clientsRepo,
-		Sessions:  sessionsRepo,
+		Contacts: contacts.NewGoogle(auth.Client),
+		Clients:  clientsRepo,
+		Sessions: sessionsRepo,
 		Billing: &billing.Reconciler{
 			Clients:  clientsRepo,
 			Sessions: sessionsRepo,

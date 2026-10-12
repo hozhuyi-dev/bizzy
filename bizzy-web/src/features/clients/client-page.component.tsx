@@ -29,15 +29,14 @@ const FORM_ID = "client-form";
 const parent = { to: "/clients", label: "Clients" } as const;
 
 /** Where a new client was started from, to go back there once saved. */
-export type ClientReturnTo = "sessions";
+export type ClientReturnTo = "home";
 
 export type ClientPageProps =
   | { mode: "edit"; id: string }
   | {
       mode: "new";
-      /** Prefills, e.g. from an unmatched calendar name and the contact it matched. */
+      /** Prefills, e.g. from an unmatched calendar name. */
       initialName?: string | undefined;
-      initialContact?: { resourceName: string; displayName: string } | undefined;
       returnTo?: ClientReturnTo | undefined;
     };
 
@@ -49,7 +48,6 @@ export function ClientPage(props: ClientPageProps) {
     return (
       <ClientEditor
         initialName={props.initialName}
-        initialContact={props.initialContact}
         returnTo={props.returnTo}
       />
     );
@@ -81,7 +79,6 @@ export function ClientPage(props: ClientPageProps) {
 interface ClientEditorProps {
   client?: Client | undefined;
   initialName?: string | undefined;
-  initialContact?: { resourceName: string; displayName: string } | undefined;
   returnTo?: ClientReturnTo | undefined;
 }
 
@@ -93,10 +90,10 @@ interface ClientFormValues {
   homeVisits: boolean;
 }
 
-function ClientEditor({ client, initialName, initialContact, returnTo }: ClientEditorProps) {
+function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
   const save = ClientsMutation.useSave();
   const navigate = useNavigate();
-  const [contact, setContact] = useState<ChosenContact | null>(client?.contact ?? initialContact ?? null);
+  const [contact, setContact] = useState<ChosenContact | null>(client?.contact ?? null);
   const [contactRequired, setContactRequired] = useState(false);
 
   const form = useForm({
@@ -118,7 +115,7 @@ function ClientEditor({ client, initialName, initialContact, returnTo }: ClientE
         toast.success(client ? "Client updated" : "Client added");
         if (!client) {
           void navigate(
-            returnTo === "sessions" ? { to: "/" } : { to: "/clients/$id", params: { id: saved.id }, replace: true },
+            returnTo === "home" ? { to: "/" } : { to: "/clients/$id", params: { id: saved.id }, replace: true },
           );
         }
       } catch {

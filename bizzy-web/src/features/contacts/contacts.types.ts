@@ -32,12 +32,6 @@ export interface ContactDetails {
   address: ContactAddress;
 }
 
-/** A contact she said is not a client. */
-export interface DismissedContact {
-  resourceName: string;
-  displayName: string;
-}
-
 /** Opens the contact in Google Contacts. */
 export function contactUrl(resourceName: string): string {
   return `https://contacts.google.com/person/${resourceName.replace(/^people\//, "")}`;

@@ -25,26 +25,18 @@ type ClientStore interface {
 	RefreshContact(ctx context.Context, id string, previous, next clients.Contact) (bool, error)
 }
 
-type DismissedStore interface {
-	List(ctx context.Context) (map[string]string, error)
-	Set(ctx context.Context, resourceName, displayName string, dismissed bool) error
-}
-
 type handler struct {
-	dir       Directory
-	clients   ClientStore
-	dismissed DismissedStore
-	now       func() time.Time
+	dir     Directory
+	clients ClientStore
+	now     func() time.Time
 }
 
-func Register(r *router.Router, dir Directory, clientStore ClientStore, dismissed DismissedStore) {
-	h := handler{dir: dir, clients: clientStore, dismissed: dismissed, now: time.Now}
+func Register(r *router.Router, dir Directory, clientStore ClientStore) {
+	h := handler{dir: dir, clients: clientStore, now: time.Now}
 	r.Register("contacts.list", h.list)
 	r.Register("contacts.get", router.Typed(h.get))
 	r.Register("contacts.create", router.Typed(h.create))
 	r.Register("contacts.update", router.Typed(h.update))
-	r.Register("contacts.dismissed", h.listDismissed)
-	r.Register("contacts.dismiss", router.Typed(h.dismiss))
 }
 
 func (h handler) list(ctx context.Context, _ json.RawMessage) (any, error) {
@@ -100,40 +92,6 @@ func (h handler) update(ctx context.Context, in updateInput) (any, error) {
 		}
 	}
 	return person, nil
-}
-
-// Dismissed is a contact she said is not a client, so calendar entries
-// with their name stay personal.
-type Dismissed struct {
-	ResourceName string `json:"resourceName"`
-	DisplayName  string `json:"displayName"`
-}
-
-func (h handler) listDismissed(ctx context.Context, _ json.RawMessage) (any, error) {
-	all, err := h.dismissed.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := []Dismissed{}
-	for rn, name := range all {
-		out = append(out, Dismissed{ResourceName: rn, DisplayName: name})
-	}
-	return out, nil
-}
-
-type dismissInput struct {
-	ResourceName string `json:"resourceName"`
-	DisplayName  string `json:"displayName"`
-	// Dismissed false brings the contact back into suggestions.
-	Dismissed bool `json:"dismissed"`
-}
-
-// dismiss takes effect at the next sync, which the app runs right after.
-func (h handler) dismiss(ctx context.Context, in dismissInput) (any, error) {
-	if in.ResourceName == "" {
-		return nil, apperr.Invalid("resourceName is required")
-	}
-	return nil, h.dismissed.Set(ctx, in.ResourceName, in.DisplayName, in.Dismissed)
 }
 
 // Linker reads a contact for a client to link to, and adds it to the

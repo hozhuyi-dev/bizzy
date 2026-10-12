@@ -64,10 +64,6 @@ type Session struct {
 	// Removed is set when the event left the calendar but a receipt keeps the
 	// session; cancelling the receipt lets it go.
 	Removed bool `json:"removed,omitempty" dynamodbav:"removed,omitempty"`
-	// SuggestedContacts are her Google contacts the name may refer to, while
-	// it matches no client. The sync sets them from the contact list it
-	// reads; the reconcile, which has no contacts, leaves them alone.
-	SuggestedContacts []ContactSuggestion `json:"suggestedContacts,omitempty" dynamodbav:"suggestedContacts,omitempty"`
 
 	// Derived by the billing reconcile.
 	Status            Status    `json:"status" dynamodbav:"status"`
@@ -90,15 +86,6 @@ type Session struct {
 	// Hers.
 	Ignored  bool        `json:"ignored,omitempty" dynamodbav:"ignored,omitempty"`
 	Document *docref.Ref `json:"document,omitempty" dynamodbav:"document,omitempty"`
-}
-
-// ContactSuggestion is a contact a calendar name may refer to.
-type ContactSuggestion struct {
-	ResourceName string `json:"resourceName" dynamodbav:"resourceName"`
-	DisplayName  string `json:"displayName" dynamodbav:"displayName"`
-	// ClientID is set when a client already links this contact, so the name
-	// is better added as one of that client's calendar names.
-	ClientID string `json:"clientId,omitempty" dynamodbav:"clientId,omitempty"`
 }
 
 // Open reports whether the session belongs on her to-do list.

@@ -4,11 +4,12 @@ import { toast } from "sonner";
 import { SettingsMutation, SettingsQuery } from "./settings.query";
 import { EVENT_COLOURS } from "./settings.types";
 import type { Settings } from "./settings.types";
-import { DismissedContacts } from "~/features/contacts/components/dismissed-contacts/dismissed-contacts.component";
 import {
   DocumentsMutation,
   DocumentsQuery,
 } from "~/features/documents/documents.query";
+import { CAN_RESET } from "~/features/reset/reset.query";
+import { ResetData } from "~/features/reset/components/reset-data/reset-data.component";
 import { GoogleConnectionSettings } from "~/features/google/components/google-connection/google-connection.component";
 import { AppearanceSettings } from "~/features/theme/components/appearance-settings/appearance-settings.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -235,18 +236,22 @@ function SettingsForm({ saved }: { saved: Settings }) {
             content: <ReceiptNumbering />,
           },
           {
-            id: "not-clients",
-            title: "Not clients",
-            description: "Calendar entries with these contacts' names are treated as personal.",
-            content: <DismissedContacts />,
-          },
-          {
             id: "appearance",
             title: "Appearance",
             description:
               "Changes right away and is remembered on this device. System follows your phone or computer.",
             content: <AppearanceSettings />,
           },
+          ...(CAN_RESET
+            ? [
+                {
+                  id: "reset",
+                  title: "Reset",
+                  description: `Only in ${import.meta.env.MODE}. Starts this environment over from your calendar.`,
+                  content: <ResetData />,
+                },
+              ]
+            : []),
         ]}
       />
     </>

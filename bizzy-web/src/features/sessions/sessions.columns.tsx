@@ -5,18 +5,15 @@ import {
   HomeIcon,
   LinkIcon,
   ReceiptIcon,
-  UserCheckIcon,
-  UserPlusIcon,
 } from "lucide-react";
 import { SESSION_STATUS, receiptSources, sessionAmount, sessionReceipts } from "./session-status";
 import type { ReactNode } from "react";
-import type { ContactSuggestion, Session } from "./sessions.types";
+import type { Session } from "./sessions.types";
 import type { Client } from "~/features/clients/clients.types";
 import type { DocumentSource } from "~/features/documents/documents.types";
 import type { Package } from "~/features/packages/packages.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.features";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
@@ -28,12 +25,6 @@ export interface SessionHandlers {
   /** Packages by ID; one bought in a session's title has the session's ID. */
   packagesById: ReadonlyMap<string, Package>;
   onLink: (session: Session) => void;
-  /** Creates a client for the session's name, linked to the contact. */
-  onCreateClient: (session: Session, contact: ContactSuggestion) => void;
-  /** Adds the session's name to the client's calendar names. */
-  onAddAlias: (session: Session, client: Client) => void;
-  /** "Not a client": the contact stops being suggested. */
-  onDismissContact: (contact: ContactSuggestion) => void;
   onEditClient: (client: Client) => void;
   onIgnore: (session: Session, ignored: boolean) => void;
   onReceipt: (sources: Array<DocumentSource>) => void;
@@ -65,37 +56,6 @@ export function SessionStatusCell({ session }: { session: Session }) {
         {session.drift && <Badge variant="attention">Changed after receipt</Badge>}
       </div>
       {note && <span className="max-w-64 text-xs text-muted-foreground">{note}</span>}
-    </div>
-  );
-}
-
-/** One-tap fixes for an unmatched name that matches her contacts. */
-export function SessionSuggestions({ session, handlers }: { session: Session; handlers: SessionHandlers }) {
-  if (session.status !== "unmatched" || !session.suggestedContacts?.length) return null;
-
-  return (
-    <div className="flex flex-col items-start gap-1">
-      {session.suggestedContacts.map((contact) => {
-        const client = contact.clientId ? handlers.clientsById.get(contact.clientId) : undefined;
-        return (
-          <div key={contact.resourceName} className="flex flex-wrap items-center gap-1">
-            {client ? (
-              <Button variant="outline" size="xs" onClick={() => handlers.onAddAlias(session, client)}>
-                <UserCheckIcon /> It's {client.name}
-              </Button>
-            ) : (
-              <Button variant="outline" size="xs" onClick={() => handlers.onCreateClient(session, contact)}>
-                <UserPlusIcon /> Add {contact.displayName} as a client
-              </Button>
-            )}
-            {!client && (
-              <Button variant="ghost" size="xs" onClick={() => handlers.onDismissContact(contact)}>
-                Not a client
-              </Button>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -189,12 +149,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
           session.drift ? "Changed after receipt" : undefined,
         ],
       },
-      cell: ({ row }) => (
-        <div className="flex flex-col items-start gap-2">
-          <SessionStatusCell session={row.original} />
-          <SessionSuggestions session={row.original} handlers={handlers} />
-        </div>
-      ),
+      cell: ({ row }) => <SessionStatusCell session={row.original} />,
     }),
     helper.display({
       id: "amount",

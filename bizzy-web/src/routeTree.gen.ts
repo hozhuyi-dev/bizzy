@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as GoogleCallbackRouteImport } from './routes/google-callback'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as PackagesRouteImport } from './routes/packages'
+import { Route as SessionsRouteImport } from './routes/sessions'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsIdRouteImport } from './routes/clients/$id'
@@ -38,6 +39,11 @@ const InsightsRoute = InsightsRouteImport.update({
 const PackagesRoute = PackagesRouteImport.update({
   id: '/packages',
   path: '/packages',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SessionsRoute = SessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
   '/packages': typeof PackagesRoute
+  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
   '/packages': typeof PackagesRoute
+  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
   '/packages': typeof PackagesRoute
+  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/google-callback'
     | '/insights'
     | '/packages'
+    | '/sessions'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/google-callback'
     | '/insights'
     | '/packages'
+    | '/sessions'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/google-callback'
     | '/insights'
     | '/packages'
+    | '/sessions'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
@@ -152,6 +164,7 @@ export interface RootRouteChildren {
   GoogleCallbackRoute: typeof GoogleCallbackRoute
   InsightsRoute: typeof InsightsRoute
   PackagesRoute: typeof PackagesRoute
+  SessionsRoute: typeof SessionsRoute
   SettingsRoute: typeof SettingsRoute
   ClientsIdRoute: typeof ClientsIdRoute
   ClientsNewRoute: typeof ClientsNewRoute
@@ -188,6 +201,13 @@ declare module '@tanstack/react-router' {
       path: '/packages'
       fullPath: '/packages'
       preLoaderRoute: typeof PackagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sessions': {
+      id: '/sessions'
+      path: '/sessions'
+      fullPath: '/sessions'
+      preLoaderRoute: typeof SessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -240,6 +260,7 @@ const rootRouteChildren: RootRouteChildren = {
   GoogleCallbackRoute: GoogleCallbackRoute,
   InsightsRoute: InsightsRoute,
   PackagesRoute: PackagesRoute,
+  SessionsRoute: SessionsRoute,
   SettingsRoute: SettingsRoute,
   ClientsIdRoute: ClientsIdRoute,
   ClientsNewRoute: ClientsNewRoute,

@@ -1,9 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Contact, ContactDetails, DismissedContact } from "./contacts.types";
+import type { Contact, ContactDetails } from "./contacts.types";
 import { invoke } from "~/core/lambda/lambda.client";
 import { ClientKeys, ContactKeys } from "~/core/keys.query";
-import { invalidateBilling } from "~/core/utils/query.util";
-import { SyncService } from "~/features/sync/sync.service";
 
 export const ContactsService = {
   list: () => invoke<Array<Contact>>("contacts.list"),
@@ -11,9 +9,6 @@ export const ContactsService = {
   create: (details: ContactDetails) => invoke<Contact>("contacts.create", details),
   update: (resourceName: string, etag: string, details: ContactDetails) =>
     invoke<Contact>("contacts.update", { resourceName, etag, details }),
-  dismissed: () => invoke<Array<DismissedContact>>("contacts.dismissed"),
-  dismiss: (contact: DismissedContact, dismissed: boolean) =>
-    invoke<null>("contacts.dismiss", { ...contact, dismissed }),
 };
 
 export const ContactsQuery = {
@@ -31,12 +26,6 @@ export const ContactsQuery = {
       queryKey: ContactKeys.detail(resourceName),
       queryFn: () => ContactsService.get(resourceName),
       staleTime: 0,
-    }),
-
-  useDismissed: () =>
-    useQuery({
-      queryKey: ContactKeys.dismissed(),
-      queryFn: () => ContactsService.dismissed(),
     }),
 };
 
@@ -59,25 +48,6 @@ export const ContactsMutation = {
         Promise.all([
           queryClient.invalidateQueries({ queryKey: ContactKeys.all }),
           queryClient.invalidateQueries({ queryKey: ClientKeys.all }),
-        ]),
-    });
-  },
-
-  /**
-   * "Not a client" (or undoing it), then a sync so the calendar entries
-   * with that name leave the to-do list (or come back) right away.
-   */
-  useDismiss: () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-      mutationFn: async ({ contact, dismissed }: { contact: DismissedContact; dismissed: boolean }) => {
-        await ContactsService.dismiss(contact, dismissed);
-        await SyncService.run();
-      },
-      onSettled: () =>
-        Promise.all([
-          queryClient.invalidateQueries({ queryKey: ContactKeys.dismissed() }),
-          invalidateBilling(queryClient),
         ]),
     });
   },

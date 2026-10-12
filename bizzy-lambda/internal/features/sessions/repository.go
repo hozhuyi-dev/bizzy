@@ -19,7 +19,8 @@ import (
 const Partition = "SESSION"
 
 // ownedAttributes are written by Save (sync + reconcile). `ignored` and
-// `document` are hers and are never touched by it.
+// `document` are hers and are never touched by it. `suggestedContacts` is no
+// longer written; listing it removes it from older items as they are saved.
 var ownedAttributes = append([]string{
 	"eventId", "title", "start", "end", "colorId", "removed", "suggestedContacts",
 	"status", "name", "clientId", "suggestedClientId", "feeCents", "feeSource",

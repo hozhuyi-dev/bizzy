@@ -6,7 +6,6 @@ package calsync
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	"bizzy-lambda/internal/features/billing"
@@ -23,11 +22,6 @@ type EventSource interface {
 // ContactSource lists her Google contacts.
 type ContactSource interface {
 	List(ctx context.Context) ([]contacts.Person, error)
-}
-
-// DismissedStore holds the contacts she said are not clients.
-type DismissedStore interface {
-	List(ctx context.Context) (map[string]string, error)
 }
 
 type ClientStore interface {
@@ -51,13 +45,12 @@ type StatusStore interface {
 
 type Syncer struct {
 	Events EventSource
-	// Contacts may be nil, which skips everything contact-related.
-	Contacts  ContactSource
-	Dismissed DismissedStore
-	Clients   ClientStore
-	Sessions  SessionStore
-	Billing   Reconciler
-	Status    StatusStore
+	// Contacts may be nil, which skips refreshing clients' contact copies.
+	Contacts ContactSource
+	Clients  ClientStore
+	Sessions SessionStore
+	Billing  Reconciler
+	Status   StatusStore
 	// Window is how far back each run re-reads; Lookahead how far forward it
 	// looks for bookings (which never become sessions).
 	Window    time.Duration
@@ -66,11 +59,8 @@ type Syncer struct {
 }
 
 type Summary struct {
-	// Events read in the window, by what they turned out to be.
-	Sessions    int `json:"sessions"`
-	Unmatched   int `json:"unmatched"`
-	ParseErrors int `json:"parseErrors"`
-	Skipped     int `json:"skipped"`
+	// Sessions is how many timed events the window holds.
+	Sessions int `json:"sessions"`
 	// Writes this run made.
 	Saved   int `json:"saved"`
 	Deleted int `json:"deleted"`
@@ -98,8 +88,7 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 	now := s.Now().UTC()
 	from := now.Add(-s.Window)
 
-	people, err := s.loadContacts(ctx, all, now, &summary)
-	if err != nil {
+	if err := s.refreshContacts(ctx, all, now, &summary); err != nil {
 		return summary, err
 	}
 
@@ -119,19 +108,13 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 	var changes []billing.Change
 	seen := map[string]bool{}
 
+	// Every timed event on her sessions calendar is a session; the billing
+	// reconcile works out whether it needs fixing.
 	for _, event := range events {
-		c := calendar.Classify(event, aliases, people.index)
-		switch c.Outcome {
-		case calendar.OutcomeSkip:
-			summary.Skipped++
+		if event.AllDay || event.Cancelled {
 			continue
-		case calendar.OutcomeSession:
-			summary.Sessions++
-		case calendar.OutcomeUnmatched:
-			summary.Unmatched++
-		case calendar.OutcomeParseError:
-			summary.ParseErrors++
 		}
+		summary.Sessions++
 		seen[event.ID] = true
 
 		before, ok := byID[event.ID]
@@ -146,10 +129,6 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 		after.EventID = event.ID
 		after.Title, after.Start, after.End, after.ColorID = event.Title, event.Start.UTC(), event.End.UTC(), event.ColorID
 		after.Removed = false
-		after.SuggestedContacts = nil
-		if c.Outcome == calendar.OutcomeUnmatched {
-			after.SuggestedContacts = people.suggest(c.Contacts)
-		}
 
 		if !ok {
 			changes = append(changes, billing.Change{After: &after})
@@ -159,7 +138,7 @@ func (s Syncer) Run(ctx context.Context) (Summary, error) {
 	}
 
 	// Stored sessions the calendar no longer has in the window: deleted,
-	// cancelled, moved out, or no longer session-shaped.
+	// cancelled, moved out, or made all-day.
 	for id, before := range byID {
 		if seen[id] {
 			continue
@@ -202,52 +181,22 @@ func calendarChanged(before, after sessions.Session) bool {
 		!before.Start.Equal(after.Start) ||
 		!before.End.Equal(after.End) ||
 		before.ColorID != after.ColorID ||
-		before.Removed != after.Removed ||
-		!slices.Equal(before.SuggestedContacts, after.SuggestedContacts)
+		before.Removed != after.Removed
 }
 
-// directory is her contacts as this run sees them.
-type directory struct {
-	index      calendar.People
-	byResource map[string]contacts.Person
-	// linked maps a contact to the client linked to it.
-	linked map[string]string
-}
-
-// suggest turns matched contacts into suggestions for the app.
-func (d directory) suggest(resourceNames []string) []sessions.ContactSuggestion {
-	var out []sessions.ContactSuggestion
-	for _, rn := range resourceNames {
-		out = append(out, sessions.ContactSuggestion{
-			ResourceName: rn,
-			DisplayName:  d.byResource[rn].DisplayName,
-			ClientID:     d.linked[rn],
-		})
-	}
-	return out
-}
-
-// loadContacts reads her contacts, refreshes each client's copy, and
-// indexes the contacts she hasn't dismissed for matching calendar names.
-func (s Syncer) loadContacts(ctx context.Context, all []clients.Client, now time.Time, summary *Summary) (directory, error) {
-	d := directory{byResource: map[string]contacts.Person{}, linked: map[string]string{}}
+// refreshContacts reads her contacts and refreshes each client's copy.
+func (s Syncer) refreshContacts(ctx context.Context, all []clients.Client, now time.Time, summary *Summary) error {
 	if s.Contacts == nil {
-		return d, nil
+		return nil
 	}
 
 	people, err := s.Contacts.List(ctx)
 	if err != nil {
-		return d, err
+		return err
 	}
-	dismissed := map[string]string{}
-	if s.Dismissed != nil {
-		if dismissed, err = s.Dismissed.List(ctx); err != nil {
-			return d, err
-		}
-	}
-
+	byResource := make(map[string]contacts.Person, len(people))
 	for _, p := range people {
-		d.byResource[p.ResourceName] = p
+		byResource[p.ResourceName] = p
 	}
 
 	for _, client := range all {
@@ -255,10 +204,8 @@ func (s Syncer) loadContacts(ctx context.Context, all []clients.Client, now time
 			continue
 		}
 		previous := *client.Contact
-		d.linked[previous.ResourceName] = client.ID
-
 		next := previous
-		if p, ok := d.byResource[previous.ResourceName]; ok {
+		if p, ok := byResource[previous.ResourceName]; ok {
 			next = p.Link(now)
 		} else {
 			// Deleted or merged in Google: keep the copy, so she can
@@ -270,23 +217,13 @@ func (s Syncer) loadContacts(ctx context.Context, all []clients.Client, now time
 		}
 		wrote, err := s.Clients.RefreshContact(ctx, client.ID, previous, next)
 		if err != nil {
-			return d, err
+			return err
 		}
 		if wrote {
 			summary.Contacts++
 		}
 	}
-
-	var names []calendar.PersonNames
-	for _, p := range people {
-		if _, ok := dismissed[p.ResourceName]; ok {
-			continue
-		}
-		full := append([]string{p.DisplayName, p.GivenName + " " + p.FamilyName}, p.Nicknames...)
-		names = append(names, calendar.PersonNames{ResourceName: p.ResourceName, Full: full, Given: p.GivenName})
-	}
-	d.index = calendar.PeopleOf(names)
-	return d, nil
+	return nil
 }
 
 // updateBookings records each client's next booked session, so a client
@@ -299,11 +236,18 @@ func (s Syncer) updateBookings(ctx context.Context, all []clients.Client, aliase
 
 	next := map[string]time.Time{}
 	for _, event := range events {
-		c := calendar.Classify(event, aliases, nil)
-		if c.Outcome != calendar.OutcomeSession || !event.Start.After(now) {
+		if event.AllDay || event.Cancelled || !event.Start.After(now) {
 			continue
 		}
-		id := c.Match.ClientID
+		title, err := calendar.ParseTitle(event.Title)
+		if err != nil {
+			continue
+		}
+		match := calendar.MatchName(title.Name, aliases)
+		if match.Kind != calendar.MatchExact {
+			continue
+		}
+		id := match.ClientID
 		if at, ok := next[id]; !ok || event.Start.Before(at) {
 			next[id] = event.Start.UTC()
 		}

@@ -68,6 +68,8 @@ export class ApiStack extends cdk.Stack {
       environmentVariables: {
         TABLE_NAME: table.tableName,
         TIME_ZONE: syncTimeZone,
+        // Development and staging also serve data.reset.
+        ENVIRONMENT: environment,
         ...googleEnvironment,
       },
     });

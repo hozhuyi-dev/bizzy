@@ -11,7 +11,8 @@ import { Logo } from "~/components/shared/logo/logo.component";
 import { AmplifyService } from "~/features/auth/amplify.service";
 
 const LINKS = [
-  { to: "/", label: "Sessions" },
+  { to: "/", label: "Home" },
+  { to: "/sessions", label: "Sessions" },
   { to: "/clients", label: "Clients" },
   { to: "/packages", label: "Packages" },
   { to: "/receipts", label: "Receipts" },

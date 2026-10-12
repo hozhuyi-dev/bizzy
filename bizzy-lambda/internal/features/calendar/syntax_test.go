@@ -84,7 +84,7 @@ func TestParseTitle(t *testing.T) {
 			want:  Title{Tentative: true, Name: "Jane Smith", FeeCents: cents(9500)},
 		},
 		{
-			name:  "personal event",
+			name:  "unknown name still parses",
 			input: "Dentist",
 			want:  Title{Name: "Dentist"},
 		},
@@ -117,6 +117,7 @@ func TestParseTitleErrors(t *testing.T) {
 		{name: "zero-session package total", input: "Jane Smith 0@850"},
 		{name: "amount without name", input: "95"},
 		{name: "tentative without name", input: "?"},
+		{name: "empty title", input: "   "},
 	}
 
 	for _, tt := range tests {

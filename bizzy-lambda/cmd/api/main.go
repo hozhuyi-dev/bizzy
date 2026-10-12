@@ -18,6 +18,7 @@ import (
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/google"
 	"bizzy-lambda/internal/features/packages"
+	"bizzy-lambda/internal/features/reset"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/dynamo"
@@ -67,7 +68,7 @@ func main() {
 	clients.Register(r, clientsRepo, contacts.Linker{Dir: directory, Now: time.Now}, func(ctx context.Context, id string) error {
 		return reconcile(ctx, billing.Scope{ClientIDs: []string{id}, Unmatched: true})
 	})
-	contacts.Register(r, directory, clientsRepo, contacts.NewDismissedRepository(store))
+	contacts.Register(r, directory, clientsRepo)
 	google.Register(r, google.NewRepository(store), auth)
 	sessions.Register(r, sessionsRepo, func(ctx context.Context, before, after sessions.Session) error {
 		return reconcile(ctx, billing.Scope{Changes: []billing.Change{{Before: &before, After: &after}}})
@@ -87,6 +88,10 @@ func main() {
 		Now:         time.Now,
 	})
 	calsync.RegisterStatus(r, calsync.NewStatusRepository(store))
+	// Keeps the Google connection, so a sync can rebuild everything at once.
+	if reset.Allowed(os.Getenv("ENVIRONMENT")) {
+		reset.Register(r, store, google.Partition)
+	}
 
 	lambda.Start(r.Handle)
 }

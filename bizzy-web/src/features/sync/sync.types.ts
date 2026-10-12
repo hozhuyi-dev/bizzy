@@ -1,9 +1,7 @@
 // Mirrors bizzy-lambda/internal/features/calsync.
 export interface SyncSummary {
+  /** Timed events in the window; every one is a session. */
   sessions: number;
-  unmatched: number;
-  parseErrors: number;
-  skipped: number;
   saved: number;
   deleted: number;
   /** Clients whose contact copy changed. */

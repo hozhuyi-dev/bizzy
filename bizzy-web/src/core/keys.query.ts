@@ -45,7 +45,6 @@ export const ContactKeys = {
   all: ["contacts"] as const,
   list: () => [...ContactKeys.all, "list"] as const,
   detail: (resourceName: string) => [...ContactKeys.all, "detail", resourceName] as const,
-  dismissed: () => [...ContactKeys.all, "dismissed"] as const,
 };
 
 /**

@@ -18,13 +18,6 @@ export interface DocumentRef {
   clientId?: string;
 }
 
-export interface ContactSuggestion {
-  resourceName: string;
-  displayName: string;
-  /** Set when a client already links this contact. */
-  clientId?: string;
-}
-
 export interface Session {
   eventId: string;
   title: string;
@@ -32,8 +25,6 @@ export interface Session {
   end: string;
   colorId?: string;
   removed?: boolean;
-  /** Her contacts the name may refer to, while it matches no client. */
-  suggestedContacts?: Array<ContactSuggestion>;
 
   status: SessionStatus;
   /** The name as written in the title. */

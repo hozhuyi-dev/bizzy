@@ -95,18 +95,8 @@ function LinkClientBody({ session, onClose }: { session: Session; onClose: () =>
         <Button
           variant="outline"
           onClick={() => {
-            // A contact the name matched, unless it already belongs to a client.
-            const suggested = session.suggestedContacts?.find((contact) => !contact.clientId);
             onClose();
-            void navigate({
-              to: "/clients/new",
-              search: {
-                name,
-                contact: suggested?.resourceName,
-                contactName: suggested?.displayName,
-                from: "sessions",
-              },
-            });
+            void navigate({ to: "/clients/new", search: { name, from: "home" } });
           }}
         >
           New client

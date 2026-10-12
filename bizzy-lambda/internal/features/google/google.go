@@ -29,7 +29,7 @@ type Connection struct {
 }
 
 const (
-	partition = "GOOGLE"
+	Partition = "GOOGLE"
 	sortKey   = "CONNECTION"
 )
 
@@ -49,7 +49,7 @@ func NewRepository(store *dynamo.Store) Repository {
 // Get returns nil until she connects.
 func (r Repository) Get(ctx context.Context) (*Connection, error) {
 	var rec record
-	found, err := r.store.Get(ctx, partition, sortKey, &rec)
+	found, err := r.store.Get(ctx, Partition, sortKey, &rec)
 	if err != nil || !found {
 		return nil, err
 	}
@@ -57,11 +57,11 @@ func (r Repository) Get(ctx context.Context) (*Connection, error) {
 }
 
 func (r Repository) Put(ctx context.Context, c Connection) error {
-	return r.store.Put(ctx, record{Keys: dynamo.Keys{PK: partition, SK: sortKey}, Connection: c})
+	return r.store.Put(ctx, record{Keys: dynamo.Keys{PK: Partition, SK: sortKey}, Connection: c})
 }
 
 func (r Repository) Delete(ctx context.Context) error {
-	_, err := r.store.Delete(ctx, partition, sortKey, nil)
+	_, err := r.store.Delete(ctx, Partition, sortKey, nil)
 	return err
 }
 

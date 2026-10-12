@@ -28,13 +28,7 @@ type PackageSpec struct {
 	PriceCents int64
 }
 
-// SessionShaped reports whether the title carries any marker that only a
-// session would have. Unrecognised names without one are not sessions.
-func (t Title) SessionShaped() bool {
-	return t.Tentative || t.FeeCents != nil || t.Package != nil
-}
-
-// ParseError explains why a session-shaped title could not be read. Its
+// ParseError explains why a title could not be read. Its
 // message is shown to her as-is, so it is written for her, not for us.
 type ParseError struct {
 	Reason string
@@ -48,8 +42,8 @@ var (
 	packagePattern = regexp.MustCompile(`^(\d+)([xX@])(?i:RM)?(\d+(?:\.\d{1,2})?)$`)
 )
 
-// ParseTitle reads an event title. Titles with no trailing tokens always
-// parse; whether the name belongs to a client is the matcher's concern.
+// ParseTitle reads an event title. Any name without trailing tokens parses;
+// whether it belongs to a client is the matcher's concern.
 func ParseTitle(raw string) (Title, error) {
 	var title Title
 
@@ -92,7 +86,7 @@ func ParseTitle(raw string) (Title, error) {
 	}
 
 	title.Name = strings.Join(tokens, " ")
-	if title.Name == "" && title.SessionShaped() {
+	if title.Name == "" {
 		return title, &ParseError{Reason: "missing client name"}
 	}
 

@@ -7,11 +7,8 @@ import { Button } from "~/components/ui/button";
 import { formatRelative } from "~/core/utils/date.util";
 
 function describe(summary: SyncSummary): string {
-  const parts = [`${summary.sessions} sessions`];
-  if (summary.unmatched) parts.push(`${summary.unmatched} unmatched`);
-  if (summary.parseErrors) parts.push(`${summary.parseErrors} to fix`);
   const changes = summary.saved + summary.deleted + summary.contacts;
-  return `${parts.join(", ")} · ${changes ? `${changes} updated` : "nothing changed"}`;
+  return `${summary.sessions} sessions · ${changes ? `${changes} updated` : "nothing changed"}`;
 }
 
 function lastRun(run: SyncRun | null | undefined): ReactNode {

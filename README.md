@@ -27,9 +27,8 @@ Separately, she **connects Google** once in Settings: an OAuth consent for her c
 | `Jane Smith 95 10x85` | Paid 95 for this session, and bought a package for later |
 | `? Jane Smith` | Not confirmed yet; on the to-do list until the `?` is removed |
 
-- Names match a client's aliases (case-insensitive). Unknown names that look like sessions, and near-miss typos, show up as **unmatched** in the app to link or create.
-- A name that matches one of her **Google contacts** (full name, nickname, a first name no other contact shares, or a typo of a long name) also shows up as unmatched, with **Add … as a client**, or **It's …** when that contact already belongs to a client under another name. **Not a client** stops suggesting that contact (undo in Settings).
-- Other events that match no client and carry no `?` or amount are personal and skipped. All-day events are skipped.
+- Every timed event on the chosen calendar is a session; all-day and cancelled events are skipped. Keep personal events on another calendar.
+- Names match a client's aliases (case-insensitive). A title that can't be read, or a name that matches no client, goes on the to-do list on **Home** with the fix: link it to a client (a near-miss typo is suggested), create the client, or ignore the session.
 - **Home visits**: give the event the home-visit colour (Tomato by default, changeable in Settings). Any other colour means her place; no colour follows the client's "usually a home visit" setting.
 - The sync re-reads the last 30 days every night (or on **Sync now**) and looks 60 days ahead for bookings. Fix the calendar, then sync again. A session with an issued receipt still follows the calendar, but a change that contradicts the receipt is flagged.
 
@@ -48,7 +47,7 @@ Issued on request, one per paid session or package purchase. A receipt starts as
 
 ## Data
 
-One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `PACKAGE`, `DOC`, `GOOGLE`, `CONTACTS`, …) and five generic local secondary indexes created up front, because LSIs can't be added later (see `bizzy-lambda/internal/platform/dynamo`). Each writer owns its fields on a shared item (the sync, the billing reconcile, her actions), so they never overwrite each other. Client items carry monthly activity, which the follow-up list and Insights are summed from.
+One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `PACKAGE`, `DOC`, `GOOGLE`, …) and five generic local secondary indexes created up front, because LSIs can't be added later (see `bizzy-lambda/internal/platform/dynamo`). Each writer owns its fields on a shared item (the sync, the billing reconcile, her actions), so they never overwrite each other. Client items carry monthly activity, which the follow-up list and Insights are summed from.
 
 ## Environments
 
@@ -58,6 +57,8 @@ One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `PACKAGE
 | `production` | production |
 
 `development` is deployed from a laptop and used by the local frontend. Each environment is a separate set of stacks (`bizzy-<env>-auth|data|api|web`) in the same AWS account.
+
+Development and staging have **Settings → Reset**, which deletes everything in the table except the Google connection, so a sync starts over from the calendar. Production has neither the button nor the API action.
 
 ## One-time setup
 
