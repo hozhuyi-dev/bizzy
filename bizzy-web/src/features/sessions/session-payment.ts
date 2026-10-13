@@ -31,7 +31,7 @@ export function paymentCover({ client, start, packages, boughtHere, session }: P
   if (!client) return { kind: "none" };
   if (boughtHere) return { kind: "bought" };
 
-  const own = packages.filter((pkg) => pkg.clientId === client.id && !pkg.removed);
+  const own = packages.filter((pkg) => pkg.clientId === client.id);
   const held = session?.packageId && session.clientId === client.id && own.find((pkg) => pkg.id === session.packageId);
   if (held) return { kind: "credit", pkg: held };
 

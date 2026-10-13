@@ -14,7 +14,7 @@ interface MonthPickerProps {
   /** "2026-10". */
   value: string;
   onChange: (month: string) => void;
-  /** The latest month that can be chosen; defaults to this month. */
+  /** The latest month that can be chosen; unset allows any, future months included. */
   max?: string | undefined;
 }
 
@@ -25,10 +25,11 @@ const SEGMENT =
 /**
  * [‹ Oct 2026 ⌄ › | This month] as one control, in the tabs' style: the
  * arrows step a month at a time, the label opens a year of months to jump
- * further back, and This month comes straight back.
+ * further, and This month comes straight back.
  */
-export function MonthPicker({ value, onChange, max = monthKey(new Date()) }: MonthPickerProps) {
+export function MonthPicker({ value, onChange, max }: MonthPickerProps) {
   const [open, setOpen] = useState(false);
+  const thisMonth = monthKey(new Date());
 
   return (
     <div data-slot="month-picker" className="inline-flex h-8 items-center gap-0.5 rounded-lg bg-muted p-[3px]">
@@ -49,6 +50,7 @@ export function MonthPicker({ value, onChange, max = monthKey(new Date()) }: Mon
             key={String(open)}
             value={value}
             max={max}
+            thisMonth={thisMonth}
             onPick={(month) => {
               onChange(month);
               setOpen(false);
@@ -60,23 +62,30 @@ export function MonthPicker({ value, onChange, max = monthKey(new Date()) }: Mon
         type="button"
         className={cn(SEGMENT, "w-7")}
         aria-label="Next month"
-        disabled={value >= max}
+        disabled={max !== undefined && value >= max}
         onClick={() => onChange(addMonths(value, 1))}
       >
         <ChevronRightIcon />
       </button>
       {/* Always there, dimmed on this month, so the control never changes width. */}
       <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
-      <button type="button" className={cn(SEGMENT, "px-2")} disabled={value === max} onClick={() => onChange(max)}>
+      <button type="button" className={cn(SEGMENT, "px-2")} disabled={value === thisMonth} onClick={() => onChange(thisMonth)}>
         This month
       </button>
     </div>
   );
 }
 
-function MonthGrid({ value, max, onPick }: { value: string; max: string; onPick: (month: string) => void }) {
+interface MonthGridProps {
+  value: string;
+  max: string | undefined;
+  thisMonth: string;
+  onPick: (month: string) => void;
+}
+
+function MonthGrid({ value, max, thisMonth, onPick }: MonthGridProps) {
   const [year, setYear] = useState(Number(value.slice(0, 4)));
-  const maxYear = Number(max.slice(0, 4));
+  const maxYear = max ? Number(max.slice(0, 4)) : Infinity;
 
   return (
     <div className="flex flex-col gap-2">
@@ -104,9 +113,9 @@ function MonthGrid({ value, max, onPick }: { value: string; max: string; onPick:
               key={month}
               variant={selected ? "default" : "ghost"}
               size="sm"
-              disabled={month > max}
+              disabled={max !== undefined && month > max}
               aria-pressed={selected}
-              className={cn(!selected && month === max && "ring-1 ring-border")}
+              className={cn(!selected && month === thisMonth && "ring-1 ring-border")}
               onClick={() => onPick(month)}
             >
               {name}

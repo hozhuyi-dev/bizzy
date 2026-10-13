@@ -2,6 +2,9 @@ import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { PackagesMutation } from "../../packages.query";
 import type { Package } from "../../packages.types";
+import type { PaymentMethod } from "~/features/payments/payments.types";
+import { PAYMENT_METHODS } from "~/features/payments/payments.types";
+import { Checkbox } from "~/components/ui/checkbox";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { Button } from "~/components/ui/button";
 import { DialogFooter } from "~/components/ui/dialog";
@@ -24,6 +27,9 @@ interface PackageFormValues {
   price: string;
   purchasedOn: string;
   note: string;
+  /** Paid there and then: how. Unset leaves it to collect. */
+  paidBy: PaymentMethod | "";
+  paid: boolean;
 }
 
 function fieldErrors(errors: ReadonlyArray<string | undefined>) {
@@ -38,14 +44,17 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
   const clients = ClientsQuery.useList();
   const save = PackagesMutation.useSave();
 
+  const defaultValues: PackageFormValues = {
+    clientId: pkg?.clientId ?? "",
+    sessions: pkg ? String(pkg.sessions) : "10",
+    price: centsToInput(pkg?.priceCents),
+    purchasedOn: pkg ? toISODate(new Date(pkg.purchasedAt)) : todayISO(),
+    note: pkg?.note ?? "",
+    paid: false,
+    paidBy: "",
+  };
   const form = useForm({
-    defaultValues: {
-      clientId: pkg?.clientId ?? "",
-      sessions: pkg ? String(pkg.sessions) : "10",
-      price: centsToInput(pkg?.priceCents),
-      purchasedOn: pkg ? toISODate(new Date(pkg.purchasedAt)) : todayISO(),
-      note: pkg?.note ?? "",
-    } satisfies PackageFormValues,
+    defaultValues,
     onSubmit: async ({ value }) => {
       const [year = 0, month = 1, day = 1] = value.purchasedOn.split("-").map(Number);
       await save.mutateAsync({
@@ -56,6 +65,7 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
         // Start of her day, so it covers that day's sessions.
         purchasedAt: new Date(year, month - 1, day).toISOString(),
         note: value.note,
+        ...(value.paid && value.paidBy ? { paid: { status: "paid" as const, method: value.paidBy, paidOn: value.purchasedOn } } : {}),
       });
       toast.success(pkg ? "Package updated" : "Package added");
       onDone();
@@ -184,6 +194,43 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
           )}
         </form.Field>
 
+        {!pkg?.payment && (
+          <form.Field name="paid">
+            {(paid) => (
+              <Field>
+                <div className="flex items-center gap-2">
+                  <Checkbox id={paid.name} checked={paid.state.value} onCheckedChange={(checked) => paid.handleChange(checked)} />
+                  <FieldLabel htmlFor={paid.name}>Paid on the day it was bought</FieldLabel>
+                </div>
+                {paid.state.value ? (
+                  <form.Field name="paidBy" validators={{ onChange: ({ value }) => (value ? undefined : "Choose how") }}>
+                    {(method) => (
+                      <div role="radiogroup" aria-label="Paid by" className="flex flex-wrap gap-2">
+                        {PAYMENT_METHODS.map((option) => (
+                          <Button
+                            key={option.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={method.state.value === option.value}
+                            variant={method.state.value === option.value ? "default" : "outline"}
+                            size="sm"
+                            title={option.label}
+                            onClick={() => method.handleChange(option.value)}
+                          >
+                            {option.short}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </form.Field>
+                ) : (
+                  <FieldDescription>Otherwise it goes on your to-do list to collect.</FieldDescription>
+                )}
+              </Field>
+            )}
+          </form.Field>
+        )}
+
         {save.error && (
           <p role="alert" className="text-sm text-destructive">
             {save.error.message}
@@ -192,9 +239,11 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
       </FieldGroup>
 
       <DialogFooter className="mt-6">
-        <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
-          {([canSubmit, isSubmitting]) => (
-            <Button type="submit" disabled={!canSubmit || isSubmitting}>
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting, state.values.paid && !state.values.paidBy] as const}
+        >
+          {([canSubmit, isSubmitting, missingMethod]) => (
+            <Button type="submit" disabled={!canSubmit || isSubmitting || missingMethod}>
               {isSubmitting ? "Saving…" : "Save"}
             </Button>
           )}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-	"time"
 
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/router"
@@ -55,16 +54,10 @@ func (h handler) save(ctx context.Context, in Settings) (any, error) {
 		DocumentMessage:   strings.TrimSpace(in.DocumentMessage),
 		ConfirmAheadDays:  in.ConfirmAheadDays,
 		FollowUpAheadDays: in.FollowUpAheadDays,
-		TrackFrom:         strings.TrimSpace(in.TrackFrom),
 	}
 	for _, days := range []int{s.ConfirmAheadDays, s.FollowUpAheadDays} {
 		if days < 0 || days > MaxAheadDays {
 			return nil, apperr.Invalid("look ahead 1 to %d days", MaxAheadDays)
-		}
-	}
-	if s.TrackFrom != "" {
-		if _, err := time.Parse(time.DateOnly, s.TrackFrom); err != nil {
-			return nil, apperr.Invalid("the tracking date must be YYYY-MM-DD")
 		}
 	}
 	s = s.WithDefaults()
@@ -72,7 +65,7 @@ func (h handler) save(ctx context.Context, in Settings) (any, error) {
 	if err := h.repo.Put(ctx, s); err != nil {
 		return nil, err
 	}
-	changed := s.HomeVisitColorID != previous.HomeVisitColorID || s.TrackFrom != previous.TrackFrom
+	changed := s.HomeVisitColorID != previous.HomeVisitColorID
 	if changed && h.afterSave != nil {
 		if err := h.afterSave(ctx); err != nil {
 			return nil, err

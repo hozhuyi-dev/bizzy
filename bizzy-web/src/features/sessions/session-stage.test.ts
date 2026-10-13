@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { canInvoice, canReceipt, documentSources, dueCents, stageBadges, todoReasons } from "./session-stage";
+import { canInvoice, canReceipt, documentItems, dueCents, isPaid, owedCents, stageBadges, todoReasons } from "./session-stage";
 import type { Session } from "./sessions.types";
 import type { Package } from "~/features/packages/packages.types";
 
@@ -45,9 +45,14 @@ describe("todoReasons", () => {
     expect(todoReasons(session({ status: "unmatched" }, ["clientId"]), now)).toEqual(["fix"]);
   });
 
-  test("a package credit costs nothing more; history before tracking needs nothing", () => {
+  test("a package credit costs nothing more", () => {
     expect(todoReasons(session({ status: "package", record }, ["feeCents"]), now)).toEqual([]);
-    expect(todoReasons(session({ untracked: true }), now)).toEqual([]);
+  });
+
+  test("the package bought in a session is collected on it until paid", () => {
+    const bought = session({ record, payment: paid, boughtCents: 85000 });
+    expect(todoReasons(bought, now)).toEqual(["collect"]);
+    expect(todoReasons({ ...bought, boughtSettled: true }, now)).toEqual([]);
   });
 });
 
@@ -79,14 +84,30 @@ describe("documents", () => {
     expect(canReceipt(session({ payment: { ...paid, status: "waived" } }))).toBe(false);
   });
 
-  test("a package bought in the session is due with it and goes on its documents", () => {
+  test("the fee and the package bought are due on their own", () => {
     const s = session({ boughtCents: 85000 });
-    expect(dueCents(s)).toBe(94500);
-    expect(documentSources("invoice", s, bought)).toEqual([
-      { kind: "session", id: "e1" },
-      { kind: "package", id: "e1" },
-    ]);
-    expect(documentSources("receipt", s, bought)).toEqual([]);
-    expect(documentSources("receipt", { ...s, payment: paid }, bought)).toHaveLength(2);
+    expect(dueCents(s)).toBe(9500);
+    expect(owedCents(s)).toBe(94500);
+    expect(owedCents({ ...s, payment: paid })).toBe(85000);
+    expect(isPaid({ ...s, payment: paid })).toBe(false);
+    expect(isPaid({ ...s, payment: paid, boughtSettled: true })).toBe(true);
+  });
+
+  test("each item goes on a document on its own; a receipt needs that item paid", () => {
+    const s = session({ boughtCents: 85000 });
+    const available = (items: ReturnType<typeof documentItems>) => items.filter((i) => !i.unavailable).map((i) => i.source.kind);
+
+    expect(available(documentItems("invoice", s, bought))).toEqual(["session", "package"]);
+    expect(available(documentItems("receipt", s, bought))).toEqual([]);
+    // The session paid, the package not: a receipt for the fee alone.
+    expect(available(documentItems("receipt", { ...s, payment: paid }, bought))).toEqual(["session"]);
+    expect(available(documentItems("receipt", s, { ...bought, payment: paid }))).toEqual(["package"]);
+    // Already on an invoice: the rest can go on another.
+    const invoiced = { documentId: "d1", number: "INV260001" };
+    expect(available(documentItems("invoice", { ...s, invoice: invoiced }, bought))).toEqual(["package"]);
+  });
+
+  test("a package no longer bought in the session is not its document's", () => {
+    expect(documentItems("invoice", session(), { ...bought, source: "app" })).toHaveLength(1);
   });
 });

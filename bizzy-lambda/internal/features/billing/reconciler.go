@@ -33,7 +33,6 @@ type PackageStore interface {
 	Get(ctx context.Context, id string) (packages.Package, bool, error)
 	ListByClient(ctx context.Context, clientID string) ([]packages.Package, error)
 	Save(ctx context.Context, p packages.Package) error
-	Delete(ctx context.Context, id string) (bool, error)
 }
 
 type SettingsStore interface {
@@ -214,7 +213,7 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 		entries[id] = &e
 	}
 
-	finalPackages, deletePackages, err := r.calendarPackages(ctx, entries, storedPackages)
+	finalPackages, err := r.calendarPackages(ctx, entries, storedPackages)
 	if err != nil {
 		return result, err
 	}
@@ -266,7 +265,6 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 
 	// Write packages.
 	for id, p := range finalPackages {
-		p.Drift = PackageDrift(*p)
 		if stored, ok := storedPackages[id]; ok && same(stored, *p) {
 			continue
 		}
@@ -274,12 +272,6 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 			return result, err
 		}
 	}
-	for _, id := range deletePackages {
-		if _, err := r.Packages.Delete(ctx, id); err != nil {
-			return result, err
-		}
-	}
-
 	// Write client activity.
 	for id := range affected {
 		client, ok := env.Clients[id]
@@ -322,11 +314,12 @@ func withEvent(stored sessions.Session, event calendar.Event) sessions.Session {
 }
 
 // calendarPackages lines up the packages bought in session titles with the
-// stored ones: new ones are added, changed ones updated, and ones no longer
-// in any title deleted (or kept as removed when a document covers them).
-func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*Entry, stored map[string]packages.Package) (map[string]*packages.Package, []string, error) {
+// stored ones: new ones are added and changed ones updated. One no title
+// buys any more is unlinked: it becomes an app package, kept with its
+// payment, credits and documents until she deletes it. Should the title buy
+// it again, it is linked back rather than bought twice.
+func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*Entry, stored map[string]packages.Package) (map[string]*packages.Package, error) {
 	final := map[string]*packages.Package{}
-	var deletes []string
 
 	desired := map[string]packages.Package{}
 	for _, e := range entries {
@@ -336,23 +329,15 @@ func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*E
 	}
 
 	for id, p := range stored {
-		if p.Source != packages.SourceCalendar {
-			final[id] = &p
-			continue
-		}
-		want, ok := desired[id]
-		switch {
-		case ok:
+		if want, ok := desired[id]; ok {
 			merged := mergeCalendarPackage(p, want)
 			final[id] = &merged
-		case p.HasDocuments():
-			p.Removed = true
-			final[id] = &p
-		default:
-			// Its client is affected, so every session of theirs is loaded:
-			// none buys this package any more.
-			deletes = append(deletes, id)
+			continue
 		}
+		// Its client is affected, so every session of theirs is loaded: none
+		// buys this package any more.
+		p.Source = packages.SourceApp
+		final[id] = &p
 	}
 
 	for id, want := range desired {
@@ -360,10 +345,10 @@ func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*E
 			continue
 		}
 		// Stored under a client this run did not load: fetch it so its
-		// document links are kept.
+		// payment and document links are kept.
 		existing, found, err := r.Packages.Get(ctx, id)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if found {
 			stored[id] = existing
@@ -374,7 +359,7 @@ func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*E
 		final[id] = &want
 	}
 
-	return final, deletes, nil
+	return final, nil
 }
 
 func mergeCalendarPackage(stored, want packages.Package) packages.Package {
@@ -383,7 +368,7 @@ func mergeCalendarPackage(stored, want packages.Package) packages.Package {
 	merged.Sessions = want.Sessions
 	merged.PriceCents = want.PriceCents
 	merged.PurchasedAt = want.PurchasedAt
-	merged.Removed = false
+	merged.Source = packages.SourceCalendar
 	return merged
 }
 

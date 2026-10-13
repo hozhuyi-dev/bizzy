@@ -16,8 +16,6 @@ export interface Settings {
   confirmAheadDays: number;
   /** Days ahead a follow-up goes on the to-do list. */
   followUpAheadDays: number;
-  /** YYYY-MM-DD: sessions before it need no notes or payment. */
-  trackFrom?: string;
   /** WhatsApp message asking to pay for a session; {placeholders} filled in. */
   paymentMessage: string;
   /** WhatsApp message with links to issued documents. */

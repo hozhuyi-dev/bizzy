@@ -6,6 +6,7 @@ import { PackageForm } from "./components/package-form/package-form.component";
 import {
   PackageCredits,
   PackageDocuments,
+  PackagePayment,
   PackagePrice,
   PackageSource,
   clientName,
@@ -16,6 +17,7 @@ import { PackagesMutation, PackagesQuery } from "./packages.query";
 import type { PackageHandlers } from "./packages.columns";
 import type { Package } from "./packages.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { useCreateDocument } from "~/features/documents/use-create-document";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
@@ -25,9 +27,19 @@ import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { formatDate } from "~/core/utils/date.util";
+import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -42,27 +54,28 @@ interface PackagesPageProps {
   onViewChange: (view: PackagesView) => void;
 }
 
-/** Prepaid packages with the credits each has left. */
+/** Prepaid packages with the credits each has left, and whether each is paid. */
 export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
   const [editing, setEditing] = useState<Editing>(null);
+  const [deleting, setDeleting] = useState<Package | null>(null);
+  const [payingId, setPayingId] = useState<string>();
   const [search, setSearch] = useState("");
   const packages = PackagesQuery.useList(view === "all");
   const clientsById = ClientsQuery.useById();
-  const { mutate: remove } = PackagesMutation.useDelete();
+  const remove = PackagesMutation.useDelete();
   const { create: createDocument } = useCreateDocument();
+  // Read from the list, so the dialog shows the payment once it is saved.
+  const paying = packages.data?.find((pkg) => pkg.id === payingId);
 
   const handlers = useMemo<PackageHandlers>(
     () => ({
       clientsById,
       onEdit: (pkg) => setEditing({ mode: "edit", pkg }),
-      onDelete: (pkg) =>
-        remove(pkg.id, {
-          onSuccess: () => toast.success("Package deleted"),
-          onError: (error) => toast.error(error.message),
-        }),
+      onDelete: setDeleting,
+      onPay: (pkg) => setPayingId(pkg.id),
       onDocument: (type, pkg) => createDocument(type, [{ kind: "package", id: pkg.id }]),
     }),
-    [clientsById, remove, createDocument],
+    [clientsById, createDocument],
   );
 
   const columns = useMemo(() => createPackageColumns(handlers), [handlers]);
@@ -88,7 +101,7 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
           <>
             <Tabs value={view} onValueChange={(value) => onViewChange(value as PackagesView)}>
               <TabsList>
-                <TabsTrigger value="open">Credits left</TabsTrigger>
+                <TabsTrigger value="open">Open</TabsTrigger>
                 <TabsTrigger value="all">All</TabsTrigger>
               </TabsList>
             </Tabs>
@@ -131,8 +144,9 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <PackageSource pkg={row.original} />
-                    <PackageDocuments pkg={row.original} empty={null} />
+                    <PackagePayment pkg={row.original} />
                   </div>
+                  <PackageDocuments pkg={row.original} empty={null} />
                 </CardContent>
               </Card>
             )}
@@ -154,6 +168,69 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={paying !== undefined} onOpenChange={(open) => !open && setPayingId(undefined)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Package payment</DialogTitle>
+            {paying && (
+              <DialogDescription>
+                {clientName(paying, clientsById)} · {paying.sessions} sessions, bought {formatDate(paying.purchasedAt)}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          {paying && (
+            <PaymentPanel
+              payables={[
+                {
+                  item: { kind: "package", id: paying.id },
+                  label: `Package of ${paying.sessions}`,
+                  dueCents: paying.priceCents,
+                  payment: paying.payment,
+                  receipted: Boolean(paying.receipt),
+                },
+              ]}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this package?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleting && (
+                <>
+                  {clientName(deleting, clientsById)}, {deleting.sessions} sessions for {formatCents(deleting.priceCents)}.
+                  {deleting.payment?.status === "paid" &&
+                    ` The ${formatCents(deleting.payment.amountCents)} she paid for it comes off your income.`}{" "}
+                  Sessions on its credits go back to their usual fee. This can't be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={() =>
+                deleting &&
+                remove.mutate(deleting.id, {
+                  onSuccess: () => {
+                    toast.success("Package deleted");
+                    setDeleting(null);
+                  },
+                  onError: (error) => toast.error(error.message),
+                })
+              }
+            >
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

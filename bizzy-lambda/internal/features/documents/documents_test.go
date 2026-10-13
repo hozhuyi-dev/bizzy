@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/docref"
+	"bizzy-lambda/internal/features/money"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/platform/apperr"
@@ -123,7 +125,7 @@ func newHandler(t *testing.T) (handler, *fakeRepo, *[]string) {
 		m.SessionMap[id] = sessions.Session{
 			EventID: id, ClientID: "jane", Status: sessions.StatusPriced, FeeCents: &fee,
 			Start:   time.Date(2026, 10, 5, 2, 0, 0, 0, time.UTC),
-			Payment: &sessions.Payment{Status: sessions.PaymentPaid, Method: sessions.MethodTNG, AmountCents: fee, PaidOn: "2026-10-05"},
+			Payment: &money.Payment{Status: money.Paid, Method: money.MethodTNG, AmountCents: fee, PaidOn: "2026-10-05"},
 		}
 	}
 	m.SettingsVal.BusinessName = "Physio Co"
@@ -228,6 +230,7 @@ func TestSessionAndItsPackageOnOneReceipt(t *testing.T) {
 	pkgs.PackageMap["e1"] = packages.Package{
 		ID: "e1", ClientID: "jane", Sessions: 10, PriceCents: 85000,
 		PurchasedAt: time.Date(2026, 10, 5, 2, 0, 0, 0, time.UTC), Source: packages.SourceCalendar,
+		Payment: &money.Payment{Status: money.Paid, Method: money.MethodCash, AmountCents: 85000, PaidOn: "2026-10-05"},
 	}
 
 	draft := must[Document](t)(h.createDraft(ctx, createDraftInput{Type: TypeReceipt, Sources: []Source{
@@ -240,6 +243,50 @@ func TestSessionAndItsPackageOnOneReceipt(t *testing.T) {
 	if repo.links != 2 {
 		t.Errorf("links = %d, want both sources reserved", repo.links)
 	}
+	// Each was paid on its own: the receipt says both ways.
+	if draft.Draft.PaidBy != "Touch 'n Go eWallet, Cash" {
+		t.Errorf("paid by = %q", draft.Draft.PaidBy)
+	}
+}
+
+func TestSessionAndItsPackageOnSeparateReceipts(t *testing.T) {
+	ctx := context.Background()
+	h, _, _ := newHandler(t)
+	pkgs := h.Packages.(*memory.PackageRepo)
+	pkgs.PackageMap["e1"] = packages.Package{
+		ID: "e1", ClientID: "jane", Sessions: 10, PriceCents: 85000,
+		PurchasedAt: time.Date(2026, 10, 5, 2, 0, 0, 0, time.UTC), Source: packages.SourceCalendar,
+	}
+	session, pkg := []Source{{Kind: SourceSession, ID: "e1"}}, []Source{{Kind: SourcePackage, ID: "e1"}}
+
+	// The session is paid, the package not yet: a receipt for the session
+	// alone, none for the package or both.
+	if _, err := h.createDraft(ctx, createDraftInput{Type: TypeReceipt, Sources: append(session, pkg...)}); !isCode(err, apperr.CodeConflict) {
+		t.Errorf("receipt with an unpaid package: err = %v, want conflict", err)
+	}
+	if _, err := h.createDraft(ctx, createDraftInput{Type: TypeReceipt, Sources: pkg}); !isCode(err, apperr.CodeConflict) {
+		t.Errorf("receipt for an unpaid package: err = %v, want conflict", err)
+	}
+	first := must[Document](t)(h.createDraft(ctx, createDraftInput{Type: TypeReceipt, Sources: session}))
+	if first.Draft.TotalCents != 9500 {
+		t.Errorf("session receipt = %d", first.Draft.TotalCents)
+	}
+
+	// An invoice for the package needs no payment.
+	invoice := must[Document](t)(h.createDraft(ctx, createDraftInput{Type: TypeInvoice, Sources: pkg}))
+	if invoice.Draft.TotalCents != 85000 {
+		t.Errorf("package invoice = %d", invoice.Draft.TotalCents)
+	}
+
+	// Paid later: its own receipt.
+	p := pkgs.PackageMap["e1"]
+	p.Payment = &money.Payment{Status: money.Paid, Method: money.MethodBankTransfer, AmountCents: 85000, PaidOn: "2026-10-09"}
+	p.Invoice = &docref.Ref{DocumentID: invoice.ID}
+	pkgs.PackageMap["e1"] = p
+	second := must[Document](t)(h.createDraft(ctx, createDraftInput{Type: TypeReceipt, Sources: pkg}))
+	if second.Draft.TotalCents != 85000 || second.Draft.PaidBy != "Bank transfer" {
+		t.Errorf("package receipt = %d by %q", second.Draft.TotalCents, second.Draft.PaidBy)
+	}
 }
 
 func TestOneClientPerDocument(t *testing.T) {
@@ -247,7 +294,7 @@ func TestOneClientPerDocument(t *testing.T) {
 	h, _, _ := newHandler(t)
 	h.Packages.(*memory.PackageRepo).PackageMap["p"] = packages.Package{ID: "p", ClientID: "bob", Sessions: 1, PriceCents: 1}
 
-	_, err := h.createDraft(ctx, createDraftInput{Type: TypeReceipt, Sources: []Source{
+	_, err := h.createDraft(ctx, createDraftInput{Type: TypeInvoice, Sources: []Source{
 		{Kind: SourceSession, ID: "e1"},
 		{Kind: SourcePackage, ID: "p"},
 	}})

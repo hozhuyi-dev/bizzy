@@ -1,4 +1,4 @@
-import type { Page, PaymentInput, Session, SessionDraft, StoredSession } from "./sessions.types";
+import type { Page, Session, SessionDraft, StoredSession } from "./sessions.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const SessionsService = {
@@ -16,8 +16,7 @@ export const SessionsService = {
   restore: (eventId: string) => invoke<null>("sessions.restore", { eventId }),
   discard: (eventId: string) => invoke<null>("sessions.discard", { eventId }),
   // Hers, kept only here.
-  saveRecord: (eventId: string, summary: string, notes: string) =>
+  /** Leaving out the notes keeps them, for the summary alone. */
+  saveRecord: (eventId: string, summary: string, notes?: string) =>
     invoke<Session>("sessions.saveRecord", { eventId, summary, notes }),
-  setPayment: (eventId: string, payment: PaymentInput | null) =>
-    invoke<Session>("sessions.setPayment", { eventId, payment }),
 };

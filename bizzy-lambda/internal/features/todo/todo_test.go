@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/followups"
+	"bizzy-lambda/internal/features/money"
+	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 )
 
@@ -27,16 +29,28 @@ func TestBuildMergesByWhen(t *testing.T) {
 		{EventID: "done", Due: at(1), DoneAt: &done},
 	}
 
-	items := Build(open, due, now)
+	unpaid := []packages.Package{
+		// Bought in the app this morning, unpaid: collect.
+		{ID: "app", Source: packages.SourceApp, PriceCents: 85000, PurchasedAt: at(-3)},
+		// Bought in a session: collected on that session instead.
+		{ID: "past", Source: packages.SourceCalendar, PriceCents: 85000, PurchasedAt: at(-24)},
+		// Paid, with credits left: in the index, nothing to do.
+		{ID: "paid", Source: packages.SourceApp, PriceCents: 85000, Sessions: 10, PurchasedAt: at(-2), Payment: &money.Payment{Status: money.Paid}},
+	}
+
+	items := Build(open, unpaid, due, now)
 	var got []string
 	for _, item := range items {
-		if item.Session != nil {
+		switch {
+		case item.Session != nil:
 			got = append(got, item.Session.EventID)
-		} else {
+		case item.Package != nil:
+			got = append(got, "package "+item.Package.ID)
+		default:
 			got = append(got, item.FollowUp.EventID)
 		}
 	}
-	want := []string{"past", "call", "maybe"}
+	want := []string{"past", "package app", "call", "maybe"}
 	if len(got) != len(want) {
 		t.Fatalf("items = %v, want %v", got, want)
 	}
@@ -44,6 +58,9 @@ func TestBuildMergesByWhen(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("items = %v, want %v", got, want)
 		}
+	}
+	if r := items[1].Reasons; len(r) != 1 || r[0] != sessions.ReasonCollect {
+		t.Errorf("package reasons = %v", r)
 	}
 	if r := items[0].Reasons; len(r) != 2 || r[0] != sessions.ReasonRecord || r[1] != sessions.ReasonCollect {
 		t.Errorf("reasons = %v", r)

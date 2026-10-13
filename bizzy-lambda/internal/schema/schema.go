@@ -12,8 +12,8 @@
 //	SESSION       eventId                     start        clientId#start      start, on her to-do      status#start        -               sessions.Session
 //	SESSIONNOTES  eventId                     -            -                   -                        -                   -               sessions.Notes
 //	FOLLOWUP      eventId                     due          clientId#due        due, until done          open|done#due       sessionId#due   followups.FollowUp
-//	PACKAGE       id                          purchasedAt  clientId#purchased  purchasedAt, credits/    source#purchasedAt  -               packages.Package
-//	                                                                           drift left
+//	PACKAGE       id                          purchasedAt  clientId#purchased  purchasedAt, credits     source#purchasedAt  -               packages.Package
+//	                                                                           left or unpaid
 //	DOC           id                          date#created clientId#date#…     date#…, draft open       type#date#…         -               documents.Document
 //	DOCREV        documentId#rev (2 digits)   -            -                   -                        -                   -               documents.Revision
 //	COUNTER       type#year                   -            -                   -                        -                   -               `last`: the last number issued

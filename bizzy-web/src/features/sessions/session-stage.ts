@@ -1,6 +1,7 @@
 import type { DocumentRef, Session, TodoReason } from "./sessions.types";
 import type { DocumentSource, DocumentType } from "~/features/documents/documents.types";
 import type { Package } from "~/features/packages/packages.types";
+import { boughtIn, canReceiptPackage } from "~/features/packages/packages.types";
 
 /**
  * Where a session is in its life, read from what is stored. These mirror the
@@ -34,19 +35,33 @@ export function isRecorded(session: Session): boolean {
   return Boolean(session.record?.summary);
 }
 
-function delivered(session: Session): boolean {
+export function isDelivered(session: Session): boolean {
   return session.status === "priced" || session.status === "package" || session.status === "missing_fee";
 }
 
-/** What the client owes for it: the fee when one applies, plus a package bought in it. */
+/** The session's own fee, when one applies: a package credit costs nothing more. */
 export function dueCents(session: Session): number {
-  const fee = session.status === "priced" ? (session.feeCents ?? 0) : 0;
-  return fee + (delivered(session) ? (session.boughtCents ?? 0) : 0);
+  return session.status === "priced" ? (session.feeCents ?? 0) : 0;
 }
 
-/** Settled: paid, waived, or nothing owed (a package credit). */
-export function isPaid(session: Session): boolean {
+/** The fee is paid, waived, or nothing (a package credit). */
+export function isFeeSettled(session: Session): boolean {
   return session.payment !== undefined || dueCents(session) === 0;
+}
+
+/** The package bought in the session is still to be paid; it is paid on the package. */
+export function isBoughtDue(session: Session): boolean {
+  return isDelivered(session) && (session.boughtCents ?? 0) > 0 && !session.boughtSettled;
+}
+
+/** Nothing more is owed on it: its fee and the package bought in it. */
+export function isPaid(session: Session): boolean {
+  return isFeeSettled(session) && !isBoughtDue(session);
+}
+
+/** What is still to collect on it: the fee and the package bought in it, unless paid. */
+export function owedCents(session: Session): number {
+  return (isFeeSettled(session) ? 0 : dueCents(session)) + (isBoughtDue(session) ? (session.boughtCents ?? 0) : 0);
 }
 
 /** What she has left to do on it now; mirrors Session.Todo. */
@@ -54,7 +69,7 @@ export function todoReasons(session: Session, now = new Date()): Array<TodoReaso
   if (session.removedAt) return ["deleted"];
   if (session.status === "tentative") return ["confirm"];
   if (needsFix(session)) return ["fix"];
-  if (session.untracked || !hasHappened(session, now)) return [];
+  if (!hasHappened(session, now)) return [];
   const reasons: Array<TodoReason> = [];
   if (!isRecorded(session)) reasons.push("record");
   if (!isPaid(session)) reasons.push("collect");
@@ -69,7 +84,6 @@ export function stageBadges(session: Session, now = new Date()): Array<StageBadg
   if (fix) return [{ label: fix, tone: "attention" }];
   if (session.drift) return [{ label: "Changed after document", tone: "attention" }];
   if (!hasHappened(session, now)) return [{ label: "Booked", tone: "info" }];
-  if (session.untracked) return [{ label: "Before tracking", tone: "neutral" }];
 
   const badges: Array<StageBadge> = [];
   if (!isRecorded(session)) badges.push({ label: "To record", tone: "waiting" });
@@ -90,23 +104,54 @@ export function canInvoice(session: Session): boolean {
 }
 
 export function canReceipt(session: Session): boolean {
-  const paid = session.payment?.status === "paid" || (session.untracked && !session.payment);
-  return !session.removedAt && session.status === "priced" && session.feeCents !== undefined && !session.receipt && Boolean(paid);
+  return (
+    !session.removedAt &&
+    session.status === "priced" &&
+    session.feeCents !== undefined &&
+    !session.receipt &&
+    session.payment?.status === "paid"
+  );
+}
+
+/** Something a session's document can cover: its fee, or the package its title bought. */
+export interface DocumentItem {
+  source: DocumentSource;
+  label: string;
+  amountCents: number;
+  /** Why it can't go on a new document of the type now; unset when it can. */
+  unavailable?: string | undefined;
 }
 
 /**
- * What a new document of the type would cover: the session's fee if it can
- * have one, and the package its title bought (keyed by the same event ID)
- * if that has none of the type yet. Both go on one document.
+ * What a session's documents of the type can cover, each on its own: the
+ * session's fee and the package its title bought. She picks any of them
+ * for one document, and the rest can go on another. A receipt needs each
+ * one paid.
  */
-export function documentSources(type: DocumentType, session: Session, bought: Package | undefined): Array<DocumentSource> {
-  const sources: Array<DocumentSource> = [];
-  if (type === "invoice" ? canInvoice(session) : canReceipt(session)) {
-    sources.push({ kind: "session", id: session.eventId });
+export function documentItems(type: DocumentType, session: Session, pkg: Package | undefined): Array<DocumentItem> {
+  const items: Array<DocumentItem> = [];
+  if (session.removedAt) return items;
+
+  if (session.status === "priced" && session.feeCents !== undefined) {
+    let unavailable: string | undefined;
+    if (session[type]) unavailable = `On ${type === "invoice" ? "an invoice" : "a receipt"} already`;
+    else if (type === "receipt" && !canReceipt(session)) unavailable = "Not paid yet";
+    items.push({ source: { kind: "session", id: session.eventId }, label: "Session fee", amountCents: session.feeCents, unavailable });
   }
-  const paidFor = type === "invoice" || session.payment?.status === "paid" || session.untracked;
-  if (bought && !bought.removed && !bought[type] && paidFor) sources.push({ kind: "package", id: bought.id });
-  return sources;
+
+  const bought = boughtIn(session.eventId, pkg);
+  if (bought) {
+    let unavailable: string | undefined;
+    if (bought[type]) unavailable = `On ${type === "invoice" ? "an invoice" : "a receipt"} already`;
+    else if (type === "receipt" && !canReceiptPackage(bought)) unavailable = "Not paid yet";
+    items.push({
+      source: { kind: "package", id: bought.id },
+      label: `Package of ${bought.sessions}`,
+      amountCents: bought.priceCents,
+      unavailable,
+    });
+  }
+  return items;
 }
 
 export interface SessionDocument {
@@ -115,8 +160,8 @@ export interface SessionDocument {
 }
 
 /** The documents of a type on the session or the package it bought, each once. */
-export function sessionDocuments(type: DocumentType, session: Session, bought: Package | undefined): Array<SessionDocument> {
-  const refs = [session[type], bought?.[type]].filter((ref) => ref !== undefined);
+export function sessionDocuments(type: DocumentType, session: Session, pkg: Package | undefined): Array<SessionDocument> {
+  const refs = [session[type], boughtIn(session.eventId, pkg)?.[type]].filter((ref) => ref !== undefined);
   return refs
     .filter((ref, i) => refs.findIndex((r) => r.documentId === ref.documentId) === i)
     .map((ref) => ({ type, ref }));

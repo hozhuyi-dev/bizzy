@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/docref"
+	"bizzy-lambda/internal/features/money"
 )
 
 type Source string
@@ -14,6 +15,8 @@ type Source string
 const (
 	// SourceCalendar packages come from a `10x85` / `10@850` title. Their ID
 	// is the event ID, so the sync always maps an event to the same package.
+	// Once the title no longer buys it, the reconcile unlinks it: it becomes
+	// an app package, kept with what she recorded, until she deletes it.
 	SourceCalendar Source = "calendar"
 	SourceApp      Source = "app"
 )
@@ -29,10 +32,10 @@ type Package struct {
 
 	// Derived by the billing reconcile.
 	CreditsUsed int `json:"creditsUsed" dynamodbav:"creditsUsed"`
-	// Removed is set when the calendar entry that bought it no longer does,
-	// but a document keeps it.
-	Removed bool   `json:"removed,omitempty" dynamodbav:"removed,omitempty"`
-	Drift   string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
+
+	// Payment settles its price, in full. Written by the payments feature
+	// only (see PaymentPatch).
+	Payment *money.Payment `json:"payment,omitempty" dynamodbav:"payment,omitempty"`
 
 	// The documents covering it, written by the documents feature.
 	Invoice *docref.Ref `json:"invoice,omitempty" dynamodbav:"invoice,omitempty"`
@@ -56,15 +59,30 @@ func (p Package) CreditsLeft() int {
 	return max(p.Sessions-p.CreditsUsed, 0)
 }
 
-// Open reports whether the package still has credits or needs attention.
+// Settled reports whether its price needs nothing more: paid, waived, or
+// free.
+func (p Package) Settled() bool {
+	return p.Payment != nil || p.PriceCents == 0
+}
+
+// Open reports whether the package is still in use or still to be paid.
 func (p Package) Open() bool {
-	return (!p.Removed && p.CreditsLeft() > 0) || p.Drift != ""
+	return p.CreditsLeft() > 0 || !p.Settled()
+}
+
+// CollectOnItsOwn reports whether it goes on her to-do list as itself: a
+// calendar package is collected with the session that bought it instead.
+func (p Package) CollectOnItsOwn() bool {
+	return p.Source == SourceApp && !p.Settled()
 }
 
 // Billable reports whether a document of the slot's type can be made for
-// the package.
+// the package: an invoice any time, a receipt once it is paid.
 func (p Package) Billable(slot docref.Slot) bool {
-	return !p.Removed && p.Ref(slot) == nil
+	if p.Ref(slot) != nil {
+		return false
+	}
+	return slot == docref.SlotInvoice || p.Payment.IsPaid()
 }
 
 // ShareCents is the value of credit i (0-based): the price split evenly, with

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
-import type { PaymentInput, SessionDraft } from "./sessions.types";
+import type { SessionDraft } from "./sessions.types";
 import { ApiError } from "~/core/lambda/lambda.client";
 import { SessionKeys } from "~/core/keys.query";
 import { invalidateBilling } from "~/core/utils/query.util";
@@ -87,10 +87,10 @@ export const SessionsMutation = {
       ({ eventId }) => eventId,
     ),
 
-  useSetPayment: () =>
+  /** Saves the summary alone, from the to-do list; the notes are kept. */
+  useSaveSummary: () =>
     useSessionMutation(
-      ({ eventId, payment }: { eventId: string; payment: PaymentInput | null }) =>
-        SessionsService.setPayment(eventId, payment),
+      ({ eventId, summary }: { eventId: string; summary: string }) => SessionsService.saveRecord(eventId, summary),
       ({ eventId }) => eventId,
       true,
     ),

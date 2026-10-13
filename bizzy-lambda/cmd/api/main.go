@@ -19,6 +19,7 @@ import (
 	"bizzy-lambda/internal/features/google"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
+	"bizzy-lambda/internal/features/payments"
 	"bizzy-lambda/internal/features/reset"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
@@ -75,9 +76,10 @@ func main() {
 	})
 	contacts.Register(r, directory, clientsRepo)
 	google.Register(r, connections, auth)
-	sessions.Register(r, sessionsRepo, reconcileClients, loc)
+	sessions.Register(r, sessionsRepo)
+	payments.Register(r, payments.NewRepository(store, sessionsRepo, packagesRepo), reconcileClients, loc)
 	followups.Register(r, followUpsRepo)
-	todo.Register(r, sessionsRepo, followUpsRepo, settingsRepo)
+	todo.Register(r, sessionsRepo, packagesRepo, followUpsRepo, settingsRepo)
 	calendar := func(ctx context.Context) (googlesync.Calendar, error) {
 		return connections.Calendar(ctx, auth.Client)
 	}
@@ -94,7 +96,7 @@ func main() {
 		FollowUps: followUpsRepo,
 		Location:  loc,
 	})
-	packages.Register(r, packagesRepo, reconcileClients)
+	packages.Register(r, packagesRepo, reconcileClients, loc)
 	settings.Register(r, settingsRepo, func(ctx context.Context) error {
 		return reconcile(ctx, billing.Scope{AllClients: true, Unmatched: true})
 	})
@@ -109,7 +111,7 @@ func main() {
 		Now:         time.Now,
 	})
 	status := googlesync.NewStatusRepository(store)
-	googlesync.Register(r, status, loc, func(ctx context.Context, rng googlesync.Range) (googlesync.Summary, error) {
+	runSync := func(ctx context.Context, rng googlesync.Range) (googlesync.Summary, error) {
 		cal, err := calendar(ctx)
 		if err != nil {
 			return googlesync.Summary{}, err
@@ -125,10 +127,13 @@ func main() {
 			Location:  loc,
 			Now:       time.Now,
 		}.Run(ctx, rng)
-	})
-	// Keeps the Google connection, so a sync can rebuild everything at once.
+	}
+	googlesync.Register(r, status, loc, runSync)
+	// Keeps the Google connection, so a full sync rebuilds everything at once.
 	if reset.Allowed(os.Getenv("ENVIRONMENT")) {
-		reset.Register(r, store, google.Partition)
+		reset.Register(r, store, func(ctx context.Context) (any, error) {
+			return runSync(ctx, googlesync.Range{})
+		}, google.Partition)
 	}
 
 	lambda.Start(r.Handle)

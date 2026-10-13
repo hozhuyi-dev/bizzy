@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -52,11 +53,26 @@ func (s *Store) DeleteAll(ctx context.Context, keep ...string) (int, error) {
 	return len(keys), nil
 }
 
-// batchWrite retries whatever DynamoDB leaves unprocessed under throttling.
+// batchAttempts bounds batchWrite's retries; the waits between them double
+// from batchBackoff, about 6 s in all.
+const (
+	batchAttempts = 8
+	batchBackoff  = 50 * time.Millisecond
+)
+
+// batchWrite retries whatever DynamoDB leaves unprocessed under throttling,
+// backing off between attempts as AWS advises.
 func (s *Store) batchWrite(ctx context.Context, requests []types.WriteRequest) error {
 	for attempt := 0; len(requests) > 0; attempt++ {
-		if attempt == 5 {
+		if attempt == batchAttempts {
 			return fmt.Errorf("dynamo: %d writes still unprocessed", len(requests))
+		}
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(batchBackoff << (attempt - 1)):
+			}
 		}
 		out, err := s.Client.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
 			RequestItems: map[string][]types.WriteRequest{s.Table: requests},

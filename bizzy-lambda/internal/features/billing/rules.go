@@ -14,6 +14,7 @@ import (
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/docref"
+	"bizzy-lambda/internal/features/money"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
@@ -24,11 +25,8 @@ type Env struct {
 	Aliases     calendar.Aliases
 	Clients     map[string]clients.Client
 	HomeColorID string
-	// TrackFrom is when she started recording notes and payments here;
-	// zero tracks everything.
-	TrackFrom time.Time
-	Location  *time.Location
-	Now       time.Time
+	Location    *time.Location
+	Now         time.Time
 }
 
 func NewEnv(all []clients.Client, cfg settings.Settings, loc *time.Location, now time.Time) Env {
@@ -36,11 +34,7 @@ func NewEnv(all []clients.Client, cfg settings.Settings, loc *time.Location, now
 	for _, c := range all {
 		byID[c.ID] = c
 	}
-	env := Env{Aliases: calendar.AliasesOf(all), Clients: byID, HomeColorID: cfg.HomeVisitColorID, Location: loc, Now: now}
-	if cfg.TrackFrom != "" {
-		env.TrackFrom, _ = time.ParseInLocation(time.DateOnly, cfg.TrackFrom, loc)
-	}
-	return env
+	return Env{Aliases: calendar.AliasesOf(all), Clients: byID, HomeColorID: cfg.HomeVisitColorID, Location: loc, Now: now}
 }
 
 // Entry is a session with its parsed title, carried between the steps.
@@ -62,10 +56,10 @@ func (e Entry) allocatable() bool {
 func Derive(s sessions.Session, env Env) Entry {
 	out := s
 	out.Status, out.Name, out.ClientID, out.SuggestedClientID = "", "", "", ""
-	out.FeeCents, out.FeeSource, out.PackageID, out.ValueCents, out.BoughtCents = nil, "", "", 0, 0
+	out.FeeCents, out.FeeSource, out.PackageID, out.ValueCents = nil, "", "", 0
+	out.BoughtCents, out.BoughtSettled = 0, false
 	out.Reason, out.Drift = "", ""
 	out.Upcoming = s.Start.After(env.Now)
-	out.Untracked = !env.TrackFrom.IsZero() && s.Start.Before(env.TrackFrom)
 
 	title, err := calendar.ParseTitle(s.Title)
 	out.Name = title.Name
@@ -152,8 +146,9 @@ func CalendarPackage(e Entry) (packages.Package, bool) {
 //  3. otherwise the client's default fee;
 //  4. otherwise the fee is missing.
 //
-// A package bought in the session is due with it. It sets CreditsUsed on
-// the packages it is given.
+// A package bought in the session is collected with it: the session
+// mirrors its price and whether it is settled. It sets CreditsUsed on the
+// packages it is given.
 func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package) {
 	slices.SortFunc(entries, func(a, b *Entry) int {
 		return cmp.Or(a.Session.Start.Compare(b.Session.Start), cmp.Compare(a.Session.EventID, b.Session.EventID))
@@ -172,6 +167,9 @@ func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package)
 		s := &e.Session
 		if p := e.Title.Package; p != nil {
 			s.BoughtCents = p.PriceCents
+			if bought := find(pkgs, s.EventID); bought != nil {
+				s.BoughtSettled = bought.Settled()
+			}
 		}
 
 		if fee := e.Title.FeeCents; fee != nil {
@@ -198,9 +196,18 @@ func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package)
 	}
 }
 
+func find(pkgs []*packages.Package, id string) *packages.Package {
+	for _, p := range pkgs {
+		if p.ID == id {
+			return p
+		}
+	}
+	return nil
+}
+
 func firstWithCredit(pkgs []*packages.Package, at time.Time) *packages.Package {
 	for _, p := range pkgs {
-		if !p.Removed && p.CreditsLeft() > 0 && !p.PurchasedAt.After(at) {
+		if p.CreditsLeft() > 0 && !p.PurchasedAt.After(at) {
 			return p
 		}
 	}
@@ -228,26 +235,12 @@ func SessionDrift(s sessions.Session, loc *time.Location) string {
 	return ""
 }
 
-// PackageDrift explains how a calendar package contradicts its documents.
-func PackageDrift(p packages.Package) string {
-	if !p.Removed {
-		return ""
-	}
-	for _, slot := range docref.Slots {
-		if ref := p.Ref(slot); ref.Issued() {
-			return fmt.Sprintf("Removed from the calendar after %s %s", slot, ref.Number)
-		}
-	}
-	return ""
-}
-
 // Activity sums one client's sessions and packages by month, and finds
 // their last session and next booking.
 //
 // Earned values sessions in the month they happen (a package session at its
-// share). Received is money in the month it was paid: what she recorded,
-// and packages bought in the app. History from before she tracked payments
-// counts its fees (and any package it bought) as received that day.
+// share). Received is money in the month it was paid, as she recorded it on
+// sessions and packages.
 func Activity(entries []*Entry, pkgs []*packages.Package, loc *time.Location) (activity map[string]clients.MonthActivity, last, next *time.Time) {
 	activity = map[string]clients.MonthActivity{}
 	add := func(month string, f func(*clients.MonthActivity)) {
@@ -267,12 +260,8 @@ func Activity(entries []*Entry, pkgs []*packages.Package, loc *time.Location) (a
 			}
 		}
 
-		switch {
-		case s.Payment != nil && s.Payment.Status == sessions.PaymentPaid:
-			day, _ := time.ParseInLocation(time.DateOnly, s.Payment.PaidOn, loc)
-			add(MonthKey(day, loc), func(a *clients.MonthActivity) { a.ReceivedCents += s.Payment.AmountCents })
-		case s.Untracked && s.Payment == nil && s.Status.Delivered():
-			add(MonthKey(s.Start, loc), func(a *clients.MonthActivity) { a.ReceivedCents += s.DueCents() })
+		if s.Payment.IsPaid() {
+			received(add, s.Payment, loc)
 		}
 
 		if !s.Status.Delivered() || s.Upcoming {
@@ -292,17 +281,21 @@ func Activity(entries []*Entry, pkgs []*packages.Package, loc *time.Location) (a
 	}
 
 	for _, p := range pkgs {
-		// A calendar package is paid with the session that bought it.
-		if p.Removed || p.Source != packages.SourceApp {
-			continue
+		if p.Payment.IsPaid() {
+			received(add, p.Payment, loc)
 		}
-		add(MonthKey(p.PurchasedAt, loc), func(a *clients.MonthActivity) { a.ReceivedCents += p.PriceCents })
 	}
 
 	if len(activity) == 0 {
 		activity = nil
 	}
 	return activity, last, next
+}
+
+// received adds a payment to the month it was paid in.
+func received(add func(string, func(*clients.MonthActivity)), p *money.Payment, loc *time.Location) {
+	day, _ := time.ParseInLocation(time.DateOnly, p.PaidOn, loc)
+	add(MonthKey(day, loc), func(a *clients.MonthActivity) { a.ReceivedCents += p.AmountCents })
 }
 
 // MonthKey is the month a time falls in, in her time zone.

@@ -15,7 +15,7 @@ import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { formatCents, parseCents } from "~/core/utils/money.util";
-import { PAYMENT_METHODS } from "~/features/sessions/sessions.types";
+import { PAYMENT_METHODS } from "~/features/payments/payments.types";
 
 // The methods she takes; she can still type something else.
 const PAID_BY_SUGGESTIONS = PAYMENT_METHODS.map((method) => method.label);

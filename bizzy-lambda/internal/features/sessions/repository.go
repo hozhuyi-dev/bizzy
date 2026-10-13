@@ -122,6 +122,15 @@ func (r Repository) Save(ctx context.Context, s Session) (Session, error) {
 	return s, nil
 }
 
+// PutItem is Save as one write in a transaction with other items: it
+// returns the session at its new version, and the write that stores it if
+// it is still at the version read.
+func PutItem(s Session) (Session, dynamo.TransactItem) {
+	previous := s.Version
+	s.Version++
+	return s, dynamo.TransactItem{Put: toRecord(s), When: dynamo.VersionIs(previous)}
+}
+
 // Delete removes a session and its notes, if it is still at the version
 // read and no document covers it. dynamo.ErrConflict otherwise.
 func (r Repository) Delete(ctx context.Context, s Session) error {

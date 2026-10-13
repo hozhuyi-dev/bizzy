@@ -8,6 +8,7 @@ import (
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/docref"
+	"bizzy-lambda/internal/features/money"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/testutil/memory"
@@ -124,9 +125,10 @@ func TestPricing(t *testing.T) {
 	if s := m.SessionMap["e9"]; s.SuggestedClientID != "jane" {
 		t.Errorf("near miss suggestion = %q", s.SuggestedClientID)
 	}
-	// The package is due with the session that bought it.
-	if s := m.SessionMap["e3"]; s.BoughtCents != 25000 || s.DueCents() != 25000 {
-		t.Errorf("e3 bought %d due %d, want 25000", s.BoughtCents, s.DueCents())
+	// The package is collected with the session that bought it, but due on
+	// its own: the session's own fee is a credit.
+	if s := m.SessionMap["e3"]; s.BoughtCents != 25000 || s.DueCents() != 0 || !s.BoughtDue() {
+		t.Errorf("e3 bought %d due %d package due %v, want the package due", s.BoughtCents, s.DueCents(), s.BoughtDue())
 	}
 
 	p := m.PackageMap["e3"]
@@ -147,16 +149,27 @@ func TestPaymentsAreReceivedWhenPaid(t *testing.T) {
 	sync(t, m, event("e1", 1, "Jane Smith 95 10x85"))
 
 	edit(m, "e1", func(s *sessions.Session) {
-		s.Payment = &sessions.Payment{Status: sessions.PaymentPaid, Method: sessions.MethodTNG, AmountCents: 94500, PaidOn: "2026-11-02"}
+		s.Payment = &money.Payment{Status: money.Paid, Method: money.MethodTNG, AmountCents: 9500, PaidOn: "2026-10-01"}
 	})
 	reconcile(t, m, Scope{ClientIDs: []string{"jane"}})
-
-	activity := m.ClientMap["jane"].Activity
-	if got := activity["2026-11"].ReceivedCents; got != 94500 {
-		t.Errorf("November received = %d, want the payment", got)
+	if s := m.SessionMap["e1"]; s.Paid() || !s.BoughtDue() {
+		t.Errorf("fee paid, package not: paid %v package due %v", s.Paid(), s.BoughtDue())
 	}
-	if got := activity["2026-10"]; got.ReceivedCents != 0 || got.Sessions != 1 {
-		t.Errorf("October = %+v, want the session but not the money", got)
+
+	p := m.PackageMap["e1"]
+	p.Payment = &money.Payment{Status: money.Paid, Method: money.MethodCash, AmountCents: 85000, PaidOn: "2026-11-02"}
+	m.PackageMap["e1"] = p
+	reconcile(t, m, Scope{ClientIDs: []string{"jane"}})
+
+	if s := m.SessionMap["e1"]; !s.BoughtSettled || !s.Paid() {
+		t.Errorf("both paid: settled %v paid %v", s.BoughtSettled, s.Paid())
+	}
+	activity := m.ClientMap["jane"].Activity
+	if got := activity["2026-10"]; got.ReceivedCents != 9500 || got.Sessions != 1 {
+		t.Errorf("October = %+v, want the session and its fee", got)
+	}
+	if got := activity["2026-11"].ReceivedCents; got != 85000 {
+		t.Errorf("November received = %d, want the package", got)
 	}
 	// Paid at its fee, it keeps the fee rather than take a credit.
 	if s := m.SessionMap["e1"]; s.Status != sessions.StatusPriced {
@@ -164,20 +177,17 @@ func TestPaymentsAreReceivedWhenPaid(t *testing.T) {
 	}
 }
 
-func TestHistoryBeforeTrackingCountsItsFees(t *testing.T) {
+func TestAppPackageIsReceivedWhenPaidNotBought(t *testing.T) {
 	m := memory.New()
 	m.ClientMap["jane"] = jane()
-	m.SettingsVal.TrackFrom = "2026-10-03"
-	sync(t, m, event("e1", 1, "Jane Smith 95"), event("e5", 5, "Jane Smith 95"))
+	m.PackageMap["p"] = packages.Package{ID: "p", ClientID: "jane", Sessions: 5, PriceCents: 40000, PurchasedAt: day(1), Source: packages.SourceApp}
+	reconcile(t, m, Scope{ClientIDs: []string{"jane"}})
 
-	if s := m.SessionMap["e1"]; !s.Untracked || len(s.Todo(today)) != 0 {
-		t.Errorf("e1 untracked %v todo %v, want settled history", s.Untracked, s.Todo(today))
+	if a := m.ClientMap["jane"].Activity; a != nil {
+		t.Errorf("activity = %v, want nothing received before she is paid", a)
 	}
-	if s := m.SessionMap["e5"]; s.Untracked || len(s.Todo(today)) != 2 {
-		t.Errorf("e5 untracked %v todo %v, want record and collect", s.Untracked, s.Todo(today))
-	}
-	if got := m.ClientMap["jane"].Activity["2026-10"].ReceivedCents; got != 9500 {
-		t.Errorf("received = %d, want only the untracked fee", got)
+	if p := m.PackageMap["p"]; !p.Open() || !p.CollectOnItsOwn() {
+		t.Error("an unpaid app package is collected on its own")
 	}
 }
 
@@ -276,35 +286,53 @@ func TestQuietRunWritesNothing(t *testing.T) {
 	}
 }
 
-func TestPackageRemovedFromTitle(t *testing.T) {
+func TestPackageRemovedFromTitleIsUnlinked(t *testing.T) {
 	m := memory.New()
 	m.ClientMap["jane"] = jane()
 	sync(t, m, event("e1", 1, "Jane Smith 10x85"), event("e2", 2, "Jane Smith"))
 
-	sync(t, m, event("e1", 1, "Jane Smith"))
-
-	if _, ok := m.PackageMap["e1"]; ok {
-		t.Error("package should be deleted once the title no longer buys it")
-	}
-	if s := m.SessionMap["e2"]; s.Status != sessions.StatusPriced || s.FeeSource != sessions.FeeFromDefault {
-		t.Errorf("e2 = %s/%s, want priced from default", s.Status, s.FeeSource)
-	}
-}
-
-func TestReceiptedPackageIsKeptAsRemoved(t *testing.T) {
-	m := memory.New()
-	m.ClientMap["jane"] = jane()
-	sync(t, m, event("e1", 1, "Jane Smith 10x85"))
-
 	p := m.PackageMap["e1"]
 	p.Receipt = &docref.Ref{DocumentID: "d1", Number: "RCP260001", AmountCents: cents(85000), ClientID: "jane"}
+	p.Payment = &money.Payment{Status: money.Paid, Method: money.MethodCash, AmountCents: 85000, PaidOn: "2026-10-01"}
 	m.PackageMap["e1"] = p
 
 	sync(t, m, event("e1", 1, "Jane Smith"))
 
-	p = m.PackageMap["e1"]
-	if !p.Removed || p.Drift == "" {
-		t.Errorf("package = removed:%v drift:%q, want removed with drift", p.Removed, p.Drift)
+	// Kept as an app package, with everything she recorded, until she
+	// deletes it herself.
+	p, ok := m.PackageMap["e1"]
+	if !ok || p.Source != packages.SourceApp || p.Payment == nil || p.Receipt == nil || p.CreditsUsed != 2 {
+		t.Fatalf("package = %+v, want unlinked and kept", p)
+	}
+	// e1 buys nothing now, but the package dates from it: its first credit.
+	if s := m.SessionMap["e1"]; s.BoughtCents != 0 || s.Status != sessions.StatusPackage || s.PackageID != "e1" {
+		t.Errorf("e1 = %s/%q bought %d, want on the first credit, buying nothing", s.Status, s.PackageID, s.BoughtCents)
+	}
+	if s := m.SessionMap["e2"]; s.Status != sessions.StatusPackage || s.PackageID != "e1" {
+		t.Errorf("e2 = %s/%q, want still on the package's credit", s.Status, s.PackageID)
+	}
+
+	// The title buys it again: linked back, not bought twice.
+	sync(t, m, event("e1", 1, "Jane Smith 10x85"))
+	if p := m.PackageMap["e1"]; p.Source != packages.SourceCalendar || p.Payment == nil || len(m.PackageMap) != 1 {
+		t.Errorf("package = %+v, want linked back with its payment", p)
+	}
+	if s := m.SessionMap["e1"]; !s.BoughtSettled {
+		t.Error("the session mirrors its package's payment")
+	}
+}
+
+func TestUnpaidUnlinkedPackageIsCollectedOnItsOwn(t *testing.T) {
+	m := memory.New()
+	m.ClientMap["jane"] = jane()
+	sync(t, m, event("e1", 1, "Jane Smith 10x85"))
+	if p := m.PackageMap["e1"]; p.CollectOnItsOwn() {
+		t.Error("a linked package is collected on its session")
+	}
+
+	sync(t, m, event("e1", 1, "Jane Smith"))
+	if p := m.PackageMap["e1"]; !p.CollectOnItsOwn() {
+		t.Errorf("package = %+v, want collected on its own once unlinked", p)
 	}
 }
 

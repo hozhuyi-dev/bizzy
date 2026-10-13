@@ -54,7 +54,7 @@ export function SettingsPage() {
 
 const FORM_ID = "settings-form";
 
-type TextKey = Exclude<keyof Settings, "homeVisitColorId" | "confirmAheadDays" | "followUpAheadDays" | "trackFrom">;
+type TextKey = Exclude<keyof Settings, "homeVisitColorId" | "confirmAheadDays" | "followUpAheadDays">;
 
 const placeholderList = (names: ReadonlyArray<string>) => names.map((name) => `{${name}}`).join(" ");
 
@@ -90,7 +90,6 @@ function SettingsForm({ saved }: { saved: Settings }) {
       bankName: saved.bankName ?? "",
       accountName: saved.accountName ?? "",
       accountNo: saved.accountNo ?? "",
-      trackFrom: saved.trackFrom ?? "",
     },
     onSubmit: async ({ value }) => {
       try {
@@ -308,25 +307,6 @@ function SettingsForm({ saved }: { saved: Settings }) {
                     )}
                   </form.Field>
                 </div>
-                <form.Field name="trackFrom">
-                  {(field) => (
-                    <Field>
-                      <FieldLabel htmlFor={field.name}>Track notes and payments from</FieldLabel>
-                      <Input
-                        id={field.name}
-                        form={FORM_ID}
-                        type="date"
-                        className="w-auto"
-                        value={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                      />
-                      <FieldDescription>
-                        Sessions before this day need no notes or payment here; their fees count as received.
-                        Leave blank to track every session.
-                      </FieldDescription>
-                    </Field>
-                  )}
-                </form.Field>
               </FieldGroup>
             ),
           },

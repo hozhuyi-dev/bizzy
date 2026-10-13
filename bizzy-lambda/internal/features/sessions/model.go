@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/docref"
+	"bizzy-lambda/internal/features/money"
 )
 
 type Status string
@@ -70,44 +71,6 @@ type Record struct {
 	UpdatedAt time.Time `json:"updatedAt" dynamodbav:"updatedAt"`
 }
 
-type PaymentStatus string
-
-const (
-	PaymentPaid PaymentStatus = "paid"
-	// PaymentWaived settles a session she won't charge for.
-	PaymentWaived PaymentStatus = "waived"
-)
-
-type PaymentMethod string
-
-const (
-	MethodCash         PaymentMethod = "cash"
-	MethodTNG          PaymentMethod = "tng"
-	MethodGrab         PaymentMethod = "grab"
-	MethodBankTransfer PaymentMethod = "bank_transfer"
-)
-
-// MethodLabels are the methods she takes, as a receipt prints them.
-var MethodLabels = map[PaymentMethod]string{
-	MethodCash:         "Cash",
-	MethodTNG:          "Touch 'n Go eWallet",
-	MethodGrab:         "GrabPay",
-	MethodBankTransfer: "Bank transfer",
-}
-
-// Payment settles what a session costs: its fee and any package bought in
-// it.
-type Payment struct {
-	Status PaymentStatus `json:"status" dynamodbav:"status"`
-	// Method is set when paid.
-	Method      PaymentMethod `json:"method,omitempty" dynamodbav:"method,omitempty"`
-	AmountCents int64         `json:"amountCents" dynamodbav:"amountCents"`
-	// PaidOn is the day, YYYY-MM-DD in her time zone: income counts in its
-	// month.
-	PaidOn    string    `json:"paidOn" dynamodbav:"paidOn"`
-	UpdatedAt time.Time `json:"updatedAt" dynamodbav:"updatedAt"`
-}
-
 // Session is keyed by the Google event instance ID, so a moved event is the
 // same item. It is written whole with a version check (see Repository.Save).
 type Session struct {
@@ -133,9 +96,12 @@ type Session struct {
 	// ValueCents is what the session earned: its fee, or its share of the
 	// package that covered it.
 	ValueCents int64 `json:"valueCents,omitempty" dynamodbav:"valueCents,omitempty"`
-	// BoughtCents is the price of a package bought in this session (its
-	// title says `10x85`), due with the session.
+	// BoughtCents is the price of the package bought in this session (its
+	// title says `10x85`). The package is paid on its own (see
+	// packages.Package.Payment), but she collects it with the session, so
+	// BoughtSettled mirrors whether it is.
 	BoughtCents    int64    `json:"boughtCents,omitempty" dynamodbav:"boughtCents,omitempty"`
+	BoughtSettled  bool     `json:"boughtSettled,omitempty" dynamodbav:"boughtSettled,omitempty"`
 	Location       Location `json:"location,omitempty" dynamodbav:"location,omitempty"`
 	LocationSource string   `json:"locationSource,omitempty" dynamodbav:"locationSource,omitempty"`
 	// Reason explains StatusUnmatched / StatusParseError / StatusMissingFee.
@@ -145,16 +111,15 @@ type Session struct {
 	// Upcoming is set while it was still ahead at the last reconcile; the
 	// sync reconciles it again once it has happened.
 	Upcoming bool `json:"upcoming,omitempty" dynamodbav:"upcoming,omitempty"`
-	// Untracked is set before Settings.TrackFrom: history from before she
-	// kept notes and payments here, which needs neither.
-	Untracked bool `json:"untracked,omitempty" dynamodbav:"untracked,omitempty"`
 	// ConfirmedAt is when it stopped being tentative; for one never
 	// tentative, when it was first seen (at the latest its start).
 	ConfirmedAt *time.Time `json:"confirmedAt,omitempty" dynamodbav:"confirmedAt,omitempty"`
 
 	// Hers.
-	Record  *Record  `json:"record,omitempty" dynamodbav:"record,omitempty"`
-	Payment *Payment `json:"payment,omitempty" dynamodbav:"payment,omitempty"`
+	Record *Record `json:"record,omitempty" dynamodbav:"record,omitempty"`
+	// Payment settles the session's own fee; the package bought in it is
+	// paid on the package.
+	Payment *money.Payment `json:"payment,omitempty" dynamodbav:"payment,omitempty"`
 
 	// The documents covering it, written by the documents feature.
 	Invoice *docref.Ref `json:"invoice,omitempty" dynamodbav:"invoice,omitempty"`
@@ -194,23 +159,31 @@ func (s Session) Recorded() bool {
 	return s.Record != nil && s.Record.Summary != ""
 }
 
-// DueCents is what the session costs her client: the fee when one applies,
-// plus any package bought in it. A package credit costs nothing more.
+// DueCents is the session's own fee, when one applies: a package credit
+// costs nothing more. The package bought in it is due on the package.
 func (s Session) DueCents() int64 {
-	var due int64
 	if s.Status == StatusPriced && s.FeeCents != nil {
-		due = *s.FeeCents
+		return *s.FeeCents
 	}
-	if s.Status.Delivered() {
-		due += s.BoughtCents
-	}
-	return due
+	return 0
 }
 
-// Paid reports whether nothing more is owed: settled, waived, or nothing
-// due.
-func (s Session) Paid() bool {
+// FeeSettled reports whether the session's own fee needs nothing more:
+// paid, waived, or nothing due.
+func (s Session) FeeSettled() bool {
 	return s.Payment != nil || s.DueCents() == 0
+}
+
+// BoughtDue reports whether the package bought in the session is still to
+// be paid.
+func (s Session) BoughtDue() bool {
+	return s.Status.Delivered() && s.BoughtCents > 0 && !s.BoughtSettled
+}
+
+// Paid reports whether nothing more is owed on it: its fee and the package
+// bought in it.
+func (s Session) Paid() bool {
+	return s.FeeSettled() && !s.BoughtDue()
 }
 
 // Open reports whether the session belongs in the to-do index. A future
@@ -218,7 +191,7 @@ func (s Session) Paid() bool {
 // happened; the index is read only up to a few days ahead.
 func (s Session) Open() bool {
 	return s.RemovedAt != nil || s.Status == StatusTentative || s.Status.NeedsFix() || s.Drift != "" ||
-		(!s.Untracked && (!s.Recorded() || !s.Paid()))
+		!s.Recorded() || !s.Paid()
 }
 
 // Reason is why a session is on her to-do list.
@@ -250,7 +223,7 @@ func (s Session) Todo(now time.Time) []Reason {
 		return []Reason{ReasonConfirm}
 	case s.Status.NeedsFix() || s.Drift != "":
 		return []Reason{ReasonFix}
-	case s.Untracked || s.End.After(now):
+	case s.End.After(now):
 		return nil
 	}
 	var reasons []Reason
@@ -269,8 +242,7 @@ func (s Session) CanInvoice() bool {
 }
 
 // CanReceipt reports whether a receipt can be made for the session's fee:
-// once it is paid, or for history from before she tracked payments here.
+// once it is paid.
 func (s Session) CanReceipt() bool {
-	paid := (s.Payment != nil && s.Payment.Status == PaymentPaid) || (s.Untracked && s.Payment == nil)
-	return s.RemovedAt == nil && s.Status == StatusPriced && s.FeeCents != nil && s.Receipt == nil && paid
+	return s.RemovedAt == nil && s.Status == StatusPriced && s.FeeCents != nil && s.Receipt == nil && s.Payment.IsPaid()
 }

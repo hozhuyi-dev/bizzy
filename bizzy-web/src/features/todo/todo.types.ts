@@ -1,9 +1,15 @@
 import type { FollowUp } from "~/features/follow-ups/follow-ups.types";
+import type { Package } from "~/features/packages/packages.types";
 import type { Session, TodoReason } from "~/features/sessions/sessions.types";
 
-/** One thing on her to-do list; mirrors bizzy-lambda/internal/features/todo. */
+/**
+ * One thing on her to-do list; mirrors bizzy-lambda/internal/features/todo.
+ * A package is its own item only when no session bought it (added here, or
+ * unlinked); one bought in a session is collected on that session.
+ */
 export type TodoItem =
   | { kind: "session"; at: string; reasons: Array<TodoReason>; session: Session }
+  | { kind: "package"; at: string; reasons: Array<TodoReason>; package: Package }
   | { kind: "followUp"; at: string; followUp: FollowUp };
 
 /** The filter chips: a session reason, or follow-ups. */
@@ -44,5 +50,12 @@ export function groupOf(item: TodoItem, now = new Date()): TodoGroup {
 
 /** A stable key for an item. */
 export function todoKey(item: TodoItem): string {
-  return item.kind === "session" ? `s:${item.session.eventId}` : `f:${item.followUp.eventId}`;
+  switch (item.kind) {
+    case "session":
+      return `s:${item.session.eventId}`;
+    case "package":
+      return `p:${item.package.id}`;
+    case "followUp":
+      return `f:${item.followUp.eventId}`;
+  }
 }

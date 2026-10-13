@@ -22,7 +22,7 @@ Separately, she **connects Google** once in Settings: an OAuth consent for her c
 | --- | --- |
 | `Jane Smith` | Uses a package credit if one is left, otherwise her default rate |
 | `Jane Smith 95` | The fee for this session is 95 |
-| `Jane Smith 10x85` | Buys 10 sessions at 85 each (850), due with this session, which uses the first |
+| `Jane Smith 10x85` | Buys 10 sessions at 85 each (850), collected with this session, which uses the first |
 | `Jane Smith 3@250` | Buys 3 sessions for 250 in total, for when the price per session isn't round |
 | `Jane Smith 95 10x85` | A fee of 95 for this session, and a package bought for later |
 | `? Jane Smith` | Not confirmed yet; on the to-do list a few days before, until the `?` is removed |
@@ -35,6 +35,7 @@ An amount is what the session costs, not that it was paid: she records the payme
 - **In the app** she can add sessions (**New session** on Sessions), confirm a tentative one from the table, or open one from the table to edit or delete it, instead of opening the calendar. Each writes to Google first (an edit carries the event's etag, so a change made on her phone meanwhile is never overwritten), then updates the session exactly as the next sync would. She fills in fields and the API writes the title in the syntax above, so app-made titles always parse and match. A session covered by an invoice or receipt can't be changed until it is cancelled.
 - **Home visits**: give the event the home-visit colour (Tomato by default, changeable in Settings). Any other colour means her place; no colour follows the client's "usually a home visit" setting.
 - The app syncs when it opens and on **Sync now**, re-reading the last 60 days and the next 60 (bookings are sessions too). **Sync now → Sync dates…** re-reads dates she picks, or **All time**; connecting Google or choosing another calendar syncs all time. Changes made in the calendar show up after the next sync. There is no schedule: nothing changes until she opens the app. A session with an issued document still follows the calendar, but a change that contradicts the document is flagged.
+- **A package bought in a title** stays linked to that session while the title buys it. Edit the `10x85` away (or delete the session) and the package is **unlinked**, not deleted: it becomes like one added in the app, keeping its payment, credits and documents, and is collected on its own if unpaid. Only deleting it on **Packages** removes it. Writing the same package back into the title links it again.
 - **Deleted in the calendar**: a session with nothing of hers on it is removed. One with notes, a payment or a document is kept as deleted, on the to-do list and under **Sessions → Deleted**, to **Restore** (the event comes back from Google's trash, about 30 days) or **Discard**. Deleting a session in the app removes it with its notes and payment.
 
 ### Follow-ups
@@ -47,11 +48,15 @@ A session's page walks through its steps, in a rail that shows where each stands
 
 1. **Booking**: when, with whom, the fee and any package bought. Confirm or cancel a tentative one.
 2. **Notes**: a one-line summary (shown on the client's timeline) and long notes, saved as she types. Open once it has started. Attaching photos and PDFs is planned (S3; the seam is `platform/blobstore` and `features/attachments`).
-3. **Payment**: paid (cash, Touch 'n Go, GrabPay, bank transfer; amount and day) or waived. It can come before the notes. A package credit leaves nothing to pay; a package bought in the session is due with it.
-4. **Documents** (optional): an invoice once confirmed, a receipt once paid.
+3. **Payment**: paid (cash, Touch 'n Go, GrabPay, bank transfer; amount and day) or waived, always in full. It can come before the notes. A package credit leaves nothing to pay. A package bought in the session has its own payment: she marks the session's fee and the package paid together or one at a time.
+4. **Documents** (optional): an invoice once confirmed, a receipt once paid. The session's fee and the package it bought can go on one document or separate ones: she ticks what each covers.
 5. **Follow-ups** (optional), and **Next visit**: the same time a week on, in two taps.
 
-**Home** has today's sessions and one to-do list: sessions to confirm, record, collect, fix or restore, and follow-ups due, grouped by day and filtered by kind. Confirm, mark paid and tick off happen in the list; **Next to-do** on a session's page walks through the rest. History from before **Settings → To do → Track notes and payments from** needs neither, and its fees count as received.
+**Home** has today's sessions and one to-do list: sessions to confirm, record, collect, fix or restore, packages to collect, and follow-ups due, grouped by day and filtered by kind. Most of it is cleared in the list: confirm, **Add summary** (the one line that counts as recorded; long notes stay on the session's page), **Paid ▾** by method (a session's fee and the package it bought together or either alone, or another amount, day or waiving), and ticking off follow-ups. **Next to-do** on a session's page walks through the rest. A package bought in a session is collected on that session's row; only one added in the app (or unlinked) has its own.
+
+### Packages
+
+Prepaid sessions, bought in a session's title (`10x85`) or added on **Packages**. Credits cover the client's sessions without an amount, oldest package first, from the day it was bought. Each package is paid in full on its own, any time: it counts as income the day it is paid, not the day it is bought, and gets a receipt only once paid. Adding one in the app can record it as paid there and then; otherwise it goes on the to-do list to collect.
 
 ## Clients and Google Contacts
 
@@ -64,7 +69,7 @@ Every client links to a Google contact, picked or created when the client is add
 
 ## Invoices and receipts
 
-Made on request from a session or a package: at most one invoice and one receipt each. An invoice asks for payment (with her bank details); a receipt confirms it, with how it was paid filled in from the session. Both share the same fields, lifecycle and PDF layout: a draft prefilled from what it covers, where everything printed can be edited freely; **Issue** takes the next number; issued ones can be **revised** (same number, earlier revisions kept) or **cancelled** (number stays used). Other types slot in through `documents.Types` (API) and `DOCUMENT_TYPES` (web).
+Made on request from a session or a package: at most one invoice and one receipt each for a session's fee and for each package, on one document or several. An invoice asks for payment (with her bank details); a receipt confirms it, with how each item was paid filled in, and needs every item on it paid. Both share the same fields, lifecycle and PDF layout: a draft prefilled from what it covers, where everything printed can be edited freely; **Issue** takes the next number; issued ones can be **revised** (same number, earlier revisions kept) or **cancelled** (number stays used). Other types slot in through `documents.Types` (API) and `DOCUMENT_TYPES` (web).
 
 Numbers are `AAAYYXXXX-ZZ`: the type (`INV`, `RCP`), the year it was issued, a count that restarts every year, and the revision from `-00`, e.g. `RCP260042-00`.
 
@@ -96,7 +101,7 @@ One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `FOLLOWU
 
 `development` is deployed from a laptop and used by the local frontend. Each environment is a separate set of stacks (`bizzy-<env>-auth|data|api|web`) in the same AWS account.
 
-Development and staging have **Settings → Reset**, which deletes everything in the table except the Google connection, so a sync starts over from the calendar. Production has neither the button nor the API action.
+Development and staging have **Settings → Reset**, which deletes everything in the table except the Google connection, then syncs the whole calendar back in. Production has neither the button nor the API action: issued invoices and receipts must be kept, and production starts empty when first deployed anyway.
 
 ## One-time setup
 

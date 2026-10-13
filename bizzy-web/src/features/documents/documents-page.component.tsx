@@ -16,7 +16,7 @@ import {
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
 import { formatCents } from "~/core/utils/money.util";
-import { formatDate, formatMonth } from "~/core/utils/date.util";
+import { formatDate, formatMonth, monthKey } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -112,7 +112,7 @@ export function DocumentsPage({ type, month, onMonthChange }: DocumentsPageProps
         title={spec.plural}
         toolbar={
           <>
-            <MonthPicker value={month} onChange={onMonthChange} />
+            <MonthPicker value={month} onChange={onMonthChange} max={monthKey(new Date())} />
             <SearchInput label={`Search ${spec.plural.toLowerCase()}`} value={search} onChange={setSearch} />
           </>
         }

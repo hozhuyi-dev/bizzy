@@ -16,34 +16,42 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "cn";
 import { BookingForm } from "./components/booking-form/booking-form.component";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
 import { NextVisitDialog } from "./components/next-visit-dialog/next-visit-dialog.component";
-import { PaymentEditor } from "./components/payment-editor/payment-editor.component";
 import { PipelineLayout } from "./components/pipeline-layout/pipeline-layout.component";
 import { RecordEditor, useRecordDraft } from "./components/record-editor/record-editor.component";
 import { DiscardDialog } from "./deleted-sessions-page.component";
 import {
   allSessionDocuments,
-  documentSources,
+  documentItems,
   dueCents,
   hasHappened,
+  isBoughtDue,
+  isDelivered,
   isPaid,
   needsFix,
+  owedCents,
   sessionDocuments,
 } from "./session-stage";
 import { SessionsMutation, isStaleEdit } from "./sessions.mutation";
 import { SessionsQuery } from "./sessions.query";
-import { methodLabel } from "./sessions.types";
 import type { PipelineStep, StepState } from "./components/pipeline-layout/pipeline-layout.component";
 import type { RecordDraft } from "./components/record-editor/record-editor.component";
-import type { SessionDocument } from "./session-stage";
+import type { DocumentItem, SessionDocument } from "./session-stage";
 import type { Session, SessionDraft, StoredSession } from "./sessions.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import type { Client } from "~/features/clients/clients.types";
 import type { DocumentType } from "~/features/documents/documents.types";
 import type { FollowUpTarget } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import type { FollowUp } from "~/features/follow-ups/follow-ups.types";
 import type { Package } from "~/features/packages/packages.types";
+import type { Payable } from "~/features/payments/components/payment-panel/payment-panel.component";
+import { boughtIn, creditsLeft } from "~/features/packages/packages.types";
+import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
+import { methodLabel } from "~/features/payments/payments.types";
+import { Checkbox } from "~/components/ui/checkbox";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { DocumentsQuery } from "~/features/documents/documents.query";
 import { DOCUMENT_TYPES, documentLabel, documentRoute } from "~/features/documents/documents.registry";
@@ -166,7 +174,7 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
 
   const parent = parentOf(returnTo);
   const client = session.clientId ? clientsById.get(session.clientId) : undefined;
-  const bought = packages.data?.find((pkg) => pkg.id === session.eventId);
+  const bought = boughtIn(session.eventId, packages.data?.find((pkg) => pkg.id === session.eventId));
   const covering = session.packageId ? packages.data?.find((pkg) => pkg.id === session.packageId) : undefined;
   const documents = allSessionDocuments(session, bought);
   const locked = documents.length > 0;
@@ -182,7 +190,7 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
   const steps: Array<PipelineStep> = [
     bookingStep(session, stored.draft, locked, () => setDeleting(true)),
     recordStep(session, record),
-    paymentStep(session, covering),
+    paymentStep(session, covering, bought),
     documentsStep(session, bought),
     followUpsStep(session, client, stored.draft, setFollowUp, setNextVisit),
   ];
@@ -408,9 +416,9 @@ function recordStep(session: Session, record: RecordDraft): PipelineStep {
   };
 }
 
-function paymentStep(session: Session, covering: Package | undefined): PipelineStep {
+function paymentStep(session: Session, covering: Package | undefined, bought: Package | undefined): PipelineStep {
   const due = dueCents(session);
-  const delivered = session.status === "priced" || session.status === "package" || session.status === "missing_fee";
+  const delivered = isDelivered(session);
   const { payment } = session;
   let blocked: string | undefined;
   if (session.removedAt) blocked = "Restore the session to record its payment.";
@@ -418,29 +426,92 @@ function paymentStep(session: Session, covering: Package | undefined): PipelineS
   else if (!delivered) blocked = "Fix the calendar entry first.";
 
   let state: StepState = "todo";
-  if (session.untracked || (delivered && isPaid(session))) state = "done";
+  if (delivered && isPaid(session)) state = "done";
   else if (!blocked && hasHappened(session)) state = "current";
 
-  let meta: string;
+  const parts: Array<string> = [];
   if (payment?.status === "paid") {
-    meta = `${formatCents(payment.amountCents)} · ${methodLabel(payment.method)} · ${formatDate(payment.paidOn)}`;
+    parts.push(`${formatCents(payment.amountCents)} · ${methodLabel(payment.method)} · ${formatDate(payment.paidOn)}`);
   } else if (payment?.status === "waived") {
-    meta = `Waived ${formatDate(payment.paidOn)}`;
-  } else if (session.untracked) {
-    meta = "Before you tracked payments here";
+    parts.push(`Waived ${formatDate(payment.paidOn)}`);
   } else if (delivered && due === 0) {
-    meta = "Covered by a package";
+    parts.push("Covered by a package");
   } else {
-    meta = due > 0 ? `${formatCents(due)} due` : "Fee not known yet";
+    parts.push(due > 0 ? `${formatCents(due)} due` : "Fee not known yet");
   }
+  if (isBoughtDue(session)) parts.push(`package ${formatCents(session.boughtCents ?? 0)} due`);
+  else if (session.boughtCents) parts.push("package settled");
 
   return {
     id: "payment",
     title: "Payment",
     state,
-    meta,
-    content: <PaymentEditor session={session} coveringPackage={covering} blocked={blocked} />,
+    meta: parts.join(" · "),
+    content: blocked ? (
+      <p className="text-sm text-muted-foreground">{blocked}</p>
+    ) : (
+      <SessionPayment session={session} covering={covering} bought={bought} />
+    ),
   };
+}
+
+/**
+ * The session's fee and the package its title bought, each settled on its
+ * own: together or one at a time.
+ */
+function SessionPayment({
+  session,
+  covering,
+  bought,
+}: {
+  session: Session;
+  covering: Package | undefined;
+  bought: Package | undefined;
+}) {
+  const due = dueCents(session);
+  const payables: Array<Payable> = [];
+  if (due > 0 || session.payment) {
+    payables.push({
+      item: { kind: "session", id: session.eventId },
+      label: "Session fee",
+      dueCents: due,
+      payment: session.payment,
+      receipted: Boolean(session.receipt),
+    });
+  }
+  if (bought) {
+    payables.push({
+      item: { kind: "package", id: bought.id },
+      label: `Package of ${bought.sessions}`,
+      dueCents: bought.priceCents,
+      payment: bought.payment,
+      receipted: Boolean(bought.receipt),
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {due === 0 && !session.payment && (
+        <p className="text-sm">
+          {covering ? (
+            <>
+              Covered by the package bought {formatDate(covering.purchasedAt)}
+              <span className="text-muted-foreground">
+                {" "}
+                · {creditsLeft(covering)} of {covering.sessions} credits left
+              </span>
+              {covering.id !== bought?.id && !covering.payment && covering.priceCents > 0 && (
+                <span className="text-status-attention-foreground"> · that package is not paid yet</span>
+              )}
+            </>
+          ) : (
+            "Nothing to pay for this session."
+          )}
+        </p>
+      )}
+      {payables.length > 0 && <PaymentPanel payables={payables} />}
+    </div>
+  );
 }
 
 function documentsStep(session: Session, bought: Package | undefined): PipelineStep {
@@ -464,42 +535,144 @@ const DOCUMENT_HINTS: Record<DocumentType, string> = {
 };
 
 function DocumentsStep({ session, bought }: { session: Session; bought: Package | undefined }) {
-  const { create, isPending } = useCreateDocument();
   const nothingDue = dueCents(session) === 0 && !bought;
 
   return (
     <ul className="flex flex-col divide-y text-sm">
-      {(["invoice", "receipt"] as const).map((type) => {
-        const spec = DOCUMENT_TYPES[type];
-        const existing = sessionDocuments(type, session, bought);
-        const sources = session.removedAt ? [] : documentSources(type, session, bought);
-        const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
-        return (
-          <li key={type} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
-            <span className="flex flex-wrap items-center gap-2">
-              <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-              <span className="font-medium">{spec.title}</span>
-              {existing.map(({ ref }) => (
-                <TextLink key={ref.documentId} to={documentRoute(type)} params={{ id: ref.documentId }}>
-                  {ref.number ? documentLabel(ref.number, ref.revision) : "Draft"}
-                </TextLink>
-              ))}
-            </span>
-            {sources.length > 0 ? (
-              <Button variant="outline" size="sm" disabled={isPending} onClick={() => create(type, sources)}>
-                <PlusIcon /> {existing.length > 0 ? `Another ${spec.title.toLowerCase()}` : `Make ${spec.title.toLowerCase()}`}
-              </Button>
-            ) : (
-              existing.length === 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {nothingDue ? "Nothing to bill: a package credit covers it." : DOCUMENT_HINTS[type]}
-                </span>
-              )
-            )}
-          </li>
-        );
-      })}
+      {(["invoice", "receipt"] as const).map((type) => (
+        <DocumentRow key={type} type={type} session={session} bought={bought} nothingDue={nothingDue} />
+      ))}
     </ul>
+  );
+}
+
+/**
+ * One document type: the ones made, and a new one for what is left. With
+ * the fee and a package to cover, she ticks what goes on it; the rest can
+ * go on another.
+ */
+function DocumentRow({
+  type,
+  session,
+  bought,
+  nothingDue,
+}: {
+  type: DocumentType;
+  session: Session;
+  bought: Package | undefined;
+  nothingDue: boolean;
+}) {
+  const { create, isPending } = useCreateDocument();
+  const [picking, setPicking] = useState(false);
+  const spec = DOCUMENT_TYPES[type];
+  const existing = sessionDocuments(type, session, bought);
+  const items = documentItems(type, session, bought);
+  const available = items.filter((item) => !item.unavailable);
+  const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
+  const label = existing.length > 0 ? `Another ${spec.title.toLowerCase()}` : `Make ${spec.title.toLowerCase()}`;
+
+  return (
+    <li className="flex flex-col gap-2 py-2 first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex flex-wrap items-center gap-2">
+          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+          <span className="font-medium">{spec.title}</span>
+          {existing.map(({ ref }) => (
+            <TextLink key={ref.documentId} to={documentRoute(type)} params={{ id: ref.documentId }}>
+              {ref.number ? documentLabel(ref.number, ref.revision) : "Draft"}
+            </TextLink>
+          ))}
+        </span>
+        {picking ? null : available.length > 0 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isPending}
+            onClick={() => (items.length > 1 ? setPicking(true) : create(type, available.map((item) => item.source)))}
+          >
+            <PlusIcon /> {label}
+          </Button>
+        ) : (
+          existing.length === 0 && (
+            <span className="text-xs text-muted-foreground">
+              {nothingDue ? "Nothing to bill: a package credit covers it." : DOCUMENT_HINTS[type]}
+            </span>
+          )
+        )}
+      </div>
+      {picking && (
+        <DocumentPicker
+          items={items}
+          submitLabel={label}
+          disabled={isPending}
+          onSubmit={(sources) => create(type, sources)}
+          onCancel={() => setPicking(false)}
+        />
+      )}
+    </li>
+  );
+}
+
+/** Ticks what a new document covers; what is already on one, or unpaid for a receipt, can't be ticked. */
+function DocumentPicker({
+  items,
+  submitLabel,
+  disabled,
+  onSubmit,
+  onCancel,
+}: {
+  items: ReadonlyArray<DocumentItem>;
+  submitLabel: string;
+  disabled: boolean;
+  onSubmit: (sources: Array<DocumentItem["source"]>) => void;
+  onCancel: () => void;
+}) {
+  const key = (item: DocumentItem) => `${item.source.kind}:${item.source.id}`;
+  const [chosen, setChosen] = useState(() => new Set(items.filter((item) => !item.unavailable).map(key)));
+  const selected = items.filter((item) => !item.unavailable && chosen.has(key(item)));
+  const total = selected.reduce((sum, item) => sum + item.amountCents, 0);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-3">
+      <ul className="flex flex-col gap-2">
+        {items.map((item) => {
+          const id = `doc-${key(item)}`;
+          return (
+            <li key={key(item)} className="flex items-center gap-2">
+              <Checkbox
+                id={id}
+                disabled={Boolean(item.unavailable)}
+                checked={!item.unavailable && chosen.has(key(item))}
+                onCheckedChange={(checked) =>
+                  setChosen((current) => {
+                    const next = new Set(current);
+                    if (checked) next.add(key(item));
+                    else next.delete(key(item));
+                    return next;
+                  })
+                }
+              />
+              <label htmlFor={id} className={cn("flex grow justify-between gap-2", item.unavailable && "text-muted-foreground")}>
+                <span>
+                  {item.label}
+                  {item.unavailable && <span className="text-xs"> · {item.unavailable}</span>}
+                </span>
+                <span className="tabular-nums">{formatCents(item.amountCents)}</span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" disabled={disabled || selected.length === 0} onClick={() => onSubmit(selected.map((item) => item.source))}>
+          {submitLabel}
+          {selected.length > 0 && <> · {formatCents(total)}</>}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -541,7 +714,7 @@ function FollowUpsMeta({ sessionId }: { sessionId: string }) {
   return <>{open.length === 1 ? `Due ${formatDue(first)}` : `${open.length}, next ${formatDue(first)}`}</>;
 }
 
-function FollowUpsStep({ sessionId, onEdit }: { sessionId: string; onEdit: Parameters<typeof FollowUpRow>[0]["onEdit"] }) {
+function FollowUpsStep({ sessionId, onEdit }: { sessionId: string; onEdit: (followUp: FollowUp) => void }) {
   const followUps = FollowUpsQuery.useBySession(sessionId);
   if (followUps.isPending) return <Loading />;
   if (!followUps.data?.length) {
@@ -581,8 +754,8 @@ function useMessageActions(
   const to = { name: client.name, phone: client.contact?.phone };
   const actions: Array<RowAction> = [];
 
-  const due = dueCents(session);
-  if (!isPaid(session) && due > 0 && settings.data) {
+  const due = owedCents(session);
+  if (due > 0 && settings.data) {
     const text = paymentMessage(settings.data, { clientName: client.name, start: session.start, amountCents: due });
     actions.push({
       label: "Ask to pay",

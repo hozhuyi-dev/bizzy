@@ -83,7 +83,7 @@ export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
             basis={basis}
             credits={(packages.data ?? []).reduce(
               (sum, p) => {
-                const left = p.removed ? 0 : creditsLeft(p);
+                const left = creditsLeft(p);
                 return {
                   count: sum.count + left,
                   cents: sum.cents + Math.round((p.priceCents / p.sessions) * left),

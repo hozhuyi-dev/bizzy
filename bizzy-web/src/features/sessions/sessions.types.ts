@@ -1,3 +1,5 @@
+import type { Payment } from "~/features/payments/payments.types";
+
 // Mirrors bizzy-lambda/internal/features/sessions/model.go.
 export type SessionStatus =
   | "tentative"
@@ -25,30 +27,6 @@ export interface SessionRecord {
   updatedAt: string;
 }
 
-export type PaymentStatus = "paid" | "waived";
-export type PaymentMethod = "cash" | "tng" | "grab" | "bank_transfer";
-
-/** The methods she takes, in the order she picks from; labels as a receipt prints them. */
-export const PAYMENT_METHODS: ReadonlyArray<{ value: PaymentMethod; label: string; short: string }> = [
-  { value: "cash", label: "Cash", short: "Cash" },
-  { value: "tng", label: "Touch 'n Go eWallet", short: "TnG" },
-  { value: "grab", label: "GrabPay", short: "Grab" },
-  { value: "bank_transfer", label: "Bank transfer", short: "Bank" },
-];
-
-export function methodLabel(method: PaymentMethod | undefined): string {
-  return PAYMENT_METHODS.find((m) => m.value === method)?.label ?? "";
-}
-
-export interface Payment {
-  status: PaymentStatus;
-  method?: PaymentMethod;
-  amountCents: number;
-  /** YYYY-MM-DD. */
-  paidOn: string;
-  updatedAt: string;
-}
-
 export interface Session {
   eventId: string;
   title: string;
@@ -68,19 +46,20 @@ export interface Session {
   feeSource?: "title" | "default" | "package";
   packageId?: string;
   valueCents?: number;
-  /** A package bought in this session, due with it. */
+  /** The price of the package bought in this session, collected with it. */
   boughtCents?: number;
+  /** Whether that package is paid (or waived); it is paid on the package. */
+  boughtSettled?: boolean;
   location?: "clinic" | "home";
   locationSource?: "colour" | "client";
   reason?: string;
   drift?: string;
   /** Still ahead at the last sync. */
   upcoming?: boolean;
-  /** Before the date she started tracking notes and payments. */
-  untracked?: boolean;
   confirmedAt?: string;
 
   record?: SessionRecord;
+  /** Settles the session's own fee; the package bought in it is paid on the package. */
   payment?: Payment;
   invoice?: DocumentRef;
   receipt?: DocumentRef;
@@ -119,11 +98,4 @@ export interface Page<T> {
   items: Array<T>;
   /** Reads the next page; absent on the last. */
   next?: string;
-}
-
-export interface PaymentInput {
-  status: PaymentStatus;
-  method?: PaymentMethod;
-  amountCents: number;
-  paidOn: string;
 }

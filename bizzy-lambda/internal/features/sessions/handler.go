@@ -54,26 +54,20 @@ func Update(ctx context.Context, s Store, eventID string, change func(*Session) 
 	}
 }
 
-// AfterChange reconciles a client after a payment changes their activity.
-type AfterChange func(ctx context.Context, clientIDs ...string) error
-
 type handler struct {
-	repo        store
-	afterChange AfterChange
-	now         func() time.Time
-	loc         *time.Location
+	repo store
+	now  func() time.Time
 }
 
-// Register serves sessions to the app, and the parts she records. Adding,
-// editing and deleting the booking goes through the calendar; see
-// googlesync.RegisterEditor.
-func Register(r *router.Router, repo store, afterChange AfterChange, loc *time.Location) {
-	h := handler{repo: repo, afterChange: afterChange, now: time.Now, loc: loc}
+// Register serves sessions to the app, and the notes she records. Adding,
+// editing and deleting the booking goes through the calendar (see
+// googlesync.RegisterEditor); payments go through the payments feature.
+func Register(r *router.Router, repo store) {
+	h := handler{repo: repo, now: time.Now}
 	r.Register("sessions.list", router.Typed(h.list))
 	r.Register("sessions.listByClient", router.Typed(h.listByClient))
 	r.Register("sessions.listRemoved", h.listRemoved)
 	r.Register("sessions.saveRecord", router.Typed(h.saveRecord))
-	r.Register("sessions.setPayment", router.Typed(h.setPayment))
 }
 
 type listInput struct {
@@ -123,13 +117,19 @@ const (
 type saveRecordInput struct {
 	EventID string `json:"eventId"`
 	Summary string `json:"summary"`
-	Notes   string `json:"notes"`
+	// Notes nil keeps the notes as they are: the to-do list writes only the
+	// summary.
+	Notes *string `json:"notes"`
 }
 
 // saveRecord saves the summary and notes, as she types (the app saves after
 // a pause). Clearing both clears the record.
 func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error) {
-	summary, notes := strings.TrimSpace(in.Summary), strings.TrimSpace(in.Notes)
+	summary := strings.TrimSpace(in.Summary)
+	var notes string
+	if in.Notes != nil {
+		notes = strings.TrimSpace(*in.Notes)
+	}
 	switch {
 	case utf8.RuneCountInString(summary) > maxSummary:
 		return nil, apperr.Invalid("keep the summary to %d characters; the rest goes in the notes", maxSummary)
@@ -149,90 +149,21 @@ func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error
 		return nil, apperr.Conflict("Notes can be written once the session has started.")
 	}
 
-	if err := h.repo.SaveNotes(ctx, Notes{EventID: in.EventID, Text: notes, UpdatedAt: now}); err != nil {
-		return nil, err
-	}
-	return Update(ctx, h.repo, in.EventID, func(s *Session) error {
-		if summary == "" && notes == "" {
-			s.Record = nil
-			return nil
-		}
-		s.Record = &Record{Summary: summary, HasNotes: notes != "", UpdatedAt: now}
-		return nil
-	})
-}
-
-type paymentInput struct {
-	Status      PaymentStatus `json:"status"`
-	Method      PaymentMethod `json:"method"`
-	AmountCents int64         `json:"amountCents"`
-	// PaidOn defaults to today.
-	PaidOn string `json:"paidOn"`
-}
-
-type setPaymentInput struct {
-	EventID string `json:"eventId"`
-	// Payment nil undoes a payment recorded by mistake.
-	Payment *paymentInput `json:"payment"`
-}
-
-func (h handler) setPayment(ctx context.Context, in setPaymentInput) (any, error) {
-	now := h.now()
-	payment, err := h.payment(in.Payment, now)
-	if err != nil {
-		return nil, err
-	}
-
-	saved, err := Update(ctx, h.repo, in.EventID, func(s *Session) error {
-		switch {
-		case s.RemovedAt != nil:
-			return apperr.Conflict("Restore the session before changing its payment.")
-		case s.Status == StatusTentative:
-			return apperr.Conflict("Confirm the session before recording its payment.")
-		case !s.Status.Delivered():
-			return apperr.Conflict("Fix the calendar entry before recording its payment.")
-		case s.Receipt != nil:
-			return apperr.Conflict("A receipt covers this payment. Cancel or discard it first.")
-		}
-		s.Payment = payment
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	// Payments are her income: the client's activity sums them.
-	if h.afterChange != nil && saved.ClientID != "" {
-		if err := h.afterChange(ctx, saved.ClientID); err != nil {
+	if in.Notes != nil {
+		if err := h.repo.SaveNotes(ctx, Notes{EventID: in.EventID, Text: notes, UpdatedAt: now}); err != nil {
 			return nil, err
 		}
 	}
-	return saved, nil
-}
-
-func (h handler) payment(in *paymentInput, now time.Time) (*Payment, error) {
-	if in == nil {
-		return nil, nil
-	}
-	p := &Payment{Status: in.Status, PaidOn: strings.TrimSpace(in.PaidOn), UpdatedAt: now.UTC()}
-	if p.PaidOn == "" {
-		p.PaidOn = now.In(h.loc).Format(time.DateOnly)
-	}
-	if _, err := time.Parse(time.DateOnly, p.PaidOn); err != nil {
-		return nil, apperr.Invalid("the payment date must be YYYY-MM-DD")
-	}
-
-	switch in.Status {
-	case PaymentPaid:
-		if _, ok := MethodLabels[in.Method]; !ok {
-			return nil, apperr.Invalid("choose how it was paid")
+	return Update(ctx, h.repo, in.EventID, func(s *Session) error {
+		hasNotes := notes != ""
+		if in.Notes == nil {
+			hasNotes = s.Record != nil && s.Record.HasNotes
 		}
-		if in.AmountCents <= 0 {
-			return nil, apperr.Invalid("enter the amount paid")
+		if summary == "" && !hasNotes {
+			s.Record = nil
+			return nil
 		}
-		p.Method, p.AmountCents = in.Method, in.AmountCents
-	case PaymentWaived:
-	default:
-		return nil, apperr.Invalid("a payment is paid or waived")
-	}
-	return p, nil
+		s.Record = &Record{Summary: summary, HasNotes: hasNotes, UpdatedAt: now}
+		return nil
+	})
 }

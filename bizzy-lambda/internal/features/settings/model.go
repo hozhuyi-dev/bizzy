@@ -26,9 +26,6 @@ type Settings struct {
 	ConfirmAheadDays int `json:"confirmAheadDays" dynamodbav:"confirmAheadDays"`
 	// FollowUpAheadDays is how many days ahead a follow-up goes on it.
 	FollowUpAheadDays int `json:"followUpAheadDays" dynamodbav:"followUpAheadDays"`
-	// TrackFrom (YYYY-MM-DD) is when she started keeping notes and payments
-	// here: sessions before it need neither. Empty tracks every session.
-	TrackFrom string `json:"trackFrom,omitempty" dynamodbav:"trackFrom,omitempty"`
 
 	// PaymentMessage and DocumentMessage are the WhatsApp messages she sends
 	// from a session or client: asking to pay with her bank details, and

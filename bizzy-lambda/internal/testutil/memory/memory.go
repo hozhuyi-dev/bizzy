@@ -45,6 +45,7 @@ func (m *Store) Sessions() *SessionRepo   { return (*SessionRepo)(m) }
 func (m *Store) FollowUps() *FollowUpRepo { return (*FollowUpRepo)(m) }
 func (m *Store) Packages() *PackageRepo   { return (*PackageRepo)(m) }
 func (m *Store) Settings() *SettingsRepo  { return (*SettingsRepo)(m) }
+func (m *Store) Payments() *PaymentRepo   { return (*PaymentRepo)(m) }
 
 type ClientRepo Store
 
@@ -256,10 +257,23 @@ func (r *PackageRepo) ListByClient(_ context.Context, id string) ([]packages.Pac
 	return out, nil
 }
 
-// Save keeps the document links, as the real repository does.
+// Save keeps the payment and document links, as the real repository does.
 func (r *PackageRepo) Save(_ context.Context, p packages.Package) error {
-	p.Invoice, p.Receipt = r.PackageMap[p.ID].Invoice, r.PackageMap[p.ID].Receipt
+	stored := r.PackageMap[p.ID]
+	p.Payment, p.Invoice, p.Receipt = stored.Payment, stored.Invoice, stored.Receipt
 	r.PackageMap[p.ID] = p
+	r.Writes++
+	return nil
+}
+
+// SetPayment writes only the payment, unless a receipt covers the package.
+func (r *PackageRepo) SetPayment(_ context.Context, p packages.Package) error {
+	stored, ok := r.PackageMap[p.ID]
+	if !ok || stored.Receipt != nil {
+		return dynamo.ErrConflict
+	}
+	stored.Payment = p.Payment
+	r.PackageMap[p.ID] = stored
 	r.Writes++
 	return nil
 }
@@ -281,5 +295,42 @@ func (r *SettingsRepo) Get(context.Context) (settings.Settings, error) {
 
 func (r *SettingsRepo) Put(_ context.Context, s settings.Settings) error {
 	r.SettingsVal = s
+	return nil
+}
+
+// PaymentRepo is payments.Store: it commits all or none, as the real
+// transaction does.
+type PaymentRepo Store
+
+func (r *PaymentRepo) GetSession(ctx context.Context, id string) (sessions.Session, bool, error) {
+	return (*SessionRepo)(r).Get(ctx, id)
+}
+
+func (r *PaymentRepo) GetPackage(ctx context.Context, id string) (packages.Package, bool, error) {
+	return (*PackageRepo)(r).Get(ctx, id)
+}
+
+func (r *PaymentRepo) Commit(_ context.Context, ss []sessions.Session, ps []packages.Package) error {
+	for _, s := range ss {
+		if stored, ok := r.SessionMap[s.EventID]; !ok || stored.Version != s.Version {
+			return dynamo.ErrConflict
+		}
+	}
+	for _, p := range ps {
+		if stored, ok := r.PackageMap[p.ID]; !ok || stored.Receipt != nil {
+			return dynamo.ErrConflict
+		}
+	}
+	for _, s := range ss {
+		s.Version++
+		r.SessionMap[s.EventID] = s
+		r.Writes++
+	}
+	for _, p := range ps {
+		stored := r.PackageMap[p.ID]
+		stored.Payment = p.Payment
+		r.PackageMap[p.ID] = stored
+		r.Writes++
+	}
 	return nil
 }

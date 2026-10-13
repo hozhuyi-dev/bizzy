@@ -12,7 +12,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
 
-/** Wipes the environment's data, keeping the Google connection. */
+/** Wipes the environment's data, keeping the Google connection, and syncs the whole calendar back in. */
 export function ResetData() {
   const [confirming, setConfirming] = useState(false);
   const reset = ResetMutation.useReset();
@@ -30,9 +30,10 @@ export function ResetData() {
           <AlertDialogHeader>
             <AlertDialogTitle>Reset all data?</AlertDialogTitle>
             <AlertDialogDescription>
-              Deletes every session, client, package, receipt and setting here. Google stays
-              connected, and nothing in your calendar or contacts changes, so syncing all time
-              brings the sessions back. This can't be undone.
+              Deletes every session, client, package, payment, invoice, receipt and setting here.
+              Google stays connected and nothing in your calendar or contacts changes: the whole
+              calendar is synced back in straight after, with every session unmatched until you add
+              its client again. This can't be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -42,15 +43,16 @@ export function ResetData() {
               disabled={reset.isPending}
               onClick={() =>
                 reset.mutate(undefined, {
-                  onSuccess: ({ deleted }) => {
-                    toast.success(`Reset: ${deleted} items deleted`);
+                  onSuccess: ({ deleted, synced, syncError }) => {
+                    if (syncError) toast.error(`Reset: ${deleted} items deleted, but the sync failed. ${syncError}`);
+                    else toast.success(`Reset: ${deleted} items deleted, ${synced?.sessions ?? 0} sessions synced back`);
                     setConfirming(false);
                   },
                   onError: (error) => toast.error(error.message),
                 })
               }
             >
-              {reset.isPending ? "Resetting…" : "Reset"}
+              {reset.isPending ? "Resetting and syncing…" : "Reset"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

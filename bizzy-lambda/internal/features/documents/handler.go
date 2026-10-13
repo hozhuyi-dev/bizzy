@@ -10,6 +10,7 @@ import (
 
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/docref"
+	"bizzy-lambda/internal/features/money"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
@@ -157,24 +158,6 @@ type createDraftInput struct {
 	Sources []Source `json:"sources"`
 }
 
-// paidBy is how a receipt says what it covers was paid, from what she
-// recorded on the sessions.
-func paidBy(payments []*sessions.Payment) string {
-	seen := map[string]bool{}
-	var labels []string
-	for _, p := range payments {
-		if p == nil || p.Status != sessions.PaymentPaid {
-			continue
-		}
-		label := sessions.MethodLabels[p.Method]
-		if !seen[label] {
-			seen[label] = true
-			labels = append(labels, label)
-		}
-	}
-	return strings.Join(labels, ", ")
-}
-
 // createDraft starts a document from sessions and packages and reserves
 // them, so none can end up on two documents of the type.
 func (h handler) createDraft(ctx context.Context, in createDraftInput) (any, error) {
@@ -196,7 +179,7 @@ func (h handler) createDraft(ctx context.Context, in createDraftInput) (any, err
 
 	var lines []Line
 	var links []dynamo.Patch
-	var payments []*sessions.Payment
+	var payments []*money.Payment
 	clientID := ""
 
 	for _, src := range sources {
@@ -222,7 +205,7 @@ func (h handler) createDraft(ctx context.Context, in createDraftInput) (any, err
 	}
 	draft := NewContent(cfg, client, today, lines)
 	if in.Type == TypeReceipt {
-		draft.PaidBy = paidBy(payments)
+		draft.PaidBy = money.PaidBy(payments)
 	}
 	content, err := Normalize(draft, sourceSet(sources))
 	if err != nil {
@@ -498,9 +481,9 @@ func (h handler) load(ctx context.Context, id string, version int) (Document, er
 }
 
 // sourceLine checks a source can go on a document of the type and prefills
-// its line. It returns the client the source belongs to and, for a session
-// or a package bought in one, what she recorded as paid.
-func (h handler) sourceLine(ctx context.Context, src Source, spec TypeSpec, cfg settings.Settings) (Line, string, *sessions.Payment, error) {
+// its line. It returns the client the source belongs to and what she
+// recorded as paid for it.
+func (h handler) sourceLine(ctx context.Context, src Source, spec TypeSpec, cfg settings.Settings) (Line, string, *money.Payment, error) {
 	switch src.Kind {
 	case SourceSession:
 		s, found, err := h.Sessions.Get(ctx, src.ID)
@@ -525,21 +508,13 @@ func (h handler) sourceLine(ctx context.Context, src Source, spec TypeSpec, cfg 
 		if !found {
 			return Line{}, "", nil, apperr.NotFound("package not found")
 		}
-		if !p.Billable(spec.Slot) {
+		switch {
+		case p.Ref(spec.Slot) != nil:
 			return Line{}, "", nil, apperr.Conflict("this package already has a %s", strings.ToLower(spec.Title))
+		case !p.Billable(spec.Slot):
+			return Line{}, "", nil, apperr.Conflict("only a paid package can get a receipt")
 		}
-		var payment *sessions.Payment
-		if p.Source == packages.SourceCalendar {
-			// Bought in a session (same ID), and paid with it.
-			s, found, err := h.Sessions.Get(ctx, p.ID)
-			if err != nil {
-				return Line{}, "", nil, err
-			}
-			if found {
-				payment = s.Payment
-			}
-		}
-		return PackageLine(p, cfg, h.Location), p.ClientID, payment, nil
+		return PackageLine(p, cfg, h.Location), p.ClientID, p.Payment, nil
 	default:
 		return Line{}, "", nil, apperr.Invalid("unknown source kind %q", src.Kind)
 	}

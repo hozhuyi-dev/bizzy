@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"bizzy-lambda/internal/features/money"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/router"
@@ -15,6 +16,7 @@ type store interface {
 	List(ctx context.Context) ([]Package, error)
 	ListOpen(ctx context.Context) ([]Package, error)
 	Save(ctx context.Context, p Package) error
+	SetPayment(ctx context.Context, p Package) error
 	Delete(ctx context.Context, id string) (bool, error)
 }
 
@@ -24,10 +26,12 @@ type AfterChange func(ctx context.Context, clientIDs ...string) error
 type handler struct {
 	repo        store
 	afterChange AfterChange
+	now         func() time.Time
+	loc         *time.Location
 }
 
-func Register(r *router.Router, repo store, afterChange AfterChange) {
-	h := handler{repo: repo, afterChange: afterChange}
+func Register(r *router.Router, repo store, afterChange AfterChange, loc *time.Location) {
+	h := handler{repo: repo, afterChange: afterChange, now: time.Now, loc: loc}
 	r.Register("packages.list", router.Typed(h.list))
 	r.Register("packages.save", router.Typed(h.save))
 	r.Register("packages.delete", router.Typed(h.delete))
@@ -52,6 +56,9 @@ type saveInput struct {
 	PriceCents  int64     `json:"priceCents"`
 	PurchasedAt time.Time `json:"purchasedAt"`
 	Note        string    `json:"note"`
+	// Paid records it as paid in full when she adds it, if she was paid
+	// there and then. Later, payments.set records it.
+	Paid *money.Input `json:"paid"`
 }
 
 // save creates or edits a package bought outside the calendar. Calendar
@@ -92,8 +99,22 @@ func (h handler) save(ctx context.Context, in saveInput) (any, error) {
 	p.ClientID, p.Sessions, p.PriceCents = in.ClientID, in.Sessions, in.PriceCents
 	p.PurchasedAt, p.Note = in.PurchasedAt.UTC(), strings.TrimSpace(in.Note)
 
+	var payment *money.Payment
+	if in.Paid != nil && p.Payment == nil {
+		var err error
+		if payment, err = money.New(*in.Paid, p.PriceCents, h.now(), h.loc); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := h.repo.Save(ctx, p); err != nil {
 		return nil, err
+	}
+	if payment != nil {
+		p.Payment = payment
+		if err := h.repo.SetPayment(ctx, p); err != nil {
+			return nil, err
+		}
 	}
 	if err := h.afterChange(ctx, nonEmpty(p.ClientID, previousClient)...); err != nil {
 		return nil, err
