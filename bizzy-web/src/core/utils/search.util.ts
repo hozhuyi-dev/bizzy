@@ -10,3 +10,8 @@ export function oneOf<T extends string>(value: unknown, options: ReadonlyArray<T
 export function monthParam(value: unknown): string | undefined {
   return typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? value : undefined;
 }
+
+/** A non-empty string, else undefined. */
+export function textParam(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}

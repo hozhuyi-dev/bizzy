@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { ResetMutation } from "../../reset.query";
+import { ResetMutation } from "../../reset.mutation";
 import {
   AlertDialog,
   AlertDialogCancel,

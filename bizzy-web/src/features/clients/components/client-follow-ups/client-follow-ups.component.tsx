@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Client } from "../../clients.types";
-import type { FollowUpTarget } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { FollowUpsQuery } from "~/features/follow-ups/follow-ups.query";

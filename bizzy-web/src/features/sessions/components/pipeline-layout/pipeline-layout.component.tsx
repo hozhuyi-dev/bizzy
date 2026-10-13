@@ -2,7 +2,8 @@ import { cn } from "cn";
 import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CircleIcon } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { Card, CardContent } from "~/components/ui/card";
-import { scrollToSection, stickyTop, useActiveSection, useHeight } from "~/components/shared/scroll-spy/scroll-spy";
+import { useActiveSection, useHeight } from "~/core/scroll-spy/scroll-spy.hook";
+import { scrollToSection, stickyTop } from "~/core/scroll-spy/scroll-spy.util";
 
 /** Where a step stands: done, the one to do now, still ahead, or optional and untouched. */
 export type StepState = "done" | "current" | "todo" | "optional";

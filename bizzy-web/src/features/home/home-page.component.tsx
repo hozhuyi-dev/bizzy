@@ -3,7 +3,7 @@ import { HomeIcon } from "lucide-react";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
 import { NewSessionButton } from "~/features/sessions/components/new-session-button/new-session-button.component";
-import { stageBadges } from "~/features/sessions/session-stage";
+import { stageBadges } from "~/features/sessions/session-stage.util";
 import { SessionsQuery } from "~/features/sessions/sessions.query";
 import { TodoList } from "~/features/todo/components/todo-list/todo-list.component";
 import { TodoQuery } from "~/features/todo/todo.query";
@@ -13,6 +13,8 @@ import { SectionLayout } from "~/components/shared/section-layout/section-layout
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
 import { queryMatch } from "~/core/utils/query.util";
+import { clientOf } from "~/features/clients/clients.util";
+import { dayRange } from "~/core/utils/date.util";
 
 /**
  * Her day: today's sessions, then everything that needs her (sessions and
@@ -51,13 +53,7 @@ export function HomePage() {
 
 /** Today's sessions, in order: a schedule to glance at, not tasks. */
 function Today() {
-  const { from, to } = useMemo(() => {
-    const now = new Date();
-    return {
-      from: new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString(),
-      to: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString(),
-    };
-  }, []);
+  const { from, to } = useMemo(() => dayRange(), []);
   const sessions = SessionsQuery.useRange(from, to);
   const clientsById = ClientsQuery.useById();
   const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -75,7 +71,7 @@ function Today() {
       return (
         <ul className="flex flex-col divide-y">
           {today.map((session) => {
-            const client = session.clientId ? clientsById.get(session.clientId) : undefined;
+            const client = clientOf(clientsById, session.clientId);
             return (
               <li key={session.eventId} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
                 <span className="w-16 shrink-0 text-sm text-muted-foreground tabular-nums">

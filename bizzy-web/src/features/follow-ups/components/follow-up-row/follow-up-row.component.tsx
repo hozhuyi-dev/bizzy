@@ -1,18 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRightIcon, CheckIcon, LinkIcon, PencilIcon, RotateCcwIcon } from "lucide-react";
 import { cn } from "cn";
-import { useMarkDone } from "../../follow-ups.query";
+import { useMarkDone } from "../../follow-ups.hook";
+import { formatDue } from "../../follow-ups.util";
 import type { FollowUp } from "../../follow-ups.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { formatDate, formatSessionTime } from "~/core/utils/date.util";
-
-/** "Tue, 14 Oct · 10:00 am", or the day alone for an all-day one. */
-export function formatDue(followUp: FollowUp): string {
-  return followUp.allDay ? formatDate(followUp.due) : formatSessionTime(followUp.due);
-}
+import { startOfDay } from "~/core/utils/date.util";
+import { clientOf } from "~/features/clients/clients.util";
 
 interface FollowUpRowProps {
   followUp: FollowUp;
@@ -38,9 +35,9 @@ interface FollowUpRowProps {
 export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, showKind, onFix }: FollowUpRowProps) {
   const clientsById = ClientsQuery.useById();
   const { mark, isPending } = useMarkDone();
-  const client = followUp.clientId ? clientsById.get(followUp.clientId) : undefined;
+  const client = clientOf(clientsById, followUp.clientId);
   const done = Boolean(followUp.doneAt);
-  const overdue = !done && new Date(followUp.due) < startOfToday();
+  const overdue = !done && new Date(followUp.due) < startOfDay();
   const summary = followUp.summary || "Follow up";
   const fixing = Boolean(onFix && followUp.problem && !done);
 
@@ -114,9 +111,4 @@ export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, 
       </div>
     </div>
   );
-}
-
-function startOfToday(): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }

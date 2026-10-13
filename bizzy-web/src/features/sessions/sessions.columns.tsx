@@ -1,18 +1,18 @@
 import { BanknoteIcon, CheckIcon, HomeIcon, LinkIcon } from "lucide-react";
-import { allSessionDocuments, isUnmatched, sessionAmount, stageBadges } from "./session-stage";
+import { allSessionDocuments, isUnmatched, sessionAmount, stageBadges } from "./session-stage.util";
 import type { ReactNode } from "react";
-import type { Session } from "./sessions.types";
-import type { SessionReturnTo } from "./session-page.component";
+import type { Session, SessionReturnTo  } from "./sessions.types";
 import type { Client } from "~/features/clients/clients.types";
 import type { Package } from "~/features/packages/packages.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.features";
+import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { documentLabel, documentRoute } from "~/features/documents/documents.registry";
+import { documentLabel, documentRoute } from "~/features/documents/documents.util";
 import { formatCents } from "~/core/utils/money.util";
 import { formatSessionTime } from "~/core/utils/date.util";
+import { clientOf } from "~/features/clients/clients.util";
 
 export interface SessionHandlers {
   /** Where the table is, for the session page to go back to. */
@@ -29,7 +29,7 @@ const helper = createDataTableColumnHelper<Session>();
 
 /** Who the session is with, linking to its page, where everything about it is. */
 export function SessionWho({ session, handlers }: { session: Session; handlers: SessionHandlers }) {
-  const client = session.clientId ? handlers.clientsById.get(session.clientId) : undefined;
+  const client = clientOf(handlers.clientsById, session.clientId);
   return (
     <div className="flex flex-col items-start">
       <TextLink
@@ -95,7 +95,7 @@ export function SessionDocuments({
 
 /** The quick fixes a list can make; everything else is on the session's page. */
 export function sessionActions(session: Session, handlers: SessionHandlers): Array<RowAction> {
-  const client = session.clientId ? handlers.clientsById.get(session.clientId) : undefined;
+  const client = clientOf(handlers.clientsById, session.clientId);
   // A document fixes what it covers: cancel it to change the booking.
   const editable = allSessionDocuments(session, handlers.packagesById.get(session.eventId)).length === 0;
   const actions: Array<RowAction> = [];
@@ -125,7 +125,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
       header: "Client",
       meta: {
         search: (session: Session) => {
-          const client = session.clientId ? handlers.clientsById.get(session.clientId) : undefined;
+          const client = clientOf(handlers.clientsById, session.clientId);
           return [client?.name, session.name, session.title, session.record?.summary];
         },
       },

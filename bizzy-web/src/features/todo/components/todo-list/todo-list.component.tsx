@@ -12,21 +12,22 @@ import {
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
-import { TODO_FILTERS, TODO_GROUPS, groupOf, matchesFilter, todoKey } from "../../todo.types";
+import { TODO_FILTERS, TODO_GROUPS } from "../../todo.constant";
+import { groupOf, matchesFilter, owedText, packagePayable, sessionPayables, todoKey  } from "../../todo.util";
 import type { TodoFilter, TodoItem } from "../../todo.types";
-import type { FollowUpTarget } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { Package } from "~/features/packages/packages.types";
-import type { Payable } from "~/features/payments/components/payment-panel/payment-panel.component";
+import type { Payable } from "~/features/payments/payments.types";
 import type { Session, TodoReason } from "~/features/sessions/sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
-import { PaymentsMutation } from "~/features/payments/payments.query";
-import { PAYMENT_METHODS } from "~/features/payments/payments.types";
+import { PaymentsMutation } from "~/features/payments/payments.mutation";
+import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { DeleteSessionDialog } from "~/features/sessions/components/delete-session-dialog/delete-session-dialog.component";
 import { LinkClientDialog } from "~/features/sessions/components/link-client-dialog/link-client-dialog.component";
-import { dueCents, isBoughtDue, isFeeSettled, isUnmatched, owedCents } from "~/features/sessions/session-stage";
+import { isUnmatched, owedCents } from "~/features/sessions/session-stage.util";
 import { SessionsMutation } from "~/features/sessions/sessions.mutation";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -50,6 +51,7 @@ import { EmptyState } from "~/components/shared/quip/quip.component";
 import { formatDate, formatSessionTime, todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { clientOf } from "~/features/clients/clients.util";
 
 const REASONS: Record<TodoReason, { label: string; tone: "waiting" | "attention" | "info" | "neutral" }> = {
   confirm: { label: "Confirm", tone: "waiting" },
@@ -58,22 +60,6 @@ const REASONS: Record<TodoReason, { label: string; tone: "waiting" | "attention"
   fix: { label: "Fix", tone: "attention" },
   deleted: { label: "Deleted", tone: "neutral" },
 };
-
-/** What to collect on a session: its fee and the package it bought, each still due. */
-function sessionPayables(session: Session): Array<Payable> {
-  const payables: Array<Payable> = [];
-  if (!isFeeSettled(session)) {
-    payables.push({ item: { kind: "session", id: session.eventId }, label: "Session fee", dueCents: dueCents(session) });
-  }
-  if (isBoughtDue(session)) {
-    payables.push({ item: { kind: "package", id: session.eventId }, label: "Package", dueCents: session.boughtCents ?? 0 });
-  }
-  return payables;
-}
-
-function packagePayable(pkg: Package): Payable {
-  return { item: { kind: "package", id: pkg.id }, label: `Package of ${pkg.sessions}`, dueCents: pkg.priceCents };
-}
 
 /**
  * Everything that needs her, sessions, packages and follow-ups together,
@@ -191,7 +177,7 @@ interface SessionTodoProps {
 function SessionTodo({ session, reasons, onCancel, onLink, onPayOther }: SessionTodoProps) {
   const clientsById = ClientsQuery.useById();
   const [writing, setWriting] = useState(false);
-  const client = session.clientId ? clientsById.get(session.clientId) : undefined;
+  const client = clientOf(clientsById, session.clientId);
   const detail = session.drift ?? session.reason ?? session.record?.summary;
   const collecting = reasons.includes("collect");
   const payables = collecting ? sessionPayables(session) : [];
@@ -247,14 +233,6 @@ function SessionTodo({ session, reasons, onCancel, onLink, onPayOther }: Session
       {writing && <SummaryEditor session={session} onDone={() => setWriting(false)} />}
     </div>
   );
-}
-
-/** "RM 95 due", or "RM 95 + package RM 850 due" when both are. */
-function owedText(payables: ReadonlyArray<Payable>, owed: number): string {
-  const [fee, pkg] = payables;
-  if (fee && pkg) return `${formatCents(fee.dueCents)} + package ${formatCents(pkg.dueCents)} due`;
-  if (fee?.item.kind === "package") return `package ${formatCents(owed)} due`;
-  return `${formatCents(owed)} due`;
 }
 
 interface QuickActionsProps {

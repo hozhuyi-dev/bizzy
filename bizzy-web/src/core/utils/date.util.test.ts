@@ -1,4 +1,4 @@
-import { addMonths, monthRange, monthsBetween, todayISO } from "./date.util";
+import { addDays, addMonths, dayRange, monthRange, monthsBetween, startOfDay, toISODate, todayISO } from "./date.util";
 
 describe("date utils", () => {
   test("addMonths crosses years", () => {
@@ -19,5 +19,16 @@ describe("date utils", () => {
 
   test("todayISO is local", () => {
     expect(todayISO(new Date(2026, 9, 5, 23, 30))).toBe("2026-10-05");
+  });
+
+  test("addDays crosses months", () => {
+    expect(toISODate(addDays(new Date(2026, 9, 30), 3))).toBe("2026-11-02");
+    expect(toISODate(addDays(new Date(2026, 9, 1), -1))).toBe("2026-09-30");
+  });
+
+  test("dayRange covers the local day", () => {
+    const { from, to } = dayRange(new Date(2026, 9, 5, 15, 45));
+    expect(new Date(from)).toEqual(startOfDay(new Date(2026, 9, 5)));
+    expect(new Date(to)).toEqual(new Date(2026, 9, 6));
   });
 });

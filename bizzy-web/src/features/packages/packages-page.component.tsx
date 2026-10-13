@@ -3,24 +3,17 @@ import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { PackageForm } from "./components/package-form/package-form.component";
-import {
-  PackageCredits,
-  PackageDocuments,
-  PackagePayment,
-  PackagePrice,
-  PackageSource,
-  clientName,
-  createPackageColumns,
-  packageActions,
-} from "./packages.columns";
-import { PackagesMutation, PackagesQuery } from "./packages.query";
+import { PackageCredits, PackageDocuments, PackagePayment, PackagePrice, PackageSource, createPackageColumns, packageActions } from "./packages.columns";
+import { clientName } from "./packages.util";
+import { PackagesMutation } from "./packages.mutation";
+import { PackagesQuery } from "./packages.query";
 import type { PackageHandlers } from "./packages.columns";
-import type { Package } from "./packages.types";
+import type { Package, PackagesView } from "./packages.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
-import { useCreateDocument } from "~/features/documents/use-create-document";
+import { useCreateDocument } from "~/features/documents/documents.hook";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
+import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { SearchInput } from "~/components/shared/search-input/search-input.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
@@ -44,7 +37,6 @@ import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 type Editing = { mode: "new" } | { mode: "edit"; pkg: Package } | null;
-export type PackagesView = "open" | "all";
 
 // Stable fallback: a fresh [] each render would rebuild the row models.
 const NO_PACKAGES: Array<Package> = [];

@@ -1,6 +1,6 @@
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
-import { ThemeService, useTheme } from "../../theme.service";
-import type { ThemePreference } from "../../theme.service";
+import { useTheme } from "../../theme.hook";
+import type { ThemePreference } from "../../theme.constant";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 
 const OPTIONS = [
@@ -11,12 +11,12 @@ const OPTIONS = [
 
 /** Light, dark or the device's setting. Applies at once, on this device only. */
 export function AppearanceSettings() {
-  const { preference } = useTheme();
+  const { preference, setPreference } = useTheme();
 
   return (
     <Tabs
       value={preference}
-      onValueChange={(value) => ThemeService.setPreference(value as ThemePreference)}
+      onValueChange={(value) => setPreference(value as ThemePreference)}
     >
       <TabsList>
         {OPTIONS.map(({ value, label, icon: Icon }) => (

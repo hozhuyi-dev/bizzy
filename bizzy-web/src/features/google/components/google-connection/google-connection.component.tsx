@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { GoogleMutation, GoogleQuery } from "../../google.query";
-import { startGoogleConsent } from "../../google.oauth";
+import { GoogleMutation } from "../../google.mutation";
+import { GoogleQuery } from "../../google.query";
+import { useGoogleConsent } from "../../google.hook";
 import type { GoogleConnection } from "../../google.types";
-import { SyncMutation } from "~/features/sync/sync.query";
+import { SyncMutation } from "~/features/sync/sync.mutation";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -26,6 +27,7 @@ import { queryMatch } from "~/core/utils/query.util";
  */
 export function GoogleConnectionSettings() {
   const status = GoogleQuery.useStatus();
+  const startConsent = useGoogleConsent();
 
   return queryMatch(status, {
     pending: () => <Loading />,
@@ -39,13 +41,14 @@ export function GoogleConnectionSettings() {
         <Connected connection={connection} />
       ) : (
         <div>
-          <Button onClick={startGoogleConsent}>Connect Google</Button>
+          <Button onClick={startConsent}>Connect Google</Button>
         </div>
       ),
   });
 }
 
 function Connected({ connection }: { connection: GoogleConnection }) {
+  const startConsent = useGoogleConsent();
   const calendars = GoogleQuery.useCalendars(!connection.problem);
   const setCalendar = GoogleMutation.useSetCalendar();
   const sync = SyncMutation.useRun();
@@ -67,7 +70,7 @@ function Connected({ connection }: { connection: GoogleConnection }) {
           <p role="alert" className="text-sm text-destructive">
             {connection.problem}
           </p>
-          <Button size="sm" onClick={startGoogleConsent}>
+          <Button size="sm" onClick={startConsent}>
             Reconnect
           </Button>
         </div>

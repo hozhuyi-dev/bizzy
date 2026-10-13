@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClientsService } from "./clients.service";
 import type { Client } from "./clients.types";
-import { ClientKeys } from "~/core/keys.query";
+import { ClientKeys } from "~/core/constants/query-keys.constant";
 
 export const ClientsQuery = {
   useList: () =>

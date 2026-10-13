@@ -1,8 +1,8 @@
 import { FileTextIcon, ReceiptIcon } from "lucide-react";
 import type { Client } from "../../clients.types";
 import { SessionsQuery } from "~/features/sessions/sessions.query";
-import { stageBadges } from "~/features/sessions/session-stage";
-import { documentLabel, documentRoute } from "~/features/documents/documents.registry";
+import { stageBadges } from "~/features/sessions/session-stage.util";
+import { documentLabel, documentRoute } from "~/features/documents/documents.util";
 import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";

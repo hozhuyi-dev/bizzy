@@ -15,13 +15,14 @@ export const Route = createFileRoute("/sessions/")({
 });
 
 function SessionsRoute() {
-  const search = Route.useSearch();
+  const { month } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const thisMonth = monthKey(new Date());
 
   return (
     <SessionsPage
-      month={search.month ?? monthKey(new Date())}
-      onMonthChange={(month) => void navigate({ search: (prev) => ({ ...prev, month }) })}
+      month={month ?? thisMonth}
+      onMonthChange={(next) => void navigate({ search: { month: next === thisMonth ? undefined : next } })}
     />
   );
 }

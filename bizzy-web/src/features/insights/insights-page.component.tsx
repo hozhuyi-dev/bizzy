@@ -7,15 +7,16 @@ import {
   summarize,
   topClients,
   yearlySeries,
-} from "./insights.metrics";
+} from "./insights-metrics.util";
 import type { ReactNode } from "react";
-import type { Basis } from "./insights.metrics";
+import type { Basis } from "./insights.types";
 import type { ChartConfig } from "~/components/ui/chart";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { creditsLeft } from "~/features/packages/packages.types";
+import { creditsLeft } from "~/features/packages/packages.util";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { Loading, useQuip } from "~/components/shared/quip/quip.component";
+import { Loading } from "~/components/shared/quip/quip.component";
+import { useQuip } from "~/components/shared/quip/quip.hook";
 import { Card, CardContent } from "~/components/ui/card";
 import {
   ChartContainer,

@@ -2,7 +2,7 @@ import { SearchIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import { useQuip } from "~/components/shared/quip/quip.component";
+import { useQuip } from "~/components/shared/quip/quip.hook";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 interface SearchInputProps {

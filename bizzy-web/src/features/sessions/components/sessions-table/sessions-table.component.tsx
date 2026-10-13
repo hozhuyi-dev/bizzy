@@ -14,12 +14,11 @@ import {
 import { SessionsMutation } from "../../sessions.mutation";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
-import type { Session } from "../../sessions.types";
-import type { SessionReturnTo } from "../../session-page.component";
+import type { Session, SessionReturnTo  } from "../../sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
+import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
 import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
 import { Card, CardContent } from "~/components/ui/card";
 import { formatSessionTime } from "~/core/utils/date.util";

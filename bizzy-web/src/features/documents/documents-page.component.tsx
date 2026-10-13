@@ -1,85 +1,20 @@
 import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
-import { DOCUMENT_TYPES, documentLabel, documentRoute } from "./documents.registry";
+import { DocumentCard, documentColumns } from "./documents.columns";
+import { DOCUMENT_TYPES } from "./documents.constant";
 import { DocumentsQuery } from "./documents.query";
-import type { DocumentStatus, DocumentSummary, DocumentType } from "./documents.types";
+import type { DocumentSummary, DocumentType } from "./documents.types";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { MonthPicker } from "~/components/shared/month-picker/month-picker.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { SearchInput } from "~/components/shared/search-input/search-input.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import {
-  createDataTableColumnHelper,
-  dataTableFeatures,
-} from "~/components/shared/data-table/data-table.features";
-import { Badge } from "~/components/ui/badge";
-import { Card, CardContent } from "~/components/ui/card";
-import { formatCents } from "~/core/utils/money.util";
-import { formatDate, formatMonth, monthKey } from "~/core/utils/date.util";
+import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
+import { formatMonth, monthKey } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 const NO_DOCUMENTS: Array<DocumentSummary> = [];
-
-const DOCUMENT_STATUS: Record<DocumentStatus, { label: string; variant: "waiting" | "done" | "neutral" }> = {
-  draft: { label: "Draft", variant: "waiting" },
-  issued: { label: "Issued", variant: "done" },
-  cancelled: { label: "Cancelled", variant: "neutral" },
-};
-
-export function DocumentStatusBadge({ status, revising }: { status: DocumentStatus; revising?: boolean | undefined }) {
-  return (
-    <span className="flex flex-wrap gap-1">
-      <Badge variant={DOCUMENT_STATUS[status].variant}>{DOCUMENT_STATUS[status].label}</Badge>
-      {revising && <Badge variant="waiting">Revising</Badge>}
-    </span>
-  );
-}
-
-function DocumentLink({ doc }: { doc: DocumentSummary }) {
-  return (
-    <TextLink to={documentRoute(doc.type)} params={{ id: doc.id }}>
-      {documentLabel(doc.number, doc.revision)}
-    </TextLink>
-  );
-}
-
-const helper = createDataTableColumnHelper<DocumentSummary>();
-
-const columns = helper.columns([
-  helper.accessor((doc) => doc.number ?? "", {
-    id: "number",
-    header: "No.",
-    sortFn: "alphanumeric",
-    meta: { search: (doc: DocumentSummary) => documentLabel(doc.number, doc.revision) },
-    cell: ({ row }) => <DocumentLink doc={row.original} />,
-  }),
-  helper.accessor("date", {
-    header: "Date",
-    sortFn: "alphanumeric",
-    meta: { search: (doc: DocumentSummary) => formatDate(doc.date) },
-    cell: ({ getValue }) => formatDate(getValue()),
-  }),
-  helper.accessor("recipientName", {
-    header: "For",
-    sortFn: "alphanumeric",
-  }),
-  helper.accessor("totalCents", {
-    header: "Total",
-    sortFn: "basic",
-    meta: { search: (doc: DocumentSummary) => formatCents(doc.totalCents) },
-    cell: ({ getValue }) => formatCents(getValue()),
-  }),
-  helper.accessor("status", {
-    header: "Status",
-    sortFn: "alphanumeric",
-    meta: {
-      search: (doc: DocumentSummary) => [DOCUMENT_STATUS[doc.status].label, doc.revising ? "Revising" : undefined],
-    },
-    cell: ({ row }) => <DocumentStatusBadge status={row.original.status} revising={row.original.revising} />,
-  }),
-]);
 
 interface DocumentsPageProps {
   type: DocumentType;
@@ -100,7 +35,7 @@ export function DocumentsPage({ type, month, onMonthChange }: DocumentsPageProps
 
   const table = useTable({
     features: dataTableFeatures,
-    columns,
+    columns: documentColumns,
     data,
     getRowId: (doc) => doc.id,
     initialState: { sorting: [{ id: "date", desc: true }] },
@@ -135,22 +70,7 @@ export function DocumentsPage({ type, month, onMonthChange }: DocumentsPageProps
                 {type === "invoice" ? "a session" : "a paid session"} or a package.
               </EmptyState>
             }
-            renderCard={(row) => (
-              <Card size="sm">
-                <CardContent className="flex items-start justify-between gap-2">
-                  <div className="flex flex-col gap-1">
-                    <DocumentLink doc={row.original} />
-                    <span className="text-sm text-muted-foreground">
-                      {row.original.recipientName} · {formatDate(row.original.date)}
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-sm">{formatCents(row.original.totalCents)}</span>
-                    <DocumentStatusBadge status={row.original.status} revising={row.original.revising} />
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            renderCard={(row) => <DocumentCard doc={row.original} />}
           />
         ),
       })}

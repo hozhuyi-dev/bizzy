@@ -3,29 +3,26 @@ import { Link } from "@tanstack/react-router";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
-import { isLapsed } from "./clients.activity";
-import { ClientCard, createClientColumns, toClientRow } from "./clients.columns";
+import { isLapsed } from "./client-activity.util";
+import { ClientCard, createClientColumns } from "./clients.columns";
+import { LAPSE_MONTHS } from "./clients.constant";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
-import type { ClientRow } from "./clients.columns";
-import type { Client } from "./clients.types";
-import type { FollowUpTarget } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { toClientRow } from "./clients.util";
+import type { LapseMonths } from "./clients.constant";
+import type { Client, ClientRow, ClientsView } from "./clients.types";
+import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
+import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { SearchInput } from "~/components/shared/search-input/search-input.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-
-/** Everyone, or the lapsed clients worth getting back in touch with. */
-export type ClientsView = "all" | "reconnect";
-
-export const LAPSE_MONTHS = ["3", "6", "12"] as const;
-export type LapseMonths = (typeof LAPSE_MONTHS)[number];
 
 const LAPSE_OPTIONS = LAPSE_MONTHS.map((months) => ({
   value: months,
@@ -131,10 +128,13 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
     [mark],
   );
 
-  const columns = useMemo(
-    () => createClientColumns(reconnect ? { onContacted, onRemind } : {}),
-    [onContacted, onRemind, reconnect],
+  const whatsapp = useWhatsApp();
+  const onWhatsApp = useCallback((client: Client) => whatsapp.message(client.contact?.phone), [whatsapp]);
+  const handlers = useMemo(
+    () => (reconnect ? { onWhatsApp, onContacted, onRemind } : { onWhatsApp }),
+    [onWhatsApp, onContacted, onRemind, reconnect],
   );
+  const columns = useMemo(() => createClientColumns(handlers), [handlers]);
 
   const table = useTable({
     features: dataTableFeatures,
@@ -162,7 +162,7 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
         )
       }
       renderCard={(row) => (
-        <ClientCard row={row.original} {...(reconnect ? { onContacted, onRemind } : {})} />
+        <ClientCard row={row.original} {...handlers} />
       )}
     />
     <FollowUpDialog target={remind} onClose={() => setRemind(null)} />

@@ -1,45 +1,17 @@
 import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
-import { last12Months, monthsSinceLastSession, totals } from "./clients.activity";
-import type { Client } from "./clients.types";
+import { contactProblem, extraAliases } from "./clients.util";
+import type { Client, ClientRow } from "./clients.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
-import { openWhatsApp, whatsappLink } from "~/features/whatsapp/whatsapp.link";
+import { whatsappNumber } from "~/features/whatsapp/whatsapp.util";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.features";
+import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
 import { RowActionButtons, RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 
-/** A client with the figures the table sorts by. */
-export interface ClientRow {
-  client: Client;
-  lastSessionAt: string | undefined;
-  monthsSince: number | undefined;
-  revenue12Cents: number;
-  lifetimeCents: number;
-  sessions12: number;
-}
-
-export function toClientRow(client: Client, now = new Date()): ClientRow {
-  const year = last12Months(client, now);
-  return {
-    client,
-    lastSessionAt: client.lastSessionAt,
-    monthsSince: monthsSinceLastSession(client, now),
-    revenue12Cents: year.receivedCents,
-    lifetimeCents: totals(client).receivedCents,
-    sessions12: year.sessions,
-  };
-}
-
 const helper = createDataTableColumnHelper<ClientRow>();
-
-/** Aliases other than the client's own name, which is always one of them. */
-export function extraAliases(client: Client): Array<string> {
-  const name = client.name.toLowerCase();
-  return client.aliases.filter((alias) => alias !== name);
-}
 
 export function LastSeen({ row }: { row: ClientRow }) {
   if (!row.lastSessionAt) return <span className="text-muted-foreground">—</span>;
@@ -57,26 +29,22 @@ export function LastSeen({ row }: { row: ClientRow }) {
 }
 
 interface ClientActions {
+  /** Opens the client's chat; offered when their phone can take one. */
+  onWhatsApp?: (client: Client) => void;
   onContacted?: (client: Client) => void;
   /** Makes a follow-up to get back to them on a day. */
   onRemind?: (client: Client) => void;
 }
 
 /** The client's name links to their page, so editing needs no action here. */
-export function clientActions(client: Client, { onContacted, onRemind }: ClientActions): Array<RowAction> {
+export function clientActions(client: Client, { onWhatsApp, onContacted, onRemind }: ClientActions): Array<RowAction> {
   const actions: Array<RowAction> = [];
-  const whatsapp = whatsappLink(client.contact?.phone);
-  if (whatsapp) actions.push({ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => openWhatsApp(whatsapp) });
+  if (onWhatsApp && whatsappNumber(client.contact?.phone)) {
+    actions.push({ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => onWhatsApp(client) });
+  }
   if (onContacted) actions.push({ label: "Contacted", icon: CheckIcon, onClick: () => onContacted(client) });
   if (onRemind) actions.push({ label: "Remind me", icon: BellIcon, onClick: () => onRemind(client) });
   return actions;
-}
-
-/** Says when the client's Google contact needs her attention. */
-export function contactProblem(client: Client): string | undefined {
-  if (!client.contact) return "No contact";
-  if (client.contact.missing) return "Contact deleted in Google";
-  return undefined;
 }
 
 /** The name with her other calendar names under it. */

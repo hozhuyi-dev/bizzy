@@ -5,7 +5,7 @@ import type { LinkProps } from "@tanstack/react-router";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
 import { Button } from "~/components/ui/button";
-import { moduleOf } from "~/features/nav-bar/modules";
+import { moduleOf } from "~/features/nav-bar/nav-bar.util";
 
 interface PageHeaderProps {
   title: ReactNode;

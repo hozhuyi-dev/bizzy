@@ -1,10 +1,10 @@
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { cn } from "cn";
-import { searchItems, toFields } from "./data-table.search";
+import { searchItems, toFields } from "./data-table-search.util";
 import type { ReactNode } from "react";
 import type { ReactTable, Row, RowData } from "@tanstack/react-table";
-import type { DataTableFeatures } from "./data-table.features";
-import type { SearchText } from "./data-table.search";
+import type { DataTableFeatures } from "./data-table.config";
+import type { SearchText } from "./data-table.types";
 import { EmptyState } from "~/components/shared/quip/quip.component";
 import {
   Table,

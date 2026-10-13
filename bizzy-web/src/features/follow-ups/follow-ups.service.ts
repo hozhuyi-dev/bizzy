@@ -1,5 +1,5 @@
 import type { FollowUp, FollowUpDraft, FollowUpView } from "./follow-ups.types";
-import type { Page } from "~/features/sessions/sessions.types";
+import type { Page } from "~/core/lambda/lambda.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const FollowUpsService = {

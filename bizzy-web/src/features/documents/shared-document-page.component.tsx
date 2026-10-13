@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { BanIcon, DownloadIcon } from "lucide-react";
-import { toast } from "sonner";
 import { DocumentView } from "./components/document-view/document-view.component";
 import { DocumentsQuery } from "./documents.query";
-import { DOCUMENT_TYPES, documentLabel } from "./documents.registry";
-import { downloadDocumentPdf } from "./pdf/download-pdf";
+import { DOCUMENT_TYPES } from "./documents.constant";
+import { documentLabel } from "./documents.util";
+import { useDocumentPdf } from "./documents.hook";
 import type { SharedDocument } from "./documents.types";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { Button } from "~/components/ui/button";
@@ -44,7 +44,7 @@ export function SharedDocumentPage({ token }: { token: string }) {
 }
 
 function SharedDocumentView({ doc }: { doc: SharedDocument }) {
-  const [busy, setBusy] = useState(false);
+  const { busy, download: downloadPdf } = useDocumentPdf({ errorMessage: "Couldn't make the PDF. Please try again." });
   const cancelled = doc.status === "cancelled";
   const title = DOCUMENT_TYPES[doc.type].title;
 
@@ -52,18 +52,14 @@ function SharedDocumentView({ doc }: { doc: SharedDocument }) {
     document.title = `${title} ${documentLabel(doc.number, doc.revision)} · ${doc.content.issuer.name}`;
   }, [title, doc]);
 
-  const download = () => {
-    setBusy(true);
-    downloadDocumentPdf({
+  const download = () =>
+    downloadPdf({
       type: doc.type,
       number: doc.number,
       revision: doc.revision,
       watermark: cancelled ? "CANCELLED" : undefined,
       content: doc.content,
-    })
-      .catch(() => toast.error("Couldn't make the PDF. Please try again."))
-      .finally(() => setBusy(false));
-  };
+    });
 
   return (
     <>

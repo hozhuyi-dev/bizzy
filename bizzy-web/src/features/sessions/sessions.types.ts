@@ -1,3 +1,5 @@
+import type { DocumentRef, DocumentSource, DocumentType } from "~/features/documents/documents.types";
+import type { Package } from "~/features/packages/packages.types";
 import type { Payment } from "~/features/payments/payments.types";
 
 // Mirrors bizzy-lambda/internal/features/sessions/model.go.
@@ -9,16 +11,6 @@ export type SessionStatus =
   | "priced"
   | "package"
   | "removed";
-
-export interface DocumentRef {
-  documentId: string;
-  /** Set once the document is issued; a draft only reserves. */
-  number?: string;
-  revision?: number;
-  amountCents?: number;
-  date?: string;
-  clientId?: string;
-}
 
 /** What she writes after a session: the summary; the notes are apart. */
 export interface SessionRecord {
@@ -93,9 +85,38 @@ export interface StoredSession {
   notes: string;
 }
 
-/** One page of a list; mirrors dynamo.Page. */
-export interface Page<T> {
-  items: Array<T>;
-  /** Reads the next page; absent on the last. */
-  next?: string;
+/** Where a session was opened from, to go back there. */
+export type SessionReturnTo = "home";
+
+export interface SessionSearch {
+  /** Where to go back to once saved. */
+  from?: SessionReturnTo | undefined;
 }
+
+export type StageTone = "neutral" | "done" | "info" | "waiting" | "attention";
+
+export interface StageBadge {
+  label: string;
+  tone: StageTone;
+}
+
+/** Something a session's document can cover: its fee, or the package its title bought. */
+export interface DocumentItem {
+  source: DocumentSource;
+  label: string;
+  amountCents: number;
+  /** Why it can't go on a new document of the type now; unset when it can. */
+  unavailable?: string | undefined;
+}
+
+export interface SessionDocument {
+  type: DocumentType;
+  ref: DocumentRef;
+}
+
+/** What pays for a session when no amount is written in its title. */
+export type PaymentCover =
+  | { kind: "bought" }
+  | { kind: "credit"; pkg: Package }
+  | { kind: "default"; feeCents: number }
+  | { kind: "none" };

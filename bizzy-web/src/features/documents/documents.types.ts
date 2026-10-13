@@ -112,3 +112,41 @@ export interface DocumentDetail {
   document: BizDocument;
   revisions: Array<DocumentRevision>;
 }
+
+/** A session's or package's link to a document covering it. */
+export interface DocumentRef {
+  documentId: string;
+  /** Set once the document is issued; a draft only reserves. */
+  number?: string;
+  revision?: number;
+  amountCents?: number;
+  date?: string;
+  clientId?: string;
+}
+
+/** The version she was looking at, so a stale tab can't overwrite. */
+export type Versioned = Pick<BizDocument, "id" | "version">;
+
+/** What differs between document types in the app; see DOCUMENT_TYPES. */
+export interface DocumentTypeSpec {
+  /** Printed at the top of the PDF. */
+  title: string;
+  /** Plural, for navigation and lists. */
+  plural: string;
+  /** Label for the party it is addressed to. */
+  recipientLabel: string;
+  /** Whether it confirms a payment ("Paid by", "Total paid"); an invoice asks for one. */
+  paid: boolean;
+  /** Its list, under Documents. */
+  path: "/invoices" | "/receipts";
+}
+
+/** One printed version of a document. */
+export interface DocumentPdfProps {
+  type: DocumentType;
+  number?: string | undefined;
+  revision?: number | undefined;
+  /** Printed across the page: a draft, or a cancelled document. */
+  watermark?: "DRAFT" | "CANCELLED" | undefined;
+  content: DocumentContent;
+}

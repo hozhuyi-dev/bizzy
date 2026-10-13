@@ -74,3 +74,12 @@ export function toContent(values: ContentValues): DocumentContent {
     totalCents: lines.reduce((sum, line) => sum + line.amountCents, 0),
   };
 }
+
+/** Why the draft can't be saved or issued yet, if anything. */
+export function validateContent(values: ContentValues): string | undefined {
+  if (!values.date) return "Choose a date.";
+  if (!values.recipient.name.trim()) return "Who it's for is required.";
+  if (values.lines.some((line) => !line.description.trim())) return "Every line needs a description.";
+  if (values.lines.some((line) => parseCents(line.amount) === null)) return "Amounts look like 95 or 95.50.";
+  return undefined;
+}

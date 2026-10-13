@@ -6,11 +6,10 @@ import type {
   DocumentSummary,
   DocumentType,
   SharedDocument,
+  Versioned,
 } from "./documents.types";
+import type { ApiResponse } from "~/core/lambda/lambda.types";
 import { ApiError, invoke } from "~/core/lambda/lambda.client";
-
-/** The version she was looking at, so a stale tab can't overwrite. */
-export type Versioned = Pick<BizDocument, "id" | "version">;
 
 export const DocumentsService = {
   /** One month ("2026-10") of one type, newest first. */
@@ -42,18 +41,10 @@ export const DocumentsService = {
   readShared: async (token: string): Promise<SharedDocument> => {
     const base = import.meta.env.VITE_PUBLIC_URL.replace(/\/$/, "");
     const response = await fetch(`${base}/${encodeURIComponent(token)}`);
-    const body = (await response.json()) as {
-      data?: SharedDocument;
-      error?: { code: string; message: string };
-    };
+    const body = (await response.json()) as ApiResponse<SharedDocument>;
     if (!body.data) {
       throw new ApiError(body.error?.code ?? "internal", body.error?.message ?? "Something went wrong.");
     }
     return body.data;
   },
 };
-
-/** The link that opens a shared document, on whichever origin the app runs. */
-export function shareUrl(token: string): string {
-  return `${window.location.origin}/d/${token}`;
-}

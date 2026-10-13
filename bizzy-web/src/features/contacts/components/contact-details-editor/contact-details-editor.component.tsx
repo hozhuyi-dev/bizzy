@@ -1,9 +1,10 @@
 import { toast } from "sonner";
-import { ContactsMutation, ContactsQuery } from "../../contacts.query";
+import { ContactsMutation } from "../../contacts.mutation";
+import { ContactsQuery } from "../../contacts.query";
 import { ContactDetailsForm } from "../contact-details-form/contact-details-form.component";
 import type { Contact } from "../../contacts.types";
 import { Loading } from "~/components/shared/quip/quip.component";
-import { ApiError } from "~/core/lambda/lambda.client";
+import { isApiError } from "~/core/utils/api-error.util";
 import { queryMatch } from "~/core/utils/query.util";
 
 interface ContactDetailsEditorProps {
@@ -50,7 +51,7 @@ export function ContactDetailsEditor({ resourceName, onDone, onSaved }: ContactD
             } catch (error) {
               // Changed on her phone meanwhile: reload it and let her redo
               // the edit on top.
-              if (error instanceof ApiError && error.code === "conflict") void detail.refetch();
+              if (isApiError(error, "conflict")) void detail.refetch();
             }
           }}
         />

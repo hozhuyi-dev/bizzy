@@ -15,3 +15,10 @@ export interface GoogleCalendar {
   name: string;
   primary?: boolean;
 }
+
+/** What Google sends back to /google-callback from the consent screen. */
+export interface GoogleCallbackSearch {
+  code?: string | undefined;
+  state?: string | undefined;
+  error?: string | undefined;
+}

@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
-import { SessionKeys } from "~/core/keys.query";
+import { SessionKeys } from "~/core/constants/query-keys.constant";
 import { monthRange } from "~/core/utils/date.util";
 
 export const SessionsQuery = {

@@ -1,4 +1,4 @@
-import { AmplifyService } from "../../amplify.service";
+import { AuthMutation } from "../../auth.mutation";
 import { Logo } from "~/components/shared/logo/logo.component";
 import { Button } from "~/components/ui/button";
 import {
@@ -14,6 +14,9 @@ interface AuthScreenProps {
 }
 
 export function AuthScreen({ status }: AuthScreenProps) {
+  const signIn = AuthMutation.useSignIn();
+  const signOut = AuthMutation.useSignOut();
+
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
@@ -29,14 +32,14 @@ export function AuthScreen({ status }: AuthScreenProps) {
         </CardHeader>
         <CardContent>
           {status === "signed-out" ? (
-            <Button className="w-full" onClick={() => void AmplifyService.signIn()}>
+            <Button className="w-full" onClick={() => signIn.mutate()}>
               Sign in with Google
             </Button>
           ) : (
             <Button
               className="w-full"
               variant="outline"
-              onClick={() => void AmplifyService.signOut()}
+              onClick={() => signOut.mutate()}
             >
               Sign out and try another account
             </Button>

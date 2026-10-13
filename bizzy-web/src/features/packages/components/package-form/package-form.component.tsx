@@ -1,9 +1,10 @@
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { PackagesMutation } from "../../packages.query";
+import { toPackageInput, toPackageValues } from "../../packages.form";
+import { PackagesMutation } from "../../packages.mutation";
 import type { Package } from "../../packages.types";
-import type { PaymentMethod } from "~/features/payments/payments.types";
-import { PAYMENT_METHODS } from "~/features/payments/payments.types";
+import { fieldErrors } from "~/core/utils/form.util";
+import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { Button } from "~/components/ui/button";
@@ -11,29 +12,12 @@ import { DialogFooter } from "~/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
-import { centsToInput, formatCents, parseCents } from "~/core/utils/money.util";
-import { toISODate, todayISO } from "~/core/utils/date.util";
+import { formatCents, parseCents } from "~/core/utils/money.util";
 
 interface PackageFormProps {
   /** Omitted when adding a package. */
   pkg?: Package | undefined;
   onDone: () => void;
-}
-
-interface PackageFormValues {
-  clientId: string;
-  sessions: string;
-  /** Total price, as she'd write after the @. */
-  price: string;
-  purchasedOn: string;
-  note: string;
-  /** Paid there and then: how. Unset leaves it to collect. */
-  paidBy: PaymentMethod | "";
-  paid: boolean;
-}
-
-function fieldErrors(errors: ReadonlyArray<string | undefined>) {
-  return errors.flatMap((message) => (message ? [{ message }] : []));
 }
 
 /**
@@ -44,29 +28,10 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
   const clients = ClientsQuery.useList();
   const save = PackagesMutation.useSave();
 
-  const defaultValues: PackageFormValues = {
-    clientId: pkg?.clientId ?? "",
-    sessions: pkg ? String(pkg.sessions) : "10",
-    price: centsToInput(pkg?.priceCents),
-    purchasedOn: pkg ? toISODate(new Date(pkg.purchasedAt)) : todayISO(),
-    note: pkg?.note ?? "",
-    paid: false,
-    paidBy: "",
-  };
   const form = useForm({
-    defaultValues,
+    defaultValues: toPackageValues(pkg),
     onSubmit: async ({ value }) => {
-      const [year = 0, month = 1, day = 1] = value.purchasedOn.split("-").map(Number);
-      await save.mutateAsync({
-        ...(pkg ? { id: pkg.id } : {}),
-        clientId: value.clientId,
-        sessions: Number(value.sessions),
-        priceCents: parseCents(value.price) ?? 0,
-        // Start of her day, so it covers that day's sessions.
-        purchasedAt: new Date(year, month - 1, day).toISOString(),
-        note: value.note,
-        ...(value.paid && value.paidBy ? { paid: { status: "paid" as const, method: value.paidBy, paidOn: value.purchasedOn } } : {}),
-      });
+      await save.mutateAsync(toPackageInput(value, pkg?.id));
       toast.success(pkg ? "Package updated" : "Package added");
       onDone();
     },

@@ -1,3 +1,5 @@
+import type { ContactSummaryValue } from "~/features/contacts/contacts.types";
+
 // Mirrors bizzy-lambda/internal/features/clients/model.go.
 export interface Client {
   id: string;
@@ -55,3 +57,34 @@ export type SaveClientInput = Pick<Client, "name" | "aliases" | "defaultFeeCents
   id?: string;
   contact?: { resourceName: string };
 };
+
+/** A client's activity summed over a span of months. */
+export interface ActivityTotals {
+  sessions: number;
+  homeSessions: number;
+  receivedCents: number;
+  earnedCents: number;
+  homeEarnedCents: number;
+}
+
+/** A client with the figures the table sorts by. */
+export interface ClientRow {
+  client: Client;
+  lastSessionAt: string | undefined;
+  monthsSince: number | undefined;
+  revenue12Cents: number;
+  lifetimeCents: number;
+  sessions12: number;
+}
+
+/** Everyone, or the lapsed clients worth getting back in touch with. */
+export type ClientsView = "all" | "reconnect";
+
+/** Where a new client was started from, to go back there once saved. */
+export type ClientReturnTo = "home";
+
+/** A contact chosen for the client, with whatever details are known. */
+export interface ChosenContact extends ContactSummaryValue {
+  postcode?: string | undefined;
+  missing?: boolean | undefined;
+}

@@ -1,13 +1,6 @@
-import { useForm, useStore } from "@tanstack/react-form";
-import { useNavigate } from "@tanstack/react-router";
 import { EyeIcon, PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
-import { toast } from "sonner";
-import { DocumentsMutation } from "../../documents.query";
-import { toContent, toFormValues } from "../../documents.form";
-import { DOCUMENT_TYPES, documentLabel } from "../../documents.registry";
-import { openDocumentPdf } from "../../pdf/download-pdf";
-import type { ContentValues } from "../../documents.form";
-import type { BizDocument, DocumentContent } from "../../documents.types";
+import { DOCUMENT_TYPES } from "../../documents.constant";
+import type { DocumentEditorState } from "./document-editor.hook";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { Button } from "~/components/ui/button";
@@ -15,83 +8,10 @@ import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { formatCents, parseCents } from "~/core/utils/money.util";
-import { PAYMENT_METHODS } from "~/features/payments/payments.types";
+import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 
 // The methods she takes; she can still type something else.
 const PAID_BY_SUGGESTIONS = PAYMENT_METHODS.map((method) => method.label);
-
-/**
- * Free editing of everything printed on the document. Nothing is final until
- * Issue; a revision keeps its number. Split into a hook, its actions and its
- * fields so the page can put the actions in its header.
- */
-export function useDocumentEditor(doc: BizDocument, draft: DocumentContent) {
-  const save = DocumentsMutation.useSaveDraft();
-  const issue = DocumentsMutation.useIssue();
-  const discard = DocumentsMutation.useDiscardDraft();
-  const navigate = useNavigate();
-  const nextRevision = doc.number ? (doc.revision ?? 0) + 1 : undefined;
-
-  const form = useForm({ defaultValues: toFormValues(draft) });
-  const values = useStore(form.store, (state) => state.values);
-  const content = toContent(values);
-  const invalid = validate(values);
-
-  const saveDraft = () => save.mutateAsync({ doc, content });
-
-  return {
-    doc,
-    form,
-    values,
-    invalid,
-    nextRevision,
-    saving: save.isPending,
-    issuing: issue.isPending,
-    busy: save.isPending || issue.isPending || discard.isPending,
-
-    save: async () => {
-      try {
-        await saveDraft();
-        toast.success("Draft saved");
-      } catch (error) {
-        toast.error((error as Error).message);
-      }
-    },
-
-    issue: async () => {
-      try {
-        const saved = await saveDraft();
-        if (!saved) return;
-        const issued = await issue.mutateAsync(saved);
-        toast.success(`Issued ${issued ? documentLabel(issued.number, issued.revision) : ""}`);
-      } catch (error) {
-        toast.error((error as Error).message);
-      }
-    },
-
-    discard: () =>
-      discard.mutate(doc, {
-        onSuccess: () => {
-          if (doc.number) {
-            toast.success("Revision discarded");
-            return;
-          }
-          // A draft never issued is deleted, so its page is gone too.
-          toast.success("Draft discarded");
-          void navigate({ to: DOCUMENT_TYPES[doc.type].path });
-        },
-        onError: (error) => toast.error(error.message),
-      }),
-
-    /** The real PDF, watermarked DRAFT, from what is on screen now. */
-    preview: () =>
-      openDocumentPdf({ type: doc.type, number: doc.number, revision: nextRevision, watermark: "DRAFT", content }).catch(
-        (error: unknown) => toast.error(error instanceof Error ? error.message : "Couldn't make the PDF"),
-      ),
-  };
-}
-
-export type DocumentEditorState = ReturnType<typeof useDocumentEditor>;
 
 /** Issue: what the page is for, so it stays in view on a phone. */
 export function DocumentIssueButton({ editor }: { editor: DocumentEditorState }) {
@@ -306,14 +226,6 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       ),
     },
   ];
-}
-
-function validate(values: ContentValues): string | undefined {
-  if (!values.date) return "Choose a date.";
-  if (!values.recipient.name.trim()) return "Who it's for is required.";
-  if (values.lines.some((line) => !line.description.trim())) return "Every line needs a description.";
-  if (values.lines.some((line) => parseCents(line.amount) === null)) return "Amounts look like 95 or 95.50.";
-  return undefined;
 }
 
 /** The part of a TanStack Form field a text input needs. */

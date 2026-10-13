@@ -1,29 +1,13 @@
 import { useState } from "react";
 import { ArrowLeftRightIcon, PencilIcon, RotateCcwIcon, Undo2Icon, UnlinkIcon } from "lucide-react";
-import type { Contact, ContactDetails } from "~/features/contacts/contacts.types";
-import type { ContactSummaryValue } from "~/features/contacts/components/contact-summary/contact-summary.component";
+import { chosenFromContact, recreateFrom } from "../../clients.util";
+import type { ChosenContact } from "../../clients.types";
+import type { Contact } from "~/features/contacts/contacts.types";
 import { ContactsQuery } from "~/features/contacts/contacts.query";
 import { ContactDetailsEditor } from "~/features/contacts/components/contact-details-editor/contact-details-editor.component";
 import { ContactPicker } from "~/features/contacts/components/contact-picker/contact-picker.component";
 import { ContactSummary } from "~/features/contacts/components/contact-summary/contact-summary.component";
 import { Button } from "~/components/ui/button";
-
-/** A contact chosen for the client, with whatever details are known. */
-export interface ChosenContact extends ContactSummaryValue {
-  postcode?: string | undefined;
-  missing?: boolean | undefined;
-}
-
-export function chosenFromContact(contact: Contact): ChosenContact {
-  return {
-    resourceName: contact.resourceName,
-    displayName: contact.displayName,
-    email: contact.email,
-    phone: contact.phone,
-    address: contact.address.formatted,
-    postcode: contact.address.postcode,
-  };
-}
 
 interface ClientContactProps {
   contact: ChosenContact | null;
@@ -140,17 +124,4 @@ export function ClientContact({ contact, linked, searchFor, clientName, onChange
       </div>
     </div>
   );
-}
-
-/** A new contact prefilled from a deleted one's copy, for her to check. */
-function recreateFrom(contact: ChosenContact, clientName: string | undefined): ContactDetails {
-  return {
-    givenName: contact.displayName || clientName || "",
-    email: contact.email ?? "",
-    phone: contact.phone ?? "",
-    address: {
-      street: contact.address ?? "",
-      ...(contact.postcode ? { postcode: contact.postcode } : {}),
-    },
-  };
 }

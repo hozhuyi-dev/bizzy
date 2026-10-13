@@ -1,4 +1,5 @@
-import type { Page, Session, SessionDraft, StoredSession } from "./sessions.types";
+import type { Session, SessionDraft, StoredSession } from "./sessions.types";
+import type { Page } from "~/core/lambda/lambda.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const SessionsService = {

@@ -1,15 +1,8 @@
 import { ExternalLinkIcon } from "lucide-react";
-import { contactUrl } from "../../contacts.types";
+import { contactUrl } from "../../contacts.util";
+import type { ContactSummaryValue } from "../../contacts.types";
 import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
-
-export interface ContactSummaryValue {
-  resourceName: string;
-  displayName?: string | undefined;
-  email?: string | undefined;
-  phone?: string | undefined;
-  address?: string | undefined;
-}
 
 /** A linked contact's details, with a link to it in Google Contacts. */
 export function ContactSummary({ contact, actions }: { contact: ContactSummaryValue; actions?: ReactNode }) {

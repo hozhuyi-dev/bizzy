@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
-import { BILLING_KEYS } from "~/core/keys.query";
+import { BILLING_KEYS } from "~/core/constants/query-keys.constant";
 
 interface QueryState<TData, TError extends Error = Error> {
   isPending: boolean;

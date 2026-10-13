@@ -1,26 +1,16 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { cn } from "cn";
-import { PaymentsMutation } from "../../payments.query";
-import { PAYMENT_METHODS, methodLabel } from "../../payments.types";
-import type { PayItem, Payment, PaymentInput, PaymentMethod } from "../../payments.types";
+import { PaymentsMutation } from "../../payments.mutation";
+import { PAYMENT_METHODS } from "../../payments.constant";
+import { methodLabel } from "../../payments.util";
+import type { Payable, Payment, PaymentInput, PaymentMethod } from "../../payments.types";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { formatDate, todayISO } from "~/core/utils/date.util";
 import { centsToInput, formatCents, parseCents } from "~/core/utils/money.util";
-
-/** One thing to settle: a session's fee or a package. */
-export interface Payable {
-  item: PayItem;
-  /** "Session fee", "Package of 10". */
-  label: string;
-  dueCents: number;
-  payment?: Payment | undefined;
-  /** A receipt covers it, so its payment can't change. */
-  receipted?: boolean;
-}
 
 /**
  * How each item was settled, and a form for those still due. Items due

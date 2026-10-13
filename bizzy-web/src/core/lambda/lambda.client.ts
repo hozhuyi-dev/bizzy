@@ -1,5 +1,6 @@
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { fetchAuthSession } from "aws-amplify/auth";
+import type { ApiResponse } from "./lambda.types";
 
 /**
  * The API is one Lambda invoked directly with the signed-in user's
@@ -15,11 +16,6 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.code = code;
   }
-}
-
-interface ApiResponse<T> {
-  data?: T;
-  error?: { code: string; message: string };
 }
 
 const client = new LambdaClient({

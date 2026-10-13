@@ -2,14 +2,15 @@ import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { toast } from "sonner";
-import { ContactsMutation, ContactsQuery } from "../../contacts.query";
-import { searchContacts } from "../../contacts.types";
+import { ContactsMutation } from "../../contacts.mutation";
+import { ContactsQuery } from "../../contacts.query";
+import { searchContacts } from "../../contacts.util";
 import { ContactDetailsForm } from "../contact-details-form/contact-details-form.component";
 import type { Contact, ContactDetails } from "../../contacts.types";
-import { useQuip } from "~/components/shared/quip/quip.component";
+import { useQuip } from "~/components/shared/quip/quip.hook";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import { ApiError } from "~/core/lambda/lambda.client";
+import { isApiError } from "~/core/utils/api-error.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 const SHOWN = 6;
@@ -41,7 +42,7 @@ export function ContactPicker({ initialQuery, createFrom, onPick }: ContactPicke
   }
 
   if (contacts.error) {
-    const disconnected = contacts.error instanceof ApiError && contacts.error.code === "disconnected";
+    const disconnected = isApiError(contacts.error, "disconnected");
     return (
       <p role="alert" className="text-sm text-destructive">
         {contacts.error.message}{" "}

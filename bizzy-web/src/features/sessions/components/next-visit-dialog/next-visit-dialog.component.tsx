@@ -15,7 +15,7 @@ import {
 } from "~/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { formatSessionTime, toISODate } from "~/core/utils/date.util";
+import { addDays, formatSessionTime, toISODate, toTimeInput } from "~/core/utils/date.util";
 
 interface NextVisitDialogProps {
   /** The session to book after, as its draft; null closes the dialog. */
@@ -41,11 +41,8 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
   const create = SessionsMutation.useCreate();
   const navigate = useNavigate();
   const start = new Date(from.start);
-  const next = new Date(start);
-  next.setDate(start.getDate() + 7);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const [date, setDate] = useState(toISODate(next));
-  const [time, setTime] = useState(`${pad(start.getHours())}:${pad(start.getMinutes())}`);
+  const [date, setDate] = useState(toISODate(addDays(start, 7)));
+  const [time, setTime] = useState(toTimeInput(start));
   const [tentative, setTentative] = useState(false);
 
   const book = () => {

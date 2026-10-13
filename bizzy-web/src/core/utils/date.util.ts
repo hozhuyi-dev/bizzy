@@ -42,6 +42,30 @@ export function toISODate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/** Midnight at the start of the local day. */
+export function startOfDay(date = new Date()): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/** The date n local days on (or back, for negative n). */
+export function addDays(date: Date, n: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + n);
+  return next;
+}
+
+/** The local day as [start, end) instants, for range queries. */
+export function dayRange(date = new Date()): { from: string; to: string } {
+  const start = startOfDay(date);
+  return { from: start.toISOString(), to: addDays(start, 1).toISOString() };
+}
+
+/** "09:30" for a local time, as a time input takes it. */
+export function toTimeInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 /** "2026-10" for a local date. */
 export function monthKey(date: Date): string {
   return toISODate(date).slice(0, 7);

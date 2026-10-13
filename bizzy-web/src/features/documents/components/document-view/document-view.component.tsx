@@ -1,4 +1,5 @@
-import { DOCUMENT_TYPES, documentLabel } from "../../documents.registry";
+import { DOCUMENT_TYPES } from "../../documents.constant";
+import { documentLabel } from "../../documents.util";
 import type { DocumentContent, DocumentType } from "../../documents.types";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";

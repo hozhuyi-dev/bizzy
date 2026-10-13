@@ -1,4 +1,6 @@
-import { THEME_STORAGE_KEY, ThemeService, resolveTheme } from "./theme.service";
+import { THEME_STORAGE_KEY } from "./theme.constant";
+import { ThemeService } from "./theme.service";
+import { resolveTheme } from "./theme.util";
 
 describe("theme", () => {
   afterEach(() => {

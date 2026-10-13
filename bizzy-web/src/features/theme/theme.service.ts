@@ -1,36 +1,14 @@
-import { useSyncExternalStore } from "react";
-
-export const THEME_PREFERENCES = ["light", "dark", "system"] as const;
-export type ThemePreference = (typeof THEME_PREFERENCES)[number];
-export type Theme = "light" | "dark";
-
-interface ThemeState {
-  preference: ThemePreference;
-  /** What is showing: the preference, or the device's for "system". */
-  theme: Theme;
-}
-
-/**
- * Kept per device, like the device's own light/dark setting. The pre-paint
- * script in index.html reads the same key, so keep the two in step.
- */
-export const THEME_STORAGE_KEY = "bizzy.theme";
-
-export function resolveTheme(preference: ThemePreference, prefersDark: boolean): Theme {
-  if (preference === "system") return prefersDark ? "dark" : "light";
-  return preference;
-}
-
-function isPreference(value: unknown): value is ThemePreference {
-  return THEME_PREFERENCES.includes(value as ThemePreference);
-}
+import { THEME_STORAGE_KEY } from "./theme.constant";
+import { isThemePreference, resolveTheme } from "./theme.util";
+import type { ThemePreference } from "./theme.constant";
+import type { ThemeState } from "./theme.types";
 
 // Storage can throw (private mode, blocked site data); the theme then just
 // isn't remembered.
 function readPreference(): ThemePreference {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    return isPreference(stored) ? stored : "system";
+    return isThemePreference(stored) ? stored : "system";
   } catch {
     return "system";
   }
@@ -79,7 +57,3 @@ export const ThemeService = {
     };
   },
 };
-
-export function useTheme(): ThemeState {
-  return useSyncExternalStore(ThemeService.subscribe, ThemeService.getState);
-}

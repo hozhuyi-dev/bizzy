@@ -1,7 +1,8 @@
 import { cn } from "cn";
 import type { CSSProperties, ReactNode } from "react";
 import { Card, CardContent } from "~/components/ui/card";
-import { scrollToSection, stickyTop, useActiveSection, useHeight } from "~/components/shared/scroll-spy/scroll-spy";
+import { useActiveSection, useHeight } from "~/core/scroll-spy/scroll-spy.hook";
+import { scrollToSection, stickyTop } from "~/core/scroll-spy/scroll-spy.util";
 
 export interface PageSection {
   /** Used for the anchor; unique on the page. */

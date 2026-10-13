@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Trash2Icon } from "lucide-react";
-import { FollowUpsMutation } from "../../follow-ups.query";
-import type { FollowUp, FollowUpDraft } from "../../follow-ups.types";
+import { daysFromToday, toFollowUpDraft, toFollowUpValues } from "../../follow-ups.form";
+import { FollowUpsMutation } from "../../follow-ups.mutation";
+import type { FollowUpValues } from "../../follow-ups.form";
+import type { FollowUpTarget } from "../../follow-ups.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -18,12 +20,6 @@ import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
-import { toISODate } from "~/core/utils/date.util";
-
-/** What the dialog is for: a new follow-up (maybe for a client, from a session), or one to edit. */
-export type FollowUpTarget =
-  | { mode: "new"; clientId?: string | undefined; sessionId?: string | undefined }
-  | { mode: "edit"; followUp: FollowUp };
 
 interface FollowUpDialogProps {
   target: FollowUpTarget | null;
@@ -53,52 +49,9 @@ const IN = [
   { label: "3 months", days: 91 },
 ];
 
-function daysFromToday(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return toISODate(date);
-}
-
-interface Values {
-  clientId: string;
-  date: string;
-  allDay: boolean;
-  time: string;
-  summary: string;
-  notes: string;
-}
-
-function initialValues(target: FollowUpTarget): Values {
-  if (target.mode === "new") {
-    return { clientId: target.clientId ?? "", date: daysFromToday(7), allDay: true, time: "10:00", summary: "", notes: "" };
-  }
-  const { followUp } = target;
-  const due = new Date(followUp.due);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    clientId: followUp.clientId ?? followUp.suggestedClientId ?? "",
-    date: toISODate(due),
-    allDay: Boolean(followUp.allDay),
-    time: `${pad(due.getHours())}:${pad(due.getMinutes())}`,
-    summary: followUp.summary ?? "",
-    notes: followUp.notes ?? "",
-  };
-}
-
-function toDraft(values: Values, sessionId: string | undefined): FollowUpDraft {
-  return {
-    clientId: values.clientId,
-    ...(sessionId ? { sessionId } : {}),
-    // Read as her local time.
-    ...(values.allDay ? { date: values.date } : { start: new Date(`${values.date}T${values.time}`).toISOString() }),
-    summary: values.summary,
-    notes: values.notes,
-  };
-}
-
 function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: () => void }) {
-  const [values, setValues] = useState(() => initialValues(target));
-  const set = <TKey extends keyof Values>(key: TKey, value: Values[TKey]) =>
+  const [values, setValues] = useState(() => toFollowUpValues(target));
+  const set = <TKey extends keyof FollowUpValues>(key: TKey, value: FollowUpValues[TKey]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
   const clients = ClientsQuery.useList();
   const create = FollowUpsMutation.useCreate();
@@ -116,7 +69,7 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
   const valid = values.clientId !== "" && values.date !== "" && (values.allDay || values.time !== "");
 
   const save = () => {
-    const draft = toDraft(values, sessionId);
+    const draft = toFollowUpDraft(values, sessionId);
     const done = {
       onSuccess: () => {
         toast.success(editing ? "Follow-up updated" : "Follow-up added to your calendar");

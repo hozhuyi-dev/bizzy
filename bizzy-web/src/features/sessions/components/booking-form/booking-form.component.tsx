@@ -1,90 +1,25 @@
 import { useForm } from "@tanstack/react-form";
-import { paymentCover } from "../../session-payment";
+import { paymentCover } from "../../session-payment.util";
+import { toBookingValues, toSessionDraft } from "../../sessions.form";
+import type { BookingValues, PriceIs } from "../../sessions.form";
 import type { Session, SessionDraft } from "../../sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { creditsLeft } from "~/features/packages/packages.types";
+import { creditsLeft } from "~/features/packages/packages.util";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Separator } from "~/components/ui/separator";
-import { formatDate, toISODate } from "~/core/utils/date.util";
-import { centsToInput, formatCents, parseCents } from "~/core/utils/money.util";
-
-type PriceIs = "each" | "total";
+import { formatDate } from "~/core/utils/date.util";
+import { formatCents, parseCents } from "~/core/utils/money.util";
+import { fieldErrors } from "~/core/utils/form.util";
 
 const PRICE_IS_ITEMS: Array<{ value: PriceIs; label: string }> = [
   { value: "each", label: "per session" },
   { value: "total", label: "in total" },
 ];
-
-interface BookingValues {
-  clientId: string;
-  date: string;
-  time: string;
-  minutes: string;
-  /** Blank leaves it to a package credit or the default fee. */
-  fee: string;
-  packageSessions: string;
-  packagePrice: string;
-  /** Whether the price is per session (`10x180`) or the total (`10@1800`). */
-  packagePriceIs: PriceIs;
-  homeVisit: boolean;
-  tentative: boolean;
-}
-
-function toValues(draft: SessionDraft): BookingValues {
-  const start = new Date(draft.start);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    clientId: draft.clientId,
-    date: toISODate(start),
-    time: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
-    minutes: String(draft.minutes),
-    fee: centsToInput(draft.feeCents),
-    ...packageValues(draft.package),
-    homeVisit: draft.homeVisit,
-    tentative: draft.tentative,
-  };
-}
-
-/** Per session when the total divides evenly, as the title writes it. */
-function packageValues(
-  pkg: SessionDraft["package"],
-): Pick<BookingValues, "packageSessions" | "packagePrice" | "packagePriceIs"> {
-  if (!pkg) return { packageSessions: "", packagePrice: "", packagePriceIs: "each" };
-  const each = pkg.priceCents % pkg.sessions === 0;
-  return {
-    packageSessions: String(pkg.sessions),
-    packagePrice: centsToInput(each ? pkg.priceCents / pkg.sessions : pkg.priceCents),
-    packagePriceIs: each ? "each" : "total",
-  };
-}
-
-function toDraft(values: BookingValues): SessionDraft {
-  const fee = parseCents(values.fee);
-  const sessions = Number(values.packageSessions);
-  const price = parseCents(values.packagePrice);
-  return {
-    clientId: values.clientId,
-    // Read as her local time.
-    start: new Date(`${values.date}T${values.time}`).toISOString(),
-    minutes: Number(values.minutes),
-    ...(fee !== null ? { feeCents: fee } : {}),
-    ...(values.packageSessions.trim() && sessions >= 1 && price !== null && price > 0
-      ? { package: { sessions, priceCents: values.packagePriceIs === "each" ? price * sessions : price } }
-      : {}),
-    homeVisit: values.homeVisit,
-    tentative: values.tentative,
-  };
-}
-
-/** Adapts TanStack Form's string errors to the shape FieldError renders. */
-function fieldErrors(errors: ReadonlyArray<string | undefined>) {
-  return errors.flatMap((message) => (message ? [{ message }] : []));
-}
 
 interface BookingFormProps {
   initial: SessionDraft;
@@ -110,10 +45,10 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
   const packages = PackagesQuery.useList(true);
 
   const form = useForm({
-    defaultValues: toValues(initial),
+    defaultValues: toBookingValues(initial),
     onSubmit: async ({ value }) => {
       try {
-        await onSubmit(toDraft(value));
+        await onSubmit(toSessionDraft(value));
       } catch {
         // The caller shows what went wrong.
       }
@@ -125,7 +60,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
     .sort((a, b) => a.label.localeCompare(b.label));
 
   const coverOf = (values: BookingValues) => {
-    const draft = toDraft(values);
+    const draft = toSessionDraft(values);
     return paymentCover({
       client: clientsById.get(values.clientId),
       start: new Date(draft.start),
@@ -409,7 +344,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
         </div>
         <form.Subscribe selector={(state) => state.values}>
           {(values) => {
-            const pkg = toDraft(values).package;
+            const pkg = toSessionDraft(values).package;
             return (
               <FieldDescription>
                 {pkg

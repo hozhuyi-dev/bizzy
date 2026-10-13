@@ -1,28 +1,19 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { RotateCcwIcon, Trash2Icon } from "lucide-react";
-import { allSessionDocuments } from "./session-stage";
+import { DiscardSessionDialog } from "./components/discard-session-dialog/discard-session-dialog.component";
 import { SessionsMutation } from "./sessions.mutation";
 import { SessionsQuery } from "./sessions.query";
 import type { Session } from "./sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { PackagesQuery } from "~/features/packages/packages.query";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { formatDate, formatSessionTime } from "~/core/utils/date.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { clientOf } from "~/features/clients/clients.util";
 
 /**
  * Sessions deleted from the calendar that had notes, a payment or a document
@@ -61,7 +52,7 @@ export function DeletedSessionsPage() {
           </CardContent>
         </Card>
       )}
-      <DiscardDialog session={discarding} onClose={() => setDiscarding(null)} />
+      <DiscardSessionDialog session={discarding} onClose={() => setDiscarding(null)} />
     </>
   );
 }
@@ -69,7 +60,7 @@ export function DeletedSessionsPage() {
 function DeletedRow({ session, onDiscard }: { session: Session; onDiscard: (session: Session) => void }) {
   const clientsById = ClientsQuery.useById();
   const restore = SessionsMutation.useRestore();
-  const client = session.clientId ? clientsById.get(session.clientId) : undefined;
+  const client = clientOf(clientsById, session.clientId);
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -104,56 +95,5 @@ function DeletedRow({ session, onDiscard }: { session: Session; onDiscard: (sess
         </Button>
       </div>
     </div>
-  );
-}
-
-/** Discarding drops what she recorded; a document must be cancelled first. */
-export function DiscardDialog({
-  session,
-  onClose,
-  onDiscarded,
-}: {
-  session: Session | null;
-  onClose: () => void;
-  onDiscarded?: () => void;
-}) {
-  const discard = SessionsMutation.useDiscard();
-  const packages = PackagesQuery.useList(true);
-  const bought = session ? packages.data?.find((pkg) => pkg.id === session.eventId) : undefined;
-  const documents = session ? allSessionDocuments(session, bought) : [];
-
-  return (
-    <AlertDialog open={session !== null} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Discard this session?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {documents.length > 0
-              ? "An invoice or receipt covers it. Cancel or discard those first."
-              : "Its notes and payment are deleted for good. It is already gone from your calendar."}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Keep it</AlertDialogCancel>
-          <Button
-            variant="destructive"
-            disabled={discard.isPending || documents.length > 0}
-            onClick={() =>
-              session &&
-              discard.mutate(session.eventId, {
-                onSuccess: () => {
-                  toast.success("Session discarded");
-                  onDiscarded?.();
-                },
-                onError: (error) => toast.error(error.message),
-                onSettled: onClose,
-              })
-            }
-          >
-            Discard
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }

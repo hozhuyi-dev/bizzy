@@ -85,6 +85,51 @@ WhatsApp opens the client's chat with the message typed in. On her phone (a touc
 
 Both messages are templates in **Settings → WhatsApp messages**. `{documents}` lists each document with its link, and `{title}` reads "receipt", "receipts" or "documents".
 
+## Code layout
+
+Both apps are organised by feature (vertical slices). A feature owns its types, data access and endpoints or screens.
+
+### bizzy-lambda
+
+- `internal/features/<feature>/` is one slice; the package is the business name, so files are named by layer only: `sessions/handler.go`, not `sessions.handler.go`.
+- Fixed layer files:
+
+  | File | Holds |
+  | --- | --- |
+  | `model.go` | Domain types and pure logic on them, plus the package doc |
+  | `repository.go` | DynamoDB records and the `Repository` |
+  | `handler.go` | `Register`, input structs and thin handler methods (validate, delegate) |
+  | `service.go` | Use cases spanning several reads/writes, when a slice needs them (`documents`, `sessions`) |
+  | `google.go` | The Google API client (`calendar`, `contacts`) |
+
+- Anything else is named after what it does, never `util` or `helper`: `rules.go`, `reconciler.go`, `syncer.go`, `numbering.go`, `share.go`. Use `snake_case` for two words (`session_editor.go`), never a trailing `_<os>` or `_<arch>`, which Go reads as a build constraint.
+- Each file holds one layer. Tests mirror the file they test: `x.go` → `x_test.go`.
+- Dependencies point one way: workflow slices (`billing`, `documents`, `googlesync`, `payments`, `todo`) may import core slices (`clients`, `sessions`, `packages`, `settings`, `followups`), never the reverse. `calendar` imports no feature. Interfaces are declared where they are used.
+- Outside features: `internal/shared/` for types several slices share with no behaviour of their own (`docref`, `money`), `internal/platform/` for infrastructure (`dynamo`, `googleauth`, `ssm`, `apperr`), `internal/schema` for every key, `internal/router` for dispatch. `cmd/*/main.go` wires it all together.
+
+### bizzy-web
+
+- `src/features/<feature>/` is one slice. Files are `<kebab-name>.<layer>.ts(x)`, with exactly one dot before the layer; the name is the feature or a topic in it: `sessions.query.ts`, `session-stage.util.ts`, never `sessions.stage.ts`.
+- Layers, in dependency order (each may import those above it):
+
+  | Layer | Holds |
+  | --- | --- |
+  | `types` | Types and interfaces only, no runtime code; API mirrors name their Go model |
+  | `constant` | Runtime constants and option lists, with types derived from them |
+  | `util` | Pure functions |
+  | `form` | Form values ↔ API types, and validation |
+  | `service` | Side effects: `invoke` the API, storage, `window` |
+  | `query` / `mutation` | `useQuery` / `useMutation` hooks over a service; a mutation owns its invalidation |
+  | `hook` | Other hooks: flows with toasts or navigation, external stores |
+  | `columns` | Table columns, their cells, row actions and the phone card |
+  | `component` | Components |
+
+- Pages sit at the feature root as `x-page.component.tsx`; every other component goes in `components/<name>/`, which may hold its own `<name>.hook.ts` or `<name>.util.ts`.
+- Components reach data only through `query`, `mutation` and `hook`, never a `service` or `lambda.client`. A type, constant or helper used outside its component file moves to the feature's layer file.
+- Within a feature import relatively; across features and from core use `~/`. Pages don't import from other pages.
+- Tests mirror the file they test: `x.util.ts` → `x.util.test.ts`.
+- Outside features: `core/` holds what every feature shares (`lambda/lambda.client.ts`, `config/*.config.ts`, `constants/`, `utils/*.util.ts`, and shared behaviour with no UI of its own, such as `scroll-spy/`), `components/shared/` the app's own shared components, `components/ui/` shadcn's (generated, left as is), and `routes/` TanStack's file routes, which only read params and search and render a page.
+
 ## Data
 
 One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `FOLLOWUP`, `PACKAGE`, `DOC`, `GOOGLE`, …) and five generic local secondary indexes created up front, because LSIs can't be added later. `bizzy-lambda/internal/schema/schema.go` is the one place that says how each entity is keyed (PK, SK, LSI1–5); what a row stores is its struct in the feature's `model.go`.

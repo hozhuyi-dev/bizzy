@@ -14,16 +14,16 @@ import {
   DocumentIssueButton,
   documentEditorActions,
   documentEditorSections,
-  useDocumentEditor,
 } from "./components/document-editor/document-editor.component";
+import { useDocumentEditor } from "./components/document-editor/document-editor.hook";
 import { DocumentView } from "./components/document-view/document-view.component";
-import { DocumentStatusBadge } from "./documents-page.component";
-import { DocumentsMutation, DocumentsQuery } from "./documents.query";
-import { shareUrl } from "./documents.service";
-import { DOCUMENT_TYPES, documentLabel } from "./documents.registry";
-import { downloadDocumentPdf, openDocumentPdf } from "./pdf/download-pdf";
-import type { BizDocument, DocumentContent, DocumentRevision, DocumentType  } from "./documents.types";
-import type { DocumentPdfProps } from "./pdf/document-pdf.component";
+import { DocumentStatusBadge } from "./components/document-status-badge/document-status-badge.component";
+import { DocumentsMutation } from "./documents.mutation";
+import { DocumentsQuery } from "./documents.query";
+import { documentLabel, shareUrl  } from "./documents.util";
+import { DOCUMENT_TYPES } from "./documents.constant";
+import { useDocumentPdf } from "./documents.hook";
+import type { BizDocument, DocumentContent, DocumentPdfProps, DocumentRevision, DocumentType } from "./documents.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { Banner } from "~/components/shared/banner/banner.component";
@@ -46,7 +46,8 @@ import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { useSendDocuments } from "~/features/whatsapp/use-whatsapp";
+import { useSendDocuments } from "~/features/whatsapp/whatsapp.hook";
+import { clientOf } from "~/features/clients/clients.util";
 
 /** The breadcrumb, which already says what kind of document this is. */
 function parentOf(type: DocumentType) {
@@ -218,7 +219,7 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
 function useShareActions(doc: BizDocument, content: DocumentContent, onReset: () => void): Array<RowAction> {
   const clientsById = ClientsQuery.useById();
   const { send, busy } = useSendDocuments();
-  const client = doc.clientId ? clientsById.get(doc.clientId) : undefined;
+  const client = clientOf(clientsById, doc.clientId);
   const to = { name: client?.name ?? content.recipient.name, phone: client?.contact?.phone ?? content.recipient.phone };
   const token = doc.shareToken;
 
@@ -306,16 +307,10 @@ function revisionsSection(doc: BizDocument, revisions: Array<DocumentRevision>):
 
 /** View opens the real PDF in a new tab; Download saves it with a proper name. */
 function usePdfActions(pdf: DocumentPdfProps): Array<RowAction> {
-  const [busy, setBusy] = useState(false);
-  const run = (action: (props: DocumentPdfProps) => Promise<void>) => {
-    setBusy(true);
-    action(pdf)
-      .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Couldn't make the PDF"))
-      .finally(() => setBusy(false));
-  };
+  const { busy, open, download } = useDocumentPdf();
   return [
-    { label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => run(openDocumentPdf) },
-    { label: "Download", icon: DownloadIcon, disabled: busy, onClick: () => run(downloadDocumentPdf) },
+    { label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => open(pdf) },
+    { label: "Download", icon: DownloadIcon, disabled: busy, onClick: () => download(pdf) },
   ];
 }
 

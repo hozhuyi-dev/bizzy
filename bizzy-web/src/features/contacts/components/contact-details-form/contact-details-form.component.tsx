@@ -1,5 +1,7 @@
 import { useForm } from "@tanstack/react-form";
+import { toContactDetails, toContactValues } from "../../contacts.form";
 import type { ComponentProps } from "react";
+import type { ContactValues } from "../../contacts.form";
 import type { ContactDetails } from "../../contacts.types";
 import { Button } from "~/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
@@ -16,50 +18,17 @@ interface ContactDetailsFormProps {
   error?: string | undefined;
 }
 
-interface Values {
-  givenName: string;
-  familyName: string;
-  email: string;
-  phone: string;
-  street: string;
-  postcode: string;
-  city: string;
-  region: string;
-}
-
-function toValues(details: ContactDetails): Values {
-  return {
-    givenName: details.givenName ?? "",
-    familyName: details.familyName ?? "",
-    email: details.email,
-    phone: details.phone,
-    street: details.address.street ?? "",
-    postcode: details.address.postcode ?? "",
-    city: details.address.city ?? "",
-    region: details.address.region ?? "",
-  };
-}
-
-function toDetails(values: Values, mode: "create" | "edit"): ContactDetails {
-  return {
-    ...(mode === "create" ? { givenName: values.givenName, familyName: values.familyName } : {}),
-    email: values.email,
-    phone: values.phone,
-    address: { street: values.street, postcode: values.postcode, city: values.city, region: values.region },
-  };
-}
-
 /**
  * A Google contact's details, written straight to Google. Not a <form>: it
  * sits inside the client form when she creates a contact there.
  */
 export function ContactDetailsForm({ mode, initial, submitLabel, onSubmit, onCancel, error }: ContactDetailsFormProps) {
   const form = useForm({
-    defaultValues: toValues(initial),
-    onSubmit: ({ value }) => onSubmit(toDetails(value, mode)),
+    defaultValues: toContactValues(initial),
+    onSubmit: ({ value }) => onSubmit(toContactDetails(value, mode)),
   });
 
-  const text = (name: Exclude<keyof Values, "street">, label: string, props: ComponentProps<typeof Input> = {}) => (
+  const text = (name: Exclude<keyof ContactValues, "street">, label: string, props: ComponentProps<typeof Input> = {}) => (
     <form.Field name={name}>
       {(field) => (
         <Field>

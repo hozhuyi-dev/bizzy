@@ -1,17 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
 import type { SessionDraft } from "./sessions.types";
-import { ApiError } from "~/core/lambda/lambda.client";
-import { SessionKeys } from "~/core/keys.query";
+import { SessionKeys } from "~/core/constants/query-keys.constant";
+import { isStaleEdit } from "~/core/utils/api-error.util";
 import { invalidateBilling } from "~/core/utils/query.util";
-
-/**
- * The calendar changed since she looked (or the event is gone). The API has
- * stored the latest, so the app reloads to show it before she tries again.
- */
-export function isStaleEdit(error: unknown): error is ApiError {
-  return error instanceof ApiError && (error.code === "conflict" || error.code === "not_found");
-}
 
 /**
  * Refreshes billing after a write. The session's own page is left alone

@@ -3,21 +3,22 @@ import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, MessageCircleIcon } from "lucide-react";
 import { toast } from "sonner";
-import { totals } from "./clients.activity";
-import { LastSeen, contactProblem, extraAliases, toClientRow } from "./clients.columns";
+import { totals } from "./client-activity.util";
+import { LastSeen } from "./clients.columns";
+import { toClientInput, toClientValues } from "./clients.form";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
 import { ClientContact } from "./components/client-contact/client-contact.component";
 import { ClientDocuments } from "./components/client-documents/client-documents.component";
 import { ClientFollowUps } from "./components/client-follow-ups/client-follow-ups.component";
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
-import type { ChosenContact } from "./components/client-contact/client-contact.component";
-import type { Client, SaveClientInput } from "./clients.types";
+import { contactProblem, toClientRow } from "./clients.util";
+import type { ChosenContact, Client, ClientReturnTo } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
-import { openWhatsApp, whatsappLink } from "~/features/whatsapp/whatsapp.link";
+import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { documentLabel, documentRoute } from "~/features/documents/documents.registry";
-import { creditsLeft } from "~/features/packages/packages.types";
+import { documentLabel, documentRoute } from "~/features/documents/documents.util";
+import { creditsLeft } from "~/features/packages/packages.util";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
@@ -28,14 +29,12 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { formatDate } from "~/core/utils/date.util";
-import { centsToInput, formatCents, parseCents } from "~/core/utils/money.util";
+import { formatCents, parseCents } from "~/core/utils/money.util";
+import { fieldErrors } from "~/core/utils/form.util";
 
 const FORM_ID = "client-form";
 
 const parent = { to: "/clients", label: "Clients" } as const;
-
-/** Where a new client was started from, to go back there once saved. */
-export type ClientReturnTo = "home";
 
 export type ClientPageProps =
   | { mode: "edit"; id: string }
@@ -92,14 +91,6 @@ interface ClientEditorProps {
   returnTo?: ClientReturnTo | undefined;
 }
 
-interface ClientFormValues {
-  name: string;
-  /** Comma-separated; easier to type on a phone than a tag input. */
-  aliases: string;
-  defaultFee: string;
-  homeVisits: boolean;
-}
-
 function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
   const save = ClientsMutation.useSave();
   const navigate = useNavigate();
@@ -107,12 +98,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
   const [contactRequired, setContactRequired] = useState(false);
 
   const form = useForm({
-    defaultValues: {
-      name: client?.name ?? initialName ?? "",
-      aliases: client ? extraAliases(client).join(", ") : "",
-      defaultFee: centsToInput(client?.defaultFeeCents),
-      homeVisits: client?.homeVisits ?? false,
-    } satisfies ClientFormValues,
+    defaultValues: toClientValues(client, initialName),
     onSubmit: async ({ value }) => {
       // A new client needs a contact; an existing one may be unlinked.
       if (!contact && !client) {
@@ -121,7 +107,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
         return;
       }
       try {
-        const saved = await save.mutateAsync(toInput(value, client?.id, contact?.resourceName));
+        const saved = await save.mutateAsync(toClientInput(value, client?.id, contact?.resourceName));
         toast.success(client ? "Client updated" : "Client added");
         if (!client) {
           void navigate(
@@ -134,7 +120,8 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
     },
   });
 
-  const whatsapp = whatsappLink(client?.contact?.phone);
+  const whatsapp = useWhatsApp();
+  const phone = client?.contact?.phone;
   const problem = client && contactProblem(client);
 
   const sections: Array<PageSection> = [
@@ -272,7 +259,9 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
           </form.Subscribe>
         }
         moreActions={
-          whatsapp ? [{ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => openWhatsApp(whatsapp) }] : undefined
+          whatsapp.canMessage(phone)
+            ? [{ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) }]
+            : undefined
         }
       />
       {/* Inputs join this form through their form attribute, so Enter saves. */}
@@ -299,23 +288,6 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
       />
     </>
   );
-}
-
-/** Adapts TanStack Form's string errors to the shape FieldError renders. */
-function fieldErrors(errors: ReadonlyArray<string | undefined>) {
-  return errors.flatMap((message) => (message ? [{ message }] : []));
-}
-
-function toInput(values: ClientFormValues, id: string | undefined, resourceName: string | undefined): SaveClientInput {
-  const fee = values.defaultFee.trim();
-  return {
-    ...(id ? { id } : {}),
-    name: values.name,
-    ...(resourceName ? { contact: { resourceName } } : {}),
-    aliases: values.aliases.split(",").map((alias) => alias.trim()).filter(Boolean),
-    ...(fee ? { defaultFeeCents: parseCents(fee) ?? 0 } : {}),
-    ...(values.homeVisits ? { homeVisits: true } : {}),
-  };
 }
 
 function Activity({ client }: { client: Client }) {

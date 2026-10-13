@@ -1,18 +1,17 @@
 import { BanknoteIcon, FileTextIcon, PencilIcon, ReceiptIcon, Trash2Icon } from "lucide-react";
-import { canReceiptPackage, creditsLeft, isSettled } from "./packages.types";
+import { canReceiptPackage, clientName, creditsLeft, isSettled, paymentText } from "./packages.util";
 import type { ReactNode } from "react";
 import type { Package } from "./packages.types";
 import type { Client } from "~/features/clients/clients.types";
 import type { DocumentType } from "~/features/documents/documents.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.features";
+import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
-import { documentLabel, documentRoute } from "~/features/documents/documents.registry";
-import { PAYMENT_METHODS } from "~/features/payments/payments.types";
+import { documentLabel, documentRoute } from "~/features/documents/documents.util";
 
 export interface PackageHandlers {
   clientsById: ReadonlyMap<string, Client>;
@@ -26,25 +25,12 @@ const DOCUMENT_TYPES_ORDER: ReadonlyArray<DocumentType> = ["invoice", "receipt"]
 
 const helper = createDataTableColumnHelper<Package>();
 
-export function clientName(pkg: Package, clientsById: ReadonlyMap<string, Client>): string {
-  return clientsById.get(pkg.clientId)?.name ?? "Unknown client";
-}
-
 export function PackageCredits({ pkg }: { pkg: Package }) {
   return (
     <span>
       {creditsLeft(pkg)} of {pkg.sessions} left
     </span>
   );
-}
-
-/** "Paid · TnG · 12 Oct", "Waived" or "Unpaid". */
-export function paymentText(pkg: Package): string {
-  const { payment } = pkg;
-  if (!payment) return isSettled(pkg) ? "Free" : "Unpaid";
-  if (payment.status === "waived") return "Waived";
-  const method = PAYMENT_METHODS.find((m) => m.value === payment.method)?.short;
-  return ["Paid", method, formatDate(payment.paidOn)].filter(Boolean).join(" · ");
 }
 
 export function PackagePayment({ pkg }: { pkg: Package }) {

@@ -1,9 +1,10 @@
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { SettingsMutation, SettingsQuery } from "./settings.query";
-import { EVENT_COLOURS } from "./settings.types";
+import { SettingsMutation } from "./settings.mutation";
+import { SettingsQuery } from "./settings.query";
+import { EVENT_COLOURS } from "./settings.constant";
 import type { Settings } from "./settings.types";
-import { CAN_RESET } from "~/features/reset/reset.query";
+import { CAN_RESET } from "~/features/reset/reset.constant";
 import { ResetData } from "~/features/reset/components/reset-data/reset-data.component";
 import { GoogleConnectionSettings } from "~/features/google/components/google-connection/google-connection.component";
 import { AppearanceSettings } from "~/features/theme/components/appearance-settings/appearance-settings.component";
@@ -27,7 +28,7 @@ import {
 } from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
 import { queryMatch } from "~/core/utils/query.util";
-import { DOCUMENT_PLACEHOLDERS, PAYMENT_PLACEHOLDERS } from "~/features/whatsapp/whatsapp.message";
+import { DOCUMENT_PLACEHOLDERS, PAYMENT_PLACEHOLDERS } from "~/features/whatsapp/whatsapp.constant";
 import { ComputerWhatsAppSettings } from "~/features/whatsapp/components/computer-whatsapp-settings/computer-whatsapp-settings.component";
 
 export function SettingsPage() {

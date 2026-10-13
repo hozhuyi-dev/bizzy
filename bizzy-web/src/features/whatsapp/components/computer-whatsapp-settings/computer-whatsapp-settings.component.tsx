@@ -1,6 +1,6 @@
 import { AppWindowIcon, GlobeIcon } from "lucide-react";
-import { setComputerWhatsApp, useComputerWhatsApp } from "../../whatsapp.preference";
-import type { ComputerWhatsApp } from "../../whatsapp.preference";
+import { useComputerWhatsApp } from "../../whatsapp.hook";
+import type { ComputerWhatsApp } from "../../whatsapp.constant";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 
 const OPTIONS = [
@@ -10,10 +10,10 @@ const OPTIONS = [
 
 /** WhatsApp Web or the desktop app. Applies at once, on this computer only. */
 export function ComputerWhatsAppSettings() {
-  const choice = useComputerWhatsApp();
+  const [choice, setChoice] = useComputerWhatsApp();
 
   return (
-    <Tabs value={choice} onValueChange={(value) => setComputerWhatsApp(value as ComputerWhatsApp)}>
+    <Tabs value={choice} onValueChange={(value) => setChoice(value as ComputerWhatsApp)}>
       <TabsList>
         {OPTIONS.map(({ value, label, icon: Icon }) => (
           <TabsTrigger key={value} value={value}>

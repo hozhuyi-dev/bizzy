@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClientsPage, LAPSE_MONTHS } from "~/features/clients/clients-page.component";
+import { ClientsPage } from "~/features/clients/clients-page.component";
+import { LAPSE_MONTHS } from "~/features/clients/clients.constant";
 import { oneOf } from "~/core/utils/search.util";
 
 export interface ReconnectSearch {

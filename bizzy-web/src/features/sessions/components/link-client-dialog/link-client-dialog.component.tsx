@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import type { Session } from "../../sessions.types";
-import { ClientsMutation, profileOf } from "~/features/clients/clients.mutation";
+import { ClientsMutation } from "~/features/clients/clients.mutation";
+import { profileOf } from "~/features/clients/clients.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { Button } from "~/components/ui/button";
 import {
