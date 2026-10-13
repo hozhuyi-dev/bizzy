@@ -2,15 +2,19 @@ import * as cdk from "aws-cdk-lib/core";
 import { Construct } from "constructs";
 import { CfnOutput, Duration } from "aws-cdk-lib";
 import type { ITable } from "aws-cdk-lib/aws-dynamodb";
+import type { IBucket } from "aws-cdk-lib/aws-s3";
 import { type IRole, Policy, PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType, HttpMethod } from "aws-cdk-lib/aws-lambda";
 import { GoFunction } from "./common/api/go-function";
+import { FileBucket } from "./common/data/file-bucket";
 import type { Environment } from "../utils/environment.util";
 
 interface ApiStackProps extends cdk.StackProps {
   projectName: string;
   environment: Environment;
   table: ITable;
+  /** Where attachments live; the API presigns the browser's uploads and downloads. */
+  files: IBucket;
   /** The identity pool role the signed-in user's credentials carry. */
   authenticatedRole: IRole;
   /**
@@ -35,6 +39,7 @@ export class ApiStack extends cdk.Stack {
       projectName,
       environment,
       table,
+      files,
       authenticatedRole,
       googleClientId,
       googleClientSecret,
@@ -61,6 +66,7 @@ export class ApiStack extends cdk.Stack {
       timeout: Duration.minutes(2),
       environmentVariables: {
         TABLE_NAME: table.tableName,
+        BUCKET_NAME: files.bucketName,
         TIME_ZONE: syncTimeZone,
         // Development and staging also serve data.reset.
         ENVIRONMENT: environment,
@@ -71,6 +77,30 @@ export class ApiStack extends cdk.Stack {
     });
 
     table.grantReadWriteData(this.api.function);
+
+    // Presigned URLs act with the signer's permissions, so these are also
+    // what the browser can do with one: only attachment keys. Tagging is how
+    // an upload stays pending until confirmed; listing is for data.reset.
+    const attachments = files.arnForObjects(`${FileBucket.ATTACHMENTS_PREFIX}*`);
+    this.api.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: [
+          "s3:PutObject",
+          "s3:PutObjectTagging",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:DeleteObjectTagging",
+        ],
+        resources: [attachments],
+      }),
+    );
+    this.api.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["s3:ListBucket"],
+        resources: [files.bucketArn],
+        conditions: { StringLike: { "s3:prefix": [`${FileBucket.ATTACHMENTS_PREFIX}*`] } },
+      }),
+    );
 
     // Connecting writes the token and disconnecting deletes it. The default
     // aws/ssm key's policy already lets SSM encrypt and decrypt for the

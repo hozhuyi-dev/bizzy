@@ -12,8 +12,10 @@ package integrity
 import (
 	"time"
 
+	"bizzy-lambda/internal/features/attachments"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
@@ -29,5 +31,13 @@ type World struct {
 	Revisions []documents.Revision
 	// Shares maps each share token to the document it opens.
 	Shares map[string]string
-	Now    time.Time
+	// Attachments are keyed as the memory store keys them; Files says which
+	// keys hold a file in blob storage, and whether it was confirmed (not
+	// pending).
+	Attachments map[string]attachments.Attachment
+	Files       map[string]bool
+	Expenses    map[string]expenses.Expense
+	Items       map[string]expenses.Item
+	Categories  []expenses.Category
+	Now         time.Time
 }

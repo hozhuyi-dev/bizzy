@@ -1,13 +1,21 @@
 package simulation
 
 import (
+	"encoding/json"
+	"fmt"
+	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"pgregory.net/rapid"
 
+	"bizzy-lambda/internal/features/attachments"
+	"bizzy-lambda/internal/features/billing"
+	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/platform/statemodel"
 )
@@ -18,12 +26,13 @@ var userActions = []Action{
 	// Clients and contacts.
 	{Name: "clients.save", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		var c map[string]any
+		feesOnly := false
 		if rapid.Bool().Draw(t, "new client?") {
 			c = map[string]any{"name": rapid.SampledFrom(names).Draw(t, "name")}
 		} else {
 			existing := w.Store.ClientMap[pickClientID(t, w)]
 			c = map[string]any{"id": existing.ID, "name": existing.Name, "aliases": existing.Aliases,
-				"defaultFeeCents": existing.DefaultFeeCents, "homeVisits": existing.HomeVisits}
+				"feeRates": existing.FeeRates, "homeVisits": existing.HomeVisits}
 			if existing.Contact != nil {
 				c["contact"] = map[string]any{"resourceName": existing.Contact.ResourceName}
 			}
@@ -31,7 +40,8 @@ var userActions = []Action{
 			case 0:
 				c["aliases"] = append(slices.Clone(existing.Aliases), rapid.SampledFrom(names).Draw(t, "alias"))
 			case 1:
-				c["defaultFeeCents"] = rapid.SampledFrom([]*int64{nil, cents(9000), cents(15000)}).Draw(t, "default fee")
+				c["feeRates"] = rapid.SampledFrom(feeRateChoices).Draw(t, "fees")
+				feesOnly = true
 			case 2:
 				c["homeVisits"] = !existing.HomeVisits
 			}
@@ -40,7 +50,31 @@ var userActions = []Action{
 			person := rapid.SampledFrom(w.Contacts.People).Draw(t, "contact")
 			c["contact"] = map[string]any{"resourceName": person.ResourceName}
 		}
-		w.Call(t, "clients.save", c, false)
+		if !feesOnly || !w.InSync {
+			w.Call(t, "clients.save", c, false)
+			return
+		}
+		// What the form shows before saving new fees must be exactly what
+		// saving reprices.
+		data, refused := w.Call(t, "billing.feeImpact", map[string]any{"clientId": c["id"], "feeRates": c["feeRates"]}, false)
+		before := fees(w)
+		if _, err := w.Call(t, "clients.save", c, false); err != nil || refused != nil {
+			return
+		}
+		var impact billing.FeeImpact
+		if err := json.Unmarshal(data, &impact); err != nil {
+			t.Fatalf("feeImpact result: %v", err)
+		}
+		predicted := map[string]bool{}
+		for _, ch := range impact.Changes {
+			predicted[ch.EventID] = true
+		}
+		after := fees(w)
+		for id, fee := range after {
+			if changed := before[id] != fee; changed != predicted[id] {
+				t.Fatalf("session %s: fee %s → %s, but feeImpact predicted a change: %v", id, before[id], fee, predicted[id])
+			}
+		}
 	}},
 	{Name: "clients.markContacted", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.Call(t, "clients.markContacted", map[string]any{"id": pickClientID(t, w), "contacted": rapid.Bool().Draw(t, "contacted")}, false)
@@ -90,6 +124,112 @@ var userActions = []Action{
 			in["notes"] = rapid.SampledFrom([]string{"", "Long notes"}).Draw(t, "notes")
 		}
 		w.CallAsViewed(t, "sessions.saveRecord", in, s.View(w.Now).Can.Record)
+	}},
+
+	// Files: the app asks for an upload, the browser uploads (or the tab is
+	// closed first), then the app confirms.
+	{Name: "attachments.confirm", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		kind, ownerID, viewed := pickOwner(t, w)
+		file := rapid.SampledFrom(attachmentChoices).Draw(t, "file")
+		owner := map[string]any{"ownerKind": kind, "ownerId": ownerID}
+		data, refused := w.Call(t, "attachments.requestUpload", with(owner, map[string]any{
+			"name": file.name, "contentType": file.contentType, "sizeBytes": file.size,
+		}), false)
+		id := "never-requested"
+		if refused == nil {
+			var ticket attachments.Ticket
+			if err := json.Unmarshal(data, &ticket); err != nil {
+				t.Fatalf("requestUpload result: %v", err)
+			}
+			id = ticket.ID
+			if rapid.IntRange(0, 5).Draw(t, "tab closed before uploading?") > 0 {
+				if err := w.Blobs.Put(attachments.KeyOf(kind, ownerID, id, file.contentType)); err != nil {
+					t.Fatalf("upload: %v", err)
+				}
+			}
+		}
+		w.CallAsViewed(t, "attachments.confirm", with(owner, map[string]any{
+			"id": id, "name": file.name, "contentType": file.contentType,
+		}), viewed)
+	}},
+	{Name: "attachments.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		a := w.Store.AttachmentMap[pick(t, "attachment", w.Store.AttachmentMap, nil)]
+		// An expense's files can always change.
+		viewed := statemodel.Verdict{OK: true}
+		if s, ok := w.Store.SessionMap[a.OwnerID]; ok && a.OwnerKind == attachments.OwnerSession {
+			viewed = s.View(w.Now).Can.Attach
+		}
+		w.CallAsViewed(t, "attachments.delete", map[string]any{"ownerKind": a.OwnerKind, "ownerId": a.OwnerID, "id": a.ID}, viewed)
+	}},
+
+	// Expenses: a receipt's lines name items from the list, or new ones.
+	{Name: "expenses.save", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		in := map[string]any{
+			"date":   w.Now.In(kl).AddDate(0, 0, -rapid.IntRange(0, 40).Draw(t, "days ago")).Format(time.DateOnly),
+			"vendor": rapid.SampledFrom([]string{"", "Shopee", "Guardian"}).Draw(t, "vendor"),
+		}
+		if len(w.Store.ExpenseMap) > 0 && rapid.Bool().Draw(t, "edit?") {
+			e := w.Store.ExpenseMap[pick(t, "expense", w.Store.ExpenseMap, nil)]
+			in["id"], in["version"] = e.ID, e.Version
+			if rapid.IntRange(0, 9).Draw(t, "stale tab?") == 0 {
+				in["version"] = e.Version - 1
+			}
+		}
+		var lines []map[string]any
+		for range rapid.IntRange(0, 3).Draw(t, "lines") {
+			amount := rapid.SampledFrom([]int64{0, 1250, 8900}).Draw(t, "amount")
+			if len(w.Store.ItemMap) > 0 && rapid.Bool().Draw(t, "listed item?") {
+				it := w.Store.ItemMap[pick(t, "item", w.Store.ItemMap, nil)]
+				lines = append(lines, map[string]any{"itemId": it.ID, "name": it.Name, "categoryId": it.CategoryID, "amountCents": amount})
+				continue
+			}
+			lines = append(lines, map[string]any{
+				"name":        rapid.SampledFrom(itemNames).Draw(t, "new item"),
+				"categoryId":  rapid.SampledFrom(categoryIDs(w, "bogus")).Draw(t, "category"),
+				"amountCents": amount,
+			})
+		}
+		in["lines"] = lines
+		w.Call(t, "expenses.save", in, false)
+	}},
+	{Name: "expenses.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		e := w.Store.ExpenseMap[pick(t, "expense", w.Store.ExpenseMap, nil)]
+		version := e.Version
+		if rapid.IntRange(0, 9).Draw(t, "stale tab?") == 0 {
+			version--
+		}
+		w.Call(t, "expenses.delete", map[string]any{"id": e.ID, "version": version}, false)
+	}},
+	{Name: "expenses.saveItem", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		it := w.Store.ItemMap[pick(t, "item", w.Store.ItemMap, nil)]
+		w.Call(t, "expenses.saveItem", map[string]any{
+			"id":         it.ID,
+			"name":       rapid.SampledFrom(append([]string{it.Name}, itemNames...)).Draw(t, "name"),
+			"categoryId": rapid.SampledFrom(categoryIDs(w, "bogus")).Draw(t, "category"),
+			"archived":   rapid.Bool().Draw(t, "archived"),
+		}, false)
+	}},
+	{Name: "expenses.saveCategories", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		all := w.Store.CategoryList
+		if all == nil {
+			all = expenses.DefaultCategories
+		}
+		all = slices.Clone(all)
+		i := rapid.IntRange(0, len(all)-1).Draw(t, "category")
+		switch rapid.IntRange(0, 4).Draw(t, "edit") {
+		case 0:
+			all[i].Name = "Fuel and tolls"
+		case 1:
+			all = append(all, expenses.Category{Name: rapid.SampledFrom([]string{"Courses", "Other expenses"}).Draw(t, "new")})
+		case 2:
+			all[i].Archived = !all[i].Archived
+		case 3:
+			// Deleting one is refused: archive it instead.
+			all = slices.Delete(all, i, i+1)
+		default:
+			slices.Reverse(all)
+		}
+		w.Call(t, "expenses.saveCategories", map[string]any{"categories": all}, false)
 	}},
 
 	// Money.
@@ -226,6 +366,70 @@ var userActions = []Action{
 			w.InSync = true
 		}
 	}},
+}
+
+// itemNames are things she buys, one of them typed differently.
+var itemNames = []string{"Kinesio tape", "Ultrasound gel", "Parking", "kinesio  TAPE"}
+
+// categoryIDs are the categories' ids, and some that aren't.
+func categoryIDs(w *World, others ...string) []string {
+	all := w.Store.CategoryList
+	if all == nil {
+		all = expenses.DefaultCategories
+	}
+	ids := slices.Clone(others)
+	for _, c := range all {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+// pickOwner draws a session or an expense to attach a file to, with what
+// its view says about attaching.
+func pickOwner(t *rapid.T, w *World) (attachments.OwnerKind, string, statemodel.Verdict) {
+	if len(w.Store.ExpenseMap) > 0 && rapid.Bool().Draw(t, "an expense's receipt?") {
+		return attachments.OwnerExpense, pick(t, "expense", w.Store.ExpenseMap, nil), statemodel.Verdict{OK: true}
+	}
+	s := pickSession(t, w, nil)
+	return attachments.OwnerSession, s.EventID, s.View(w.Now).Can.Attach
+}
+
+// attachmentChoices are files the app can be given: a photo, a PDF, and two
+// it must turn away.
+var attachmentChoices = []struct {
+	name, contentType string
+	size              int64
+}{
+	{"knee.jpg", "image/jpeg", 300_000},
+	{"MRI report.pdf", "application/pdf", 2_000_000},
+	{"scan.tiff", "image/tiff", 1_000},
+	{"video.jpg", "image/jpeg", 50 << 20},
+}
+
+// with is a copy of a payload with more fields.
+func with(base, more map[string]any) map[string]any {
+	out := maps.Clone(base)
+	maps.Copy(out, more)
+	return out
+}
+
+// feeRateChoices are fees the form can save: none, one, or one raised
+// around the time the clock starts (the day before, or two days after).
+var feeRateChoices = [][]clients.FeeRate{
+	nil,
+	{{Cents: 9000}},
+	{{Cents: 15000}},
+	{{Cents: 9000}, {From: "2026-10-12", Cents: 10000}},
+	{{Cents: 9000}, {From: "2026-10-15", Cents: 10000}},
+}
+
+// fees is what each session is charged, to compare before and after.
+func fees(w *World) map[string]string {
+	out := map[string]string{}
+	for id, s := range w.Store.SessionMap {
+		out[id] = fmt.Sprintf("%s %d", s.Status, s.DueCents())
+	}
+	return out
 }
 
 // removedOrAny mostly picks a session deleted from the calendar, which

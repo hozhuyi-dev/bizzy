@@ -45,7 +45,7 @@ func newReconciler(m *memory.Store) *billing.Reconciler {
 func setup() (*memory.Store, *fakecal.Calendar) {
 	m := memory.New()
 	fee := int64(9000)
-	m.ClientMap["jane"] = clients.Client{ID: "jane", Name: "Jane Smith", Aliases: []string{"jane smith"}, DefaultFeeCents: &fee}
+	m.ClientMap["jane"] = clients.Client{ID: "jane", Name: "Jane Smith", Aliases: []string{"jane smith"}, FeeRates: []clients.FeeRate{{Cents: fee}}}
 	return m, &fakecal.Calendar{}
 }
 

@@ -73,7 +73,7 @@ func edit(m *memory.Store, id string, change func(*sessions.Session)) {
 }
 
 func jane() clients.Client {
-	return clients.Client{ID: "jane", Name: "Jane Smith", Aliases: []string{"jane smith"}, DefaultFeeCents: cents(9000)}
+	return clients.Client{ID: "jane", Name: "Jane Smith", Aliases: []string{"jane smith"}, FeeRates: []clients.FeeRate{{Cents: 9000}}}
 }
 
 func TestPricing(t *testing.T) {
@@ -338,7 +338,7 @@ func TestPackageRemovedFromTitleIsUnlinked(t *testing.T) {
 func TestPackageLinkedBackLeavesTheClientItWasMovedTo(t *testing.T) {
 	m := memory.New()
 	m.ClientMap["jane"] = jane()
-	m.ClientMap["amy"] = clients.Client{ID: "amy", Name: "Amy Tan", Aliases: []string{"amy tan"}, DefaultFeeCents: cents(12000)}
+	m.ClientMap["amy"] = clients.Client{ID: "amy", Name: "Amy Tan", Aliases: []string{"amy tan"}, FeeRates: []clients.FeeRate{{Cents: 12000}}}
 	sync(t, m, event("e1", 1, "Jane Smith 5x80"), event("e2", 3, "Amy Tan"))
 	gone(t, m, "e1", true)
 

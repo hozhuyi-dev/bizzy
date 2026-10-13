@@ -1,4 +1,4 @@
-// Package reset wipes her data so a development or staging environment can
+// Package reset wipes her data (and her files) so a development or staging environment can
 // start over against the real calendar. It is never registered in
 // production, where issued invoices and receipts must be kept.
 package reset
@@ -15,6 +15,27 @@ import (
 
 type store interface {
 	DeleteAll(ctx context.Context, keep ...string) (int, error)
+}
+
+// Wipe is the table and the attached files, deleted together: a file whose
+// item is gone would never be reached again.
+type Wipe struct {
+	Table store
+	Files interface {
+		DeletePrefix(ctx context.Context, prefix string) (int, error)
+	}
+	FilesPrefix string
+}
+
+// DeleteAll deletes the table's items outside keep, then every file, and
+// counts both.
+func (w Wipe) DeleteAll(ctx context.Context, keep ...string) (int, error) {
+	items, err := w.Table.DeleteAll(ctx, keep...)
+	if err != nil {
+		return items, err
+	}
+	files, err := w.Files.DeletePrefix(ctx, w.FilesPrefix)
+	return items + files, err
 }
 
 // Sync reads the whole calendar back in, returning what it found.

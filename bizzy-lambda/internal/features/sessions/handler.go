@@ -94,7 +94,7 @@ type saveRecordInput struct {
 }
 
 // saveRecord saves the summary and notes, as she types (the app saves after
-// a pause). Clearing both clears the record.
+// a pause). Clearing both, with no files attached, clears the record.
 func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error) {
 	summary := strings.TrimSpace(in.Summary)
 	var notes string
@@ -130,11 +130,7 @@ func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error
 		if in.Notes == nil {
 			hasNotes = s.Record != nil && s.Record.HasNotes
 		}
-		if summary == "" && !hasNotes {
-			s.Record = nil
-			return nil
-		}
-		s.Record = &Record{Summary: summary, HasNotes: hasNotes, UpdatedAt: now}
+		s.setRecord(summary, hasNotes, s.Files(), now)
 		return nil
 	})
 	if err != nil {

@@ -9,7 +9,10 @@ export interface Client {
   contact?: ClientContact;
   /** Names she writes in the calendar; always includes the client's name. */
   aliases: Array<string>;
-  defaultFeeCents?: number;
+  /** Her fees for the client over time, oldest first; see FeeRate. */
+  feeRates?: Array<FeeRate>;
+  /** What a session without an amount would be charged today; worked out by the API. */
+  feeTodayCents?: number;
   /** Sessions are home visits unless the event colour says otherwise. */
   homeVisits?: boolean;
 
@@ -18,6 +21,17 @@ export interface Client {
   lastSessionAt?: string;
   nextBookedAt?: string;
   lastContactedAt?: string;
+}
+
+/**
+ * One fee and the day it starts. A session with no amount in its title and
+ * no package credit pays the last rate starting on or before its day; a new
+ * rate leaves the sessions before it alone.
+ */
+export interface FeeRate {
+  /** The first day it applies (YYYY-MM-DD). The first rate has none: it covers everything before the next. */
+  from?: string;
+  cents: number;
 }
 
 /**
@@ -53,7 +67,7 @@ export interface MonthActivity {
  * resource name is sent: the API copies the details from Google. An existing
  * client saved without one is unlinked.
  */
-export type SaveClientInput = Pick<Client, "name" | "aliases" | "defaultFeeCents" | "homeVisits"> & {
+export type SaveClientInput = Pick<Client, "name" | "aliases" | "feeRates" | "homeVisits"> & {
   id?: string;
   contact?: { resourceName: string };
 };

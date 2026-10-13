@@ -18,8 +18,11 @@
 //	DOCREV        documentId#rev (2 digits)   -            -                   -                        -                   -               documents.Revision
 //	COUNTER       type#year                   -            -                   -                        -                   -               `last`: the last number issued
 //	DOCSHARE      share token                 -            -                   -                        -                   -               `documentId` a public link opens
-//	ATTACHMENT    ownerKind#ownerId#id        -            -                   -                        -                   -               attachments.Attachment (not written yet)
+//	ATTACHMENT    ownerKind#ownerId#id        -            -                   -                        -                   -               attachments.Attachment
+//	EXPENSE       id                          date#created -                   -                        -                   -               expenses.Expense
+//	EXPENSEITEM   id                          -            -                   -                        -                   -               expenses.Item
 //	SETTINGS      BUSINESS                    -            -                   -                        -                   -               settings.Settings
+//	SETTINGS      EXPENSECATEGORIES           -            -                   -                        -                   -               `categories`: []expenses.Category
 //	GOOGLE        CONNECTION                  -            -                   -                        -                   -               googleconnect.Connection (kept by Reset)
 //	SYNC          LAST                        -            -                   -                        -                   -               googlesync.Run
 //
@@ -65,6 +68,8 @@ const (
 	Counter          = "COUNTER"
 	DocumentShare    = "DOCSHARE"
 	Attachment       = "ATTACHMENT"
+	Expense          = "EXPENSE"
+	ExpenseItem      = "EXPENSEITEM"
 	Settings         = "SETTINGS"
 	Google           = "GOOGLE"
 	SyncStatus       = "SYNC"
@@ -161,6 +166,18 @@ func AttachmentPrefix(ownerKind, ownerID string) string {
 func AttachmentKeys(ownerKind, ownerID, id string) dynamo.Keys {
 	return dynamo.Keys{PK: Attachment, SK: AttachmentPrefix(ownerKind, ownerID) + id}
 }
+
+// ExpenseKeys keys an expense dated date (YYYY-MM-DD). Created breaks ties
+// between expenses of the same day.
+func ExpenseKeys(id, date string, created time.Time) dynamo.Keys {
+	return dynamo.Keys{PK: Expense, SK: id, LSI1SK: date + "#" + dynamo.TimeKey(created)}
+}
+
+func ExpenseItemKeys(id string) dynamo.Keys {
+	return dynamo.Keys{PK: ExpenseItem, SK: id}
+}
+
+func ExpenseCategoriesKeys() dynamo.Keys { return dynamo.Keys{PK: Settings, SK: "EXPENSECATEGORIES"} }
 
 func SettingsKeys() dynamo.Keys   { return dynamo.Keys{PK: Settings, SK: "BUSINESS"} }
 func GoogleKeys() dynamo.Keys     { return dynamo.Keys{PK: Google, SK: "CONNECTION"} }

@@ -10,7 +10,7 @@ export interface BookingValues {
   date: string;
   time: string;
   minutes: string;
-  /** Blank leaves it to a package credit or the default fee. */
+  /** Blank leaves it to a package credit or the client's fee. */
   fee: string;
   packageSessions: string;
   packagePrice: string;

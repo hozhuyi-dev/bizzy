@@ -16,6 +16,7 @@ const can: SessionCan = {
   invoice: yes,
   receipt: no("only a paid session without a receipt can get one"),
   record: yes,
+  attach: yes,
   editBooking: yes,
   restore: no("This session is still in the calendar."),
   discard: no("This session is still in the calendar."),

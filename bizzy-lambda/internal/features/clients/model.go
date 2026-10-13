@@ -20,9 +20,11 @@ type Client struct {
 	// Aliases are the names she writes in the calendar for this client. The
 	// client's own name is always one of them.
 	Aliases []string `json:"aliases" dynamodbav:"aliases"`
-	// DefaultFeeCents is charged when a session title has no amount and the
-	// client has no package credit left.
-	DefaultFeeCents *int64 `json:"defaultFeeCents,omitempty" dynamodbav:"defaultFeeCents,omitempty"`
+	// FeeRates are the client's fees over time, oldest first, charged when a
+	// session title has no amount and the client has no package credit left
+	// (see FeeOn). A new fee from a date leaves the sessions before it alone,
+	// so changing it never reprices what was already charged.
+	FeeRates []FeeRate `json:"feeRates,omitempty" dynamodbav:"feeRates,omitempty"`
 	// HomeVisits makes her sessions with this client home visits unless the
 	// event's colour says otherwise.
 	HomeVisits bool `json:"homeVisits,omitempty" dynamodbav:"homeVisits,omitempty"`
@@ -34,6 +36,27 @@ type Client struct {
 	// NextBookedAt is the next future calendar entry with this client.
 	NextBookedAt    *time.Time `json:"nextBookedAt,omitempty" dynamodbav:"nextBookedAt,omitempty"`
 	LastContactedAt *time.Time `json:"lastContactedAt,omitempty" dynamodbav:"lastContactedAt,omitempty"`
+}
+
+// FeeRate is one fee and the day it starts.
+type FeeRate struct {
+	// From is the first local day (YYYY-MM-DD) it applies; empty for the
+	// first rate, which also covers every session before the next one.
+	From  string `json:"from,omitempty" dynamodbav:"from,omitempty"`
+	Cents int64  `json:"cents" dynamodbav:"cents"`
+}
+
+// FeeOn is the fee for a session on a local day (YYYY-MM-DD): the last rate
+// starting on or before it. Nil when no fee is set.
+func (c Client) FeeOn(day string) *int64 {
+	var fee *int64
+	for _, r := range c.FeeRates {
+		if r.From > day {
+			break
+		}
+		fee = &r.Cents
+	}
+	return fee
 }
 
 // Contact is the linked Google contact with a read-only copy of the details

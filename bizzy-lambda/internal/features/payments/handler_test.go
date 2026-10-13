@@ -28,7 +28,7 @@ func setup(t *testing.T) (*memory.Store, handler) {
 	t.Helper()
 	m := memory.New()
 	fee := int64(9000)
-	m.ClientMap["jane"] = clients.Client{ID: "jane", Name: "Jane Smith", Aliases: []string{"jane smith"}, DefaultFeeCents: &fee}
+	m.ClientMap["jane"] = clients.Client{ID: "jane", Name: "Jane Smith", Aliases: []string{"jane smith"}, FeeRates: []clients.FeeRate{{Cents: fee}}}
 
 	r := &billing.Reconciler{
 		Clients: m.Clients(), Sessions: m.Sessions(), Packages: m.Packages(), Settings: m.Settings(),

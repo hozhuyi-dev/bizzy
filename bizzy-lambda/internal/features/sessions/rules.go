@@ -45,7 +45,7 @@ var Rules = statemodel.Rules[State]{
 	},
 	{
 		ID: "fee-missing", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
-		Why:        "No amount in the title, no package credit and no default fee",
+		Why:        "No amount in the title, no package credit and no fee set for the client",
 		When:       func(s State) bool { return s.Status == StatusMissingFee },
 		ResolvedBy: []string{"sessions.update", "clients.save", "packages.save"},
 	},
@@ -99,7 +99,7 @@ var Rules = statemodel.Rules[State]{
 			return s.Presence == Removed && s.Record == RecordNone && s.Payment == PaymentNone &&
 				s.Invoice == SlotEmpty && s.Receipt == SlotEmpty
 		},
-		GuardedBy:      []string{"sessions.saveRecord"},
+		GuardedBy:      []string{"sessions.saveRecord", "attachments.delete"},
 		ByConstruction: "the reconcile deletes a session gone from the calendar with nothing on it",
 	},
 	{

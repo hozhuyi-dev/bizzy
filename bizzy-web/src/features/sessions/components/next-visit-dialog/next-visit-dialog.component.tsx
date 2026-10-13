@@ -27,7 +27,7 @@ interface NextVisitDialogProps {
 /**
  * Books the client's next visit in a couple of taps: the same weekday and
  * time a week on, same length and place, priced as usual (a package credit
- * or the default fee).
+ * or the client's fee).
  */
 export function NextVisitDialog({ from, clientName, onClose }: NextVisitDialogProps) {
   return (

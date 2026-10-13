@@ -27,6 +27,7 @@ function synth(environment: Environment) {
     env,
     projectName: "bizzy",
     environment,
+    allowedOrigins: ["http://localhost:4200"],
   });
 
   const api = new ApiStack(app, "api", {
@@ -34,6 +35,7 @@ function synth(environment: Environment) {
     projectName: "bizzy",
     environment,
     table: data.data.table,
+    files: data.files.bucket,
     authenticatedRole: auth.auth.authenticatedRole,
     googleClientId: "client-id",
     googleClientSecret: "client-secret",
@@ -115,6 +117,72 @@ describe("data", () => {
   });
 });
 
+describe("files", () => {
+  test("keeps files private, encrypted and reachable only over TLS", () => {
+    const { data } = synth("staging");
+    data.hasResourceProperties("AWS::S3::Bucket", {
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+      BucketEncryption: Match.objectLike({
+        ServerSideEncryptionConfiguration: [
+          { ServerSideEncryptionByDefault: { SSEAlgorithm: "AES256" } },
+        ],
+      }),
+      CorsConfiguration: {
+        CorsRules: [Match.objectLike({ AllowedOrigins: ["http://localhost:4200"] })],
+      },
+    });
+    data.hasResourceProperties("AWS::S3::BucketPolicy", {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({ Effect: "Deny", Condition: { Bool: { "aws:SecureTransport": "false" } } }),
+        ]),
+      }),
+    });
+  });
+
+  test("cleans up unconfirmed uploads in every environment", () => {
+    synth("staging").data.hasResourceProperties("AWS::S3::Bucket", {
+      LifecycleConfiguration: {
+        Rules: Match.arrayWith([
+          Match.objectLike({
+            Id: "expire-unconfirmed-uploads",
+            TagFilters: [{ Key: "pending", Value: "true" }],
+            ExpirationInDays: 1,
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("versions only production, keeping old versions for 35 days", () => {
+    const staging = synth("staging").data;
+    expect(
+      JSON.stringify(staging.findResources("AWS::S3::Bucket")),
+    ).not.toContain("VersioningConfiguration");
+
+    synth("production").data.hasResource("AWS::S3::Bucket", {
+      DeletionPolicy: "Retain",
+      Properties: Match.objectLike({
+        VersioningConfiguration: { Status: "Enabled" },
+        LifecycleConfiguration: {
+          Rules: Match.arrayWith([
+            Match.objectLike({
+              Id: "expire-old-versions",
+              NoncurrentVersionExpiration: { NoncurrentDays: 35 },
+              ExpiredObjectDeleteMarker: true,
+            }),
+          ]),
+        },
+      }),
+    });
+  });
+});
+
 describe("api", () => {
   const { api } = synth("staging");
 
@@ -154,6 +222,23 @@ describe("api", () => {
       expect(JSON.stringify(s.Resource)).toContain(
         "parameter/bizzy/staging/google-refresh-token",
       );
+    }
+  });
+
+  test("scopes the api's S3 access to attachment keys", () => {
+    type Policy = {
+      Properties: {
+        PolicyDocument: { Statement: Array<{ Action: unknown; Resource: unknown }> };
+      };
+    };
+    const statements = Object.values(api.findResources("AWS::IAM::Policy")).flatMap(
+      (policy) => (policy as Policy).Properties.PolicyDocument.Statement,
+    );
+    const s3 = statements.filter((s) => JSON.stringify(s.Action).includes("s3:"));
+
+    expect(s3).toHaveLength(2);
+    for (const s of s3) {
+      expect(JSON.stringify(s)).toContain("attachments/*");
     }
   });
 

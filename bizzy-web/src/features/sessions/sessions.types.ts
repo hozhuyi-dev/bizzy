@@ -12,10 +12,12 @@ export type SessionStatus =
   | "package"
   | "removed";
 
-/** What she writes after a session: the summary; the notes are apart. */
+/** What she keeps after a session: the summary; the notes and files are apart. */
 export interface SessionRecord {
   summary: string;
   hasNotes?: boolean;
+  /** How many files are attached. */
+  files?: number;
   updatedAt: string;
 }
 
@@ -105,6 +107,8 @@ export interface SessionCan {
   invoice: Verdict;
   receipt: Verdict;
   record: Verdict;
+  /** Files can be attached or removed. */
+  attach: Verdict;
   editBooking: Verdict;
   restore: Verdict;
   discard: Verdict;
@@ -121,7 +125,7 @@ export interface SessionDraft {
   clientId: string;
   start: string;
   minutes: number;
-  /** What the session costs; unset leaves it to a package credit or the default fee. */
+  /** What the session costs; unset leaves it to a package credit or the client's fee. */
   feeCents?: number;
   /** A package bought in this session. */
   package?: { sessions: number; priceCents: number };

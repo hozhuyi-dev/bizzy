@@ -19,6 +19,11 @@ import { Route as ClientsIdRouteImport } from './routes/clients/$id'
 import { Route as ClientsNewRouteImport } from './routes/clients/new'
 import { Route as ClientsReconnectRouteImport } from './routes/clients/reconnect'
 import { Route as DTokenRouteImport } from './routes/d/$token'
+import { Route as ExpensesIndexRouteImport } from './routes/expenses/index'
+import { Route as ExpensesIdRouteImport } from './routes/expenses/$id'
+import { Route as ExpensesCategoriesRouteImport } from './routes/expenses/categories'
+import { Route as ExpensesItemsRouteImport } from './routes/expenses/items'
+import { Route as ExpensesNewRouteImport } from './routes/expenses/new'
 import { Route as FollowUpsIndexRouteImport } from './routes/follow-ups/index'
 import { Route as FollowUpsDoneRouteImport } from './routes/follow-ups/done'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
@@ -78,6 +83,31 @@ const ClientsReconnectRoute = ClientsReconnectRouteImport.update({
 const DTokenRoute = DTokenRouteImport.update({
   id: '/d/$token',
   path: '/d/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesIndexRoute = ExpensesIndexRouteImport.update({
+  id: '/expenses/',
+  path: '/expenses/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesIdRoute = ExpensesIdRouteImport.update({
+  id: '/expenses/$id',
+  path: '/expenses/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesCategoriesRoute = ExpensesCategoriesRouteImport.update({
+  id: '/expenses/categories',
+  path: '/expenses/categories',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesItemsRoute = ExpensesItemsRouteImport.update({
+  id: '/expenses/items',
+  path: '/expenses/items',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesNewRoute = ExpensesNewRouteImport.update({
+  id: '/expenses/new',
+  path: '/expenses/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FollowUpsIndexRoute = FollowUpsIndexRouteImport.update({
@@ -141,6 +171,10 @@ export interface FileRoutesByFullPath {
   '/clients/new': typeof ClientsNewRoute
   '/clients/reconnect': typeof ClientsReconnectRoute
   '/d/$token': typeof DTokenRoute
+  '/expenses/$id': typeof ExpensesIdRoute
+  '/expenses/categories': typeof ExpensesCategoriesRoute
+  '/expenses/items': typeof ExpensesItemsRoute
+  '/expenses/new': typeof ExpensesNewRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -148,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/sessions/deleted': typeof SessionsDeletedRoute
   '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
+  '/expenses/': typeof ExpensesIndexRoute
   '/follow-ups/': typeof FollowUpsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
   '/receipts/': typeof ReceiptsIndexRoute
@@ -163,6 +198,10 @@ export interface FileRoutesByTo {
   '/clients/new': typeof ClientsNewRoute
   '/clients/reconnect': typeof ClientsReconnectRoute
   '/d/$token': typeof DTokenRoute
+  '/expenses/$id': typeof ExpensesIdRoute
+  '/expenses/categories': typeof ExpensesCategoriesRoute
+  '/expenses/items': typeof ExpensesItemsRoute
+  '/expenses/new': typeof ExpensesNewRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -170,6 +209,7 @@ export interface FileRoutesByTo {
   '/sessions/deleted': typeof SessionsDeletedRoute
   '/sessions/new': typeof SessionsNewRoute
   '/clients': typeof ClientsIndexRoute
+  '/expenses': typeof ExpensesIndexRoute
   '/follow-ups': typeof FollowUpsIndexRoute
   '/invoices': typeof InvoicesIndexRoute
   '/receipts': typeof ReceiptsIndexRoute
@@ -186,6 +226,10 @@ export interface FileRoutesById {
   '/clients/new': typeof ClientsNewRoute
   '/clients/reconnect': typeof ClientsReconnectRoute
   '/d/$token': typeof DTokenRoute
+  '/expenses/$id': typeof ExpensesIdRoute
+  '/expenses/categories': typeof ExpensesCategoriesRoute
+  '/expenses/items': typeof ExpensesItemsRoute
+  '/expenses/new': typeof ExpensesNewRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -193,6 +237,7 @@ export interface FileRoutesById {
   '/sessions/deleted': typeof SessionsDeletedRoute
   '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
+  '/expenses/': typeof ExpensesIndexRoute
   '/follow-ups/': typeof FollowUpsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
   '/receipts/': typeof ReceiptsIndexRoute
@@ -210,6 +255,10 @@ export interface FileRouteTypes {
     | '/clients/new'
     | '/clients/reconnect'
     | '/d/$token'
+    | '/expenses/$id'
+    | '/expenses/categories'
+    | '/expenses/items'
+    | '/expenses/new'
     | '/follow-ups/done'
     | '/invoices/$id'
     | '/receipts/$id'
@@ -217,6 +266,7 @@ export interface FileRouteTypes {
     | '/sessions/deleted'
     | '/sessions/new'
     | '/clients/'
+    | '/expenses/'
     | '/follow-ups/'
     | '/invoices/'
     | '/receipts/'
@@ -232,6 +282,10 @@ export interface FileRouteTypes {
     | '/clients/new'
     | '/clients/reconnect'
     | '/d/$token'
+    | '/expenses/$id'
+    | '/expenses/categories'
+    | '/expenses/items'
+    | '/expenses/new'
     | '/follow-ups/done'
     | '/invoices/$id'
     | '/receipts/$id'
@@ -239,6 +293,7 @@ export interface FileRouteTypes {
     | '/sessions/deleted'
     | '/sessions/new'
     | '/clients'
+    | '/expenses'
     | '/follow-ups'
     | '/invoices'
     | '/receipts'
@@ -254,6 +309,10 @@ export interface FileRouteTypes {
     | '/clients/new'
     | '/clients/reconnect'
     | '/d/$token'
+    | '/expenses/$id'
+    | '/expenses/categories'
+    | '/expenses/items'
+    | '/expenses/new'
     | '/follow-ups/done'
     | '/invoices/$id'
     | '/receipts/$id'
@@ -261,6 +320,7 @@ export interface FileRouteTypes {
     | '/sessions/deleted'
     | '/sessions/new'
     | '/clients/'
+    | '/expenses/'
     | '/follow-ups/'
     | '/invoices/'
     | '/receipts/'
@@ -277,6 +337,10 @@ export interface RootRouteChildren {
   ClientsNewRoute: typeof ClientsNewRoute
   ClientsReconnectRoute: typeof ClientsReconnectRoute
   DTokenRoute: typeof DTokenRoute
+  ExpensesIdRoute: typeof ExpensesIdRoute
+  ExpensesCategoriesRoute: typeof ExpensesCategoriesRoute
+  ExpensesItemsRoute: typeof ExpensesItemsRoute
+  ExpensesNewRoute: typeof ExpensesNewRoute
   FollowUpsDoneRoute: typeof FollowUpsDoneRoute
   InvoicesIdRoute: typeof InvoicesIdRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
@@ -284,6 +348,7 @@ export interface RootRouteChildren {
   SessionsDeletedRoute: typeof SessionsDeletedRoute
   SessionsNewRoute: typeof SessionsNewRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
+  ExpensesIndexRoute: typeof ExpensesIndexRoute
   FollowUpsIndexRoute: typeof FollowUpsIndexRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
   ReceiptsIndexRoute: typeof ReceiptsIndexRoute
@@ -360,6 +425,41 @@ declare module '@tanstack/react-router' {
       path: '/d/$token'
       fullPath: '/d/$token'
       preLoaderRoute: typeof DTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses/': {
+      id: '/expenses/'
+      path: '/expenses'
+      fullPath: '/expenses/'
+      preLoaderRoute: typeof ExpensesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses/$id': {
+      id: '/expenses/$id'
+      path: '/expenses/$id'
+      fullPath: '/expenses/$id'
+      preLoaderRoute: typeof ExpensesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses/categories': {
+      id: '/expenses/categories'
+      path: '/expenses/categories'
+      fullPath: '/expenses/categories'
+      preLoaderRoute: typeof ExpensesCategoriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses/items': {
+      id: '/expenses/items'
+      path: '/expenses/items'
+      fullPath: '/expenses/items'
+      preLoaderRoute: typeof ExpensesItemsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses/new': {
+      id: '/expenses/new'
+      path: '/expenses/new'
+      fullPath: '/expenses/new'
+      preLoaderRoute: typeof ExpensesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/follow-ups/': {
@@ -445,6 +545,10 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsNewRoute: ClientsNewRoute,
   ClientsReconnectRoute: ClientsReconnectRoute,
   DTokenRoute: DTokenRoute,
+  ExpensesIdRoute: ExpensesIdRoute,
+  ExpensesCategoriesRoute: ExpensesCategoriesRoute,
+  ExpensesItemsRoute: ExpensesItemsRoute,
+  ExpensesNewRoute: ExpensesNewRoute,
   FollowUpsDoneRoute: FollowUpsDoneRoute,
   InvoicesIdRoute: InvoicesIdRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,
@@ -452,6 +556,7 @@ const rootRouteChildren: RootRouteChildren = {
   SessionsDeletedRoute: SessionsDeletedRoute,
   SessionsNewRoute: SessionsNewRoute,
   ClientsIndexRoute: ClientsIndexRoute,
+  ExpensesIndexRoute: ExpensesIndexRoute,
   FollowUpsIndexRoute: FollowUpsIndexRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
   ReceiptsIndexRoute: ReceiptsIndexRoute,

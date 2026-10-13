@@ -12,7 +12,7 @@ import (
 
 func TestTable(t *testing.T) {
 	ids := map[string]bool{}
-	for _, r := range Links {
+	for _, r := range AllLinks() {
 		if ids[r.ID] {
 			t.Errorf("rule %s: duplicate id", r.ID)
 		}
@@ -61,7 +61,7 @@ func TestLinksBothWays(t *testing.T) {
 func linkViolations(w World) []Violation {
 	var out []Violation
 	for _, v := range Check(w) {
-		for _, r := range Links {
+		for _, r := range AllLinks() {
 			if r.ID == v.Rule {
 				out = append(out, v)
 			}

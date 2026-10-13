@@ -46,6 +46,18 @@ export const DocumentKeys = {
   shared: (token: string) => [...DocumentKeys.all, "shared", token] as const,
 };
 
+export const AttachmentKeys = {
+  all: ["attachments"] as const,
+  owner: (ownerKind: string, ownerId: string) => [...AttachmentKeys.all, ownerKind, ownerId] as const,
+};
+
+export const ExpenseKeys = {
+  all: ["expenses"] as const,
+  list: (from: string, to: string) => [...ExpenseKeys.all, "list", from, to] as const,
+  detail: (id: string) => [...ExpenseKeys.all, "detail", id] as const,
+  catalogue: () => [...ExpenseKeys.all, "catalogue"] as const,
+};
+
 export const SettingsKeys = {
   all: ["settings"] as const,
 };

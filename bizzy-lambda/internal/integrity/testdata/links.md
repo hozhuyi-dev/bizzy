@@ -19,3 +19,8 @@ None.
 | package-client-change-is-flagged | When a package an issued document covers now belongs to another client, the package says so (drift) | documents.issue; by construction: the reconcile flags drift on a package against its issued documents |
 | share-links-open-their-document | Each issued document's link opens it, and a reset link opens nothing | by construction: a new link retires the old one in the same transaction |
 | every-issue-is-kept | Every revision issued is kept as it was, so its PDF can be rebuilt | by construction: issuing stores the revision in the same transaction |
+| attachment-owner-exists | Every attachment belongs to something that exists | attachments.confirm; by construction: deleting a session or expense deletes its attachments |
+| attachment-has-its-file | Every attachment's file is in blob storage, confirmed | attachments.confirm; by construction: confirm writes the item only for a file that arrived, and clears its pending tag |
+| owner-counts-its-files | A session's or expense's count of files is how many attachments it has | attachments.confirm, attachments.delete; by construction: every confirm and delete recounts the owner's attachments |
+| line-item-exists | Every line on an expense names an item in the list | expenses.save; by construction: an item is never deleted, only archived |
+| filed-under-a-category | Every line and item is filed under a category that exists | expenses.save, expenses.saveItem, expenses.saveCategories; by construction: a category is never deleted, only archived |

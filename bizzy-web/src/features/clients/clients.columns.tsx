@@ -97,8 +97,8 @@ export function ClientCard({ row, ...handlers }: { row: ClientRow } & ClientActi
             <dd>{formatCents(row.lifetimeCents)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Default fee</dt>
-            <dd>{client.defaultFeeCents === undefined ? "—" : formatCents(client.defaultFeeCents)}</dd>
+            <dt className="text-xs text-muted-foreground">Fee</dt>
+            <dd>{client.feeTodayCents === undefined ? "—" : formatCents(client.feeTodayCents)}</dd>
           </div>
         </dl>
       </CardContent>
@@ -152,13 +152,13 @@ export function createClientColumns(handlers: ClientActions) {
       meta: { search: (row: ClientRow) => formatCents(row.lifetimeCents) },
       cell: ({ getValue }) => formatCents(getValue()),
     }),
-    helper.accessor((row) => row.client.defaultFeeCents, {
-      id: "defaultFee",
-      header: "Default fee",
+    helper.accessor((row) => row.client.feeTodayCents, {
+      id: "fee",
+      header: "Fee",
       sortFn: "basic",
       meta: {
         search: ({ client }: ClientRow) =>
-          client.defaultFeeCents === undefined ? undefined : formatCents(client.defaultFeeCents),
+          client.feeTodayCents === undefined ? undefined : formatCents(client.feeTodayCents),
       },
       sortUndefined: "last",
       cell: ({ getValue }) => {

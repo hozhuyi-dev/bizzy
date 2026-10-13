@@ -149,13 +149,13 @@ func CalendarPackage(e Entry) (packages.Package, bool) {
 //  2. otherwise the oldest package bought at or before the session with a
 //     credit left covers it (one already paid or on a document keeps its
 //     fee rather than switch to a credit);
-//  3. otherwise the client's default fee;
+//  3. otherwise the client's fee on the session's day (clients.Client.FeeOn);
 //  4. otherwise the fee is missing.
 //
 // A package bought in the session is collected with it: the session
 // mirrors its price and whether it is settled. It sets CreditsUsed on the
 // packages it is given.
-func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package) {
+func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package, loc *time.Location) {
 	slices.SortFunc(entries, func(a, b *Entry) int {
 		return cmp.Or(a.Session.Start.Compare(b.Session.Start), cmp.Compare(a.Session.EventID, b.Session.EventID))
 	})
@@ -192,13 +192,13 @@ func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package)
 			}
 		}
 
-		if fee := client.DefaultFeeCents; fee != nil {
+		if fee := client.FeeOn(LocalDate(s.Start, loc)); fee != nil {
 			s.Status, s.FeeSource, s.FeeCents, s.ValueCents = sessions.StatusPriced, sessions.FeeFromDefault, ptr(*fee), *fee
 			continue
 		}
 
 		s.Status = sessions.StatusMissingFee
-		s.Reason = fmt.Sprintf("No amount in the title, no package credit left and no default fee for %s", client.Name)
+		s.Reason = fmt.Sprintf("No amount in the title, no package credit left and no fee set for %s", client.Name)
 	}
 }
 

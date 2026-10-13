@@ -16,7 +16,7 @@ const partition = schema.Client
 // Attributes each writer owns. A profile save from the app must not wipe the
 // activity the reconcile computed, and the other way round.
 var (
-	profileAttributes  = []string{"id", "name", "contact", "aliases", "defaultFeeCents", "homeVisits"}
+	profileAttributes  = []string{"id", "name", "contact", "aliases", "feeRates", "homeVisits"}
 	activityAttributes = []string{"activity", "lastSessionAt", "nextBookedAt"}
 )
 

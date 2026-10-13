@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 
+	"bizzy-lambda/internal/features/attachments"
 	"bizzy-lambda/internal/features/billing"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
@@ -20,12 +22,22 @@ import (
 // App is the router with every domain action, the sync it runs, and the
 // reconcile behind both.
 type App struct {
-	Router     *router.Router
-	Sync       func(ctx context.Context, rng googlesync.Range) (googlesync.Summary, error)
-	Reconciler *billing.Reconciler
+	Router      *router.Router
+	Sync        func(ctx context.Context, rng googlesync.Range) (googlesync.Summary, error)
+	Reconciler  *billing.Reconciler
+	Attachments attachments.Service
 }
 
 func New(d Deps) App {
+	files := attachments.Service{
+		Repo:  d.Attachments,
+		Blobs: d.Blobs,
+		Owners: map[attachments.OwnerKind]attachments.Owner{
+			attachments.OwnerSession: sessions.Files{Repo: d.Sessions, Now: d.Now},
+			attachments.OwnerExpense: expenses.Files{Repo: d.Expenses, Now: d.Now},
+		},
+		Now: d.Now,
+	}
 	reconciler := &billing.Reconciler{
 		Clients:  d.Clients,
 		Sessions: d.Sessions,
@@ -33,6 +45,9 @@ func New(d Deps) App {
 		Settings: d.Settings,
 		Location: d.Location,
 		Now:      d.Now,
+		Purge: func(ctx context.Context, eventID string) error {
+			return files.DeleteOwner(ctx, attachments.OwnerSession, eventID)
+		},
 	}
 	reconcile := func(ctx context.Context, scope billing.Scope) error {
 		_, err := reconciler.Reconcile(ctx, scope)
@@ -55,10 +70,18 @@ func New(d Deps) App {
 			return err
 		}
 		return followups.Rematch(ctx, d.FollowUps, all, id)
-	}, d.Now)
+	}, d.Location, d.Now)
 	contacts.Register(r, d.Directory, d.Clients, d.Now)
 	billing.Register(r, reconciler)
 	sessions.Register(r, d.Sessions, d.Now)
+	attachments.Register(r, files)
+	expenses.Register(r, expenses.Service{
+		Repo: d.Expenses,
+		AfterDelete: func(ctx context.Context, id string) error {
+			return files.DeleteOwner(ctx, attachments.OwnerExpense, id)
+		},
+		Now: d.Now,
+	})
 	payments.Register(r, d.Payments, reconcileClients, d.Location, d.Now)
 	followups.Register(r, d.FollowUps, d.Now)
 	todo.Register(r, d.Sessions, d.Packages, d.FollowUps, d.Settings, d.Now)
@@ -114,5 +137,5 @@ func New(d Deps) App {
 	}
 	googlesync.Register(r, d.SyncStatus, d.Location, sync, d.Now)
 
-	return App{Router: r, Sync: sync, Reconciler: reconciler}
+	return App{Router: r, Sync: sync, Reconciler: reconciler, Attachments: files}
 }

@@ -30,7 +30,12 @@ func noImpossibleStates(t *rapid.T, w *World) {
 	world := integrity.World{
 		Clients: w.Store.ClientMap, Sessions: w.Store.SessionMap, Packages: w.Store.PackageMap,
 		FollowUps: w.Store.FollowUpMap, Documents: w.Docs.Docs, Revisions: w.Docs.Revs, Shares: w.Docs.SharesMap,
+		Attachments: w.Store.AttachmentMap, Files: map[string]bool{},
+		Expenses: w.Store.ExpenseMap, Items: w.Store.ItemMap, Categories: w.Store.CategoryList,
 		Now: w.Now,
+	}
+	for key, blob := range w.Blobs.Blobs {
+		world.Files[key] = !blob.Pending
 	}
 	var broken []integrity.Violation
 	for _, v := range integrity.Check(world) {
@@ -88,6 +93,7 @@ func changes(before, after *memory.Store) []string {
 	diff("follow-up", jsonEach(before.FollowUpMap), jsonEach(after.FollowUpMap))
 	diff("package", jsonEach(before.PackageMap), jsonEach(after.PackageMap))
 	diff("client", jsonEach(before.ClientMap), jsonEach(after.ClientMap))
+	diff("attachment", jsonEach(before.AttachmentMap), jsonEach(after.AttachmentMap))
 	return out
 }
 

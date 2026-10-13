@@ -1,4 +1,3 @@
-import { PaperclipIcon } from "lucide-react";
 import type { RecordDraft, SaveState } from "./record-editor.hook";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
@@ -37,10 +36,7 @@ export function RecordEditor({ draft, disabled }: { draft: RecordDraft; disabled
           onChange={(e) => draft.setNotes(e.target.value)}
         />
       </Field>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <PaperclipIcon className="size-3.5" aria-hidden="true" /> Attaching photos and PDFs is coming soon.
-        </span>
+      <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
         <span role="status" className={draft.state === "error" ? "text-destructive" : undefined}>
           {draft.state === "error" && draft.error ? `${STATE_LABELS.error}: ${draft.error}` : STATE_LABELS[draft.state]}
         </span>

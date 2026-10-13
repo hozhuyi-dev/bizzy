@@ -52,6 +52,8 @@ const dataStack = new DataStack(app, `${projectName}-${environment}-data`, {
   env: env,
   projectName: projectName,
   environment: environment,
+  // "http://localhost:4200/" → "http://localhost:4200": CORS matches the origin.
+  allowedOrigins: callbackUrls.map((url) => new URL(url).origin),
 });
 
 const apiStack = new ApiStack(app, `${projectName}-${environment}-api`, {
@@ -59,6 +61,7 @@ const apiStack = new ApiStack(app, `${projectName}-${environment}-api`, {
   projectName: projectName,
   environment: environment,
   table: dataStack.data.table,
+  files: dataStack.files.bucket,
   authenticatedRole: authStack.auth.authenticatedRole,
   googleClientId: googleClientId,
   googleClientSecret: googleClientSecret,

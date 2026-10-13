@@ -90,7 +90,7 @@ func (r *Reconciler) Preview(ctx context.Context, in PreviewInput) (Cover, error
 		}
 	}
 
-	Allocate(client, entries, pkgs)
+	Allocate(client, entries, pkgs, r.Location)
 	switch s := preview.Session; {
 	case s.Status == sessions.StatusPackage:
 		return Cover{Kind: CoverCredit, PackageID: s.PackageID}, nil

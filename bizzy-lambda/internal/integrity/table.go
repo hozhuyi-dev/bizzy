@@ -13,7 +13,7 @@ func Table() string {
 
 	b.WriteString("## Known gaps\n\nChecked and reported, but not yet made to hold: each awaits a decision on the suggested resolution.\n\n")
 	gaps := 0
-	for _, r := range Links {
+	for _, r := range AllLinks() {
 		if r.Pending != "" {
 			gaps++
 			fmt.Fprintf(&b, "- **%s**: %s\n  %s\n", r.ID, r.Why, r.Pending)
@@ -24,7 +24,7 @@ func Table() string {
 	}
 
 	b.WriteString("\n## Rules\n\n| rule | why | kept by |\n|---|---|---|\n")
-	for _, r := range Links {
+	for _, r := range AllLinks() {
 		if r.Pending != "" {
 			continue
 		}

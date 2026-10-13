@@ -13,9 +13,11 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"bizzy-lambda/internal/app"
+	"bizzy-lambda/internal/features/attachments"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googleconnect"
 	"bizzy-lambda/internal/features/googlesync"
@@ -24,6 +26,7 @@ import (
 	"bizzy-lambda/internal/features/reset"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
+	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/platform/googleauth"
 )
@@ -43,20 +46,27 @@ func main() {
 		mustEnv("GOOGLE_CLIENT_SECRET"),
 		googleauth.ParamTokens(mustEnv("GOOGLE_TOKEN_PARAM")),
 	)
+	blobs, err := blobstore.NewS3(context.Background(), mustEnv("BUCKET_NAME"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	directory := contacts.NewGoogle(auth.Client)
 	connections := googleconnect.NewRepository(store)
 
 	sessionsRepo := sessions.NewRepository(store)
 	packagesRepo := packages.NewRepository(store)
 	a := app.New(app.Deps{
-		Clients:    clients.NewRepository(store),
-		Sessions:   sessionsRepo,
-		FollowUps:  followups.NewRepository(store),
-		Packages:   packagesRepo,
-		Settings:   settings.NewRepository(store),
-		Documents:  documents.NewRepository(store),
-		Payments:   payments.NewRepository(store, sessionsRepo, packagesRepo),
-		SyncStatus: googlesync.NewStatusRepository(store),
+		Clients:     clients.NewRepository(store),
+		Sessions:    sessionsRepo,
+		FollowUps:   followups.NewRepository(store),
+		Packages:    packagesRepo,
+		Settings:    settings.NewRepository(store),
+		Documents:   documents.NewRepository(store),
+		Payments:    payments.NewRepository(store, sessionsRepo, packagesRepo),
+		SyncStatus:  googlesync.NewStatusRepository(store),
+		Attachments: attachments.NewRepository(store),
+		Expenses:    expenses.NewRepository(store),
+		Blobs:       blobs,
 		Calendar: func(ctx context.Context) (googlesync.Calendar, error) {
 			return connections.Calendar(ctx, auth.Client)
 		},
@@ -69,7 +79,7 @@ func main() {
 	googleconnect.Register(r, connections, auth)
 	// Keeps the Google connection, so a full sync rebuilds everything at once.
 	if reset.Allowed(os.Getenv("ENVIRONMENT")) {
-		reset.Register(r, store, func(ctx context.Context) (any, error) {
+		reset.Register(r, reset.Wipe{Table: store, Files: blobs, FilesPrefix: attachments.KeyPrefix}, func(ctx context.Context) (any, error) {
 			return a.Sync(ctx, googlesync.Range{})
 		}, googleconnect.Partition)
 	}

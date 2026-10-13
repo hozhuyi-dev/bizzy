@@ -46,6 +46,9 @@ type Reconciler struct {
 	Location *time.Location
 	// Now defaults to time.Now.
 	Now func() time.Time
+	// Purge removes what a deleted session keeps outside its item: the
+	// files attached to it. Nil keeps nothing outside.
+	Purge func(ctx context.Context, eventID string) error
 }
 
 // Change is what the calendar now says about one session's event: Event is
@@ -245,7 +248,7 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 		packagesByClient[p.ClientID] = append(packagesByClient[p.ClientID], p)
 	}
 	for id := range affected {
-		Allocate(env.Clients[id], entriesByClient[id], packagesByClient[id])
+		Allocate(env.Clients[id], entriesByClient[id], packagesByClient[id], r.Location)
 	}
 
 	// Write sessions.
@@ -273,6 +276,11 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 		}
 		if err := r.Sessions.Delete(ctx, stored); err != nil {
 			return result, err
+		}
+		if r.Purge != nil {
+			if err := r.Purge(ctx, id); err != nil {
+				return result, err
+			}
 		}
 		result.Deleted++
 	}

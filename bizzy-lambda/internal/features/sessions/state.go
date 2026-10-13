@@ -55,7 +55,7 @@ type Recording string
 
 const (
 	RecordNone Recording = "none"
-	// RecordNotesOnly: long notes but no summary yet.
+	// RecordNotesOnly: long notes or attached files, but no summary yet.
 	RecordNotesOnly Recording = "notes-only"
 	RecordSummary   Recording = "summary"
 )

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +68,28 @@ func TestRunReportsAFailedSync(t *testing.T) {
 	}
 	if got := out.(result); got.Deleted != 1 || got.SyncError == "" {
 		t.Errorf("result = %+v", got)
+	}
+}
+
+type files []string
+
+func (f *files) DeletePrefix(_ context.Context, prefix string) (int, error) {
+	kept := (*f)[:0]
+	for _, key := range *f {
+		if !strings.HasPrefix(key, prefix) {
+			kept = append(kept, key)
+		}
+	}
+	deleted := len(*f) - len(kept)
+	*f = kept
+	return deleted, nil
+}
+
+func TestWipeDeletesTheFilesToo(t *testing.T) {
+	data := table{"GOOGLE": 1, "SESSION": 2, "ATTACHMENT": 2}
+	f := &files{"attachments/session/e1/a1/original.jpg", "attachments/session/e1/a2/original.pdf"}
+	deleted, err := Wipe{Table: data, Files: f, FilesPrefix: "attachments/"}.DeleteAll(context.Background(), "GOOGLE")
+	if err != nil || deleted != 6 || len(*f) != 0 || len(data) != 1 {
+		t.Errorf("deleted %d (err %v), files left %v, table left %v; want 6, none, GOOGLE", deleted, err, *f, data)
 	}
 }

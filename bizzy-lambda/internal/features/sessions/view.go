@@ -43,6 +43,7 @@ type Can struct {
 	Invoice     statemodel.Verdict `json:"invoice"`
 	Receipt     statemodel.Verdict `json:"receipt"`
 	Record      statemodel.Verdict `json:"record"`
+	Attach      statemodel.Verdict `json:"attach"`
 	EditBooking statemodel.Verdict `json:"editBooking"`
 	Restore     statemodel.Verdict `json:"restore"`
 	Discard     statemodel.Verdict `json:"discard"`
@@ -61,6 +62,7 @@ func (s Session) View(now time.Time) View {
 			Invoice:     statemodel.Check(s.CanInvoice()),
 			Receipt:     statemodel.Check(s.CanReceipt()),
 			Record:      statemodel.Check(s.CanRecord(now)),
+			Attach:      statemodel.Check(s.CanAttach(now)),
 			EditBooking: statemodel.Check(s.CanEditBooking()),
 			Restore:     statemodel.Check(s.CanRestore()),
 			Discard:     statemodel.Check(s.CanDiscard()),

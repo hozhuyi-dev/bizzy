@@ -79,9 +79,9 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
         return `${prefix} ${name}'s package bought ${formatDate(pkg.purchasedAt)}: ${pkg.creditsLeft} of ${pkg.sessions} credits left.`;
       }
       case "default":
-        return `${prefix} ${name}'s default fee of ${formatCents(cover.feeCents)}; no package credits left.`;
+        return `${prefix} ${name}'s fee of ${formatCents(cover.feeCents)}; no package credits left.`;
       case "none":
-        return `${name} has no package credits left and no default fee.`;
+        return `${name} has no package credits left and no fee set.`;
     }
   };
 
@@ -229,7 +229,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
             onChange: ({ value }) => {
               if (value.trim()) return parseCents(value) !== null ? undefined : "Like 95 or 95.50";
               return cover?.kind === "none"
-                ? "Enter the fee: no package credit or default fee covers it"
+                ? "Enter the fee: no package credit or client fee covers it"
                 : undefined;
             },
           }}

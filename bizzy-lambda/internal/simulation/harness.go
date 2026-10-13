@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -37,6 +38,7 @@ import (
 	"bizzy-lambda/internal/router"
 	"bizzy-lambda/internal/testutil/fakecal"
 	"bizzy-lambda/internal/testutil/fakecontacts"
+	"bizzy-lambda/internal/testutil/memblob"
 	"bizzy-lambda/internal/testutil/memdocs"
 	"bizzy-lambda/internal/testutil/memory"
 )
@@ -50,6 +52,7 @@ var (
 type World struct {
 	Store    *memory.Store
 	Docs     *memdocs.Repo
+	Blobs    *memblob.Store
 	Calendar *fakecal.Calendar
 	Contacts *fakecontacts.Directory
 	Now      time.Time
@@ -75,6 +78,7 @@ type fataler interface {
 func newWorld(t fataler) *World {
 	w := &World{
 		Store:    memory.New(),
+		Blobs:    memblob.New(),
 		Calendar: &fakecal.Calendar{},
 		Contacts: &fakecontacts.Directory{},
 		Now:      epoch,
@@ -96,7 +100,7 @@ func newWorld(t fataler) *World {
 		link := person.Link(epoch)
 		w.Store.ClientMap[c.ID] = clients.Client{
 			ID: c.ID, Name: c.Name, Aliases: []string{clients.NormalizeAlias(c.Name)},
-			Contact: &link, DefaultFeeCents: c.DefaultFeeCents, HomeVisits: c.HomeVisits,
+			Contact: &link, FeeRates: c.FeeRates, HomeVisits: c.HomeVisits,
 		}
 	}
 	for i, e := range seedEvents {
@@ -106,7 +110,7 @@ func newWorld(t fataler) *World {
 		})
 	}
 
-	w.App = app.New(w.deps(w.Store, w.Docs))
+	w.App = app.New(w.deps(w.Store, w.Docs, w.Blobs))
 	if _, err := w.App.Sync(context.Background(), googlesync.Range{}); err != nil {
 		t.Fatalf("seed sync: %v", err)
 	}
@@ -114,10 +118,11 @@ func newWorld(t fataler) *World {
 	return w
 }
 
-func (w *World) deps(m *memory.Store, docs *memdocs.Repo) app.Deps {
+func (w *World) deps(m *memory.Store, docs *memdocs.Repo, blobs *memblob.Store) app.Deps {
 	return app.Deps{
 		Clients: m.Clients(), Sessions: m.Sessions(), FollowUps: m.FollowUps(), Packages: m.Packages(),
 		Settings: m.Settings(), Documents: docs, Payments: m.Payments(), SyncStatus: w.status,
+		Attachments: m.Attachments(), Blobs: blobs, Expenses: m.Expenses(),
 		Calendar:  func(context.Context) (googlesync.Calendar, error) { return w.Calendar, nil },
 		Directory: w.Contacts,
 		Location:  kl,
@@ -187,6 +192,8 @@ func (w *World) snapshot() snapshot {
 		"clients": w.Store.ClientMap, "sessions": w.Store.SessionMap, "notes": w.Store.NotesMap,
 		"followUps": w.Store.FollowUpMap, "packages": w.Store.PackageMap, "settings": w.Store.SettingsVal,
 		"documents": w.Docs.Docs, "revisions": w.Docs.Revs, "counters": w.Docs.Counters, "shares": w.Docs.SharesMap,
+		"attachments": w.Store.AttachmentMap, "files": w.Blobs.Blobs,
+		"expenses": w.Store.ExpenseMap, "items": w.Store.ItemMap, "categories": w.Store.CategoryList,
 		"calendar": [][]calendar.Event{w.Calendar.Live, w.Calendar.Trash}, "contacts": w.Contacts.People,
 	}
 	s := snapshot{}
@@ -223,7 +230,9 @@ func (w *World) clone(t *rapid.T) (*memory.Store, app.App) {
 		t.Fatalf("clone: %v", err)
 	}
 	m.Writes = 0
-	return m, app.New(w.deps(m, memdocs.New(m)))
+	blobs := memblob.New()
+	maps.Copy(blobs.Blobs, w.Blobs.Blobs)
+	return m, app.New(w.deps(m, memdocs.New(m), blobs))
 }
 
 // syncStatus keeps the last sync run in memory.
@@ -240,9 +249,9 @@ func (s *syncStatus) Get(context.Context) (*googlesync.Run, error) { return s.la
 var fullReconcile = billing.Scope{AllClients: true, Unmatched: true}
 
 type seedClient struct {
-	ID, Name        string
-	DefaultFeeCents *int64
-	HomeVisits      bool
+	ID, Name   string
+	FeeRates   []clients.FeeRate
+	HomeVisits bool
 }
 
 func contactsPerson(c seedClient) contacts.Person {
@@ -252,9 +261,10 @@ func contactsPerson(c seedClient) contacts.Person {
 func cents(v int64) *int64 { return &v }
 
 var seedClients = []seedClient{
-	{ID: "jane", Name: "Jane Smith", DefaultFeeCents: cents(9000)},
+	{ID: "jane", Name: "Jane Smith", FeeRates: []clients.FeeRate{{Cents: 9000}}},
 	{ID: "bob", Name: "Bob Lee"},
-	{ID: "amy", Name: "Amy Tan", DefaultFeeCents: cents(12000), HomeVisits: true},
+	// Amy's fee went up the day before the clock starts.
+	{ID: "amy", Name: "Amy Tan", FeeRates: []clients.FeeRate{{Cents: 12000}, {From: "2026-10-12", Cents: 13000}}, HomeVisits: true},
 }
 
 var seedEvents = []struct {

@@ -71,6 +71,12 @@ export const QUIPS = {
     "Not an invoice in the hive.",
     "Nobody's been billed. Yet.",
   ],
+  expenses: [
+    "Not a penny spent. Yet.",
+    "The hive bought nothing.",
+    "No receipts in the comb.",
+    "The bees kept their wallets shut.",
+  ],
   packages: [
     "The honey jar is empty.",
     "Not a drop of honey.",

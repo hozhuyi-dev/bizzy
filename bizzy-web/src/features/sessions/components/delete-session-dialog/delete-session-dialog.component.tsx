@@ -33,7 +33,7 @@ export function DeleteSessionDialog({ session, onClose, onDeleted }: DeleteSessi
           <AlertDialogTitle>Delete “{session?.title}”?</AlertDialogTitle>
           <AlertDialogDescription>
             {session && formatSessionTime(session.start)}. The event is deleted from your calendar too
-            {session?.record || session?.payment ? ", with the notes and payment recorded here" : ""}.
+            {session?.record || session?.payment ? ", with the notes, files and payment recorded here" : ""}.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

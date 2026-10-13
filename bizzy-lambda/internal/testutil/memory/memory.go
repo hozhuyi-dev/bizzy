@@ -3,12 +3,15 @@
 package memory
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"strings"
 	"time"
 
+	"bizzy-lambda/internal/features/attachments"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
@@ -23,6 +26,12 @@ type Store struct {
 	FollowUpMap map[string]followups.FollowUp
 	PackageMap  map[string]packages.Package
 	SettingsVal settings.Settings
+	// AttachmentMap is keyed "<ownerKind>#<ownerId>#<id>", as the SK.
+	AttachmentMap map[string]attachments.Attachment
+	ExpenseMap    map[string]expenses.Expense
+	ItemMap       map[string]expenses.Item
+	// CategoryList is nil until saved: the defaults.
+	CategoryList []expenses.Category
 
 	// Writes counts saves and deletes, to check that quiet runs write nothing.
 	Writes int
@@ -35,6 +44,10 @@ func New() *Store {
 		NotesMap:    map[string]sessions.Notes{},
 		FollowUpMap: map[string]followups.FollowUp{},
 		PackageMap:  map[string]packages.Package{},
+
+		AttachmentMap: map[string]attachments.Attachment{},
+		ExpenseMap:    map[string]expenses.Expense{},
+		ItemMap:       map[string]expenses.Item{},
 	}
 }
 
@@ -46,6 +59,10 @@ func (m *Store) FollowUps() *FollowUpRepo { return (*FollowUpRepo)(m) }
 func (m *Store) Packages() *PackageRepo   { return (*PackageRepo)(m) }
 func (m *Store) Settings() *SettingsRepo  { return (*SettingsRepo)(m) }
 func (m *Store) Payments() *PaymentRepo   { return (*PaymentRepo)(m) }
+func (m *Store) Attachments() *AttachmentRepo {
+	return (*AttachmentRepo)(m)
+}
+func (m *Store) Expenses() *ExpenseRepo { return (*ExpenseRepo)(m) }
 
 type ClientRepo Store
 
@@ -370,5 +387,118 @@ func (r *PaymentRepo) Commit(_ context.Context, ss []sessions.Session, ps []pack
 		r.PackageMap[p.ID] = stored
 		r.Writes++
 	}
+	return nil
+}
+
+type AttachmentRepo Store
+
+func attachmentKey(kind attachments.OwnerKind, ownerID, id string) string {
+	return string(kind) + "#" + ownerID + "#" + id
+}
+
+func (r *AttachmentRepo) List(_ context.Context, kind attachments.OwnerKind, ownerID string) ([]attachments.Attachment, error) {
+	var out []attachments.Attachment
+	for _, a := range r.AttachmentMap {
+		if a.OwnerKind == kind && a.OwnerID == ownerID {
+			out = append(out, a)
+		}
+	}
+	attachments.SortOldestFirst(out)
+	return out, nil
+}
+
+func (r *AttachmentRepo) Get(_ context.Context, kind attachments.OwnerKind, ownerID, id string) (attachments.Attachment, bool, error) {
+	a, ok := r.AttachmentMap[attachmentKey(kind, ownerID, id)]
+	return a, ok, nil
+}
+
+func (r *AttachmentRepo) Put(_ context.Context, a attachments.Attachment) error {
+	r.AttachmentMap[attachmentKey(a.OwnerKind, a.OwnerID, a.ID)] = a
+	r.Writes++
+	return nil
+}
+
+func (r *AttachmentRepo) Delete(_ context.Context, a attachments.Attachment) error {
+	delete(r.AttachmentMap, attachmentKey(a.OwnerKind, a.OwnerID, a.ID))
+	r.Writes++
+	return nil
+}
+
+type ExpenseRepo Store
+
+func (r *ExpenseRepo) List(_ context.Context, from, to string) ([]expenses.Expense, error) {
+	var out []expenses.Expense
+	for _, e := range r.ExpenseMap {
+		if e.Date >= from && e.Date <= to {
+			out = append(out, e)
+		}
+	}
+	slices.SortFunc(out, func(a, b expenses.Expense) int {
+		return cmp.Or(strings.Compare(a.Date, b.Date), a.CreatedAt.Compare(b.CreatedAt))
+	})
+	return out, nil
+}
+
+func (r *ExpenseRepo) Get(_ context.Context, id string) (expenses.Expense, bool, error) {
+	e, ok := r.ExpenseMap[id]
+	return e, ok, nil
+}
+
+// Save checks the version as the real repository does.
+func (r *ExpenseRepo) Save(_ context.Context, e expenses.Expense) (expenses.Expense, error) {
+	stored, exists := r.ExpenseMap[e.ID]
+	if exists != (e.Version > 0) || (exists && stored.Version != e.Version) {
+		return expenses.Expense{}, dynamo.ErrConflict
+	}
+	e.Version++
+	r.ExpenseMap[e.ID] = e
+	r.Writes++
+	return e, nil
+}
+
+func (r *ExpenseRepo) Delete(_ context.Context, e expenses.Expense) error {
+	if stored, ok := r.ExpenseMap[e.ID]; !ok || stored.Version != e.Version {
+		return dynamo.ErrConflict
+	}
+	delete(r.ExpenseMap, e.ID)
+	r.Writes++
+	return nil
+}
+
+func (r *ExpenseRepo) Items(context.Context) ([]expenses.Item, error) {
+	out := make([]expenses.Item, 0, len(r.ItemMap))
+	for _, it := range r.ItemMap {
+		out = append(out, it)
+	}
+	expenses.SortItems(out)
+	return out, nil
+}
+
+// SaveItem keeps the last amount, as the real repository's patch does.
+func (r *ExpenseRepo) SaveItem(_ context.Context, it expenses.Item) error {
+	it.LastAmountCents = r.ItemMap[it.ID].LastAmountCents
+	r.ItemMap[it.ID] = it
+	r.Writes++
+	return nil
+}
+
+func (r *ExpenseRepo) SetLastAmount(_ context.Context, id string, cents int64) error {
+	it := r.ItemMap[id]
+	it.ID, it.LastAmountCents = id, &cents
+	r.ItemMap[id] = it
+	r.Writes++
+	return nil
+}
+
+func (r *ExpenseRepo) Categories(context.Context) ([]expenses.Category, error) {
+	if r.CategoryList == nil {
+		return slices.Clone(expenses.DefaultCategories), nil
+	}
+	return slices.Clone(r.CategoryList), nil
+}
+
+func (r *ExpenseRepo) SaveCategories(_ context.Context, all []expenses.Category) error {
+	r.CategoryList = slices.Clone(all)
+	r.Writes++
 	return nil
 }

@@ -21,7 +21,7 @@ type HandlerStore interface {
 }
 
 // AfterSave runs once a client is saved: new aliases can match unmatched
-// sessions, and a new default fee or home-visit setting reprices theirs.
+// sessions, and new fees or home-visit setting reprice theirs.
 type AfterSave func(ctx context.Context, clientID string) error
 
 // Linker reads a Google contact for a client to link to. The contacts
@@ -34,18 +34,32 @@ type handler struct {
 	repo      HandlerStore
 	contacts  Linker
 	afterSave AfterSave
+	loc       *time.Location
 	now       func() time.Time
 }
 
-func Register(r *router.Router, repo HandlerStore, contacts Linker, afterSave AfterSave, now func() time.Time) {
-	h := handler{repo: repo, contacts: contacts, afterSave: afterSave, now: now}
+func Register(r *router.Router, repo HandlerStore, contacts Linker, afterSave AfterSave, loc *time.Location, now func() time.Time) {
+	h := handler{repo: repo, contacts: contacts, afterSave: afterSave, loc: loc, now: now}
 	r.Query("clients.list", h.list)
 	r.Mutation("clients.save", router.Typed(h.save))
 	r.Mutation("clients.markContacted", router.Typed(h.markContacted))
 }
 
 func (h handler) list(ctx context.Context, _ json.RawMessage) (any, error) {
-	return h.repo.List(ctx)
+	all, err := h.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today := h.today()
+	views := make([]View, len(all))
+	for i, c := range all {
+		views[i] = c.View(today)
+	}
+	return views, nil
+}
+
+func (h handler) today() string {
+	return h.now().In(h.loc).Format(time.DateOnly)
 }
 
 // save creates a client when ID is empty, otherwise replaces it. Only the
@@ -103,7 +117,7 @@ func (h handler) save(ctx context.Context, in Client) (any, error) {
 		}
 	}
 
-	return client, nil
+	return client.View(h.today()), nil
 }
 
 type markContactedInput struct {
@@ -133,18 +147,19 @@ func (h handler) markContacted(ctx context.Context, in markContactedInput) (any,
 // client's own name is one of them.
 func prepare(in Client) (Client, error) {
 	client := Client{
-		ID:              in.ID,
-		Name:            strings.Join(strings.Fields(in.Name), " "),
-		DefaultFeeCents: in.DefaultFeeCents,
-		HomeVisits:      in.HomeVisits,
+		ID:         in.ID,
+		Name:       strings.Join(strings.Fields(in.Name), " "),
+		HomeVisits: in.HomeVisits,
 	}
 
 	if client.Name == "" {
 		return client, apperr.Invalid("name is required")
 	}
-	if client.DefaultFeeCents != nil && *client.DefaultFeeCents < 0 {
-		return client, apperr.Invalid("default fee can't be negative")
+	rates, err := NormalizeFeeRates(in.FeeRates)
+	if err != nil {
+		return client, err
 	}
+	client.FeeRates = rates
 
 	aliases := []string{NormalizeAlias(client.Name)}
 	for _, alias := range in.Aliases {
@@ -156,6 +171,34 @@ func prepare(in Client) (Client, error) {
 	client.Aliases = aliases
 
 	return client, nil
+}
+
+// NormalizeFeeRates sorts fee rates by the day they start and checks them:
+// the first starts at no date, every later one on a day of its own.
+func NormalizeFeeRates(in []FeeRate) ([]FeeRate, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	rates := slices.Clone(in)
+	slices.SortStableFunc(rates, func(a, b FeeRate) int { return strings.Compare(a.From, b.From) })
+	for i, r := range rates {
+		switch {
+		case r.Cents < 0:
+			return nil, apperr.Invalid("a fee can't be negative")
+		case i == 0 && r.From != "":
+			return nil, apperr.Invalid("the first fee applies from the start, so it has no date")
+		case i == 0:
+		case r.From == "":
+			return nil, apperr.Invalid("only the first fee applies from the start; give the others a date")
+		case r.From == rates[i-1].From:
+			return nil, apperr.Invalid("two fees start on %s", r.From)
+		default:
+			if _, err := time.Parse(time.DateOnly, r.From); err != nil {
+				return nil, apperr.Invalid("%q is not a date", r.From)
+			}
+		}
+	}
+	return rates, nil
 }
 
 // checkAliases rejects an alias another client already uses, since the

@@ -81,6 +81,18 @@ func (s Session) CanRecord(now time.Time) error {
 	return nil
 }
 
+// CanAttach reports whether files can be attached or removed: as for the
+// notes, once it has started and while it is in the calendar.
+func (s Session) CanAttach(now time.Time) error {
+	switch {
+	case s.RemovedAt != nil:
+		return apperr.Conflict("Restore the session before changing its files.")
+	case s.Start.After(now):
+		return apperr.Conflict("Files can be attached once the session has started.")
+	}
+	return nil
+}
+
 // CanEditBooking reports whether its calendar event can be changed or
 // deleted from the app: not while a document covers it, or the package
 // its title bought.

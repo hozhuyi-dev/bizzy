@@ -1,17 +1,17 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
-import { CircleAlertIcon, MessageCircleIcon } from "lucide-react";
-import { toast } from "sonner";
+import { CircleAlertIcon, MessageCircleIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { totals } from "./client-activity.util";
 import { LastSeen } from "./clients.columns";
-import { toClientInput, toClientValues } from "./clients.form";
-import { ClientsMutation } from "./clients.mutation";
+import { feeAmountError, feeStartError, toClientInput, toClientValues } from "./clients.form";
+import { useSaveClient } from "./clients.hook";
 import { ClientsQuery } from "./clients.query";
 import { ClientContact } from "./components/client-contact/client-contact.component";
 import { ClientDocuments } from "./components/client-documents/client-documents.component";
 import { ClientFollowUps } from "./components/client-follow-ups/client-follow-ups.component";
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
+import { FeeImpactDialog } from "./components/fee-impact-dialog/fee-impact-dialog.component";
 import { contactProblem, toClientRow } from "./clients.util";
 import type { ChosenContact, Client, ClientReturnTo } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
@@ -27,8 +27,8 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { formatDate } from "~/core/utils/date.util";
-import { formatCents, parseCents } from "~/core/utils/money.util";
+import { formatDate, todayISO } from "~/core/utils/date.util";
+import { formatCents } from "~/core/utils/money.util";
 import { fieldErrors } from "~/core/utils/form.util";
 
 const FORM_ID = "client-form";
@@ -91,10 +91,14 @@ interface ClientEditorProps {
 }
 
 function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
-  const save = ClientsMutation.useSave();
   const navigate = useNavigate();
   const [contact, setContact] = useState<ChosenContact | null>(client?.contact ?? null);
   const [contactRequired, setContactRequired] = useState(false);
+  const save = useSaveClient(client, (saved) => {
+    if (!client) {
+      void navigate(returnTo === "home" ? { to: "/" } : { to: "/clients/$id", params: { id: saved.id }, replace: true });
+    }
+  });
 
   const form = useForm({
     defaultValues: toClientValues(client, initialName),
@@ -105,17 +109,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
         document.getElementById("contact")?.scrollIntoView({ block: "start" });
         return;
       }
-      try {
-        const saved = await save.mutateAsync(toClientInput(value, client?.id, contact?.resourceName));
-        toast.success(client ? "Client updated" : "Client added");
-        if (!client) {
-          void navigate(
-            returnTo === "home" ? { to: "/" } : { to: "/clients/$id", params: { id: saved.id }, replace: true },
-          );
-        }
-      } catch {
-        // Shown through save.error.
-      }
+      await save.submit(toClientInput(value, client?.id, contact?.resourceName));
     },
   });
 
@@ -168,28 +162,91 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
             )}
           </form.Field>
 
-          <form.Field
-            name="defaultFee"
-            validators={{
-              onChange: ({ value }) =>
-                !value.trim() || parseCents(value) !== null ? undefined : "Enter an amount like 95 or 95.50",
-            }}
-          >
-            {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel htmlFor={field.name}>Default fee</FieldLabel>
-                <Input
-                  id={field.name}
-                  form={FORM_ID}
-                  className="max-w-40"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="95"
-                />
-                <FieldDescription>Used when a calendar entry has no amount and no package credit.</FieldDescription>
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
+          <form.Field name="fees" mode="array">
+            {(feesField) => (
+              <Field>
+                <FieldLabel>Fee</FieldLabel>
+                {feesField.state.value.map((_, i) => (
+                  <div key={i} className="grid grid-cols-[7rem_minmax(0,1fr)_auto] items-start gap-2">
+                    <form.Field
+                      name={`fees[${i}].amount`}
+                      validators={{
+                        onChange: ({ value }) => feeAmountError(value),
+                        onSubmit: ({ value }) => feeAmountError(value),
+                      }}
+                    >
+                      {(field) => (
+                        <Field data-invalid={field.state.meta.errors.length > 0}>
+                          <Input
+                            aria-label="Amount"
+                            form={FORM_ID}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={(e) => field.handleChange(e.target.value)}
+                            inputMode="decimal"
+                            placeholder="95"
+                          />
+                          <FieldError errors={fieldErrors(field.state.meta.errors)} />
+                        </Field>
+                      )}
+                    </form.Field>
+                    {i === 0 ? (
+                      <span className="flex h-8 items-center text-sm text-muted-foreground">
+                        {feesField.state.value.length > 1 ? "Until the next one" : "For every session"}
+                      </span>
+                    ) : (
+                      <form.Field
+                        name={`fees[${i}].from`}
+                        validators={{
+                          onChange: ({ value }) => feeStartError(form.getFieldValue("fees"), i, value),
+                          onSubmit: ({ value }) => feeStartError(form.getFieldValue("fees"), i, value),
+                        }}
+                      >
+                        {(field) => (
+                          <Field data-invalid={field.state.meta.errors.length > 0}>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">from</span>
+                              <Input
+                                aria-label="Starts on"
+                                type="date"
+                                form={FORM_ID}
+                                className="max-w-44"
+                                value={field.state.value}
+                                onBlur={field.handleBlur}
+                                onChange={(e) => field.handleChange(e.target.value)}
+                              />
+                            </div>
+                            <FieldError errors={fieldErrors(field.state.meta.errors)} />
+                          </Field>
+                        )}
+                      </form.Field>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Remove fee"
+                      onClick={() => feesField.removeValue(i)}
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-fit"
+                  onClick={() =>
+                    feesField.pushValue({ from: feesField.state.value.length > 0 ? todayISO() : "", amount: "" })
+                  }
+                >
+                  <PlusIcon /> {feesField.state.value.length > 0 ? "New fee from a date" : "Set a fee"}
+                </Button>
+                <FieldDescription>
+                  Charged when a calendar entry has no amount and no package credit. A new fee from a date leaves the
+                  sessions before it as they were.
+                </FieldDescription>
               </Field>
             )}
           </form.Field>
@@ -272,6 +329,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
           void form.handleSubmit();
         }}
       />
+      <FeeImpactDialog impact={save.impact} saving={save.isSaving} onConfirm={save.confirm} onCancel={save.cancel} />
       <SectionLayout
         banner={
           (problem || save.error) && (

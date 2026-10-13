@@ -27,7 +27,7 @@ const (
 	StatusTentative  Status = "tentative"   // title starts with `?`
 	StatusParseError Status = "parse_error" // malformed title
 	StatusUnmatched  Status = "unmatched"   // no client matched the name
-	StatusMissingFee Status = "missing_fee" // no amount, credit or default fee
+	StatusMissingFee Status = "missing_fee" // no amount, credit or client fee
 	StatusPriced     Status = "priced"      // fee known
 	StatusPackage    Status = "package"     // covered by a package credit
 	// StatusRemoved is a session gone from the calendar that is kept for
@@ -56,14 +56,27 @@ const (
 	LocationHome   Location = "home"
 )
 
-// Record is what she writes about a session after it: a one-line summary
-// for lists and the client's timeline. The long notes are a separate item
-// (Notes), so lists never pay to read them.
+// Record is what she keeps about a session after it: a one-line summary
+// for lists and the client's timeline, long notes and attached files. The
+// notes are a separate item (Notes) and the files are attachments, so
+// lists never pay to read them.
 type Record struct {
 	Summary string `json:"summary" dynamodbav:"summary"`
 	// HasNotes says the Notes item has text.
-	HasNotes  bool      `json:"hasNotes,omitempty" dynamodbav:"hasNotes,omitempty"`
+	HasNotes bool `json:"hasNotes,omitempty" dynamodbav:"hasNotes,omitempty"`
+	// Files is how many files are attached (attachments.OwnerSession).
+	Files     int       `json:"files,omitempty" dynamodbav:"files,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt" dynamodbav:"updatedAt"`
+}
+
+// setRecord sets what she keeps about the session, and drops the record
+// once nothing is left on it.
+func (s *Session) setRecord(summary string, hasNotes bool, files int, now time.Time) {
+	if summary == "" && !hasNotes && files == 0 {
+		s.Record = nil
+		return
+	}
+	s.Record = &Record{Summary: summary, HasNotes: hasNotes, Files: files, UpdatedAt: now}
 }
 
 // Session is keyed by the Google event instance ID, so a moved event is the
@@ -199,4 +212,12 @@ func (s Session) Todo(now time.Time) []Reason {
 func (s Session) Open() bool {
 	st := s.State(s.End)
 	return len(Rules.Reasons(st)) > 0
+}
+
+// Files is how many files are attached to it.
+func (s Session) Files() int {
+	if s.Record == nil {
+		return 0
+	}
+	return s.Record.Files
 }

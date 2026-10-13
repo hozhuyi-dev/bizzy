@@ -8,6 +8,7 @@ import (
 
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
@@ -45,12 +46,20 @@ func Check(w World) []Violation {
 	for _, id := range sortedKeys(w.Clients) {
 		out = append(out, entity("client", id, clients.Rules, w.Clients[id].State())...)
 	}
-	for _, r := range Links {
+	for _, id := range sortedKeys(w.Expenses) {
+		out = append(out, entity("expense", id, expenses.Rules, w.Expenses[id].State())...)
+	}
+	for _, r := range AllLinks() {
 		for _, detail := range r.Broken(w) {
 			out = append(out, Violation{Rule: r.ID, Detail: detail, Pending: r.Pending})
 		}
 	}
 	return out
+}
+
+// AllLinks are the rules between entities: documents' and files'.
+func AllLinks() []Rule {
+	return slices.Concat(Links, FileLinks, ExpenseLinks)
 }
 
 func entity[S any](kind, id string, rules statemodel.Rules[S], s S) []Violation {
@@ -65,8 +74,8 @@ func entity[S any](kind, id string, rules statemodel.Rules[S], s S) []Violation 
 // links, for checking each exists.
 func Actions() []string {
 	all := slices.Concat(sessions.Rules.Actions(), packages.Rules.Actions(), followups.Rules.Actions(),
-		documents.Rules.Actions(), clients.Rules.Actions())
-	for _, r := range Links {
+		documents.Rules.Actions(), clients.Rules.Actions(), expenses.Rules.Actions())
+	for _, r := range AllLinks() {
 		all = append(all, r.GuardedBy...)
 	}
 	slices.Sort(all)

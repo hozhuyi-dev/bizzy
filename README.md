@@ -1,6 +1,6 @@
 # bizzy
 
-Back-office for a one-person physio practice. Sessions and follow-up reminders are read from Google Calendar whenever she opens the app, and every client is linked to one of her Google contacts. Each session moves from booking to notes to payment, with invoices and receipts when a client asks (PDF, in the browser); everything that needs her is one to-do list on **Home**. She also tracks prepaid packages, reconnects with lapsed clients and sees how the business is doing.
+Back-office for a one-person physio practice. Sessions and follow-up reminders are read from Google Calendar whenever she opens the app, and every client is linked to one of her Google contacts. Each session moves from booking to notes to payment, with invoices and receipts when a client asks (PDF, in the browser); everything that needs her is one to-do list on **Home**. She also tracks prepaid packages, records expenses with their receipts, reconnects with lapsed clients and sees how the business is doing.
 
 | Folder | What | Stack |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ Separately, she **connects Google** once in Settings: an OAuth consent for her c
 
 | Title | Meaning |
 | --- | --- |
-| `Jane Smith` | Uses a package credit if one is left, otherwise her default rate |
+| `Jane Smith` | Uses a package credit if one is left, otherwise the client's fee on that day |
 | `Jane Smith 95` | The fee for this session is 95 |
 | `Jane Smith 10x85` | Buys 10 sessions at 85 each (850), collected with this session, which uses the first |
 | `Jane Smith 3@250` | Buys 3 sessions for 250 in total, for when the price per session isn't round |
@@ -36,7 +36,7 @@ An amount is what the session costs, not that it was paid: she records the payme
 - **Home visits**: give the event the home-visit colour (Tomato by default, changeable in Settings). Any other colour means her place; no colour follows the client's "usually a home visit" setting.
 - The app syncs when it opens and on **Sync now**, re-reading the last 60 days and the next 60 (bookings are sessions too). **Sync now → Sync dates…** re-reads dates she picks, or **All time**; connecting Google or choosing another calendar syncs all time. Changes made in the calendar show up after the next sync. There is no schedule: nothing changes until she opens the app. A session with an issued document still follows the calendar, but a change that contradicts the document is flagged.
 - **A package bought in a title** stays linked to that session while the title buys it. Edit the `10x85` away (or delete the session) and the package is **unlinked**, not deleted: it becomes like one added in the app, keeping its payment, credits and documents, and is collected on its own if unpaid. Only deleting it on **Packages** removes it. Writing the same package back into the title links it again.
-- **Deleted in the calendar**: a session with nothing of hers on it is removed. One with notes, a payment or a document is kept as deleted, on the to-do list and under **Sessions → Deleted**, to **Restore** (the event comes back from Google's trash, about 30 days) or **Discard**. Deleting a session in the app removes it with its notes and payment.
+- **Deleted in the calendar**: a session with nothing of hers on it is removed. One with notes, files, a payment or a document is kept as deleted, on the to-do list and under **Sessions → Deleted**, to **Restore** (the event comes back from Google's trash, about 30 days) or **Discard**. Deleting a session in the app removes it with its notes, files and payment.
 
 ### Follow-ups
 
@@ -47,7 +47,7 @@ An amount is what the session costs, not that it was paid: she records the payme
 A session's page walks through its steps, in a rail that shows where each stands with its dates:
 
 1. **Booking**: when, with whom, the fee and any package bought. Confirm or cancel a tentative one.
-2. **Notes**: a one-line summary (shown on the client's timeline) and long notes, saved as she types. Open once it has started. Attaching photos and PDFs is planned (S3; the seam is `platform/blobstore` and `features/attachments`).
+2. **Notes**: a one-line summary (shown on the client's timeline) and long notes, saved as she types, and attached photos and PDFs (see [Files](#files)). Open once it has started.
 3. **Payment**: paid (cash, Touch 'n Go, GrabPay, bank transfer; amount and day) or waived, always in full. It can come before the notes. A package credit leaves nothing to pay. A package bought in the session has its own payment: she marks the session's fee and the package paid together or one at a time.
 4. **Documents** (optional): an invoice once confirmed, a receipt once paid. The session's fee and the package it bought can go on one document or separate ones: she ticks what each covers.
 5. **Follow-ups** (optional), and **Next visit**: the same time a week on, in two taps.
@@ -62,10 +62,27 @@ Prepaid sessions, bought in a session's title (`10x85`) or added on **Packages**
 
 Every client links to a Google contact, picked or created when the client is added, so the details are on her phone too. The client's name and calendar aliases stay in bizzy and can differ from the contact's name.
 
+- **Fee**: what a session with no amount in its title and no package credit costs, kept as a list of fees with the day each starts. The first covers everything before the next, so raising a fee "from 1 Nov" leaves earlier sessions as they were, and a sync of all time prices them the same way every time. Saving new fees that would reprice a session already paid or on a document first lists those sessions and asks; each then goes on the to-do list to fix.
 - Google is the source of truth for email, phone and address. The client keeps a read-only copy for lists, follow-ups and receipts (issued receipts keep what they printed).
 - **Edit details** in the app writes straight to Google. The edit carries the contact's etag, so if it changed on her phone in the meantime the save is refused and the latest is shown.
 - Each sync re-reads her contacts and refreshes the copies. A contact deleted or merged in Google is flagged on the client and can be recreated from the copy.
 - Linked contacts are added to a **Clients** label in Google Contacts.
+
+## Expenses
+
+What the practice spends, one **expense** per receipt: the day, where it was bought (Shopee, a shop), a line per item with its amount, notes, and the receipt itself as files (optional: a toll has none).
+
+- A line names an **item** from her list (**Expenses → Items**). Typing a new name adds it to the list with the category she picks; picking one already there fills in its category and what it last cost. A line keeps the item's name and category as they were when written, so renaming an item or moving it to another category later leaves recorded years as they were.
+- **Categories** follow the business expenses on LHDN's Form B (purchases, rental, salaries, travel, repairs, promotion, other expenses, …), plus equipment claimed through capital allowances and non-allowable spending, so a year's totals per category are what the tax return asks for. Should the form change, she renames, adds, reorders or archives them in **Expenses → Categories**; one is never deleted, since lines are filed under it.
+- **Expenses** shows a calendar year (the tax year): spent, received (from client payments) and what is left, totals per category, and every receipt.
+
+## Files
+
+Photos and PDFs attached to a session (a swelling, an MRI report, a referral letter) or an expense (its receipt). The browser shrinks a photo to 2000 px before upload, asks the API for a presigned URL, uploads straight to S3, then confirms it; the API checks what arrived and records it. An upload never confirmed (a closed tab) is tagged pending and the bucket expires it after a day. Files open through links that last an hour.
+
+- One private bucket per environment, in the `bizzy-<env>-data` stack beside the table, with keys made of ids only, never names, since keys end up in logs and URLs: `attachments/<ownerKind>/<ownerId>/<attachmentId>/original.<ext>`. A new kind of owner is a new `<ownerKind>`; files the app makes itself would go under another top-level prefix (e.g. `exports/`).
+- The API's role can only touch `attachments/*`; the signed-in role has no S3 access at all, only the URLs the API signs.
+- Production keeps old versions of a deleted or replaced file for 35 days (the table's point-in-time recovery window). Development and staging keep none, and **Reset** empties the bucket too.
 
 ## Invoices and receipts
 
@@ -111,7 +128,7 @@ Both apps are organised by feature (vertical slices). A feature owns its types, 
 - Each file holds one layer. Tests mirror the file they test: `x.go` → `x_test.go`.
 - Dependencies point one way: workflow slices (`billing`, `documents`, `googlesync`, `payments`, `todo`) may import core slices (`clients`, `sessions`, `packages`, `settings`, `followups`), never the reverse. `calendar` imports no feature. Interfaces are declared where they are used.
 - Outside features: `internal/shared/` for types several slices share with no behaviour of their own (`docref`, `money`), `internal/platform/` for infrastructure (`dynamo`, `googleauth`, `ssm`, `apperr`, `statemodel`), `internal/schema` for every key, `internal/router` for dispatch, `internal/app` for wiring every domain action (used by `cmd/api` and the simulation), `internal/testutil/` for in-memory stores and fake Google services.
-- `internal/integrity` checks the links between entities (a document and the sessions and packages it covers, both ways), plus each entity's impossible rules; a rule marked `Pending` is a known gap with its suggested fix (`testdata/links.md`).
+- `internal/integrity` checks the links between entities, which no single entity's rule table can see: a document and the sessions and packages it covers, both ways (`rules_links.go`); attachments, their owners and their files (`rules_files.go`); expense lines, items and categories (`rules_expenses.go`). It also checks each entity's impossible rules; a rule marked `Pending` is a known gap with its suggested fix (`testdata/links.md`).
 - `internal/simulation` drives the app with random sequences of user actions (`actions_user.go`, one per router mutation, enforced by a test), Google Calendar and Contacts edits, and time passing, checking after every step that nothing is impossible, refused actions change nothing, and derived fields are current. Search deeper with `-rapid.checks=2000 -rapid.steps=200`; `-sim.report=file.md` writes which actions moved which entity between rule states. A new feature adds its `state.go`, `rules.go`, `guards.go` and simulation actions.
 
 ### bizzy-web
@@ -139,10 +156,11 @@ Both apps are organised by feature (vertical slices). A feature owns its types, 
 
 ## Data
 
-One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `FOLLOWUP`, `PACKAGE`, `DOC`, `GOOGLE`, …) and five generic local secondary indexes created up front, because LSIs can't be added later. `bizzy-lambda/internal/schema/schema.go` is the one place that says how each entity is keyed (PK, SK, LSI1–5); what a row stores is its struct in the feature's `model.go`.
+One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `FOLLOWUP`, `PACKAGE`, `DOC`, `EXPENSE`, `ATTACHMENT`, `GOOGLE`, …) and five generic local secondary indexes created up front, because LSIs can't be added later. `bizzy-lambda/internal/schema/schema.go` is the one place that says how each entity is keyed (PK, SK, LSI1–5); what a row stores is its struct in the feature's `model.go`.
 
 - Lists that only need what is "open" (the to-do list, follow-ups) read sparse indexes, never filters. Long lists (a client's timeline, follow-ups) are read a page at a time: the API returns a cursor and the app's **Load more** passes it back (`dynamo.QueryPage`). A session's long notes are their own item, so lists don't pay to read them.
-- Sessions and follow-ups are written whole with a version check, since the sync, the reconcile and her edits all change them; clients and packages are patched, each writer owning its fields. Client items carry monthly activity (sessions earned, payments received), which Reconnect and Insights are summed from.
+- Sessions, follow-ups and expenses are written whole with a version check, since the sync, the reconcile and her edits all change them; clients, packages and expense items are patched, each writer owning its fields.
+- Files never go in the table (items are capped at 400 KB): they are in S3 (see [Files](#files)), with one `ATTACHMENT` item each and a count on their owner. Client items carry monthly activity (sessions earned, payments received), which Reconnect and Insights are summed from.
 
 ## Environments
 
@@ -153,7 +171,7 @@ One DynamoDB table: one partition per entity type (`CLIENT`, `SESSION`, `FOLLOWU
 
 `development` is deployed from a laptop and used by the local frontend. Each environment is a separate set of stacks (`bizzy-<env>-auth|data|api|web`) in the same AWS account.
 
-Development and staging have **Settings → Reset**, which deletes everything in the table except the Google connection, then syncs the whole calendar back in. Production has neither the button nor the API action: issued invoices and receipts must be kept, and production starts empty when first deployed anyway.
+Development and staging have **Settings → Reset**, which deletes everything in the table except the Google connection, and every attached file, then syncs the whole calendar back in. Production has neither the button nor the API action: issued invoices and receipts must be kept, and production starts empty when first deployed anyway.
 
 ## One-time setup
 
