@@ -1,4 +1,4 @@
-// Mirrors bizzy-lambda/internal/features/google.
+// Mirrors bizzy-lambda/internal/features/googleconnect.
 export interface GoogleConnection {
   /** The connected account; may differ from the one she signs in with. */
   email: string;

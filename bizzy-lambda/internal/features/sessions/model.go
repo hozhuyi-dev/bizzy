@@ -17,8 +17,8 @@ package sessions
 import (
 	"time"
 
-	"bizzy-lambda/internal/features/docref"
-	"bizzy-lambda/internal/features/money"
+	"bizzy-lambda/internal/shared/docref"
+	"bizzy-lambda/internal/shared/money"
 )
 
 type Status string

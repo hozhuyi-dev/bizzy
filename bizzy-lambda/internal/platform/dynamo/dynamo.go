@@ -15,9 +15,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
@@ -83,4 +85,12 @@ func NewID() string {
 // offsets, and "…+08:00" strings do not sort in time order against "…Z".
 func TimeKey(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
+}
+
+// Same compares two items the way DynamoDB stores them, so time zones and
+// nil-vs-empty differences that do not survive a round trip are ignored.
+func Same(a, b any) bool {
+	am, errA := attributevalue.MarshalMap(a)
+	bm, errB := attributevalue.MarshalMap(b)
+	return errA == nil && errB == nil && reflect.DeepEqual(am, bm)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/platform/dynamo"
 )
@@ -21,7 +20,7 @@ type RematchStore interface {
 // matched may now be theirs, and one of theirs may no longer be. Done ones
 // without a client are left to the next sync.
 func Rematch(ctx context.Context, repo RematchStore, all []clients.Client, clientID string) error {
-	aliases := calendar.AliasesOf(all)
+	aliases := clients.AliasesOf(all)
 	unmatched, err := repo.ListOpenWithoutClient(ctx)
 	if err != nil {
 		return err
@@ -40,7 +39,7 @@ func Rematch(ctx context.Context, repo RematchStore, all []clients.Client, clien
 
 // rematch saves f re-matched when that changes it, reading it afresh if it
 // changed meanwhile (a sync, or she marked it done).
-func rematch(ctx context.Context, repo RematchStore, f FollowUp, aliases calendar.Aliases) error {
+func rematch(ctx context.Context, repo RematchStore, f FollowUp, aliases clients.Aliases) error {
 	for attempt := 0; ; attempt++ {
 		matched := f.Match(aliases)
 		if matched.ClientID == f.ClientID && matched.SuggestedClientID == f.SuggestedClientID && matched.Problem == f.Problem {

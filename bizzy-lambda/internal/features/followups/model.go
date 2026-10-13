@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/calendar"
+	"bizzy-lambda/internal/features/clients"
 )
 
 // FollowUp is keyed by the Google event instance ID.
@@ -42,7 +43,7 @@ type FollowUp struct {
 
 // FromEvent copies what the calendar says onto a follow-up (stored, or new
 // when zero) and derives the rest, keeping her own fields.
-func FromEvent(stored FollowUp, event calendar.Event, aliases calendar.Aliases, loc *time.Location) FollowUp {
+func FromEvent(stored FollowUp, event calendar.Event, aliases clients.Aliases, loc *time.Location) FollowUp {
 	f := stored
 	f.EventID, f.Title, f.Notes = event.ID, event.Title, event.Description
 	f.SessionID = event.Private[calendar.PropSessionID]
@@ -58,7 +59,7 @@ func FromEvent(stored FollowUp, event calendar.Event, aliases calendar.Aliases, 
 
 // Match re-reads the title against the clients' aliases: who it is for, or
 // why no one.
-func (f FollowUp) Match(aliases calendar.Aliases) FollowUp {
+func (f FollowUp) Match(aliases clients.Aliases) FollowUp {
 	f.Name, f.Summary, f.ClientID, f.SuggestedClientID, f.Problem = "", "", "", "", ""
 	title, err := calendar.ParseFollowUp(f.Title)
 	f.Name, f.Summary = title.Name, title.Summary
@@ -66,11 +67,11 @@ func (f FollowUp) Match(aliases calendar.Aliases) FollowUp {
 		f.Problem = err.Error()
 		return f
 	}
-	match := calendar.MatchName(title.Name, aliases)
+	match := clients.MatchName(title.Name, aliases)
 	switch match.Kind {
-	case calendar.MatchExact:
+	case clients.MatchExact:
 		f.ClientID = match.ClientID
-	case calendar.MatchNearMiss:
+	case clients.MatchNearMiss:
 		f.SuggestedClientID = match.ClientID
 		f.Problem = "The name is close to a client's, but not the same"
 	default:

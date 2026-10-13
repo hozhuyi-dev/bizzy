@@ -1,4 +1,4 @@
-// Mirrors bizzy-lambda/internal/features/money and payments.
+// Mirrors bizzy-lambda/internal/shared/money and features/payments.
 
 export type PaymentStatus = "paid" | "waived";
 export type PaymentMethod = "cash" | "tng" | "grab" | "bank_transfer";

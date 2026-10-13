@@ -1,10 +1,6 @@
-package calendar
+package clients
 
-import (
-	"bizzy-lambda/internal/features/clients"
-)
-
-// MatchKind is how an event name relates to the known client aliases.
+// MatchKind is how a name (an event's, usually) relates to the known client aliases.
 type MatchKind int
 
 const (
@@ -26,11 +22,11 @@ type Match struct {
 type Aliases map[string]string
 
 // AliasesOf indexes every client's aliases for matching.
-func AliasesOf(all []clients.Client) Aliases {
+func AliasesOf(all []Client) Aliases {
 	aliases := make(Aliases)
 	for _, client := range all {
 		for _, alias := range client.Aliases {
-			aliases[clients.NormalizeAlias(alias)] = client.ID
+			aliases[NormalizeAlias(alias)] = client.ID
 		}
 	}
 	return aliases
@@ -38,7 +34,7 @@ func AliasesOf(all []clients.Client) Aliases {
 
 // MatchName finds the client an event name refers to.
 func MatchName(name string, aliases Aliases) Match {
-	normalized := clients.NormalizeAlias(name)
+	normalized := NormalizeAlias(name)
 	if normalized == "" {
 		return Match{Kind: MatchNone}
 	}

@@ -25,19 +25,12 @@ func newShareToken() string {
 
 var shareTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
 
-type shareInput struct {
-	IDs []string `json:"ids"`
-}
-
-// share returns the share token of each issued document, by id, giving one
+// Share returns the share token of each issued document, by id, giving one
 // to any issued before documents had them.
-func (h handler) share(ctx context.Context, in shareInput) (any, error) {
-	if len(in.IDs) == 0 {
-		return nil, apperr.Invalid("choose what to share")
-	}
-	tokens := make(map[string]string, len(in.IDs))
-	for _, id := range in.IDs {
-		doc, err := h.load(ctx, id, 0)
+func (svc Service) Share(ctx context.Context, ids []string) (map[string]string, error) {
+	tokens := make(map[string]string, len(ids))
+	for _, id := range ids {
+		doc, err := svc.load(ctx, id, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -45,7 +38,7 @@ func (h handler) share(ctx context.Context, in shareInput) (any, error) {
 			return nil, apperr.Conflict("only issued documents can be shared")
 		}
 		if doc.ShareToken == "" {
-			if doc, err = h.newShareToken(ctx, doc); err != nil {
+			if doc, err = svc.newShareToken(ctx, doc); err != nil {
 				return nil, err
 			}
 		}
@@ -54,20 +47,20 @@ func (h handler) share(ctx context.Context, in shareInput) (any, error) {
 	return tokens, nil
 }
 
-// resetShare gives a document a new share token; links with the old one
+// ResetShare gives a document a new share token; links with the old one
 // stop working.
-func (h handler) resetShare(ctx context.Context, in idInput) (any, error) {
-	doc, err := h.load(ctx, in.ID, in.Version)
+func (svc Service) ResetShare(ctx context.Context, id string, version int) (Document, error) {
+	doc, err := svc.load(ctx, id, version)
 	if err != nil {
-		return nil, err
+		return Document{}, err
 	}
 	if doc.Content == nil {
-		return nil, apperr.Conflict("only an issued document has a link")
+		return Document{}, apperr.Conflict("only an issued document has a link")
 	}
-	return h.newShareToken(ctx, doc)
+	return svc.newShareToken(ctx, doc)
 }
 
-func (h handler) newShareToken(ctx context.Context, doc Document) (Document, error) {
+func (svc Service) newShareToken(ctx context.Context, doc Document) (Document, error) {
 	updated := doc
 	updated.ShareToken = newShareToken()
 	updated.Version++
@@ -76,7 +69,7 @@ func (h handler) newShareToken(ctx context.Context, doc Document) (Document, err
 		PreviousVersion: doc.Version,
 		Share:           &ShareChange{New: updated.ShareToken, Old: doc.ShareToken},
 	}
-	if err := h.commit(ctx, w); err != nil {
+	if err := svc.commit(ctx, w); err != nil {
 		return doc, err
 	}
 	return updated, nil

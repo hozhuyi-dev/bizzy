@@ -1,4 +1,4 @@
-package calendar
+package clients
 
 import "testing"
 

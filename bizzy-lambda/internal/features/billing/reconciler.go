@@ -3,10 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
-	"reflect"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
@@ -65,7 +62,8 @@ type Change struct {
 // Scope says what to reconcile. A client's sessions are always reconciled
 // together, because package credits run across all of them.
 type Scope struct {
-	Changes   []Change
+	Changes []Change
+	// ClientIDs are the clients to reconcile; "" (no client) is ignored.
 	ClientIDs []string
 	// Unmatched re-derives every session without a client, for when a
 	// client gains an alias.
@@ -117,7 +115,9 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 
 	affected := map[string]bool{}
 	for _, id := range scope.ClientIDs {
-		affected[id] = true
+		if id != "" {
+			affected[id] = true
+		}
 	}
 	if scope.AllClients {
 		for _, c := range allClients {
@@ -244,7 +244,7 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 			gone[id] = true
 			continue
 		}
-		if before, ok := original[id]; ok && same(before, s) {
+		if before, ok := original[id]; ok && dynamo.Same(before, s) {
 			continue
 		}
 		if _, err := r.Sessions.Save(ctx, s); err != nil {
@@ -265,7 +265,7 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 
 	// Write packages.
 	for id, p := range finalPackages {
-		if stored, ok := storedPackages[id]; ok && same(stored, *p) {
+		if stored, ok := storedPackages[id]; ok && dynamo.Same(stored, *p) {
 			continue
 		}
 		if err := r.Packages.Save(ctx, *p); err != nil {
@@ -281,7 +281,7 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 		activity, last, next := Activity(entriesByClient[id], packagesByClient[id], r.Location)
 		updated := client
 		updated.Activity, updated.LastSessionAt, updated.NextBookedAt = activity, last, next
-		if same(client, updated) {
+		if dynamo.Same(client, updated) {
 			continue
 		}
 		if err := r.Clients.SaveActivity(ctx, updated); err != nil {
@@ -370,12 +370,4 @@ func mergeCalendarPackage(stored, want packages.Package) packages.Package {
 	merged.PurchasedAt = want.PurchasedAt
 	merged.Source = packages.SourceCalendar
 	return merged
-}
-
-// same compares two items the way DynamoDB stores them, so time zones and
-// nil-vs-empty differences that do not survive a round trip are ignored.
-func same(a, b any) bool {
-	am, errA := attributevalue.MarshalMap(a)
-	bm, errB := attributevalue.MarshalMap(b)
-	return errA == nil && errB == nil && reflect.DeepEqual(am, bm)
 }

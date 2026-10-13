@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/calendar"
-	"bizzy-lambda/internal/features/docref"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/shared/docref"
 	"bizzy-lambda/internal/testutil/memory"
 )
 

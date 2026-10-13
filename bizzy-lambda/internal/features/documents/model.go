@@ -14,7 +14,7 @@ package documents
 import (
 	"time"
 
-	"bizzy-lambda/internal/features/docref"
+	"bizzy-lambda/internal/shared/docref"
 )
 
 type Status string

@@ -1,4 +1,4 @@
-package google
+package googleconnect
 
 import (
 	"context"

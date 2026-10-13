@@ -13,16 +13,16 @@ import (
 
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
-	"bizzy-lambda/internal/features/docref"
-	"bizzy-lambda/internal/features/money"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
+	"bizzy-lambda/internal/shared/docref"
+	"bizzy-lambda/internal/shared/money"
 )
 
 // Env is what derivation depends on besides the session itself.
 type Env struct {
-	Aliases     calendar.Aliases
+	Aliases     clients.Aliases
 	Clients     map[string]clients.Client
 	HomeColorID string
 	Location    *time.Location
@@ -34,7 +34,7 @@ func NewEnv(all []clients.Client, cfg settings.Settings, loc *time.Location, now
 	for _, c := range all {
 		byID[c.ID] = c
 	}
-	return Env{Aliases: calendar.AliasesOf(all), Clients: byID, HomeColorID: cfg.HomeVisitColorID, Location: loc, Now: now}
+	return Env{Aliases: clients.AliasesOf(all), Clients: byID, HomeColorID: cfg.HomeVisitColorID, Location: loc, Now: now}
 }
 
 // Entry is a session with its parsed title, carried between the steps.
@@ -65,11 +65,11 @@ func Derive(s sessions.Session, env Env) Entry {
 	out.Name = title.Name
 
 	if err == nil {
-		match := calendar.MatchName(title.Name, env.Aliases)
+		match := clients.MatchName(title.Name, env.Aliases)
 		switch match.Kind {
-		case calendar.MatchExact:
+		case clients.MatchExact:
 			out.ClientID = match.ClientID
-		case calendar.MatchNearMiss:
+		case clients.MatchNearMiss:
 			out.SuggestedClientID = match.ClientID
 		}
 		switch {

@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"bizzy-lambda/internal/features/money"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/router"
+	"bizzy-lambda/internal/shared/money"
 )
 
 type store interface {
@@ -116,7 +116,7 @@ func (h handler) save(ctx context.Context, in saveInput) (any, error) {
 			return nil, err
 		}
 	}
-	if err := h.afterChange(ctx, nonEmpty(p.ClientID, previousClient)...); err != nil {
+	if err := h.afterChange(ctx, p.ClientID, previousClient); err != nil {
 		return nil, err
 	}
 	return p, nil
@@ -145,14 +145,4 @@ func (h handler) delete(ctx context.Context, in deleteInput) (any, error) {
 		return nil, apperr.Conflict("cancel the documents for this package first")
 	}
 	return nil, h.afterChange(ctx, existing.ClientID)
-}
-
-func nonEmpty(values ...string) []string {
-	var out []string
-	for _, v := range values {
-		if v != "" {
-			out = append(out, v)
-		}
-	}
-	return out
 }

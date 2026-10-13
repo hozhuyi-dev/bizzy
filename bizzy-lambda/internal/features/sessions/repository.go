@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"bizzy-lambda/internal/features/docref"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/schema"
+	"bizzy-lambda/internal/shared/docref"
 )
 
 // Keys: see schema.SessionKeys and schema.SessionNotesKeys.

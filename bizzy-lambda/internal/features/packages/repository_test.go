@@ -7,8 +7,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 
-	"bizzy-lambda/internal/features/docref"
-	"bizzy-lambda/internal/features/money"
+	"bizzy-lambda/internal/shared/docref"
+	"bizzy-lambda/internal/shared/money"
 )
 
 func TestEveryAttributeHasAnOwner(t *testing.T) {

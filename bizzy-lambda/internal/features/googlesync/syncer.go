@@ -9,10 +9,7 @@ package googlesync
 import (
 	"context"
 	"errors"
-	"reflect"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 
 	"bizzy-lambda/internal/features/billing"
 	"bizzy-lambda/internal/features/calendar"
@@ -161,7 +158,7 @@ func (s Syncer) Run(ctx context.Context, r Range) (Summary, error) {
 		summary.Saved, summary.Deleted = result.Saved, result.Deleted
 	}
 
-	if err := s.syncFollowUps(ctx, events, from, to, calendar.AliasesOf(all), &summary); err != nil {
+	if err := s.syncFollowUps(ctx, events, from, to, clients.AliasesOf(all), &summary); err != nil {
 		return summary, err
 	}
 
@@ -202,7 +199,7 @@ func calendarChanged(before sessions.Session, event calendar.Event) bool {
 
 // syncFollowUps stores the follow-up events in the range and removes the
 // ones gone from it. Marking one done is hers and is kept.
-func (s Syncer) syncFollowUps(ctx context.Context, events []calendar.Event, from, to time.Time, aliases calendar.Aliases, summary *Summary) error {
+func (s Syncer) syncFollowUps(ctx context.Context, events []calendar.Event, from, to time.Time, aliases clients.Aliases, summary *Summary) error {
 	stored, err := s.FollowUps.ListByTime(ctx, from, to.Add(-time.Second))
 	if err != nil {
 		return err
@@ -218,7 +215,7 @@ func (s Syncer) syncFollowUps(ctx context.Context, events []calendar.Event, from
 			continue
 		}
 		seen[event.ID] = true
-		if before, ok := byID[event.ID]; ok && same(before, followups.FromEvent(before, event, aliases, s.Location)) {
+		if before, ok := byID[event.ID]; ok && dynamo.Same(before, followups.FromEvent(before, event, aliases, s.Location)) {
 			continue
 		}
 		if _, err := s.saveFollowUp(ctx, event, aliases); err != nil {
@@ -241,7 +238,7 @@ func (s Syncer) syncFollowUps(ctx context.Context, events []calendar.Event, from
 
 // saveFollowUp writes a follow-up as its event says, over whatever is
 // stored (she may have just marked it done).
-func (s Syncer) saveFollowUp(ctx context.Context, event calendar.Event, aliases calendar.Aliases) (followups.FollowUp, error) {
+func (s Syncer) saveFollowUp(ctx context.Context, event calendar.Event, aliases clients.Aliases) (followups.FollowUp, error) {
 	for attempt := 0; ; attempt++ {
 		before, _, err := s.FollowUps.Get(ctx, event.ID)
 		if err != nil {
@@ -295,11 +292,4 @@ func (s Syncer) refreshContacts(ctx context.Context, all []clients.Client, now t
 		}
 	}
 	return nil
-}
-
-// same compares two items the way DynamoDB stores them.
-func same(a, b any) bool {
-	am, errA := attributevalue.MarshalMap(a)
-	bm, errB := attributevalue.MarshalMap(b)
-	return errA == nil && errB == nil && reflect.DeepEqual(am, bm)
 }

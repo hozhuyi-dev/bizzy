@@ -6,10 +6,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
-	"bizzy-lambda/internal/features/docref"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/schema"
+	"bizzy-lambda/internal/shared/docref"
 )
 
 // Keys: see schema.PackageKeys.

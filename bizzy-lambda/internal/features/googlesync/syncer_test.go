@@ -9,8 +9,8 @@ import (
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
-	"bizzy-lambda/internal/features/docref"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/shared/docref"
 	"bizzy-lambda/internal/testutil/memory"
 )
 

@@ -123,7 +123,7 @@ func (e FollowUpEditor) store(ctx context.Context, event calendar.Event) (follow
 	if err != nil {
 		return followups.FollowUp{}, err
 	}
-	return Syncer{FollowUps: e.FollowUps, Location: e.Location}.saveFollowUp(ctx, event, calendar.AliasesOf(all))
+	return Syncer{FollowUps: e.FollowUps, Location: e.Location}.saveFollowUp(ctx, event, clients.AliasesOf(all))
 }
 
 const (

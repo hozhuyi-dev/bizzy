@@ -371,7 +371,7 @@ func writtenName(client clients.Client, existing *calendar.Event) string {
 	if existing == nil {
 		return client.Name
 	}
-	aliases := calendar.AliasesOf([]clients.Client{client})
+	aliases := clients.AliasesOf([]clients.Client{client})
 	var name string
 	if calendar.IsFollowUp(existing.Title) {
 		title, err := calendar.ParseFollowUp(existing.Title)
@@ -386,7 +386,7 @@ func writtenName(client clients.Client, existing *calendar.Event) string {
 		}
 		name = title.Name
 	}
-	if calendar.MatchName(name, aliases).Kind == calendar.MatchExact {
+	if clients.MatchName(name, aliases).Kind == clients.MatchExact {
 		return name
 	}
 	return client.Name

@@ -16,7 +16,7 @@ import (
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/followups"
-	"bizzy-lambda/internal/features/google"
+	"bizzy-lambda/internal/features/googleconnect"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/payments"
@@ -45,7 +45,7 @@ func main() {
 		googleauth.ParamTokens(mustEnv("GOOGLE_TOKEN_PARAM")),
 	)
 	directory := contacts.NewGoogle(auth.Client)
-	connections := google.NewRepository(store)
+	connections := googleconnect.NewRepository(store)
 
 	clientsRepo := clients.NewRepository(store)
 	sessionsRepo := sessions.NewRepository(store)
@@ -84,7 +84,7 @@ func main() {
 		return followups.Rematch(ctx, followUpsRepo, all, id)
 	})
 	contacts.Register(r, directory, clientsRepo)
-	google.Register(r, connections, auth)
+	googleconnect.Register(r, connections, auth)
 	sessions.Register(r, sessionsRepo)
 	payments.Register(r, payments.NewRepository(store, sessionsRepo, packagesRepo), reconcileClients, loc)
 	followups.Register(r, followUpsRepo)
@@ -142,7 +142,7 @@ func main() {
 	if reset.Allowed(os.Getenv("ENVIRONMENT")) {
 		reset.Register(r, store, func(ctx context.Context) (any, error) {
 			return runSync(ctx, googlesync.Range{})
-		}, google.Partition)
+		}, googleconnect.Partition)
 	}
 
 	lambda.Start(r.Handle)

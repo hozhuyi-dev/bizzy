@@ -20,7 +20,7 @@
 //	DOCSHARE      share token                 -            -                   -                        -                   -               `documentId` a public link opens
 //	ATTACHMENT    ownerKind#ownerId#id        -            -                   -                        -                   -               attachments.Attachment (not written yet)
 //	SETTINGS      BUSINESS                    -            -                   -                        -                   -               settings.Settings
-//	GOOGLE        CONNECTION                  -            -                   -                        -                   -               google.Connection (kept by Reset)
+//	GOOGLE        CONNECTION                  -            -                   -                        -                   -               googleconnect.Connection (kept by Reset)
 //	SYNC          LAST                        -            -                   -                        -                   -               googlesync.Run
 //
 // The table design, in short (see platform/dynamo for the mechanics):

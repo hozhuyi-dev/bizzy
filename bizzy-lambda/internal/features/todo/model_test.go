@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/followups"
-	"bizzy-lambda/internal/features/money"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/shared/money"
 )
 
 func TestBuildMergesByWhen(t *testing.T) {
