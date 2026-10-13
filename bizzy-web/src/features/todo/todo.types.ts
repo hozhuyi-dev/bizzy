@@ -5,14 +5,15 @@ import type { Session, TodoReason } from "~/features/sessions/sessions.types";
 /**
  * One thing on her to-do list; mirrors bizzy-lambda/internal/features/todo.
  * A package is its own item only when no session bought it (added here, or
- * unlinked); one bought in a session is collected on that session.
+ * unlinked); one bought in a session is collected on that session. A
+ * follow-up has a reason only to fix it: its title can't be read or matched.
  */
 export type TodoItem =
   | { kind: "session"; at: string; reasons: Array<TodoReason>; session: Session }
   | { kind: "package"; at: string; reasons: Array<TodoReason>; package: Package }
-  | { kind: "followUp"; at: string; followUp: FollowUp };
+  | { kind: "followUp"; at: string; reasons?: Array<"fix">; followUp: FollowUp };
 
-/** The filter chips: a session reason, or follow-ups. */
+/** The filter chips: a session reason, or follow-ups (one to fix is under Fix too). */
 export type TodoFilter = TodoReason | "followUp";
 
 export const TODO_FILTERS: ReadonlyArray<{ value: TodoFilter; label: string }> = [
@@ -26,7 +27,7 @@ export const TODO_FILTERS: ReadonlyArray<{ value: TodoFilter; label: string }> =
 
 export function matchesFilter(item: TodoItem, filter: TodoFilter | undefined): boolean {
   if (!filter) return true;
-  if (item.kind === "followUp") return filter === "followUp";
+  if (item.kind === "followUp") return filter === "followUp" || (filter === "fix" && Boolean(item.reasons?.includes("fix")));
   return item.reasons.includes(filter as TodoReason);
 }
 

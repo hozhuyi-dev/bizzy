@@ -1,5 +1,5 @@
 import { BanknoteIcon, CheckIcon, HomeIcon, LinkIcon } from "lucide-react";
-import { allSessionDocuments, sessionAmount, stageBadges } from "./session-stage";
+import { allSessionDocuments, isUnmatched, sessionAmount, stageBadges } from "./session-stage";
 import type { ReactNode } from "react";
 import type { Session } from "./sessions.types";
 import type { SessionReturnTo } from "./session-page.component";
@@ -103,7 +103,7 @@ export function sessionActions(session: Session, handlers: SessionHandlers): Arr
   if (editable && session.status === "tentative" && client) {
     actions.push({ label: "Confirm", icon: CheckIcon, onClick: () => handlers.onConfirm(session) });
   }
-  if (session.status === "unmatched") {
+  if (isUnmatched(session)) {
     actions.push({ label: "Link client", icon: LinkIcon, onClick: () => handlers.onLink(session) });
   }
   if (client && session.status === "missing_fee") {

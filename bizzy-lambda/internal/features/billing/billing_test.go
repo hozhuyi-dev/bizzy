@@ -90,6 +90,7 @@ func TestPricing(t *testing.T) {
 		event("e8", 8, "? Jane Smith"),        // tentative
 		event("e9", 9, "Jnae Smith"),          // near miss
 		event("e10", 10, "Jane Smith 95 100"), // parse error
+		event("e11", 11, "? Jon Doe"),         // tentative, no such client
 	)
 
 	tests := []struct {
@@ -109,6 +110,7 @@ func TestPricing(t *testing.T) {
 		{"e8", sessions.StatusTentative, 0, "", 0},
 		{"e9", sessions.StatusUnmatched, 0, "", 0},
 		{"e10", sessions.StatusParseError, 0, "", 0},
+		{"e11", sessions.StatusTentative, 0, "", 0},
 	}
 	for _, tt := range tests {
 		s := m.SessionMap[tt.id]
@@ -124,6 +126,13 @@ func TestPricing(t *testing.T) {
 
 	if s := m.SessionMap["e9"]; s.SuggestedClientID != "jane" {
 		t.Errorf("near miss suggestion = %q", s.SuggestedClientID)
+	}
+	// Tentative under a name no client has: fixed before it is confirmed.
+	if s := m.SessionMap["e8"]; s.Reason != "" || s.NeedsFix() {
+		t.Errorf("e8 reason %q, needs fix %v, want neither", s.Reason, s.NeedsFix())
+	}
+	if s := m.SessionMap["e11"]; s.Reason != `No client is called "Jon Doe"` || !s.NeedsFix() {
+		t.Errorf("e11 reason %q, needs fix %v, want the name unmatched", s.Reason, s.NeedsFix())
 	}
 	// The package is collected with the session that bought it, but due on
 	// its own: the session's own fee is a credit.

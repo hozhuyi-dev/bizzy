@@ -53,9 +53,14 @@ func FromEvent(stored FollowUp, event calendar.Event, aliases calendar.Aliases, 
 	} else {
 		f.Due = event.Start.UTC()
 	}
+	return f.Match(aliases)
+}
 
+// Match re-reads the title against the clients' aliases: who it is for, or
+// why no one.
+func (f FollowUp) Match(aliases calendar.Aliases) FollowUp {
 	f.Name, f.Summary, f.ClientID, f.SuggestedClientID, f.Problem = "", "", "", "", ""
-	title, err := calendar.ParseFollowUp(event.Title)
+	title, err := calendar.ParseFollowUp(f.Title)
 	f.Name, f.Summary = title.Name, title.Summary
 	if err != nil {
 		f.Problem = err.Error()

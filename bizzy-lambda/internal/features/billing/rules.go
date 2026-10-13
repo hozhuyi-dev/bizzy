@@ -93,18 +93,24 @@ func Derive(s sessions.Session, env Env) Entry {
 		out.Reason = err.Error()
 	case title.Tentative:
 		out.Status = sessions.StatusTentative
+		if out.ClientID == "" {
+			out.Reason = unmatched(out, title, env)
+		}
 	case out.ClientID == "":
 		out.Status = sessions.StatusUnmatched
-		switch {
-		case out.SuggestedClientID != "":
-			out.Reason = fmt.Sprintf("Did you mean %s?", env.Clients[out.SuggestedClientID].Name)
-		default:
-			out.Reason = fmt.Sprintf("No client is called %q", title.Name)
-		}
+		out.Reason = unmatched(out, title, env)
 	}
 
 	out.Location, out.LocationSource = location(out, env)
 	return Entry{Session: out, Title: title}
+}
+
+// unmatched says why no client matched the title's name.
+func unmatched(s sessions.Session, title calendar.Title, env Env) string {
+	if s.SuggestedClientID != "" {
+		return fmt.Sprintf("Did you mean %s?", env.Clients[s.SuggestedClientID].Name)
+	}
+	return fmt.Sprintf("No client is called %q", title.Name)
 }
 
 // location: the event colour wins when set; otherwise the client's habit.

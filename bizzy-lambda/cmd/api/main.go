@@ -71,8 +71,17 @@ func main() {
 
 	r := router.New()
 
+	// A saved client's aliases can match (or unmatch) sessions and
+	// follow-ups, not just at the next sync.
 	clients.Register(r, clientsRepo, contacts.Linker{Dir: directory, Now: time.Now}, func(ctx context.Context, id string) error {
-		return reconcile(ctx, billing.Scope{ClientIDs: []string{id}, Unmatched: true})
+		if err := reconcile(ctx, billing.Scope{ClientIDs: []string{id}, Unmatched: true}); err != nil {
+			return err
+		}
+		all, err := clientsRepo.List(ctx)
+		if err != nil {
+			return err
+		}
+		return followups.Rematch(ctx, followUpsRepo, all, id)
 	})
 	contacts.Register(r, directory, clientsRepo)
 	google.Register(r, connections, auth)

@@ -29,6 +29,9 @@ describe("to-do list", () => {
     expect(matchesFilter(item, "followUp")).toBe(false);
     expect(matchesFilter(followUp, "followUp")).toBe(true);
     expect(matchesFilter(followUp, undefined)).toBe(true);
+    expect(matchesFilter(followUp, "fix")).toBe(false);
+    expect(matchesFilter({ ...followUp, reasons: ["fix"] }, "fix")).toBe(true);
+    expect(matchesFilter({ ...followUp, reasons: ["fix"] }, "followUp")).toBe(true);
   });
 
   test("the next session wraps round and skips follow-ups", () => {

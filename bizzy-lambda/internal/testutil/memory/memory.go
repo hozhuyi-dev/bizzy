@@ -200,6 +200,14 @@ func (r *FollowUpRepo) ListOpen(_ context.Context, until time.Time) ([]followups
 	return r.sorted(func(f followups.FollowUp) bool { return f.DoneAt == nil && !f.Due.After(until) }), nil
 }
 
+func (r *FollowUpRepo) ListOpenWithoutClient(context.Context) ([]followups.FollowUp, error) {
+	return r.sorted(func(f followups.FollowUp) bool { return f.DoneAt == nil && f.ClientID == "" }), nil
+}
+
+func (r *FollowUpRepo) ListByClient(_ context.Context, id string) ([]followups.FollowUp, error) {
+	return r.sorted(func(f followups.FollowUp) bool { return f.ClientID == id }), nil
+}
+
 func (r *FollowUpRepo) ListBySession(_ context.Context, id string) ([]followups.FollowUp, error) {
 	return r.sorted(func(f followups.FollowUp) bool { return f.SessionID == id }), nil
 }

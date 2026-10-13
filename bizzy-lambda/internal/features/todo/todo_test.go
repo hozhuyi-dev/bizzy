@@ -19,7 +19,7 @@ func TestBuildMergesByWhen(t *testing.T) {
 		// Happened yesterday: record and collect.
 		{EventID: "past", Start: at(-24), End: at(-23), Status: sessions.StatusPriced, FeeCents: &fee},
 		// Tentative tomorrow: confirm.
-		{EventID: "maybe", Start: at(24), End: at(25), Status: sessions.StatusTentative},
+		{EventID: "maybe", Start: at(24), End: at(25), Status: sessions.StatusTentative, ClientID: "jane"},
 		// Booked tomorrow: in the index, nothing to do yet.
 		{EventID: "booked", Start: at(26), End: at(27), Status: sessions.StatusPriced, FeeCents: &fee},
 	}
@@ -27,6 +27,8 @@ func TestBuildMergesByWhen(t *testing.T) {
 	due := []followups.FollowUp{
 		{EventID: "call", Due: at(2)},
 		{EventID: "done", Due: at(1), DoneAt: &done},
+		// No client has the name: fix.
+		{EventID: "who", Due: at(3), Problem: "No client has this name"},
 	}
 
 	unpaid := []packages.Package{
@@ -50,7 +52,7 @@ func TestBuildMergesByWhen(t *testing.T) {
 			got = append(got, item.FollowUp.EventID)
 		}
 	}
-	want := []string{"past", "package app", "call", "maybe"}
+	want := []string{"past", "package app", "call", "who", "maybe"}
 	if len(got) != len(want) {
 		t.Fatalf("items = %v, want %v", got, want)
 	}
@@ -64,5 +66,11 @@ func TestBuildMergesByWhen(t *testing.T) {
 	}
 	if r := items[0].Reasons; len(r) != 2 || r[0] != sessions.ReasonRecord || r[1] != sessions.ReasonCollect {
 		t.Errorf("reasons = %v", r)
+	}
+	if r := items[2].Reasons; len(r) != 0 {
+		t.Errorf("follow-up reasons = %v, want none", r)
+	}
+	if r := items[3].Reasons; len(r) != 1 || r[0] != sessions.ReasonFix {
+		t.Errorf("unmatched follow-up reasons = %v, want fix", r)
 	}
 }

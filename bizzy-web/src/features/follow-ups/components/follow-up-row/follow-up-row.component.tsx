@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowRightIcon, CheckIcon, PencilIcon, RotateCcwIcon } from "lucide-react";
+import { ArrowRightIcon, CheckIcon, LinkIcon, PencilIcon, RotateCcwIcon } from "lucide-react";
 import { cn } from "cn";
 import { useMarkDone } from "../../follow-ups.query";
 import type { FollowUp } from "../../follow-ups.types";
@@ -24,19 +24,25 @@ interface FollowUpRowProps {
   showSession?: boolean;
   /** Says it is a follow-up, in a list mixed with sessions and packages. */
   showKind?: boolean;
+  /**
+   * Fixes one whose title can't be read or matched, on the to-do list: the
+   * row says Fix, like a session, and offers this instead of Done.
+   */
+  onFix?: (followUp: FollowUp) => void;
 }
 
 /**
  * One follow-up, laid out like every to-do row: who and what on the left,
  * when below, and Done and Edit (or a link to Follow-ups) on the right.
  */
-export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, showKind }: FollowUpRowProps) {
+export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, showKind, onFix }: FollowUpRowProps) {
   const clientsById = ClientsQuery.useById();
   const { mark, isPending } = useMarkDone();
   const client = followUp.clientId ? clientsById.get(followUp.clientId) : undefined;
   const done = Boolean(followUp.doneAt);
   const overdue = !done && new Date(followUp.due) < startOfToday();
   const summary = followUp.summary || "Follow up";
+  const fixing = Boolean(onFix && followUp.problem && !done);
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
@@ -52,8 +58,9 @@ export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, 
             <span className="text-muted-foreground italic">{followUp.name || followUp.title}</span>
           )}
           {showKind && <Badge variant="info">Follow up</Badge>}
+          {fixing && <Badge variant="attention">Fix</Badge>}
           {done && <Badge variant="done">Done</Badge>}
-          {followUp.problem && <Badge variant="attention">{followUp.problem}</Badge>}
+          {followUp.problem && !fixing && <Badge variant="attention">{followUp.problem}</Badge>}
         </div>
         <span className="text-sm text-muted-foreground">
           <span className={overdue ? "font-medium text-status-attention-foreground" : undefined}>{formatDue(followUp)}</span>
@@ -69,10 +76,18 @@ export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, 
         {!hideClient && followUp.summary && (
           <span className={cn("line-clamp-1 text-sm", done && "text-muted-foreground line-through")}>{followUp.summary}</span>
         )}
-        {followUp.notes && <span className="line-clamp-1 text-xs text-muted-foreground">{followUp.notes}</span>}
+        {fixing ? (
+          <span className="line-clamp-1 text-xs text-muted-foreground">{followUp.problem}</span>
+        ) : (
+          followUp.notes && <span className="line-clamp-1 text-xs text-muted-foreground">{followUp.notes}</span>
+        )}
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {done ? (
+        {fixing ? (
+          <Button size="sm" variant="outline" onClick={() => onFix?.(followUp)}>
+            <LinkIcon /> Link client
+          </Button>
+        ) : done ? (
           <Button size="sm" variant="outline" disabled={isPending} onClick={() => mark(followUp, false)}>
             <RotateCcwIcon /> Not done
           </Button>

@@ -14,17 +14,19 @@ import {
 } from "lucide-react";
 import { TODO_FILTERS, TODO_GROUPS, groupOf, matchesFilter, todoKey } from "../../todo.types";
 import type { TodoFilter, TodoItem } from "../../todo.types";
+import type { FollowUpTarget } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import type { Package } from "~/features/packages/packages.types";
 import type { Payable } from "~/features/payments/components/payment-panel/payment-panel.component";
 import type { Session, TodoReason } from "~/features/sessions/sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { PaymentsMutation } from "~/features/payments/payments.query";
 import { PAYMENT_METHODS } from "~/features/payments/payments.types";
 import { DeleteSessionDialog } from "~/features/sessions/components/delete-session-dialog/delete-session-dialog.component";
 import { LinkClientDialog } from "~/features/sessions/components/link-client-dialog/link-client-dialog.component";
-import { dueCents, isBoughtDue, isFeeSettled, owedCents } from "~/features/sessions/session-stage";
+import { dueCents, isBoughtDue, isFeeSettled, isUnmatched, owedCents } from "~/features/sessions/session-stage";
 import { SessionsMutation } from "~/features/sessions/sessions.mutation";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -84,6 +86,7 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoItem> }) {
   const [cancelling, setCancelling] = useState<Session | null>(null);
   const [linking, setLinking] = useState<Session | null>(null);
   const [paying, setPaying] = useState<Array<Payable> | null>(null);
+  const [fixingFollowUp, setFixingFollowUp] = useState<FollowUpTarget | null>(null);
 
   const counts = useMemo(() => {
     const out = new Map<TodoFilter, number>();
@@ -147,7 +150,11 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoItem> }) {
                       )}
                       {item.kind === "package" && <PackageTodo pkg={item.package} onPayOther={setPaying} />}
                       {item.kind === "followUp" && (
-                        <FollowUpRow followUp={item.followUp} showKind />
+                        <FollowUpRow
+                          followUp={item.followUp}
+                          showKind
+                          onFix={(followUp) => setFixingFollowUp({ mode: "edit", followUp })}
+                        />
                       )}
                     </li>
                   ))}
@@ -160,6 +167,7 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoItem> }) {
 
       <DeleteSessionDialog session={cancelling} onClose={() => setCancelling(null)} onDeleted={() => undefined} />
       <LinkClientDialog session={linking} onClose={() => setLinking(null)} />
+      <FollowUpDialog target={fixingFollowUp} onClose={() => setFixingFollowUp(null)} />
       <Dialog open={paying !== null} onOpenChange={(open) => !open && setPaying(null)}>
         <DialogContent>
           <DialogHeader>
@@ -294,7 +302,7 @@ function QuickActions({ session, reasons, hasClient, writing, payables, onCancel
       </Button>
     );
   }
-  if (reasons.includes("fix") && session.status === "unmatched") {
+  if (reasons.includes("fix") && isUnmatched(session)) {
     return (
       <Button size="sm" variant="outline" onClick={() => onLink(session)}>
         <LinkIcon /> Link client

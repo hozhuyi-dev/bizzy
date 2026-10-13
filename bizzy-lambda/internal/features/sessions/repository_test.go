@@ -45,6 +45,9 @@ func TestTodo(t *testing.T) {
 	tentative := booked
 	tentative.Status = StatusTentative
 
+	tentativeUnmatched := tentative
+	tentativeUnmatched.ClientID = ""
+
 	unmatched := happened()
 	unmatched.Status, unmatched.ClientID = StatusUnmatched, ""
 
@@ -69,6 +72,7 @@ func TestTodo(t *testing.T) {
 		{"package credit costs nothing more", covered, nil},
 		{"booked ahead", booked, nil},
 		{"tentative", tentative, []Reason{ReasonConfirm}},
+		{"tentative, no client matched", tentativeUnmatched, []Reason{ReasonFix}},
 		{"unmatched", unmatched, []Reason{ReasonFix}},
 		{"package bought, unpaid", packageDue, []Reason{ReasonCollect}},
 		{"package bought, paid", packagePaid, nil},

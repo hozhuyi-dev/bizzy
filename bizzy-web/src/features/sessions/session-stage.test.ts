@@ -40,6 +40,12 @@ describe("todoReasons", () => {
     expect(todoReasons(session({ ...ahead, status: "tentative" }), now)).toEqual(["confirm"]);
   });
 
+  test("a tentative one no client matches needs fixing before confirming", () => {
+    const unknown = session({ start: "2026-10-13T06:00:00Z", end: "2026-10-13T07:00:00Z", status: "tentative" }, ["clientId"]);
+    expect(todoReasons(unknown, now)).toEqual(["fix"]);
+    expect(stageBadges(unknown, now)).toEqual([{ label: "Unmatched", tone: "attention" }]);
+  });
+
   test("deleted and broken entries come first", () => {
     expect(todoReasons(session({ removedAt: "2026-10-12T08:00:00Z", record }), now)).toEqual(["deleted"]);
     expect(todoReasons(session({ status: "unmatched" }, ["clientId"]), now)).toEqual(["fix"]);

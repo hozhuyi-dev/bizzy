@@ -32,7 +32,9 @@ type Item struct {
 	Kind Kind `json:"kind"`
 	// At orders the list: when the session starts, the package was bought,
 	// or the follow-up is due.
-	At       time.Time           `json:"at"`
+	At time.Time `json:"at"`
+	// Reasons is what to do on a session or package; a follow-up has only
+	// ReasonFix, when its title can't be read or matched.
 	Reasons  []sessions.Reason   `json:"reasons,omitempty"`
 	Session  *sessions.Session   `json:"session,omitempty"`
 	Package  *packages.Package   `json:"package,omitempty"`
@@ -57,7 +59,11 @@ func Build(open []sessions.Session, unpaid []packages.Package, due []followups.F
 	}
 	for _, f := range due {
 		if f.DoneAt == nil {
-			items = append(items, Item{Kind: KindFollowUp, At: f.Due, FollowUp: &f})
+			item := Item{Kind: KindFollowUp, At: f.Due, FollowUp: &f}
+			if f.Problem != "" {
+				item.Reasons = []sessions.Reason{sessions.ReasonFix}
+			}
+			items = append(items, item)
 		}
 	}
 	slices.SortStableFunc(items, func(a, b Item) int {

@@ -104,7 +104,8 @@ type Session struct {
 	BoughtSettled  bool     `json:"boughtSettled,omitempty" dynamodbav:"boughtSettled,omitempty"`
 	Location       Location `json:"location,omitempty" dynamodbav:"location,omitempty"`
 	LocationSource string   `json:"locationSource,omitempty" dynamodbav:"locationSource,omitempty"`
-	// Reason explains StatusUnmatched / StatusParseError / StatusMissingFee.
+	// Reason explains StatusUnmatched / StatusParseError / StatusMissingFee,
+	// or a tentative one under a name no client has.
 	Reason string `json:"reason,omitempty" dynamodbav:"reason,omitempty"`
 	// Drift explains how the calendar now disagrees with an issued document.
 	Drift string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
@@ -186,12 +187,18 @@ func (s Session) Paid() bool {
 	return s.FeeSettled() && !s.BoughtDue()
 }
 
+// NeedsFix reports whether it can't go ahead as the calendar has it: the
+// entry can't be read, matched or priced (a tentative one under an unknown
+// name included), or a document contradicts it.
+func (s Session) NeedsFix() bool {
+	return s.Status.NeedsFix() || s.Drift != "" || s.Status == StatusTentative && s.ClientID == ""
+}
+
 // Open reports whether the session belongs in the to-do index. A future
 // session is in it while unrecorded, and Todo leaves it out until it has
 // happened; the index is read only up to a few days ahead.
 func (s Session) Open() bool {
-	return s.RemovedAt != nil || s.Status == StatusTentative || s.Status.NeedsFix() || s.Drift != "" ||
-		!s.Recorded() || !s.Paid()
+	return s.RemovedAt != nil || s.Status == StatusTentative || s.NeedsFix() || !s.Recorded() || !s.Paid()
 }
 
 // Reason is why a session is on her to-do list.
@@ -202,7 +209,7 @@ const (
 	// discard it.
 	ReasonDeleted Reason = "deleted"
 	// ReasonFix: the calendar entry can't be read, matched or priced, or a
-	// document contradicts it.
+	// document contradicts it (see Session.NeedsFix).
 	ReasonFix Reason = "fix"
 	// ReasonConfirm: still tentative.
 	ReasonConfirm Reason = "confirm"
@@ -214,15 +221,15 @@ const (
 
 // Todo is what she has left to do on the session as of now; nil when
 // nothing. Each earlier reason hides the later ones: there is no point
-// recording a session that is still tentative.
+// confirming a session no client matches, or recording one still tentative.
 func (s Session) Todo(now time.Time) []Reason {
 	switch {
 	case s.RemovedAt != nil:
 		return []Reason{ReasonDeleted}
+	case s.NeedsFix():
+		return []Reason{ReasonFix}
 	case s.Status == StatusTentative:
 		return []Reason{ReasonConfirm}
-	case s.Status.NeedsFix() || s.Drift != "":
-		return []Reason{ReasonFix}
 	case s.End.After(now):
 		return nil
 	}

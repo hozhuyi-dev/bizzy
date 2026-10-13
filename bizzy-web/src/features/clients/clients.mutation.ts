@@ -5,7 +5,7 @@ import { ClientKeys } from "~/core/keys.query";
 import { invalidateBilling } from "~/core/utils/query.util";
 
 export const ClientsMutation = {
-  /** Saving can match unmatched sessions and reprice others. */
+  /** Saving can match unmatched sessions and follow-ups, and reprice sessions. */
   useSave: () => {
     const queryClient = useQueryClient();
     return useMutation({

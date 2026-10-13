@@ -23,8 +23,14 @@ const FIX_LABELS: Partial<Record<Session["status"], string>> = {
   missing_fee: "No fee",
 };
 
+/** No client has its name: unmatched, or tentative under an unknown name. Linking one fixes it. */
+export function isUnmatched(session: Session): boolean {
+  return session.status === "unmatched" || (session.status === "tentative" && !session.clientId);
+}
+
+/** Mirrors Session.NeedsFix: a tentative one under an unknown name is fixed before it is confirmed. */
 export function needsFix(session: Session): boolean {
-  return session.status in FIX_LABELS || Boolean(session.drift);
+  return session.status in FIX_LABELS || Boolean(session.drift) || isUnmatched(session);
 }
 
 export function hasHappened(session: Session, now = new Date()): boolean {
@@ -67,8 +73,8 @@ export function owedCents(session: Session): number {
 /** What she has left to do on it now; mirrors Session.Todo. */
 export function todoReasons(session: Session, now = new Date()): Array<TodoReason> {
   if (session.removedAt) return ["deleted"];
-  if (session.status === "tentative") return ["confirm"];
   if (needsFix(session)) return ["fix"];
+  if (session.status === "tentative") return ["confirm"];
   if (!hasHappened(session, now)) return [];
   const reasons: Array<TodoReason> = [];
   if (!isRecorded(session)) reasons.push("record");
@@ -79,10 +85,10 @@ export function todoReasons(session: Session, now = new Date()): Array<TodoReaso
 /** The badges a list shows for a session: what is left, or where it stands. */
 export function stageBadges(session: Session, now = new Date()): Array<StageBadge> {
   if (session.removedAt) return [{ label: "Deleted", tone: "neutral" }];
-  if (session.status === "tentative") return [{ label: "Not confirmed", tone: "waiting" }];
-  const fix = FIX_LABELS[session.status];
+  const fix = FIX_LABELS[session.status] ?? (isUnmatched(session) ? FIX_LABELS.unmatched : undefined);
   if (fix) return [{ label: fix, tone: "attention" }];
   if (session.drift) return [{ label: "Changed after document", tone: "attention" }];
+  if (session.status === "tentative") return [{ label: "Not confirmed", tone: "waiting" }];
   if (!hasHappened(session, now)) return [{ label: "Booked", tone: "info" }];
 
   const badges: Array<StageBadge> = [];
