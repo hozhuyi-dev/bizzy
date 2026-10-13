@@ -1,13 +1,29 @@
 import { describe, expect, test } from "vitest";
-import { canInvoice, canReceipt, documentItems, dueCents, isPaid, owedCents, stageBadges, todoReasons } from "./session-stage.util";
-import type { Session } from "./sessions.types";
-import type { Package } from "~/features/packages/packages.types";
+import { documentItems, isUnmatched, stageBadges } from "./session-stage.util";
+import type { Session, SessionCan } from "./sessions.types";
+import type { Package, PackageCan } from "~/features/packages/packages.types";
 
-const now = new Date("2026-10-12T09:00:00Z");
+// The rules themselves are the API's (sessions/rules.go, tested there):
+// these check only how what it sends is shown.
 
-/** A priced session that ended two hours before now; `without` drops fields. */
-function session(overrides: Partial<Session> = {}, without: Array<keyof Session> = []): Session {
-  const s: Session = {
+const yes = { ok: true };
+const no = (why: string) => ({ ok: false, why });
+
+const can: SessionCan = {
+  settle: yes,
+  pay: yes,
+  undoPayment: yes,
+  invoice: yes,
+  receipt: no("only a paid session without a receipt can get one"),
+  record: yes,
+  editBooking: yes,
+  restore: no("This session is still in the calendar."),
+  discard: no("This session is still in the calendar."),
+};
+
+/** A priced session that has happened, as the API sends it. */
+function session(overrides: Partial<Session> = {}): Session {
+  return {
     eventId: "e1",
     title: "Jane Smith",
     start: "2026-10-12T06:00:00Z",
@@ -16,63 +32,62 @@ function session(overrides: Partial<Session> = {}, without: Array<keyof Session>
     clientId: "jane",
     feeCents: 9500,
     version: 1,
+    state: {
+      presence: "in-calendar",
+      status: "priced",
+      client: "matched",
+      timing: "happened",
+      record: "none",
+      fee: "owed",
+      payment: "none",
+      paidFor: "current",
+      bought: "none",
+      invoice: "empty",
+      receipt: "empty",
+      drift: "none",
+    },
+    rules: [],
+    todo: [],
+    dueCents: 9500,
+    owedCents: 0,
+    boughtOwedCents: 0,
+    delivered: true,
+    paid: true,
+    can,
     ...overrides,
   };
-  for (const key of without) delete s[key];
-  return s;
 }
 
-const paid = { status: "paid", method: "tng", amountCents: 9500, paidOn: "2026-10-12", updatedAt: "" } as const;
-const record = { summary: "Knee", updatedAt: "" };
-
-describe("todoReasons", () => {
-  test("a session that happened needs notes and payment", () => {
-    expect(todoReasons(session(), now)).toEqual(["record", "collect"]);
-  });
-
-  test("payment may come before the notes", () => {
-    expect(todoReasons(session({ payment: paid }), now)).toEqual(["record"]);
-  });
-
-  test("a booking ahead needs nothing yet; a tentative one needs confirming", () => {
-    const ahead = { start: "2026-10-13T06:00:00Z", end: "2026-10-13T07:00:00Z" };
-    expect(todoReasons(session(ahead), now)).toEqual([]);
-    expect(todoReasons(session({ ...ahead, status: "tentative" }), now)).toEqual(["confirm"]);
-  });
-
-  test("a tentative one no client matches needs fixing before confirming", () => {
-    const unknown = session({ start: "2026-10-13T06:00:00Z", end: "2026-10-13T07:00:00Z", status: "tentative" }, ["clientId"]);
-    expect(todoReasons(unknown, now)).toEqual(["fix"]);
-    expect(stageBadges(unknown, now)).toEqual([{ label: "Unmatched", tone: "attention" }]);
-  });
-
-  test("deleted and broken entries come first", () => {
-    expect(todoReasons(session({ removedAt: "2026-10-12T08:00:00Z", record }), now)).toEqual(["deleted"]);
-    expect(todoReasons(session({ status: "unmatched" }, ["clientId"]), now)).toEqual(["fix"]);
-  });
-
-  test("a package credit costs nothing more", () => {
-    expect(todoReasons(session({ status: "package", record }, ["feeCents"]), now)).toEqual([]);
-  });
-
-  test("the package bought in a session is collected on it until paid", () => {
-    const bought = session({ record, payment: paid, boughtCents: 85000 });
-    expect(todoReasons(bought, now)).toEqual(["collect"]);
-    expect(todoReasons({ ...bought, boughtSettled: true }, now)).toEqual([]);
-  });
-});
-
 describe("stageBadges", () => {
-  test("say what is left, or that it is done", () => {
-    expect(stageBadges(session(), now).map((b) => b.label)).toEqual(["To record", "Unpaid"]);
-    expect(stageBadges(session({ record, payment: paid }), now).map((b) => b.label)).toEqual(["Done"]);
-    expect(stageBadges(session({ start: "2026-10-20T06:00:00Z", end: "2026-10-20T07:00:00Z" }), now)[0]?.label).toBe(
-      "Booked",
+  test("each rule that holds shows once", () => {
+    expect(stageBadges(session({ rules: ["unrecorded", "unpaid"] })).map((b) => b.label)).toEqual(["To record", "Unpaid"]);
+    expect(stageBadges(session({ rules: ["client-unmatched", "contradicts-document"] })).map((b) => b.label)).toEqual([
+      "Unmatched",
+      "Changed after document",
+    ]);
+  });
+
+  test("with none, where it stands", () => {
+    expect(stageBadges(session())[0]?.label).toBe("Done");
+    expect(stageBadges(session({ payment: { status: "waived", amountCents: 0, paidOn: "2026-10-12", updatedAt: "" } }))[0]?.label).toBe(
+      "Waived",
     );
+    const ahead = session();
+    expect(stageBadges({ ...ahead, state: { ...ahead.state, timing: "upcoming" } })[0]?.label).toBe("Booked");
+  });
+
+  test("an unknown rule shows nothing rather than a guess", () => {
+    expect(stageBadges(session({ rules: ["some-new-rule"] }))[0]?.label).toBe("Done");
+  });
+
+  test("unmatched, read from the rules", () => {
+    expect(isUnmatched(session({ rules: ["tentative-unknown-client"] }))).toBe(true);
+    expect(isUnmatched(session({ rules: ["fee-missing"] }))).toBe(false);
   });
 });
 
-describe("documents", () => {
+describe("documentItems", () => {
+  const pkgCan: PackageCan = { pay: yes, invoice: yes, receipt: no("only a paid package can get a receipt"), edit: no("x"), delete: no("x") };
   const bought: Package = {
     id: "e1",
     clientId: "jane",
@@ -81,36 +96,24 @@ describe("documents", () => {
     purchasedAt: "2026-10-12T06:00:00Z",
     source: "calendar",
     creditsUsed: 1,
+    rules: [],
+    todo: [],
+    creditsLeft: 9,
+    owedCents: 85000,
+    can: pkgCan,
   };
+  const available = (items: ReturnType<typeof documentItems>) => items.filter((i) => !i.unavailable).map((i) => i.source.kind);
 
-  test("an invoice any time once confirmed with a fee; a receipt once paid", () => {
-    expect(canInvoice(session())).toBe(true);
-    expect(canReceipt(session())).toBe(false);
-    expect(canReceipt(session({ payment: paid }))).toBe(true);
-    expect(canReceipt(session({ payment: { ...paid, status: "waived" } }))).toBe(false);
+  test("each item is offered as the API allows it", () => {
+    expect(available(documentItems("invoice", session(), bought))).toEqual(["session", "package"]);
+    expect(available(documentItems("receipt", session(), bought))).toEqual([]);
+    expect(documentItems("receipt", session(), bought).map((i) => i.unavailable)).toEqual(["Not paid yet", "Not paid yet"]);
+    expect(available(documentItems("receipt", session({ can: { ...can, receipt: yes } }), bought))).toEqual(["session"]);
   });
 
-  test("the fee and the package bought are due on their own", () => {
-    const s = session({ boughtCents: 85000 });
-    expect(dueCents(s)).toBe(9500);
-    expect(owedCents(s)).toBe(94500);
-    expect(owedCents({ ...s, payment: paid })).toBe(85000);
-    expect(isPaid({ ...s, payment: paid })).toBe(false);
-    expect(isPaid({ ...s, payment: paid, boughtSettled: true })).toBe(true);
-  });
-
-  test("each item goes on a document on its own; a receipt needs that item paid", () => {
-    const s = session({ boughtCents: 85000 });
-    const available = (items: ReturnType<typeof documentItems>) => items.filter((i) => !i.unavailable).map((i) => i.source.kind);
-
-    expect(available(documentItems("invoice", s, bought))).toEqual(["session", "package"]);
-    expect(available(documentItems("receipt", s, bought))).toEqual([]);
-    // The session paid, the package not: a receipt for the fee alone.
-    expect(available(documentItems("receipt", { ...s, payment: paid }, bought))).toEqual(["session"]);
-    expect(available(documentItems("receipt", s, { ...bought, payment: paid }))).toEqual(["package"]);
-    // Already on an invoice: the rest can go on another.
-    const invoiced = { documentId: "d1", number: "INV260001" };
-    expect(available(documentItems("invoice", { ...s, invoice: invoiced }, bought))).toEqual(["package"]);
+  test("one already on a document says so", () => {
+    const invoiced = session({ invoice: { documentId: "d1", number: "INV260001" }, can: { ...can, invoice: no("x") } });
+    expect(documentItems("invoice", invoiced, bought)[0]?.unavailable).toBe("On an invoice already");
   });
 
   test("a package no longer bought in the session is not its document's", () => {

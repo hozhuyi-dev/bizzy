@@ -11,14 +11,20 @@ import (
 	"bizzy-lambda/internal/router"
 )
 
+// StatusHistory keeps the last run.
+type StatusHistory interface {
+	StatusStore
+	Get(ctx context.Context) (*Run, error)
+}
+
 // Register serves the sync and its last run. The app runs it on load and
 // whenever she taps "Sync now".
-func Register(r *router.Router, repo StatusRepository, loc *time.Location, run func(ctx context.Context, r Range) (Summary, error)) {
-	r.Register("sync.status", func(ctx context.Context, _ json.RawMessage) (any, error) {
+func Register(r *router.Router, repo StatusHistory, loc *time.Location, run func(ctx context.Context, r Range) (Summary, error), now func() time.Time) {
+	r.Query("sync.status", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return repo.Get(ctx)
 	})
-	r.Register("sync.run", router.Typed(func(ctx context.Context, in RunInput) (any, error) {
-		rng, err := in.Range(loc, time.Now())
+	r.Mutation("sync.run", router.Typed(func(ctx context.Context, in RunInput) (any, error) {
+		rng, err := in.Range(loc, now())
 		if err != nil {
 			return nil, err
 		}
@@ -34,7 +40,7 @@ func Register(r *router.Router, repo StatusRepository, loc *time.Location, run f
 		if errors.As(err, &appErr) {
 			message = appErr.Message
 		}
-		if putErr := repo.Put(ctx, Run{At: time.Now().UTC(), Error: message}); putErr != nil {
+		if putErr := repo.Put(ctx, Run{At: now().UTC(), Error: message}); putErr != nil {
 			slog.ErrorContext(ctx, "record sync failure", "error", putErr)
 		}
 		return nil, err

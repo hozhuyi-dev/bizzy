@@ -5,19 +5,20 @@ import type { RecordDraft } from "../record-editor/record-editor.hook";
 import type { Session } from "../../sessions.types";
 
 export function recordStep(session: Session, record: RecordDraft): PipelineStep {
-  const started = new Date(session.start) <= new Date();
-  const blocked = session.status === "tentative" || needsFix(session);
+  const { can } = session;
+  // Notes wait until the booking is confirmed and fixed.
+  const blocked = session.todo.includes("confirm") || needsFix(session);
   const summary = record.summary.trim();
   let state: StepState = "todo";
   if (summary) state = "done";
-  else if (started && !blocked) state = "current";
+  else if (can.record.ok && !blocked) state = "current";
   return {
     id: "record",
     title: "Notes",
     state,
-    meta: summary ? <span className="line-clamp-2">{summary}</span> : started ? "Not written yet" : "Once it has started",
+    meta: summary ? <span className="line-clamp-2">{summary}</span> : can.record.ok ? "Not written yet" : can.record.why,
     content: (
-      <RecordEditor draft={record} disabled={started ? undefined : "Notes open once the session has started."} />
+      <RecordEditor draft={record} disabled={can.record.ok ? undefined : can.record.why} />
     ),
   };
 }

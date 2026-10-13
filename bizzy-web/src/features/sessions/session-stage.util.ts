@@ -1,96 +1,54 @@
 import type { DocumentItem, Session, SessionDocument, StageBadge, TodoReason } from "./sessions.types";
 import type { DocumentType } from "~/features/documents/documents.types";
 import type { Package } from "~/features/packages/packages.types";
-import { boughtIn, canReceiptPackage } from "~/features/packages/packages.util";
+import type { Verdict } from "~/core/lambda/lambda.types";
+import { boughtIn } from "~/features/packages/packages.util";
 
 /**
- * Where a session is in its life, read from what is stored. These mirror the
- * API's rules (bizzy-lambda/internal/features/sessions/model.go), so tables
- * and the session's page say what the to-do list says.
+ * How a session reads in lists and on its page. What it is (its rules, what
+ * is left to do, what each action would say) comes from the API, worked
+ * out by sessions/rules.go and guards.go: nothing here re-derives a rule,
+ * it only says how each one shows.
  */
 
-/** The calendar entry's own problem, for a session that needs fixing. */
-const FIX_LABELS: Partial<Record<Session["status"], string>> = {
-  parse_error: "Can't read",
-  unmatched: "Unmatched",
-  missing_fee: "No fee",
+/** How each of the API's session rules shows as a badge, by rule id. */
+const RULE_BADGES: Record<string, StageBadge> = {
+  deleted: { label: "Deleted", tone: "neutral" },
+  "title-unreadable": { label: "Can't read", tone: "attention" },
+  "client-unmatched": { label: "Unmatched", tone: "attention" },
+  "tentative-unknown-client": { label: "Unmatched", tone: "attention" },
+  "fee-missing": { label: "No fee", tone: "attention" },
+  "contradicts-document": { label: "Changed after document", tone: "attention" },
+  "fee-changed-after-payment": { label: "Fee changed", tone: "attention" },
+  unconfirmed: { label: "Not confirmed", tone: "waiting" },
+  unrecorded: { label: "To record", tone: "waiting" },
+  unpaid: { label: "Unpaid", tone: "attention" },
 };
 
-/** No client has its name: unmatched, or tentative under an unknown name. Linking one fixes it. */
+/** No client has its name: linking one fixes it. */
 export function isUnmatched(session: Session): boolean {
-  return session.status === "unmatched" || (session.status === "tentative" && !session.clientId);
+  return session.rules.includes("client-unmatched") || session.rules.includes("tentative-unknown-client");
 }
 
-/** Mirrors Session.NeedsFix: a tentative one under an unknown name is fixed before it is confirmed. */
+/** Something about the calendar entry or a document must be fixed first. */
 export function needsFix(session: Session): boolean {
-  return session.status in FIX_LABELS || Boolean(session.drift) || isUnmatched(session);
+  return session.todo.includes("fix");
 }
 
-export function hasHappened(session: Session, now = new Date()): boolean {
-  return new Date(session.end) <= now;
+export function hasHappened(session: Session): boolean {
+  return session.state.timing === "happened";
 }
 
-export function isRecorded(session: Session): boolean {
-  return Boolean(session.record?.summary);
-}
-
-export function isDelivered(session: Session): boolean {
-  return session.status === "priced" || session.status === "package" || session.status === "missing_fee";
-}
-
-/** The session's own fee, when one applies: a package credit costs nothing more. */
-export function dueCents(session: Session): number {
-  return session.status === "priced" ? (session.feeCents ?? 0) : 0;
-}
-
-/** The fee is paid, waived, or nothing (a package credit). */
-export function isFeeSettled(session: Session): boolean {
-  return session.payment !== undefined || dueCents(session) === 0;
-}
-
-/** The package bought in the session is still to be paid; it is paid on the package. */
-export function isBoughtDue(session: Session): boolean {
-  return isDelivered(session) && (session.boughtCents ?? 0) > 0 && !session.boughtSettled;
-}
-
-/** Nothing more is owed on it: its fee and the package bought in it. */
-export function isPaid(session: Session): boolean {
-  return isFeeSettled(session) && !isBoughtDue(session);
-}
-
-/** What is still to collect on it: the fee and the package bought in it, unless paid. */
-export function owedCents(session: Session): number {
-  return (isFeeSettled(session) ? 0 : dueCents(session)) + (isBoughtDue(session) ? (session.boughtCents ?? 0) : 0);
-}
-
-/** What she has left to do on it now; mirrors Session.Todo. */
-export function todoReasons(session: Session, now = new Date()): Array<TodoReason> {
-  if (session.removedAt) return ["deleted"];
-  if (needsFix(session)) return ["fix"];
-  if (session.status === "tentative") return ["confirm"];
-  if (!hasHappened(session, now)) return [];
-  const reasons: Array<TodoReason> = [];
-  if (!isRecorded(session)) reasons.push("record");
-  if (!isPaid(session)) reasons.push("collect");
-  return reasons;
-}
-
-/** The badges a list shows for a session: what is left, or where it stands. */
-export function stageBadges(session: Session, now = new Date()): Array<StageBadge> {
-  if (session.removedAt) return [{ label: "Deleted", tone: "neutral" }];
-  const fix = FIX_LABELS[session.status] ?? (isUnmatched(session) ? FIX_LABELS.unmatched : undefined);
-  if (fix) return [{ label: fix, tone: "attention" }];
-  if (session.drift) return [{ label: "Changed after document", tone: "attention" }];
-  if (session.status === "tentative") return [{ label: "Not confirmed", tone: "waiting" }];
-  if (!hasHappened(session, now)) return [{ label: "Booked", tone: "info" }];
-
+/** The badges a list shows for a session: what its rules say, or where it stands. */
+export function stageBadges(session: Session): Array<StageBadge> {
   const badges: Array<StageBadge> = [];
-  if (!isRecorded(session)) badges.push({ label: "To record", tone: "waiting" });
-  if (!isPaid(session)) badges.push({ label: "Unpaid", tone: "attention" });
-  if (badges.length === 0) {
-    badges.push(session.payment?.status === "waived" ? { label: "Waived", tone: "done" } : { label: "Done", tone: "done" });
+  for (const rule of session.rules) {
+    const badge = RULE_BADGES[rule];
+    if (badge && !badges.some((b) => b.label === badge.label)) badges.push(badge);
   }
-  return badges;
+  if (badges.length > 0) return badges;
+  if (!hasHappened(session)) return [{ label: "Booked", tone: "info" }];
+  return [session.payment?.status === "waived" ? { label: "Waived", tone: "done" } : { label: "Done", tone: "done" }];
 }
 
 /** What the session is worth: its fee, or its share of a package. */
@@ -98,18 +56,11 @@ export function sessionAmount(session: Session): number | undefined {
   return session.feeCents ?? (session.status === "package" ? session.valueCents : undefined);
 }
 
-export function canInvoice(session: Session): boolean {
-  return !session.removedAt && session.status === "priced" && session.feeCents !== undefined && !session.invoice;
-}
-
-export function canReceipt(session: Session): boolean {
-  return (
-    !session.removedAt &&
-    session.status === "priced" &&
-    session.feeCents !== undefined &&
-    !session.receipt &&
-    session.payment?.status === "paid"
-  );
+/** Why an item can't go on a new document of the type, from what the API says. */
+function unavailable(type: DocumentType, onOne: boolean, verdict: Verdict): string | undefined {
+  if (verdict.ok) return undefined;
+  if (onOne) return `On ${type === "invoice" ? "an invoice" : "a receipt"} already`;
+  return type === "receipt" ? "Not paid yet" : verdict.why;
 }
 
 /**
@@ -122,23 +73,23 @@ export function documentItems(type: DocumentType, session: Session, pkg: Package
   const items: Array<DocumentItem> = [];
   if (session.removedAt) return items;
 
-  if (session.status === "priced" && session.feeCents !== undefined) {
-    let unavailable: string | undefined;
-    if (session[type]) unavailable = `On ${type === "invoice" ? "an invoice" : "a receipt"} already`;
-    else if (type === "receipt" && !canReceipt(session)) unavailable = "Not paid yet";
-    items.push({ source: { kind: "session", id: session.eventId }, label: "Session fee", amountCents: session.feeCents, unavailable });
+  // A fee of its own is set only on a priced session.
+  if (session.feeCents !== undefined) {
+    items.push({
+      source: { kind: "session", id: session.eventId },
+      label: "Session fee",
+      amountCents: session.feeCents,
+      unavailable: unavailable(type, Boolean(session[type]), session.can[type]),
+    });
   }
 
   const bought = boughtIn(session.eventId, pkg);
   if (bought) {
-    let unavailable: string | undefined;
-    if (bought[type]) unavailable = `On ${type === "invoice" ? "an invoice" : "a receipt"} already`;
-    else if (type === "receipt" && !canReceiptPackage(bought)) unavailable = "Not paid yet";
     items.push({
       source: { kind: "package", id: bought.id },
       label: `Package of ${bought.sessions}`,
       amountCents: bought.priceCents,
-      unavailable,
+      unavailable: unavailable(type, Boolean(bought[type]), bought.can[type]),
     });
   }
   return items;

@@ -1,25 +1,20 @@
-import { dueCents, hasHappened, isBoughtDue, isDelivered, isPaid } from "../../session-stage.util";
+import { hasHappened } from "../../session-stage.util";
 import { sessionPayables } from "../../session-payment.util";
 import type { PipelineStep, StepState } from "../pipeline-layout/pipeline-layout.component";
 import type { Session } from "../../sessions.types";
 import type { Package } from "~/features/packages/packages.types";
-import { creditsLeft } from "~/features/packages/packages.util";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { methodLabel } from "~/features/payments/payments.util";
 import { formatDate } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
 export function paymentStep(session: Session, covering: Package | undefined, bought: Package | undefined): PipelineStep {
-  const due = dueCents(session);
-  const delivered = isDelivered(session);
-  const { payment } = session;
-  let blocked: string | undefined;
-  if (session.removedAt) blocked = "Restore the session to record its payment.";
-  else if (session.status === "tentative") blocked = "Confirm the booking first.";
-  else if (!delivered) blocked = "Fix the calendar entry first.";
+  const due = session.dueCents;
+  const { delivered, payment } = session;
+  const blocked = session.can.settle.ok ? undefined : session.can.settle.why;
 
   let state: StepState = "todo";
-  if (delivered && isPaid(session)) state = "done";
+  if (delivered && session.paid) state = "done";
   else if (!blocked && hasHappened(session)) state = "current";
 
   const parts: Array<string> = [];
@@ -32,7 +27,7 @@ export function paymentStep(session: Session, covering: Package | undefined, bou
   } else {
     parts.push(due > 0 ? `${formatCents(due)} due` : "Fee not known yet");
   }
-  if (isBoughtDue(session)) parts.push(`package ${formatCents(session.boughtCents ?? 0)} due`);
+  if (session.boughtOwedCents > 0) parts.push(`package ${formatCents(session.boughtOwedCents)} due`);
   else if (session.boughtCents) parts.push("package settled");
 
   return {
@@ -61,7 +56,7 @@ function SessionPayment({
   covering: Package | undefined;
   bought: Package | undefined;
 }) {
-  const due = dueCents(session);
+  const due = session.dueCents;
   const payables = sessionPayables(session, bought);
 
   return (
@@ -73,9 +68,9 @@ function SessionPayment({
               Covered by the package bought {formatDate(covering.purchasedAt)}
               <span className="text-muted-foreground">
                 {" "}
-                · {creditsLeft(covering)} of {covering.sessions} credits left
+                · {covering.creditsLeft} of {covering.sessions} credits left
               </span>
-              {covering.id !== bought?.id && !covering.payment && covering.priceCents > 0 && (
+              {covering.id !== bought?.id && covering.owedCents > 0 && (
                 <span className="text-status-attention-foreground"> · that package is not paid yet</span>
               )}
             </>

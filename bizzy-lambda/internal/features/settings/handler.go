@@ -9,7 +9,8 @@ import (
 	"bizzy-lambda/internal/router"
 )
 
-type store interface {
+// HandlerStore is what the handlers read and write.
+type HandlerStore interface {
 	Get(ctx context.Context) (Settings, error)
 	Put(ctx context.Context, s Settings) error
 }
@@ -19,14 +20,14 @@ type store interface {
 type AfterSave func(ctx context.Context) error
 
 type handler struct {
-	repo      store
+	repo      HandlerStore
 	afterSave AfterSave
 }
 
-func Register(r *router.Router, repo store, afterSave AfterSave) {
+func Register(r *router.Router, repo HandlerStore, afterSave AfterSave) {
 	h := handler{repo: repo, afterSave: afterSave}
-	r.Register("settings.get", h.get)
-	r.Register("settings.save", router.Typed(h.save))
+	r.Query("settings.get", h.get)
+	r.Mutation("settings.save", router.Typed(h.save))
 }
 
 func (h handler) get(ctx context.Context, _ json.RawMessage) (any, error) {

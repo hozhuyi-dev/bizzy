@@ -30,12 +30,12 @@ type handler struct {
 	now     func() time.Time
 }
 
-func Register(r *router.Router, dir Directory, clientStore ClientStore) {
-	h := handler{dir: dir, clients: clientStore, now: time.Now}
-	r.Register("contacts.list", h.list)
-	r.Register("contacts.get", router.Typed(h.get))
-	r.Register("contacts.create", router.Typed(h.create))
-	r.Register("contacts.update", router.Typed(h.update))
+func Register(r *router.Router, dir Directory, clientStore ClientStore, now func() time.Time) {
+	h := handler{dir: dir, clients: clientStore, now: now}
+	r.Query("contacts.list", h.list)
+	r.Query("contacts.get", router.Typed(h.get))
+	r.Mutation("contacts.create", router.Typed(h.create))
+	r.Mutation("contacts.update", router.Typed(h.update))
 }
 
 func (h handler) list(ctx context.Context, _ json.RawMessage) (any, error) {

@@ -27,7 +27,7 @@ import { PaymentsMutation } from "~/features/payments/payments.mutation";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { DeleteSessionDialog } from "~/features/sessions/components/delete-session-dialog/delete-session-dialog.component";
 import { LinkClientDialog } from "~/features/sessions/components/link-client-dialog/link-client-dialog.component";
-import { isUnmatched, owedCents } from "~/features/sessions/session-stage.util";
+import { isUnmatched } from "~/features/sessions/session-stage.util";
 import { SessionsMutation } from "~/features/sessions/sessions.mutation";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -52,6 +52,7 @@ import { formatDate, formatSessionTime, todayISO } from "~/core/utils/date.util"
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { clientOf } from "~/features/clients/clients.util";
+import { PackageDocuments } from "~/features/packages/packages.columns";
 
 const REASONS: Record<TodoReason, { label: string; tone: "waiting" | "attention" | "info" | "neutral" }> = {
   confirm: { label: "Confirm", tone: "waiting" },
@@ -134,7 +135,9 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoItem> }) {
                           onPayOther={setPaying}
                         />
                       )}
-                      {item.kind === "package" && <PackageTodo pkg={item.package} onPayOther={setPaying} />}
+                      {item.kind === "package" && (
+                        <PackageTodo pkg={item.package} reasons={item.reasons} onPayOther={setPaying} />
+                      )}
                       {item.kind === "followUp" && (
                         <FollowUpRow
                           followUp={item.followUp}
@@ -203,7 +206,7 @@ function SessionTodo({ session, reasons, onCancel, onLink, onPayOther }: Session
           </div>
           <span className="text-sm text-muted-foreground">
             {formatSessionTime(session.start)}
-            {collecting && ` · ${owedText(payables, owedCents(session))}`}
+            {collecting && ` · ${owedText(payables, session.owedCents)}`}
           </span>
           {detail && <span className="line-clamp-1 text-xs text-muted-foreground">{detail}</span>}
         </div>
@@ -415,11 +418,21 @@ function PaidMenu({ payables, onOther }: { payables: ReadonlyArray<Payable>; onO
   );
 }
 
-/** A package to collect that no session bought: added here, or unlinked from its session. */
-function PackageTodo({ pkg, onPayOther }: { pkg: Package; onPayOther: (payables: Array<Payable>) => void }) {
+interface PackageTodoProps {
+  pkg: Package;
+  reasons: Array<TodoReason>;
+  onPayOther: (payables: Array<Payable>) => void;
+}
+
+/**
+ * A package on the list: one to collect that no session bought (added here,
+ * or unlinked from its session), or one an issued document now contradicts.
+ */
+function PackageTodo({ pkg, reasons, onPayOther }: PackageTodoProps) {
   const clientsById = ClientsQuery.useById();
   const client = clientsById.get(pkg.clientId);
   const payable = packagePayable(pkg);
+  const collecting = reasons.includes("collect");
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
@@ -432,15 +445,25 @@ function PackageTodo({ pkg, onPayOther }: { pkg: Package; onPayOther: (payables:
           ) : (
             <span className="text-muted-foreground italic">Unknown client</span>
           )}
-          <Badge variant={REASONS.collect.tone}>{REASONS.collect.label}</Badge>
+          {reasons.map((reason) => (
+            <Badge key={reason} variant={REASONS[reason].tone}>
+              {REASONS[reason].label}
+            </Badge>
+          ))}
         </div>
         <span className="text-sm text-muted-foreground">
-          Package of {pkg.sessions} · bought {formatDate(pkg.purchasedAt)} · {formatCents(pkg.priceCents)} due
+          Package of {pkg.sessions} · bought {formatDate(pkg.purchasedAt)}
+          {collecting && <> · {formatCents(pkg.priceCents)} due</>}
         </span>
+        {pkg.drift && (
+          <span className="text-sm text-muted-foreground">
+            {pkg.drift} · <PackageDocuments pkg={pkg} />
+          </span>
+        )}
         {pkg.note && <span className="line-clamp-1 text-xs text-muted-foreground">{pkg.note}</span>}
       </div>
       <div className="flex flex-wrap gap-1.5">
-        <PaidMenu payables={[payable]} onOther={() => onPayOther([payable])} />
+        {collecting && <PaidMenu payables={[payable]} onOther={() => onPayOther([payable])} />}
         <Button
           variant="ghost"
           size="sm"

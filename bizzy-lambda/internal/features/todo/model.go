@@ -32,34 +32,32 @@ type Item struct {
 	// Reasons is what to do on a session or package; a follow-up has only
 	// ReasonFix, when its title can't be read or matched.
 	Reasons  []sessions.Reason   `json:"reasons,omitempty"`
-	Session  *sessions.Session   `json:"session,omitempty"`
-	Package  *packages.Package   `json:"package,omitempty"`
+	Session  *sessions.View      `json:"session,omitempty"`
+	Package  *packages.View      `json:"package,omitempty"`
 	FollowUp *followups.FollowUp `json:"followUp,omitempty"`
 }
 
 // Build merges what needs her as of now, oldest first. Sessions and
 // packages come from their open indexes, so only those with something left
-// to do are kept. A package bought in a session is collected on that
-// session, so only one bought otherwise (or unlinked) is its own item.
+// to do are kept. What is left to do on each comes from its rule table
+// (rules.go in its feature).
 func Build(open []sessions.Session, unpaid []packages.Package, due []followups.FollowUp, now time.Time) []Item {
 	items := []Item{}
 	for _, s := range open {
-		if reasons := s.Todo(now); len(reasons) > 0 {
-			items = append(items, Item{Kind: KindSession, At: s.Start, Reasons: reasons, Session: &s})
+		if v := s.View(now); len(v.Todo) > 0 {
+			items = append(items, Item{Kind: KindSession, At: s.Start, Reasons: v.Todo, Session: &v})
 		}
 	}
 	for _, p := range unpaid {
-		if p.CollectOnItsOwn() && !p.PurchasedAt.After(now) {
-			items = append(items, Item{Kind: KindPackage, At: p.PurchasedAt, Reasons: []sessions.Reason{sessions.ReasonCollect}, Package: &p})
+		if v := p.View(now); len(v.Todo) > 0 {
+			items = append(items, Item{Kind: KindPackage, At: p.PurchasedAt, Reasons: v.Todo, Package: &v})
 		}
 	}
+	// An open follow-up is the task itself; its reasons are what to fix
+	// first.
 	for _, f := range due {
 		if f.DoneAt == nil {
-			item := Item{Kind: KindFollowUp, At: f.Due, FollowUp: &f}
-			if f.Problem != "" {
-				item.Reasons = []sessions.Reason{sessions.ReasonFix}
-			}
-			items = append(items, item)
+			items = append(items, Item{Kind: KindFollowUp, At: f.Due, Reasons: f.Todo(), FollowUp: &f})
 		}
 	}
 	slices.SortStableFunc(items, func(a, b Item) int {

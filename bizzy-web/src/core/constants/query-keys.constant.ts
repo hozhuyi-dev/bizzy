@@ -33,6 +33,11 @@ export const PackageKeys = {
   list: (all: boolean) => [...PackageKeys.all, "list", { all }] as const,
 };
 
+export const BillingKeys = {
+  all: ["billing"] as const,
+  preview: (input: object) => [...BillingKeys.all, "preview", input] as const,
+};
+
 export const DocumentKeys = {
   all: ["documents"] as const,
   list: (type: string, month: string) => [...DocumentKeys.all, "list", type, month] as const,
@@ -72,6 +77,7 @@ export const BILLING_KEYS = [
   SessionKeys.all,
   FollowUpKeys.all,
   PackageKeys.all,
+  BillingKeys.all,
   ClientKeys.all,
   DocumentKeys.all,
   SyncKeys.all,

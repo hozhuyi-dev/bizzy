@@ -10,18 +10,18 @@ import (
 
 type RematchStore interface {
 	Get(ctx context.Context, eventID string) (FollowUp, bool, error)
-	ListOpenWithoutClient(ctx context.Context) ([]FollowUp, error)
+	ListWithoutClient(ctx context.Context) ([]FollowUp, error)
 	ListByClient(ctx context.Context, clientID string) ([]FollowUp, error)
 	Save(ctx context.Context, f FollowUp) (FollowUp, error)
 }
 
 // Rematch re-reads the follow-ups a save of client clientID can change
-// against every client's aliases, as sessions are reconciled: an open one no client
-// matched may now be theirs, and one of theirs may no longer be. Done ones
-// without a client are left to the next sync.
+// against every client's aliases, as sessions are reconciled: one no client
+// matched (done or not) may now be theirs, and one of theirs may no longer
+// be.
 func Rematch(ctx context.Context, repo RematchStore, all []clients.Client, clientID string) error {
 	aliases := clients.AliasesOf(all)
-	unmatched, err := repo.ListOpenWithoutClient(ctx)
+	unmatched, err := repo.ListWithoutClient(ctx)
 	if err != nil {
 		return err
 	}

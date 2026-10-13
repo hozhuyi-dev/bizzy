@@ -12,17 +12,17 @@ type handler struct{ Service }
 
 func Register(r *router.Router, deps Deps) {
 	h := handler{Service{deps}}
-	r.Register("documents.list", router.Typed(h.list))
-	r.Register("documents.listByClient", router.Typed(h.listByClient))
-	r.Register("documents.get", router.Typed(h.get))
-	r.Register("documents.createDraft", router.Typed(h.createDraft))
-	r.Register("documents.saveDraft", router.Typed(h.saveDraft))
-	r.Register("documents.issue", router.Typed(h.issue))
-	r.Register("documents.revise", router.Typed(h.revise))
-	r.Register("documents.discardDraft", router.Typed(h.discardDraft))
-	r.Register("documents.cancel", router.Typed(h.cancel))
-	r.Register("documents.share", router.Typed(h.share))
-	r.Register("documents.resetShare", router.Typed(h.resetShare))
+	r.Query("documents.list", router.Typed(h.list))
+	r.Query("documents.listByClient", router.Typed(h.listByClient))
+	r.Query("documents.get", router.Typed(h.get))
+	r.Mutation("documents.createDraft", router.Typed(h.createDraft))
+	r.Mutation("documents.saveDraft", router.Typed(h.saveDraft))
+	r.Mutation("documents.issue", router.Typed(h.issue))
+	r.Mutation("documents.revise", router.Typed(h.revise))
+	r.Mutation("documents.discardDraft", router.Typed(h.discardDraft))
+	r.Mutation("documents.cancel", router.Typed(h.cancel))
+	r.Mutation("documents.share", router.Typed(h.share))
+	r.Mutation("documents.resetShare", router.Typed(h.resetShare))
 }
 
 // out turns a service result into a handler's.

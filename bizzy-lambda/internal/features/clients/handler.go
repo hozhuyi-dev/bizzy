@@ -12,7 +12,8 @@ import (
 	"bizzy-lambda/internal/router"
 )
 
-type store interface {
+// HandlerStore is what the handlers read and write.
+type HandlerStore interface {
 	List(ctx context.Context) ([]Client, error)
 	Get(ctx context.Context, id string) (Client, bool, error)
 	SaveProfile(ctx context.Context, client Client) error
@@ -30,17 +31,17 @@ type Linker interface {
 }
 
 type handler struct {
-	repo      store
+	repo      HandlerStore
 	contacts  Linker
 	afterSave AfterSave
 	now       func() time.Time
 }
 
-func Register(r *router.Router, repo store, contacts Linker, afterSave AfterSave) {
-	h := handler{repo: repo, contacts: contacts, afterSave: afterSave, now: time.Now}
-	r.Register("clients.list", h.list)
-	r.Register("clients.save", router.Typed(h.save))
-	r.Register("clients.markContacted", router.Typed(h.markContacted))
+func Register(r *router.Router, repo HandlerStore, contacts Linker, afterSave AfterSave, now func() time.Time) {
+	h := handler{repo: repo, contacts: contacts, afterSave: afterSave, now: now}
+	r.Query("clients.list", h.list)
+	r.Mutation("clients.save", router.Typed(h.save))
+	r.Mutation("clients.markContacted", router.Typed(h.markContacted))
 }
 
 func (h handler) list(ctx context.Context, _ json.RawMessage) (any, error) {

@@ -15,13 +15,13 @@ type echoIn struct {
 
 func newTestRouter() *Router {
 	r := New()
-	r.Register("echo", Typed(func(_ context.Context, in echoIn) (any, error) {
+	r.Query("echo", Typed(func(_ context.Context, in echoIn) (any, error) {
 		if in.Name == "" {
 			return nil, apperr.Invalid("name is required")
 		}
 		return in.Name, nil
 	}))
-	r.Register("boom", func(context.Context, json.RawMessage) (any, error) {
+	r.Mutation("boom", func(context.Context, json.RawMessage) (any, error) {
 		return nil, errors.New("dynamo exploded")
 	})
 	return r
@@ -60,5 +60,15 @@ func TestHandle(t *testing.T) {
 				t.Fatalf("response = %+v, want data %v", res, tt.wantData)
 			}
 		})
+	}
+}
+
+func TestActionsByKind(t *testing.T) {
+	r := newTestRouter()
+	if got := r.Actions(KindQuery); len(got) != 1 || got[0] != "echo" {
+		t.Errorf("queries = %v, want [echo]", got)
+	}
+	if got := r.Actions(KindMutation); len(got) != 1 || got[0] != "boom" {
+		t.Errorf("mutations = %v, want [boom]", got)
 	}
 }

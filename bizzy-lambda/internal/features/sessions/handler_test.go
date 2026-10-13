@@ -8,7 +8,7 @@ import (
 
 // fakeStore holds one session and its notes.
 type fakeStore struct {
-	store
+	HandlerStore
 	session Session
 	notes   Notes
 }

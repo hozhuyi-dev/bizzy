@@ -1,6 +1,5 @@
 import { MessageCircleIcon, SendIcon } from "lucide-react";
 import { toast } from "sonner";
-import { owedCents } from "./session-stage.util";
 import type { Session, SessionDocument } from "./sessions.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import type { Client } from "~/features/clients/clients.types";
@@ -29,7 +28,7 @@ export function useSessionMessageActions(
   const to = { name: client.name, phone: client.contact?.phone };
   const actions: Array<RowAction> = [];
 
-  const due = owedCents(session);
+  const due = session.owedCents;
   if (due > 0 && settings.data) {
     const text = paymentMessage(settings.data, { clientName: client.name, start: session.start, amountCents: due });
     actions.push({

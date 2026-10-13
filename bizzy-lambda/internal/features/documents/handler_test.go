@@ -348,3 +348,21 @@ func TestInvoiceBeforePaymentReceiptAfter(t *testing.T) {
 		t.Error("an invoice has no paid by")
 	}
 }
+
+// Found by the simulation: the calendar can move what a draft covers to
+// another client; issuing it would bill the wrong one.
+func TestIssueRefusedOnceASourceMovedClient(t *testing.T) {
+	ctx := context.Background()
+	h, _, _ := newHandler(t)
+	draft := must[Document](t)(h.createDraft(ctx, createDraftInput{Type: TypeInvoice, Sources: []Source{{Kind: SourceSession, ID: "e1"}}}))
+
+	stored := h.Sessions.(*memory.SessionRepo).SessionMap
+	s := stored["e1"]
+	s.ClientID = "bob"
+	stored["e1"] = s
+
+	_, err := h.issue(ctx, idInput{ID: draft.ID, Version: draft.Version})
+	if err == nil || !strings.Contains(err.Error(), "now belongs to another client") {
+		t.Fatalf("issue = %v, want refused: the session is bob's now", err)
+	}
+}

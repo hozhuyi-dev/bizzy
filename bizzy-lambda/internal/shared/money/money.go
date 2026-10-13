@@ -5,6 +5,7 @@
 package money
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -42,10 +43,20 @@ type Payment struct {
 	// Method is set when paid.
 	Method      Method `json:"method,omitempty" dynamodbav:"method,omitempty"`
 	AmountCents int64  `json:"amountCents" dynamodbav:"amountCents"`
+	// DueCents is what was due when it was recorded, so a later change in
+	// the calendar's fee shows as one to fix rather than as settled.
+	DueCents int64 `json:"dueCents,omitempty" dynamodbav:"dueCents,omitempty"`
 	// PaidOn is the day, YYYY-MM-DD in her time zone: income counts in its
 	// month.
 	PaidOn    string    `json:"paidOn" dynamodbav:"paidOn"`
 	UpdatedAt time.Time `json:"updatedAt" dynamodbav:"updatedAt"`
+}
+
+// Outdated reports whether what is due now (dueCents) is no longer what this
+// payment settled: the fee changed since, and the amount paid doesn't match
+// it either. A waiver settles whatever is due.
+func (p *Payment) Outdated(dueCents int64) bool {
+	return p.IsPaid() && p.DueCents != dueCents && p.AmountCents != dueCents
 }
 
 // IsPaid reports whether money was received, as opposed to waived.
@@ -62,9 +73,9 @@ type Input struct {
 	PaidOn string `json:"paidOn"`
 }
 
-// New validates a payment of amount for one item.
-func New(in Input, amountCents int64, now time.Time, loc *time.Location) (*Payment, error) {
-	p := &Payment{Status: in.Status, PaidOn: strings.TrimSpace(in.PaidOn), UpdatedAt: now.UTC()}
+// New validates a payment of amount for one item, of which due was due.
+func New(in Input, amountCents, dueCents int64, now time.Time, loc *time.Location) (*Payment, error) {
+	p := &Payment{Status: in.Status, DueCents: dueCents, PaidOn: strings.TrimSpace(in.PaidOn), UpdatedAt: now.UTC()}
 	if p.PaidOn == "" {
 		p.PaidOn = now.In(loc).Format(time.DateOnly)
 	}
@@ -103,4 +114,12 @@ func PaidBy(payments []*Payment) string {
 		}
 	}
 	return strings.Join(labels, ", ")
+}
+
+// Format writes an amount as receipts and messages do: "RM 95", "RM 95.50".
+func Format(cents int64) string {
+	if cents%100 == 0 {
+		return fmt.Sprintf("RM %d", cents/100)
+	}
+	return fmt.Sprintf("RM %d.%02d", cents/100, cents%100)
 }

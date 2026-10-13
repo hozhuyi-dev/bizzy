@@ -74,8 +74,9 @@ func New(ctx context.Context) (*Store, error) {
 	return &Store{Client: dynamodb.NewFromConfig(cfg), Table: table}, nil
 }
 
-// NewID returns a random 16-character hex id.
-func NewID() string {
+// NewID returns a random 16-character hex id. The simulation replaces it
+// with a counter, so a failing run replays exactly.
+var NewID = func() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)

@@ -2,7 +2,6 @@ package followups
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	"bizzy-lambda/internal/platform/dynamo"
@@ -45,14 +44,11 @@ func (r Repository) ListOpen(ctx context.Context, until time.Time) ([]FollowUp, 
 	return r.query(ctx, dynamo.Query{Index: dynamo.IndexOpen, To: dynamo.TimeKey(until)})
 }
 
-// ListOpenWithoutClient returns the follow-ups not done yet that no client
-// matched, for when a client gains an alias.
-func (r Repository) ListOpenWithoutClient(ctx context.Context) ([]FollowUp, error) {
-	open, err := r.query(ctx, dynamo.Query{Index: dynamo.IndexOpen})
-	if err != nil {
-		return nil, err
-	}
-	return slices.DeleteFunc(open, func(f FollowUp) bool { return f.ClientID != "" }), nil
+// ListWithoutClient returns the follow-ups no client matched, done or
+// not, for when a client gains an alias: they are keyed under no client in
+// the client index (see schema.FollowUpKeys).
+func (r Repository) ListWithoutClient(ctx context.Context) ([]FollowUp, error) {
+	return r.ListByClient(ctx, "")
 }
 
 // ListByClient returns all of a client's follow-ups.

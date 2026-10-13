@@ -57,9 +57,9 @@ func Derive(s sessions.Session, env Env) Entry {
 	out := s
 	out.Status, out.Name, out.ClientID, out.SuggestedClientID = "", "", "", ""
 	out.FeeCents, out.FeeSource, out.PackageID, out.ValueCents = nil, "", "", 0
-	out.BoughtCents, out.BoughtSettled = 0, false
+	out.BoughtCents, out.BoughtSettled, out.BoughtDocumented = 0, false, false
 	out.Reason, out.Drift = "", ""
-	out.Upcoming = s.Start.After(env.Now)
+	out.Upcoming = s.RemovedAt == nil && s.Start.After(env.Now)
 
 	title, err := calendar.ParseTitle(s.Title)
 	out.Name = title.Name
@@ -174,7 +174,7 @@ func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package)
 		if p := e.Title.Package; p != nil {
 			s.BoughtCents = p.PriceCents
 			if bought := find(pkgs, s.EventID); bought != nil {
-				s.BoughtSettled = bought.Settled()
+				s.BoughtSettled, s.BoughtDocumented = bought.Settled(), bought.HasDocuments()
 			}
 		}
 
@@ -236,6 +236,29 @@ func SessionDrift(s sessions.Session, loc *time.Location) string {
 			return fmt.Sprintf("Now matches a different client than %s", label)
 		case ref.Date != "" && LocalDate(s.Start, loc) != ref.Date:
 			return fmt.Sprintf("Moved to %s after %s", LocalDate(s.Start, loc), label)
+		case ref.FeeCents != nil && s.Status.Delivered() && s.DueCents() != *ref.FeeCents:
+			return fmt.Sprintf("The fee is now %s, not %s as when %s was issued", money.Format(s.DueCents()), money.Format(*ref.FeeCents), label)
+		}
+	}
+	return ""
+}
+
+// PackageDrift explains how a package now contradicts an issued document
+// covering it: the event that bought it names another client, or moved.
+func PackageDrift(p packages.Package, loc *time.Location) string {
+	for _, slot := range docref.Slots {
+		ref := p.Ref(slot)
+		if !ref.Issued() {
+			continue
+		}
+		label := fmt.Sprintf("%s %s", slot, ref.Number)
+		switch {
+		case p.ClientID != ref.ClientID:
+			return fmt.Sprintf("Now belongs to a different client than %s", label)
+		case ref.Date != "" && LocalDate(p.PurchasedAt, loc) != ref.Date:
+			return fmt.Sprintf("Bought on %s after %s", LocalDate(p.PurchasedAt, loc), label)
+		case ref.FeeCents != nil && p.PriceCents != *ref.FeeCents:
+			return fmt.Sprintf("The price is now %s, not %s as when %s was issued", money.Format(p.PriceCents), money.Format(*ref.FeeCents), label)
 		}
 	}
 	return ""

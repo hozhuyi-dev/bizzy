@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"slices"
 	"time"
 
 	"bizzy-lambda/internal/shared/docref"
@@ -32,6 +33,9 @@ type Package struct {
 
 	// Derived by the billing reconcile.
 	CreditsUsed int `json:"creditsUsed" dynamodbav:"creditsUsed"`
+	// Drift explains how the calendar now disagrees with an issued document
+	// covering it: its event names another client, or moved.
+	Drift string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
 
 	// Payment settles its price, in full. Written by the payments feature
 	// only (see PaymentPatch).
@@ -65,24 +69,17 @@ func (p Package) Settled() bool {
 	return p.Payment != nil || p.PriceCents == 0
 }
 
-// Open reports whether the package is still in use or still to be paid.
+// Open reports whether the package is still in use, still to be paid, or
+// contradicts a document: the open index is where the to-do list reads
+// packages from.
 func (p Package) Open() bool {
-	return p.CreditsLeft() > 0 || !p.Settled()
+	return p.CreditsLeft() > 0 || !p.Settled() || p.Drift != ""
 }
 
 // CollectOnItsOwn reports whether it goes on her to-do list as itself: a
 // calendar package is collected with the session that bought it instead.
 func (p Package) CollectOnItsOwn() bool {
-	return p.Source == SourceApp && !p.Settled()
-}
-
-// Billable reports whether a document of the slot's type can be made for
-// the package: an invoice any time, a receipt once it is paid.
-func (p Package) Billable(slot docref.Slot) bool {
-	if p.Ref(slot) != nil {
-		return false
-	}
-	return slot == docref.SlotInvoice || p.Payment.IsPaid()
+	return slices.Contains(p.Todo(p.PurchasedAt), ReasonCollect)
 }
 
 // ShareCents is the value of credit i (0-based): the price split evenly, with

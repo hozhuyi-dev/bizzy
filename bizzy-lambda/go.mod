@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.3
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/api v0.301.0
+	pgregory.net/rapid v1.2.0
 )
 
 require (

@@ -49,6 +49,8 @@ type Editor struct {
 	Sessions EditorSessions
 	Settings SettingsStore
 	Billing  Reconciler
+	// Now defaults to time.Now.
+	Now func() time.Time
 }
 
 // Draft is a session as she fills it in. The title is written from it in the
@@ -73,12 +75,12 @@ type DraftPackage struct {
 }
 
 func RegisterEditor(r *router.Router, e Editor) {
-	r.Register("sessions.get", router.Typed(e.get))
-	r.Register("sessions.create", router.Typed(e.create))
-	r.Register("sessions.update", router.Typed(e.update))
-	r.Register("sessions.delete", router.Typed(e.delete))
-	r.Register("sessions.restore", router.Typed(e.restore))
-	r.Register("sessions.discard", router.Typed(e.discard))
+	r.Query("sessions.get", router.Typed(e.get))
+	r.Mutation("sessions.create", router.Typed(e.create))
+	r.Mutation("sessions.update", router.Typed(e.update))
+	r.Mutation("sessions.delete", router.Typed(e.delete))
+	r.Mutation("sessions.restore", router.Typed(e.restore))
+	r.Mutation("sessions.discard", router.Typed(e.discard))
 }
 
 type eventInput struct {
@@ -88,9 +90,9 @@ type eventInput struct {
 // Stored is a session with the draft to start an edit from and its notes.
 // The title is read here, so the app never parses the syntax itself.
 type Stored struct {
-	Session sessions.Session `json:"session"`
-	Draft   Draft            `json:"draft"`
-	Notes   string           `json:"notes"`
+	Session sessions.View `json:"session"`
+	Draft   Draft         `json:"draft"`
+	Notes   string        `json:"notes"`
 }
 
 func (e Editor) get(ctx context.Context, in eventInput) (any, error) {
@@ -105,7 +107,11 @@ func (e Editor) get(ctx context.Context, in eventInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Stored{Session: s, Draft: draftOf(s), Notes: notes.Text}, nil
+	now := time.Now
+	if e.Now != nil {
+		now = e.Now
+	}
+	return Stored{Session: s.View(now()), Draft: draftOf(s), Notes: notes.Text}, nil
 }
 
 func draftOf(s sessions.Session) Draft {
@@ -225,8 +231,8 @@ func (e Editor) discard(ctx context.Context, in eventInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.HasDocuments() {
-		return nil, apperr.Conflict("Cancel or discard the invoice and receipt for this session first.")
+	if err := s.CanDiscard(); err != nil {
+		return nil, err
 	}
 	return nil, e.apply(ctx, in.EventID, nil, true)
 }
@@ -238,10 +244,8 @@ func (e Editor) removed(ctx context.Context, eventID string) (sessions.Session, 
 		return s, err
 	case !found:
 		return s, sessions.ErrGone
-	case s.RemovedAt == nil:
-		return s, apperr.Conflict("This session is still in the calendar.")
 	}
-	return s, nil
+	return s, s.CanRestore()
 }
 
 func (e Editor) validate(ctx context.Context, d Draft) (clients.Client, error) {
@@ -289,8 +293,8 @@ func (e Editor) current(ctx context.Context, eventID string) (Calendar, calendar
 	if !found {
 		return nil, calendar.Event{}, apperr.NotFound("session not found")
 	}
-	if before.HasDocuments() {
-		return nil, calendar.Event{}, apperr.Conflict("Cancel or discard the invoice and receipt for this session first.")
+	if err := before.CanEditBooking(); err != nil {
+		return nil, calendar.Event{}, err
 	}
 
 	cal, err := e.Calendar(ctx)

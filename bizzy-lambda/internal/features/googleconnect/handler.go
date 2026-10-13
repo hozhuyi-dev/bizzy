@@ -40,11 +40,11 @@ type handler struct {
 
 func Register(r *router.Router, repo store, auth Auth) {
 	h := handler{repo: repo, auth: auth, calendars: calendar.Calendars, now: time.Now}
-	r.Register("google.status", h.status)
-	r.Register("google.connect", router.Typed(h.connect))
-	r.Register("google.disconnect", h.disconnect)
-	r.Register("google.calendars", h.listCalendars)
-	r.Register("google.setCalendar", router.Typed(h.setCalendar))
+	r.Query("google.status", h.status)
+	r.Mutation("google.connect", router.Typed(h.connect))
+	r.Mutation("google.disconnect", h.disconnect)
+	r.Query("google.calendars", h.listCalendars)
+	r.Mutation("google.setCalendar", router.Typed(h.setCalendar))
 }
 
 // Status is the connection and, if Google no longer accepts it, why.

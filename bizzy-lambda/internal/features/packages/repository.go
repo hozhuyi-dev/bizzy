@@ -20,7 +20,7 @@ const Partition = schema.Package
 // links bump) the documents feature's.
 var ownedAttributes = append([]string{
 	"id", "clientId", "sessions", "priceCents", "purchasedAt", "source", "note",
-	"creditsUsed",
+	"creditsUsed", "drift",
 }, dynamo.IndexAttributes...)
 
 type record struct {

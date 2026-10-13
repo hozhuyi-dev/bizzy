@@ -33,9 +33,9 @@ type handler struct {
 	loc         *time.Location
 }
 
-func Register(r *router.Router, store Store, afterChange AfterChange, loc *time.Location) {
-	h := handler{store: store, afterChange: afterChange, now: time.Now, loc: loc}
-	r.Register("payments.set", router.Typed(h.set))
+func Register(r *router.Router, store Store, afterChange AfterChange, loc *time.Location, now func() time.Time) {
+	h := handler{store: store, afterChange: afterChange, now: now, loc: loc}
+	r.Mutation("payments.set", router.Typed(h.set))
 }
 
 type setInput struct {
@@ -94,7 +94,11 @@ func (h handler) apply(ctx context.Context, in setInput) ([]string, error) {
 			if !found {
 				return nil, sessions.ErrGone
 			}
-			if err := sessionPayable(s); err != nil {
+			guard := s.CanPay
+			if in.Payment == nil {
+				guard = s.CanUndoPayment
+			}
+			if err := guard(); err != nil {
 				return nil, err
 			}
 			if s.Payment, err = h.payment(in.Payment, item.AmountCents, s.DueCents(), now); err != nil {
@@ -110,8 +114,8 @@ func (h handler) apply(ctx context.Context, in setInput) ([]string, error) {
 			if !found {
 				return nil, apperr.NotFound("package not found")
 			}
-			if p.Receipt != nil {
-				return nil, apperr.Conflict("A receipt covers this package. Cancel or discard it first.")
+			if err := p.CanPay(); err != nil {
+				return nil, err
 			}
 			if p.Payment, err = h.payment(in.Payment, item.AmountCents, p.PriceCents, now); err != nil {
 				return nil, err
@@ -135,20 +139,6 @@ func (h handler) apply(ctx context.Context, in setInput) ([]string, error) {
 	return ids, nil
 }
 
-func sessionPayable(s sessions.Session) error {
-	switch {
-	case s.RemovedAt != nil:
-		return apperr.Conflict("Restore the session before changing its payment.")
-	case s.Status == sessions.StatusTentative:
-		return apperr.Conflict("Confirm the session before recording its payment.")
-	case !s.Status.Delivered():
-		return apperr.Conflict("Fix the calendar entry before recording its payment.")
-	case s.Receipt != nil:
-		return apperr.Conflict("A receipt covers this payment. Cancel or discard it first.")
-	}
-	return nil
-}
-
 func (h handler) payment(in *money.Input, amountCents, dueCents int64, now time.Time) (*money.Payment, error) {
 	if in == nil {
 		return nil, nil
@@ -156,5 +146,5 @@ func (h handler) payment(in *money.Input, amountCents, dueCents int64, now time.
 	if amountCents == 0 {
 		amountCents = dueCents
 	}
-	return money.New(*in, amountCents, now, h.loc)
+	return money.New(*in, amountCents, dueCents, now, h.loc)
 }

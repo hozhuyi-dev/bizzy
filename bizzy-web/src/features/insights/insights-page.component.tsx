@@ -13,7 +13,6 @@ import type { Basis } from "./insights.types";
 import type { ChartConfig } from "~/components/ui/chart";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { creditsLeft } from "~/features/packages/packages.util";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { useQuip } from "~/components/shared/quip/quip.hook";
@@ -84,7 +83,7 @@ export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
             basis={basis}
             credits={(packages.data ?? []).reduce(
               (sum, p) => {
-                const left = creditsLeft(p);
+                const left = p.creditsLeft;
                 return {
                   count: sum.count + left,
                   cents: sum.cents + Math.round((p.priceCents / p.sessions) * left),

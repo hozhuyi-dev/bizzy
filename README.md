@@ -98,14 +98,21 @@ Both apps are organised by feature (vertical slices). A feature owns its types, 
   | --- | --- |
   | `model.go` | Domain types and pure logic on them, plus the package doc |
   | `repository.go` | DynamoDB records and the `Repository` |
-  | `handler.go` | `Register`, input structs and thin handler methods (validate, delegate) |
+  | `handler.go` | `Register` (each action as `Query` or `Mutation`), input structs and thin handler methods (validate, delegate) |
   | `service.go` | Use cases spanning several reads/writes, when a slice needs them (`documents`, `sessions`) |
+  | `state.go` | The entity reduced to independent axes (small enums) and `State()` |
+  | `rules.go` | Its rule table: what is quiet, needs action, contradicts the calendar, or is impossible; the to-do list is derived from it |
+  | `guards.go` | Preconditions of the mutations on it, returning the error shown |
+  | `view.go` | What the API returns: the entity with its state, rules, to-do and `can` verdicts, so bizzy-web never re-derives a rule |
   | `google.go` | The Google API client (`calendar`, `contacts`) |
 
-- Anything else is named after what it does, never `util` or `helper`: `rules.go`, `reconciler.go`, `syncer.go`, `numbering.go`, `share.go`. Use `snake_case` for two words (`session_editor.go`), never a trailing `_<os>` or `_<arch>`, which Go reads as a build constraint.
+- Every combination of a slice's axes, classified by its rules, is in `testdata/states.md`; `go test ./... -run TestStates -update` regenerates it after a change to `state.go` or `rules.go`, so review shows which states moved.
+- Anything else is named after what it does, never `util` or `helper`: `reconciler.go`, `syncer.go`, `numbering.go`, `share.go`. Use `snake_case` for two words (`session_editor.go`), never a trailing `_<os>` or `_<arch>`, which Go reads as a build constraint.
 - Each file holds one layer. Tests mirror the file they test: `x.go` → `x_test.go`.
 - Dependencies point one way: workflow slices (`billing`, `documents`, `googlesync`, `payments`, `todo`) may import core slices (`clients`, `sessions`, `packages`, `settings`, `followups`), never the reverse. `calendar` imports no feature. Interfaces are declared where they are used.
-- Outside features: `internal/shared/` for types several slices share with no behaviour of their own (`docref`, `money`), `internal/platform/` for infrastructure (`dynamo`, `googleauth`, `ssm`, `apperr`), `internal/schema` for every key, `internal/router` for dispatch. `cmd/*/main.go` wires it all together.
+- Outside features: `internal/shared/` for types several slices share with no behaviour of their own (`docref`, `money`), `internal/platform/` for infrastructure (`dynamo`, `googleauth`, `ssm`, `apperr`, `statemodel`), `internal/schema` for every key, `internal/router` for dispatch, `internal/app` for wiring every domain action (used by `cmd/api` and the simulation), `internal/testutil/` for in-memory stores and fake Google services.
+- `internal/integrity` checks the links between entities (a document and the sessions and packages it covers, both ways), plus each entity's impossible rules; a rule marked `Pending` is a known gap with its suggested fix (`testdata/links.md`).
+- `internal/simulation` drives the app with random sequences of user actions (`actions_user.go`, one per router mutation, enforced by a test), Google Calendar and Contacts edits, and time passing, checking after every step that nothing is impossible, refused actions change nothing, and derived fields are current. Search deeper with `-rapid.checks=2000 -rapid.steps=200`; `-sim.report=file.md` writes which actions moved which entity between rule states. A new feature adds its `state.go`, `rules.go`, `guards.go` and simulation actions.
 
 ### bizzy-web
 

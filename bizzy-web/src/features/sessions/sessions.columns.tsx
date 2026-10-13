@@ -96,11 +96,9 @@ export function SessionDocuments({
 /** The quick fixes a list can make; everything else is on the session's page. */
 export function sessionActions(session: Session, handlers: SessionHandlers): Array<RowAction> {
   const client = clientOf(handlers.clientsById, session.clientId);
-  // A document fixes what it covers: cancel it to change the booking.
-  const editable = allSessionDocuments(session, handlers.packagesById.get(session.eventId)).length === 0;
   const actions: Array<RowAction> = [];
 
-  if (editable && session.status === "tentative" && client) {
+  if (session.can.editBooking.ok && session.todo.includes("confirm") && client) {
     actions.push({ label: "Confirm", icon: CheckIcon, onClick: () => handlers.onConfirm(session) });
   }
   if (isUnmatched(session)) {

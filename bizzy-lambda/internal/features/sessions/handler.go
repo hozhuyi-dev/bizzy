@@ -12,7 +12,8 @@ import (
 	"bizzy-lambda/internal/router"
 )
 
-type store interface {
+// HandlerStore is what the handlers read and write.
+type HandlerStore interface {
 	Store
 	ListByTime(ctx context.Context, from, to time.Time) ([]Session, error)
 	PageByClient(ctx context.Context, clientID, cursor string, limit int) (dynamo.Page[Session], error)
@@ -22,19 +23,19 @@ type store interface {
 }
 
 type handler struct {
-	repo store
+	repo HandlerStore
 	now  func() time.Time
 }
 
 // Register serves sessions to the app, and the notes she records. Adding,
 // editing and deleting the booking goes through the calendar (see
 // googlesync.RegisterEditor); payments go through the payments feature.
-func Register(r *router.Router, repo store) {
-	h := handler{repo: repo, now: time.Now}
-	r.Register("sessions.list", router.Typed(h.list))
-	r.Register("sessions.listByClient", router.Typed(h.listByClient))
-	r.Register("sessions.listRemoved", h.listRemoved)
-	r.Register("sessions.saveRecord", router.Typed(h.saveRecord))
+func Register(r *router.Router, repo HandlerStore, now func() time.Time) {
+	h := handler{repo: repo, now: now}
+	r.Query("sessions.list", router.Typed(h.list))
+	r.Query("sessions.listByClient", router.Typed(h.listByClient))
+	r.Query("sessions.listRemoved", h.listRemoved)
+	r.Mutation("sessions.saveRecord", router.Typed(h.saveRecord))
 }
 
 type listInput struct {
@@ -50,7 +51,8 @@ func (h handler) list(ctx context.Context, in listInput) (any, error) {
 	if in.To.Sub(in.From) > 400*24*time.Hour {
 		return nil, apperr.Invalid("ask for at most a year at a time")
 	}
-	return h.repo.ListByTime(ctx, in.From, in.To.Add(-time.Second))
+	all, err := h.repo.ListByTime(ctx, in.From, in.To.Add(-time.Second))
+	return Views(all, h.now()), err
 }
 
 // TimelinePage is how many sessions a client's timeline loads at a time.
@@ -66,13 +68,15 @@ func (h handler) listByClient(ctx context.Context, in listByClientInput) (any, e
 	if in.ClientID == "" {
 		return nil, apperr.Invalid("choose a client")
 	}
-	return h.repo.PageByClient(ctx, in.ClientID, in.Cursor, TimelinePage)
+	page, err := h.repo.PageByClient(ctx, in.ClientID, in.Cursor, TimelinePage)
+	return dynamo.Page[View]{Items: Views(page.Items, h.now()), Next: page.Next}, err
 }
 
 // listRemoved returns the sessions deleted from the calendar but kept for
 // her data on them.
 func (h handler) listRemoved(ctx context.Context, _ json.RawMessage) (any, error) {
-	return h.repo.ListByStatus(ctx, StatusRemoved)
+	all, err := h.repo.ListByStatus(ctx, StatusRemoved)
+	return Views(all, h.now()), err
 }
 
 // Limits on what she types, well inside DynamoDB's 400 KB per item.
@@ -112,8 +116,8 @@ func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error
 	if !found {
 		return nil, ErrGone
 	}
-	if current.Start.After(now) {
-		return nil, apperr.Conflict("Notes can be written once the session has started.")
+	if err := current.CanRecord(now); err != nil {
+		return nil, err
 	}
 
 	if in.Notes != nil {
@@ -121,7 +125,7 @@ func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error
 			return nil, err
 		}
 	}
-	return Update(ctx, h.repo, in.EventID, func(s *Session) error {
+	saved, err := Update(ctx, h.repo, in.EventID, func(s *Session) error {
 		hasNotes := notes != ""
 		if in.Notes == nil {
 			hasNotes = s.Record != nil && s.Record.HasNotes
@@ -133,4 +137,8 @@ func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error
 		s.Record = &Record{Summary: summary, HasNotes: hasNotes, UpdatedAt: now}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return saved.View(now), nil
 }

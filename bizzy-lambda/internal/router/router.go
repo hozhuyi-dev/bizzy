@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 
 	"bizzy-lambda/internal/platform/apperr"
 )
@@ -32,19 +33,53 @@ type ErrorBody struct {
 
 type Handler func(ctx context.Context, payload json.RawMessage) (any, error)
 
+// Kind says whether an action only reads or also changes state. Every
+// mutation must be covered by the simulation (see internal/simulation),
+// which drives the router exactly as the app does.
+type Kind string
+
+const (
+	KindQuery    Kind = "query"
+	KindMutation Kind = "mutation"
+)
+
 type Router struct {
 	handlers map[string]Handler
+	kinds    map[string]Kind
 }
 
 func New() *Router {
-	return &Router{handlers: make(map[string]Handler)}
+	return &Router{handlers: make(map[string]Handler), kinds: make(map[string]Kind)}
 }
 
-func (r *Router) Register(action string, handler Handler) {
+// Query registers an action that only reads.
+func (r *Router) Query(action string, handler Handler) {
+	r.register(action, KindQuery, handler)
+}
+
+// Mutation registers an action that changes state.
+func (r *Router) Mutation(action string, handler Handler) {
+	r.register(action, KindMutation, handler)
+}
+
+func (r *Router) register(action string, kind Kind, handler Handler) {
 	if _, exists := r.handlers[action]; exists {
 		panic("router: duplicate action " + action)
 	}
 	r.handlers[action] = handler
+	r.kinds[action] = kind
+}
+
+// Actions lists the registered actions of a kind, sorted.
+func (r *Router) Actions(kind Kind) []string {
+	var out []string
+	for action, k := range r.kinds {
+		if k == kind {
+			out = append(out, action)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 func (r *Router) Handle(ctx context.Context, req Request) (Response, error) {

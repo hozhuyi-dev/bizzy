@@ -37,7 +37,7 @@ func TestBuildMergesByWhen(t *testing.T) {
 		// Bought in a session: collected on that session instead.
 		{ID: "past", Source: packages.SourceCalendar, PriceCents: 85000, PurchasedAt: at(-24)},
 		// Paid, with credits left: in the index, nothing to do.
-		{ID: "paid", Source: packages.SourceApp, PriceCents: 85000, Sessions: 10, PurchasedAt: at(-2), Payment: &money.Payment{Status: money.Paid}},
+		{ID: "paid", Source: packages.SourceApp, PriceCents: 85000, Sessions: 10, PurchasedAt: at(-2), Payment: &money.Payment{Status: money.Paid, AmountCents: 85000, DueCents: 85000}},
 	}
 
 	items := Build(open, unpaid, due, now)

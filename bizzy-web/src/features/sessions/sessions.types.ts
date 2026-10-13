@@ -1,8 +1,8 @@
 import type { DocumentRef, DocumentSource, DocumentType } from "~/features/documents/documents.types";
-import type { Package } from "~/features/packages/packages.types";
 import type { Payment } from "~/features/payments/payments.types";
+import type { Verdict } from "~/core/lambda/lambda.types";
 
-// Mirrors bizzy-lambda/internal/features/sessions/model.go.
+// Mirrors bizzy-lambda/internal/features/sessions/model.go and view.go.
 export type SessionStatus =
   | "tentative"
   | "parse_error"
@@ -57,6 +57,57 @@ export interface Session {
   receipt?: DocumentRef;
 
   version: number;
+
+  // What the API's rules (sessions/rules.go) and guards (guards.go) make of
+  // it as of the request. Read these; never re-derive them here.
+  state: SessionState;
+  /** The rules that hold, in priority order; empty when there is nothing to it. */
+  rules: Array<string>;
+  /** What is left to do on it now. */
+  todo: Array<TodoReason>;
+  /** The first thing to fix, explained. */
+  problem?: string;
+  /** Its own fee, when one applies. */
+  dueCents: number;
+  /** Still to collect with it: the fee unless settled, plus the package bought in it unless paid. */
+  owedCents: number;
+  /** The part of owedCents that is the package bought in it. */
+  boughtOwedCents: number;
+  /** Counts as having happened with a client, fee known or not. */
+  delivered: boolean;
+  /** Nothing more is owed on it. */
+  paid: boolean;
+  can: SessionCan;
+}
+
+/** A session on its axes; mirrors sessions.State. */
+export interface SessionState {
+  presence: "in-calendar" | "removed";
+  status: SessionStatus;
+  client: "matched" | "none";
+  timing: "upcoming" | "happened";
+  record: "none" | "notes-only" | "summary";
+  fee: "nothing-due" | "owed";
+  payment: "none" | "paid" | "waived";
+  paidFor: "current" | "outdated";
+  bought: "none" | "due" | "settled";
+  invoice: "empty" | "draft" | "issued";
+  receipt: "empty" | "draft" | "issued";
+  drift: "none" | "drifted";
+}
+
+/** What each action on a session would say now; mirrors sessions.Can. */
+export interface SessionCan {
+  /** Money is settled on it at all: in the calendar, confirmed and read. */
+  settle: Verdict;
+  pay: Verdict;
+  undoPayment: Verdict;
+  invoice: Verdict;
+  receipt: Verdict;
+  record: Verdict;
+  editBooking: Verdict;
+  restore: Verdict;
+  discard: Verdict;
 }
 
 /** Why a session is on her to-do list; mirrors sessions.Reason. */
@@ -114,9 +165,3 @@ export interface SessionDocument {
   ref: DocumentRef;
 }
 
-/** What pays for a session when no amount is written in its title. */
-export type PaymentCover =
-  | { kind: "bought" }
-  | { kind: "credit"; pkg: Package }
-  | { kind: "default"; feeCents: number }
-  | { kind: "none" };

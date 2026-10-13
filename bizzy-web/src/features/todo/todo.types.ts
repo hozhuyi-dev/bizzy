@@ -4,8 +4,10 @@ import type { Session, TodoReason } from "~/features/sessions/sessions.types";
 
 /**
  * One thing on her to-do list; mirrors bizzy-lambda/internal/features/todo.
- * A package is its own item only when no session bought it (added here, or
- * unlinked); one bought in a session is collected on that session. A
+ * A package is its own item to collect only when no session bought it
+ * (added here, or unlinked); one bought in a session is collected on that
+ * session. Any package is an item to fix once an issued document
+ * contradicts it (drift). A
  * follow-up has a reason only to fix it: its title can't be read or matched.
  */
 export type TodoItem =

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FileTextIcon, PlusIcon, ReceiptIcon } from "lucide-react";
 import { cn } from "cn";
-import { allSessionDocuments, documentItems, dueCents, sessionDocuments } from "../../session-stage.util";
+import { allSessionDocuments, documentItems, sessionDocuments } from "../../session-stage.util";
 import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
 import type { DocumentItem, Session } from "../../sessions.types";
 import type { DocumentType } from "~/features/documents/documents.types";
@@ -35,7 +35,7 @@ const DOCUMENT_HINTS: Record<DocumentType, string> = {
 };
 
 function DocumentsStep({ session, bought }: { session: Session; bought: Package | undefined }) {
-  const nothingDue = dueCents(session) === 0 && !bought;
+  const nothingDue = session.dueCents === 0 && !bought;
 
   return (
     <ul className="flex flex-col divide-y text-sm">

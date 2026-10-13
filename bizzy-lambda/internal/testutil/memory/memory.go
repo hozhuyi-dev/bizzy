@@ -90,6 +90,18 @@ func (r *ClientRepo) RefreshContact(_ context.Context, id string, previous, next
 	return true, nil
 }
 
+// SetContacted writes only when she last contacted the client.
+func (r *ClientRepo) SetContacted(_ context.Context, id string, at *time.Time) error {
+	c, ok := r.ClientMap[id]
+	if !ok {
+		return nil
+	}
+	c.LastContactedAt = at
+	r.ClientMap[id] = c
+	r.Writes++
+	return nil
+}
+
 type SessionRepo Store
 
 func (r *SessionRepo) Get(_ context.Context, id string) (sessions.Session, bool, error) {
@@ -134,7 +146,7 @@ func (r *SessionRepo) ListByStatus(_ context.Context, status sessions.Status) ([
 
 func (r *SessionRepo) ListWithoutClient(context.Context) ([]sessions.Session, error) {
 	return r.sorted(func(s sessions.Session) bool {
-		return s.ClientID == "" && (s.Status == sessions.StatusParseError || s.Status == sessions.StatusUnmatched || s.Status == sessions.StatusTentative)
+		return s.ClientID == "" && (s.Status == sessions.StatusParseError || s.Status == sessions.StatusUnmatched || s.Status == sessions.StatusTentative || s.Status == sessions.StatusRemoved)
 	}), nil
 }
 
@@ -200,8 +212,8 @@ func (r *FollowUpRepo) ListOpen(_ context.Context, until time.Time) ([]followups
 	return r.sorted(func(f followups.FollowUp) bool { return f.DoneAt == nil && !f.Due.After(until) }), nil
 }
 
-func (r *FollowUpRepo) ListOpenWithoutClient(context.Context) ([]followups.FollowUp, error) {
-	return r.sorted(func(f followups.FollowUp) bool { return f.DoneAt == nil && f.ClientID == "" }), nil
+func (r *FollowUpRepo) ListWithoutClient(context.Context) ([]followups.FollowUp, error) {
+	return r.sorted(func(f followups.FollowUp) bool { return f.ClientID == "" }), nil
 }
 
 func (r *FollowUpRepo) ListByClient(_ context.Context, id string) ([]followups.FollowUp, error) {
@@ -210,6 +222,24 @@ func (r *FollowUpRepo) ListByClient(_ context.Context, id string) ([]followups.F
 
 func (r *FollowUpRepo) ListBySession(_ context.Context, id string) ([]followups.FollowUp, error) {
 	return r.sorted(func(f followups.FollowUp) bool { return f.SessionID == id }), nil
+}
+
+// The pages hold everything: tests never ask for more than one.
+
+func (r *FollowUpRepo) PageOpen(context.Context, string, int) (dynamo.Page[followups.FollowUp], error) {
+	return dynamo.Page[followups.FollowUp]{Items: r.sorted(func(f followups.FollowUp) bool { return f.DoneAt == nil })}, nil
+}
+
+func (r *FollowUpRepo) PageDone(context.Context, string, int) (dynamo.Page[followups.FollowUp], error) {
+	all := r.sorted(func(f followups.FollowUp) bool { return f.DoneAt != nil })
+	slices.Reverse(all)
+	return dynamo.Page[followups.FollowUp]{Items: all}, nil
+}
+
+func (r *FollowUpRepo) PageByClient(_ context.Context, id, _ string, _ int) (dynamo.Page[followups.FollowUp], error) {
+	all := r.sorted(func(f followups.FollowUp) bool { return f.ClientID == id })
+	slices.Reverse(all)
+	return dynamo.Page[followups.FollowUp]{Items: all}, nil
 }
 
 // Save checks the version as the real repository does.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
@@ -17,7 +16,8 @@ import (
 	"bizzy-lambda/internal/shared/money"
 )
 
-type store interface {
+// Store is the documents repository.
+type Store interface {
 	Get(ctx context.Context, id string) (Document, bool, error)
 	ListByMonth(ctx context.Context, docType Type, month string) ([]Document, error)
 	ListByClient(ctx context.Context, clientID string) ([]Document, error)
@@ -28,7 +28,7 @@ type store interface {
 }
 
 type Deps struct {
-	Repo     store
+	Repo     Store
 	Sessions interface {
 		Get(ctx context.Context, eventID string) (sessions.Session, bool, error)
 	}
@@ -124,7 +124,7 @@ func (svc Service) CreateDraft(ctx context.Context, docType Type, sources []Sour
 	ref := docref.Ref{DocumentID: dynamo.NewID()}
 
 	var lines []Line
-	var links []dynamo.Patch
+	var links []Link
 	var payments []*money.Payment
 	clientID := ""
 
@@ -138,11 +138,7 @@ func (svc Service) CreateDraft(ctx context.Context, docType Type, sources []Sour
 		}
 		clientID = owner
 
-		link, err := linkPatch(src, spec.Slot, ref)
-		if err != nil {
-			return Document{}, err
-		}
-		lines, links, payments = append(lines, line), append(links, link), append(payments, payment)
+		lines, links, payments = append(lines, line), append(links, Hold(src, spec.Slot, ref)), append(payments, payment)
 	}
 
 	client, err := svc.client(ctx, clientID)
@@ -171,6 +167,11 @@ func (svc Service) CreateDraft(ctx context.Context, docType Type, sources []Sour
 		Version:    1,
 	}
 	if err := svc.commit(ctx, Write{Doc: doc, Links: links}); err != nil {
+		return Document{}, err
+	}
+	// A draft already holds what it covers: a session mirrors that the
+	// package it bought is now held (it locks the booking).
+	if err := svc.afterChange(ctx, Document{}, doc); err != nil {
 		return Document{}, err
 	}
 	return doc, nil
@@ -214,11 +215,19 @@ func (svc Service) Issue(ctx context.Context, id string, version int) (Document,
 		if err != nil {
 			return Document{}, err
 		}
-		if doc.Draft == nil {
-			return Document{}, apperr.Conflict("there is nothing to issue")
+		now, err := svc.sourcesNow(ctx, doc)
+		if err != nil {
+			return Document{}, err
+		}
+		owners := map[Source]string{}
+		for src, it := range now {
+			owners[src] = it.clientID
+		}
+		if err := doc.CanIssue(owners); err != nil {
+			return Document{}, err
 		}
 
-		updated, w, err := svc.prepareIssue(ctx, doc)
+		updated, w, err := svc.prepareIssue(ctx, doc, now)
 		if err != nil {
 			return Document{}, err
 		}
@@ -237,7 +246,7 @@ func (svc Service) Issue(ctx context.Context, id string, version int) (Document,
 	}
 }
 
-func (svc Service) prepareIssue(ctx context.Context, doc Document) (Document, Write, error) {
+func (svc Service) prepareIssue(ctx context.Context, doc Document, sources map[Source]sourceNow) (Document, Write, error) {
 	now := svc.Now().UTC()
 	content := *doc.Draft
 	spec := Types[doc.Type]
@@ -279,7 +288,7 @@ func (svc Service) prepareIssue(ctx context.Context, doc Document) (Document, Wr
 	for _, src := range doc.Sources {
 		amount, ok := amounts[src]
 		if !ok {
-			w.Links = append(w.Links, unlinkPatch(src, spec.Slot, doc.ID))
+			w.Links = append(w.Links, Release(src, spec.Slot, doc.ID))
 			continue
 		}
 		kept = append(kept, src)
@@ -288,14 +297,11 @@ func (svc Service) prepareIssue(ctx context.Context, doc Document) (Document, Wr
 			Number:      updated.Number,
 			Revision:    *updated.Revision,
 			AmountCents: &amount,
+			FeeCents:    sources[src].feeCents,
 			Date:        lineDate(content, src),
 			ClientID:    doc.ClientID,
 		}
-		link, err := linkPatch(src, spec.Slot, ref)
-		if err != nil {
-			return doc, w, err
-		}
-		w.Links = append(w.Links, link)
+		w.Links = append(w.Links, Hold(src, spec.Slot, ref))
 	}
 	if kept == nil {
 		kept = []Source{}
@@ -320,8 +326,8 @@ func (svc Service) Revise(ctx context.Context, id string, version int) (Document
 	if err != nil {
 		return Document{}, err
 	}
-	if doc.Status != StatusIssued || doc.Draft != nil {
-		return Document{}, apperr.Conflict("only an issued document can be revised")
+	if err := doc.CanRevise(); err != nil {
+		return Document{}, err
 	}
 
 	updated := doc
@@ -344,14 +350,14 @@ func (svc Service) DiscardDraft(ctx context.Context, id string, version int) (*D
 	if err != nil {
 		return nil, err
 	}
-	if doc.Draft == nil {
-		return nil, apperr.Conflict("there is no draft to discard")
+	if err := doc.CanDiscardDraft(); err != nil {
+		return nil, err
 	}
 
 	if doc.Number == "" {
 		w := Write{Doc: doc, PreviousVersion: doc.Version, Delete: true}
 		for _, src := range doc.Sources {
-			w.Links = append(w.Links, unlinkPatch(src, Types[doc.Type].Slot, doc.ID))
+			w.Links = append(w.Links, Release(src, Types[doc.Type].Slot, doc.ID))
 		}
 		if err := svc.commit(ctx, w); err != nil {
 			return nil, err
@@ -376,8 +382,8 @@ func (svc Service) Cancel(ctx context.Context, id string, version int, reason st
 	if err != nil {
 		return Document{}, err
 	}
-	if doc.Status != StatusIssued {
-		return Document{}, apperr.Conflict("only an issued document can be cancelled; discard a draft instead")
+	if err := doc.CanCancel(); err != nil {
+		return Document{}, err
 	}
 
 	now := svc.Now().UTC()
@@ -390,7 +396,7 @@ func (svc Service) Cancel(ctx context.Context, id string, version int, reason st
 
 	w := Write{Doc: updated, PreviousVersion: doc.Version}
 	for _, src := range doc.Sources {
-		w.Links = append(w.Links, unlinkPatch(src, Types[doc.Type].Slot, doc.ID))
+		w.Links = append(w.Links, Release(src, Types[doc.Type].Slot, doc.ID))
 	}
 	if err := svc.commit(ctx, w); err != nil {
 		return Document{}, err
@@ -430,11 +436,12 @@ func (svc Service) sourceLine(ctx context.Context, src Source, spec TypeSpec, cf
 		if !found {
 			return Line{}, "", nil, apperr.NotFound("session not found")
 		}
-		switch {
-		case spec.Slot == docref.SlotInvoice && !s.CanInvoice():
-			return Line{}, "", nil, apperr.Conflict("only a confirmed session with a fee and no invoice yet can get one")
-		case spec.Slot == docref.SlotReceipt && !s.CanReceipt():
-			return Line{}, "", nil, apperr.Conflict("only a paid session without a receipt can get one")
+		guard := s.CanInvoice
+		if spec.Slot == docref.SlotReceipt {
+			guard = s.CanReceipt
+		}
+		if err := guard(); err != nil {
+			return Line{}, "", nil, err
 		}
 		return SessionLine(s, cfg, svc.Location), s.ClientID, s.Payment, nil
 	case SourcePackage:
@@ -445,11 +452,8 @@ func (svc Service) sourceLine(ctx context.Context, src Source, spec TypeSpec, cf
 		if !found {
 			return Line{}, "", nil, apperr.NotFound("package not found")
 		}
-		switch {
-		case p.Ref(spec.Slot) != nil:
-			return Line{}, "", nil, apperr.Conflict("this package already has a %s", strings.ToLower(spec.Title))
-		case !p.Billable(spec.Slot):
-			return Line{}, "", nil, apperr.Conflict("only a paid package can get a receipt")
+		if err := p.CanBill(spec.Slot); err != nil {
+			return Line{}, "", nil, err
 		}
 		return PackageLine(p, cfg, svc.Location), p.ClientID, p.Payment, nil
 	default:
@@ -484,15 +488,75 @@ func (svc Service) commit(ctx context.Context, w Write) error {
 	return conflictErr(svc.Repo.Commit(ctx, w))
 }
 
+// afterChange reconciles the clients whose items the document now covers
+// differently: the document's, and whoever its sources belong to now (the
+// calendar may have moved a session to another client since, which is
+// what drift reports).
 func (svc Service) afterChange(ctx context.Context, before, after Document) error {
-	if svc.AfterChange == nil || after.ClientID == "" {
+	if svc.AfterChange == nil {
 		return nil
 	}
-	ids := []string{after.ClientID}
-	if before.ClientID != "" && before.ClientID != after.ClientID {
-		ids = append(ids, before.ClientID)
+	var ids []string
+	add := func(id string) {
+		if id != "" && !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	add(after.ClientID)
+	add(before.ClientID)
+	for _, src := range slices.Concat(before.Sources, after.Sources) {
+		it, err := svc.sourceNow(ctx, src)
+		if err != nil {
+			return err
+		}
+		add(it.clientID)
+	}
+	if len(ids) == 0 {
+		return nil
 	}
 	return svc.AfterChange(ctx, ids...)
+}
+
+// sourceNow is what a document checks of an item it covers as it issues.
+type sourceNow struct {
+	clientID string
+	// feeCents is what the item itself costs now: the session's fee, the
+	// package's price.
+	feeCents *int64
+}
+
+// sourcesNow reads each source the draft still has a line for.
+func (svc Service) sourcesNow(ctx context.Context, doc Document) (map[Source]sourceNow, error) {
+	out := map[Source]sourceNow{}
+	if doc.Draft == nil {
+		return out, nil
+	}
+	for src := range sourceAmounts(*doc.Draft) {
+		it, err := svc.sourceNow(ctx, src)
+		if err != nil {
+			return nil, err
+		}
+		out[src] = it
+	}
+	return out, nil
+}
+
+// sourceNow reads one item a document covers; zero when it is gone.
+func (svc Service) sourceNow(ctx context.Context, src Source) (sourceNow, error) {
+	if src.Kind == SourcePackage {
+		p, found, err := svc.Packages.Get(ctx, src.ID)
+		if !found || err != nil {
+			return sourceNow{}, err
+		}
+		price := p.PriceCents
+		return sourceNow{clientID: p.ClientID, feeCents: &price}, nil
+	}
+	s, found, err := svc.Sessions.Get(ctx, src.ID)
+	if !found || err != nil {
+		return sourceNow{}, err
+	}
+	fee := s.DueCents()
+	return sourceNow{clientID: s.ClientID, feeCents: &fee}, nil
 }
 
 func conflictErr(err error) error {
@@ -517,18 +581,4 @@ func lineDate(c Content, src Source) string {
 		}
 	}
 	return ""
-}
-
-func linkPatch(src Source, slot docref.Slot, ref docref.Ref) (dynamo.Patch, error) {
-	if src.Kind == SourcePackage {
-		return packages.LinkPatch(src.ID, slot, ref)
-	}
-	return sessions.LinkPatch(src.ID, slot, ref)
-}
-
-func unlinkPatch(src Source, slot docref.Slot, documentID string) dynamo.Patch {
-	if src.Kind == SourcePackage {
-		return packages.UnlinkPatch(src.ID, slot, documentID)
-	}
-	return sessions.UnlinkPatch(src.ID, slot, documentID)
 }

@@ -18,7 +18,6 @@ import type { PageSection } from "~/components/shared/section-layout/section-lay
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { documentLabel, documentRoute } from "~/features/documents/documents.util";
-import { creditsLeft } from "~/features/packages/packages.util";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
@@ -338,8 +337,8 @@ function ClientPackages({ clientId }: { clientId: string }) {
             <span className="text-muted-foreground"> · bought {formatDate(pkg.purchasedAt)}</span>
           </span>
           <span className="flex items-center gap-3">
-            <span className={creditsLeft(pkg) > 0 ? undefined : "text-muted-foreground"}>
-              {creditsLeft(pkg)} of {pkg.sessions} left
+            <span className={pkg.creditsLeft > 0 ? undefined : "text-muted-foreground"}>
+              {pkg.creditsLeft} of {pkg.sessions} left
             </span>
             {pkg.invoice || pkg.receipt ? (
               (["invoice", "receipt"] as const).map((type) => {

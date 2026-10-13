@@ -1,5 +1,5 @@
 import { BanknoteIcon, FileTextIcon, PencilIcon, ReceiptIcon, Trash2Icon } from "lucide-react";
-import { canReceiptPackage, clientName, creditsLeft, isSettled, paymentText } from "./packages.util";
+import { clientName, paymentText } from "./packages.util";
 import type { ReactNode } from "react";
 import type { Package } from "./packages.types";
 import type { Client } from "~/features/clients/clients.types";
@@ -28,13 +28,13 @@ const helper = createDataTableColumnHelper<Package>();
 export function PackageCredits({ pkg }: { pkg: Package }) {
   return (
     <span>
-      {creditsLeft(pkg)} of {pkg.sessions} left
+      {pkg.creditsLeft} of {pkg.sessions} left
     </span>
   );
 }
 
 export function PackagePayment({ pkg }: { pkg: Package }) {
-  if (!isSettled(pkg)) return <Badge variant="attention">Unpaid</Badge>;
+  if (pkg.owedCents > 0) return <Badge variant="attention">Unpaid</Badge>;
   return <span className="text-sm text-muted-foreground">{paymentText(pkg)}</span>;
 }
 
@@ -89,24 +89,21 @@ export function PackageDocuments({
  */
 export function packageActions(pkg: Package, handlers: PackageHandlers): Array<RowAction> {
   const actions: Array<RowAction> = [];
-  if (!isSettled(pkg)) {
+  if (pkg.owedCents > 0 && pkg.can.pay.ok) {
     actions.push({ label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
-  if (!pkg.invoice) {
+  if (pkg.can.invoice.ok) {
     actions.push({ label: "New invoice", icon: FileTextIcon, onClick: () => handlers.onDocument("invoice", pkg) });
   }
-  if (canReceiptPackage(pkg)) {
+  if (pkg.can.receipt.ok) {
     actions.push({ label: "New receipt", icon: ReceiptIcon, onClick: () => handlers.onDocument("receipt", pkg) });
   }
-  if (pkg.payment && !pkg.receipt) {
+  if (pkg.payment && pkg.can.pay.ok) {
     actions.push({ label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
-  if (pkg.invoice || pkg.receipt) return actions;
-  if (pkg.source === "app") {
-    actions.push(
-      { label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) },
-      { label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => handlers.onDelete(pkg) },
-    );
+  if (pkg.can.edit.ok) actions.push({ label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) });
+  if (pkg.can.delete.ok) {
+    actions.push({ label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => handlers.onDelete(pkg) });
   }
   return actions;
 }
@@ -125,11 +122,11 @@ export function createPackageColumns(handlers: PackageHandlers) {
       meta: { search: (pkg: Package) => formatDate(pkg.purchasedAt) },
       cell: ({ getValue }) => formatDate(getValue()),
     }),
-    helper.accessor((pkg) => creditsLeft(pkg), {
+    helper.accessor((pkg) => pkg.creditsLeft, {
       id: "credits",
       header: "Credits",
       sortFn: "basic",
-      meta: { search: (pkg: Package) => `${creditsLeft(pkg)} of ${pkg.sessions} left` },
+      meta: { search: (pkg: Package) => `${pkg.creditsLeft} of ${pkg.sessions} left` },
       cell: ({ row }) => <PackageCredits pkg={row.original} />,
     }),
     helper.accessor("priceCents", {

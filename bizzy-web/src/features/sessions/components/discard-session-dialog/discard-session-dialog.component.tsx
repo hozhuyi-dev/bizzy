@@ -25,9 +25,7 @@ export function DiscardSessionDialog({
   onDiscarded?: () => void;
 }) {
   const discard = SessionsMutation.useDiscard();
-  const packages = PackagesQuery.useList(true);
-  const bought = session ? packages.data?.find((pkg) => pkg.id === session.eventId) : undefined;
-  const documents = session ? allSessionDocuments(session, bought) : [];
+  const verdict = session?.can.discard;
 
   return (
     <AlertDialog open={session !== null} onOpenChange={(open) => !open && onClose()}>
@@ -35,8 +33,8 @@ export function DiscardSessionDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Discard this session?</AlertDialogTitle>
           <AlertDialogDescription>
-            {documents.length > 0
-              ? "An invoice or receipt covers it. Cancel or discard those first."
+            {verdict && !verdict.ok
+              ? verdict.why
               : "Its notes and payment are deleted for good. It is already gone from your calendar."}
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -44,7 +42,7 @@ export function DiscardSessionDialog({
           <AlertDialogCancel>Keep it</AlertDialogCancel>
           <Button
             variant="destructive"
-            disabled={discard.isPending || documents.length > 0}
+            disabled={discard.isPending || !verdict?.ok}
             onClick={() =>
               session &&
               discard.mutate(session.eventId, {

@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -128,11 +129,11 @@ func TestPricing(t *testing.T) {
 		t.Errorf("near miss suggestion = %q", s.SuggestedClientID)
 	}
 	// Tentative under a name no client has: fixed before it is confirmed.
-	if s := m.SessionMap["e8"]; s.Reason != "" || s.NeedsFix() {
-		t.Errorf("e8 reason %q, needs fix %v, want neither", s.Reason, s.NeedsFix())
+	if s := m.SessionMap["e8"]; s.Reason != "" || needsFix(s) {
+		t.Errorf("e8 reason %q, needs fix %v, want neither", s.Reason, needsFix(s))
 	}
-	if s := m.SessionMap["e11"]; s.Reason != `No client is called "Jon Doe"` || !s.NeedsFix() {
-		t.Errorf("e11 reason %q, needs fix %v, want the name unmatched", s.Reason, s.NeedsFix())
+	if s := m.SessionMap["e11"]; s.Reason != `No client is called "Jon Doe"` || !needsFix(s) {
+		t.Errorf("e11 reason %q, needs fix %v, want the name unmatched", s.Reason, needsFix(s))
 	}
 	// The package is collected with the session that bought it, but due on
 	// its own: the session's own fee is a credit.
@@ -331,6 +332,39 @@ func TestPackageRemovedFromTitleIsUnlinked(t *testing.T) {
 	}
 }
 
+// Found by the simulation: an unlinked package she moved to another client
+// is taken back when the title buys it again, and that client's credits
+// and income must lose it too.
+func TestPackageLinkedBackLeavesTheClientItWasMovedTo(t *testing.T) {
+	m := memory.New()
+	m.ClientMap["jane"] = jane()
+	m.ClientMap["amy"] = clients.Client{ID: "amy", Name: "Amy Tan", Aliases: []string{"amy tan"}, DefaultFeeCents: cents(12000)}
+	sync(t, m, event("e1", 1, "Jane Smith 5x80"), event("e2", 3, "Amy Tan"))
+	gone(t, m, "e1", true)
+
+	// Unlinked, she moves it to Amy and records it paid.
+	p := m.PackageMap["e1"]
+	p.ClientID = "amy"
+	p.Payment = &money.Payment{Status: money.Paid, Method: money.MethodCash, AmountCents: 40000, PaidOn: "2026-10-02"}
+	m.PackageMap["e1"] = p
+	reconcile(t, m, Scope{ClientIDs: []string{"amy", "jane"}})
+	if s := m.SessionMap["e2"]; s.PackageID != "e1" || m.ClientMap["amy"].Activity["2026-10"].ReceivedCents != 40000 {
+		t.Fatalf("amy's session %s/%q, received %d: want on the moved package", s.Status, s.PackageID, m.ClientMap["amy"].Activity["2026-10"].ReceivedCents)
+	}
+
+	// The event is back: the package is Jane's again.
+	sync(t, m, event("e1", 1, "Jane Smith 5x80"))
+	if p := m.PackageMap["e1"]; p.ClientID != "jane" {
+		t.Fatalf("package = %+v, want back with jane", p)
+	}
+	if s := m.SessionMap["e2"]; s.PackageID != "" || s.Status != sessions.StatusPriced {
+		t.Errorf("amy's session %s/%q, want back on her default fee", s.Status, s.PackageID)
+	}
+	if got := m.ClientMap["amy"].Activity["2026-10"].ReceivedCents; got != 0 {
+		t.Errorf("amy received %d, want 0: the payment went with the package", got)
+	}
+}
+
 func TestUnpaidUnlinkedPackageIsCollectedOnItsOwn(t *testing.T) {
 	m := memory.New()
 	m.ClientMap["jane"] = jane()
@@ -412,5 +446,63 @@ func TestDriftAfterReceipt(t *testing.T) {
 	s := m.SessionMap["e1"]
 	if s.Drift == "" || s.Todo(today)[0] != sessions.ReasonFix {
 		t.Errorf("drift = %q todo:%v, want a drift on the to-do list", s.Drift, s.Todo(today))
+	}
+}
+
+func needsFix(s sessions.Session) bool {
+	return slices.Contains(s.Todo(s.End), sessions.ReasonFix)
+}
+
+// A package an issued invoice covers is moved to another client by its
+// event: the package says so and goes on the to-do list to fix, as a
+// session does.
+func TestPackageDriftsFromItsInvoice(t *testing.T) {
+	m := memory.New()
+	m.ClientMap["jane"] = jane()
+	m.ClientMap["amy"] = clients.Client{ID: "amy", Name: "Amy Tan", Aliases: []string{"amy tan"}}
+	sync(t, m, event("e1", 1, "Jane Smith 95 5x80"))
+
+	p := m.PackageMap["e1"]
+	p.Invoice = &docref.Ref{DocumentID: "d1", Number: "INV260001", AmountCents: cents(40000), Date: "2026-10-01", ClientID: "jane"}
+	m.PackageMap["e1"] = p
+	reconcile(t, m, Scope{ClientIDs: []string{"jane"}})
+	if p := m.PackageMap["e1"]; p.Drift != "" {
+		t.Fatalf("drift = %q before any change", p.Drift)
+	}
+
+	sync(t, m, event("e1", 1, "Amy Tan 95 5x80"))
+	p = m.PackageMap["e1"]
+	if p.ClientID != "amy" || p.Drift == "" || !p.Open() {
+		t.Fatalf("package = %+v, want amy's, drifted and open", p)
+	}
+	if got := p.Todo(today); len(got) != 1 || got[0] != packages.ReasonFix {
+		t.Errorf("todo = %v, want fix", got)
+	}
+}
+
+// The booking form's preview is the reconcile's own pricing.
+func TestPreview(t *testing.T) {
+	m := memory.New()
+	m.ClientMap["jane"] = jane()
+	m.PackageMap["p1"] = packages.Package{ID: "p1", ClientID: "jane", Sessions: 1, PriceCents: 8500, PurchasedAt: day(2), Source: packages.SourceApp}
+	sync(t, m, event("e1", 3, "Jane Smith"))
+	r := newReconciler(m)
+	ctx := context.Background()
+
+	// e1 holds the only credit, so another session pays the default fee.
+	got, err := r.Preview(ctx, PreviewInput{ClientID: "jane", Start: day(5)})
+	if err != nil || got.Kind != CoverDefault || *got.FeeCents != 9000 {
+		t.Errorf("new booking = %+v, %v; want the default fee", got, err)
+	}
+	// Moved before e1, it takes the credit from it.
+	if got, _ := r.Preview(ctx, PreviewInput{ClientID: "jane", Start: day(2).Add(time.Hour)}); got.Kind != CoverCredit || got.PackageID != "p1" {
+		t.Errorf("earlier booking = %+v, want p1's credit", got)
+	}
+	// Editing e1 keeps its own credit.
+	if got, _ := r.Preview(ctx, PreviewInput{ClientID: "jane", Start: day(4), EventID: "e1"}); got.Kind != CoverCredit {
+		t.Errorf("editing e1 = %+v, want its credit", got)
+	}
+	if got, _ := r.Preview(ctx, PreviewInput{ClientID: "jane", Start: day(4), BuysPackage: true}); got.Kind != CoverBought {
+		t.Errorf("buying = %+v, want bought", got)
 	}
 }

@@ -172,10 +172,24 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 	// to a client not loaded yet (an alias moved), so repeat until stable.
 	storedPackages := map[string]packages.Package{}
 	loaded := map[string]bool{}
+	owners := map[string]string{}
 	for {
 		for _, s := range current {
-			if e := Derive(s, env); e.Session.ClientID != "" {
+			e := Derive(s, env)
+			if e.Session.ClientID != "" {
 				affected[e.Session.ClientID] = true
+			}
+			// The package the title buys may be stored under another client
+			// (she moved it while it was unlinked): taking it back changes
+			// their credits and income too.
+			if p, ok := CalendarPackage(e); ok {
+				owner, err := r.packageOwner(ctx, p.ID, storedPackages, owners)
+				if err != nil {
+					return result, err
+				}
+				if owner != "" {
+					affected[owner] = true
+				}
 			}
 		}
 
@@ -265,6 +279,7 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 
 	// Write packages.
 	for id, p := range finalPackages {
+		p.Drift = PackageDrift(*p, r.Location)
 		if stored, ok := storedPackages[id]; ok && dynamo.Same(stored, *p) {
 			continue
 		}
@@ -290,6 +305,23 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 	}
 
 	return result, nil
+}
+
+// packageOwner is the client a package is stored under ("" when it isn't
+// stored), read once per run.
+func (r *Reconciler) packageOwner(ctx context.Context, id string, stored map[string]packages.Package, owners map[string]string) (string, error) {
+	if p, ok := stored[id]; ok {
+		return p.ClientID, nil
+	}
+	if owner, ok := owners[id]; ok {
+		return owner, nil
+	}
+	p, _, err := r.Packages.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	owners[id] = p.ClientID
+	return p.ClientID, nil
 }
 
 // keep adds a stored session to reconcile as it is, unless a change already

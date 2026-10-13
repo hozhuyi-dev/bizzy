@@ -37,7 +37,7 @@ type result struct {
 // Register serves data.reset, which deletes everything outside the keep
 // partitions and then syncs the whole calendar back in.
 func Register(r *router.Router, s store, sync Sync, keep ...string) {
-	r.Register("data.reset", func(ctx context.Context, _ json.RawMessage) (any, error) {
+	r.Mutation("data.reset", func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return Run(ctx, s, sync, keep...)
 	})
 }

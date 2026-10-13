@@ -41,11 +41,6 @@ func (s Status) Delivered() bool {
 	return s == StatusPriced || s == StatusPackage || s == StatusMissingFee
 }
 
-// NeedsFix reports whether the calendar entry itself needs fixing.
-func (s Status) NeedsFix() bool {
-	return s == StatusParseError || s == StatusUnmatched || s == StatusMissingFee
-}
-
 type FeeSource string
 
 const (
@@ -100,17 +95,21 @@ type Session struct {
 	// title says `10x85`). The package is paid on its own (see
 	// packages.Package.Payment), but she collects it with the session, so
 	// BoughtSettled mirrors whether it is.
-	BoughtCents    int64    `json:"boughtCents,omitempty" dynamodbav:"boughtCents,omitempty"`
-	BoughtSettled  bool     `json:"boughtSettled,omitempty" dynamodbav:"boughtSettled,omitempty"`
-	Location       Location `json:"location,omitempty" dynamodbav:"location,omitempty"`
-	LocationSource string   `json:"locationSource,omitempty" dynamodbav:"locationSource,omitempty"`
+	BoughtCents   int64 `json:"boughtCents,omitempty" dynamodbav:"boughtCents,omitempty"`
+	BoughtSettled bool  `json:"boughtSettled,omitempty" dynamodbav:"boughtSettled,omitempty"`
+	// BoughtDocumented mirrors whether a document covers that package,
+	// which locks the booking as the session's own documents do.
+	BoughtDocumented bool     `json:"boughtDocumented,omitempty" dynamodbav:"boughtDocumented,omitempty"`
+	Location         Location `json:"location,omitempty" dynamodbav:"location,omitempty"`
+	LocationSource   string   `json:"locationSource,omitempty" dynamodbav:"locationSource,omitempty"`
 	// Reason explains StatusUnmatched / StatusParseError / StatusMissingFee,
 	// or a tentative one under a name no client has.
 	Reason string `json:"reason,omitempty" dynamodbav:"reason,omitempty"`
 	// Drift explains how the calendar now disagrees with an issued document.
 	Drift string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
 	// Upcoming is set while it was still ahead at the last reconcile; the
-	// sync reconciles it again once it has happened.
+	// sync reconciles it again once it has happened. Never set on a removed
+	// session, which the sync no longer reads.
 	Upcoming bool `json:"upcoming,omitempty" dynamodbav:"upcoming,omitempty"`
 	// ConfirmedAt is when it stopped being tentative; for one never
 	// tentative, when it was first seen (at the latest its start).
@@ -172,84 +171,32 @@ func (s Session) DueCents() int64 {
 // FeeSettled reports whether the session's own fee needs nothing more:
 // paid, waived, or nothing due.
 func (s Session) FeeSettled() bool {
-	return s.Payment != nil || s.DueCents() == 0
+	return !feeOwed(s.State(s.End))
 }
 
 // BoughtDue reports whether the package bought in the session is still to
 // be paid.
 func (s Session) BoughtDue() bool {
-	return s.Status.Delivered() && s.BoughtCents > 0 && !s.BoughtSettled
+	return boughtOwed(s.State(s.End))
 }
 
 // Paid reports whether nothing more is owed on it: its fee and the package
 // bought in it.
 func (s Session) Paid() bool {
-	return s.FeeSettled() && !s.BoughtDue()
+	return !owes(s.State(s.End))
 }
 
-// NeedsFix reports whether it can't go ahead as the calendar has it: the
-// entry can't be read, matched or priced (a tentative one under an unknown
-// name included), or a document contradicts it.
-func (s Session) NeedsFix() bool {
-	return s.Status.NeedsFix() || s.Drift != "" || s.Status == StatusTentative && s.ClientID == ""
-}
-
-// Open reports whether the session belongs in the to-do index. A future
-// session is in it while unrecorded, and Todo leaves it out until it has
-// happened; the index is read only up to a few days ahead.
-func (s Session) Open() bool {
-	return s.RemovedAt != nil || s.Status == StatusTentative || s.NeedsFix() || !s.Recorded() || !s.Paid()
-}
-
-// Reason is why a session is on her to-do list.
-type Reason string
-
-const (
-	// ReasonDeleted: gone from the calendar with her data on it; restore or
-	// discard it.
-	ReasonDeleted Reason = "deleted"
-	// ReasonFix: the calendar entry can't be read, matched or priced, or a
-	// document contradicts it (see Session.NeedsFix).
-	ReasonFix Reason = "fix"
-	// ReasonConfirm: still tentative.
-	ReasonConfirm Reason = "confirm"
-	// ReasonRecord: happened, with no summary yet.
-	ReasonRecord Reason = "record"
-	// ReasonCollect: happened, and not paid.
-	ReasonCollect Reason = "collect"
-)
-
-// Todo is what she has left to do on the session as of now; nil when
-// nothing. Each earlier reason hides the later ones: there is no point
-// confirming a session no client matches, or recording one still tentative.
+// Todo is what is left to do on the session as of now, from its rule table
+// (rules.go); nil when nothing.
 func (s Session) Todo(now time.Time) []Reason {
-	switch {
-	case s.RemovedAt != nil:
-		return []Reason{ReasonDeleted}
-	case s.NeedsFix():
-		return []Reason{ReasonFix}
-	case s.Status == StatusTentative:
-		return []Reason{ReasonConfirm}
-	case s.End.After(now):
-		return nil
-	}
-	var reasons []Reason
-	if !s.Recorded() {
-		reasons = append(reasons, ReasonRecord)
-	}
-	if !s.Paid() {
-		reasons = append(reasons, ReasonCollect)
-	}
-	return reasons
+	return Rules.Reasons(s.State(now))
 }
 
-// CanInvoice reports whether an invoice can be made for the session's fee.
-func (s Session) CanInvoice() bool {
-	return s.RemovedAt == nil && s.Status == StatusPriced && s.FeeCents != nil && s.Invoice == nil
-}
-
-// CanReceipt reports whether a receipt can be made for the session's fee:
-// once it is paid.
-func (s Session) CanReceipt() bool {
-	return s.RemovedAt == nil && s.Status == StatusPriced && s.FeeCents != nil && s.Receipt == nil && s.Payment.IsPaid()
+// Open reports whether the session belongs in the to-do index: whether it
+// has something to do once it has happened. A future session is in it while
+// unrecorded, and Todo leaves it out until it has happened; the index is
+// read only up to a few days ahead.
+func (s Session) Open() bool {
+	st := s.State(s.End)
+	return len(Rules.Reasons(st)) > 0
 }

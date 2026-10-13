@@ -20,7 +20,7 @@ func TestRematchOnClientSave(t *testing.T) {
 		"jj": {EventID: "jj", Title: "! JJ: knee", Due: due, Name: "JJ", Summary: "knee", Problem: "No client has this name", Version: 1},
 		// Jane's, under a name she no longer has.
 		"old": {EventID: "old", Title: "! Janey: call", Due: due, Name: "Janey", Summary: "call", ClientID: "jane", Version: 1},
-		// Done: left to the next sync.
+		// Done before the alias existed: matched all the same.
 		"done": {EventID: "done", Title: "! JJ: older", Due: due, Name: "JJ", Problem: "No client has this name", DoneAt: &done, Version: 1},
 	}
 	all := []clients.Client{{ID: "jane", Name: "Jane Smith", Aliases: []string{"jane smith", "jj"}}}
@@ -34,8 +34,8 @@ func TestRematchOnClientSave(t *testing.T) {
 	if f := m.FollowUpMap["old"]; f.ClientID != "" || f.Problem == "" {
 		t.Errorf("old = {client %q problem %q}, want unmatched", f.ClientID, f.Problem)
 	}
-	if f := m.FollowUpMap["done"]; f.ClientID != "" || f.Version != 1 {
-		t.Errorf("done = {client %q version %d}, want untouched", f.ClientID, f.Version)
+	if f := m.FollowUpMap["done"]; f.ClientID != "jane" || f.DoneAt == nil {
+		t.Errorf("done = {client %q done %v}, want Jane's and still done", f.ClientID, f.DoneAt)
 	}
 
 	// Nothing more to change: nothing written.

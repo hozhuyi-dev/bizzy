@@ -36,9 +36,9 @@ type handler struct {
 	now       func() time.Time
 }
 
-func Register(r *router.Router, s Sessions, p Packages, f FollowUps, cfg Settings) {
-	h := handler{sessions: s, packages: p, followUps: f, settings: cfg, now: time.Now}
-	r.Register("todo.list", h.list)
+func Register(r *router.Router, s Sessions, p Packages, f FollowUps, cfg Settings, now func() time.Time) {
+	h := handler{sessions: s, packages: p, followUps: f, settings: cfg, now: now}
+	r.Query("todo.list", h.list)
 }
 
 func (h handler) list(ctx context.Context, _ json.RawMessage) (any, error) {

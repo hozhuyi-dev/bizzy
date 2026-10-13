@@ -10,7 +10,8 @@ import (
 	"bizzy-lambda/internal/router"
 )
 
-type store interface {
+// HandlerStore is what the handlers read and write.
+type HandlerStore interface {
 	Get(ctx context.Context, eventID string) (FollowUp, bool, error)
 	ListBySession(ctx context.Context, sessionID string) ([]FollowUp, error)
 	PageOpen(ctx context.Context, cursor string, limit int) (dynamo.Page[FollowUp], error)
@@ -20,18 +21,18 @@ type store interface {
 }
 
 type handler struct {
-	repo store
+	repo HandlerStore
 	now  func() time.Time
 }
 
 // Register serves follow-ups to the app. Making, editing and deleting one
 // goes through the calendar; see googlesync.RegisterFollowUpEditor.
-func Register(r *router.Router, repo store) {
-	h := handler{repo: repo, now: time.Now}
-	r.Register("followUps.list", router.Typed(h.list))
-	r.Register("followUps.listByClient", router.Typed(h.listByClient))
-	r.Register("followUps.listBySession", router.Typed(h.listBySession))
-	r.Register("followUps.setDone", router.Typed(h.setDone))
+func Register(r *router.Router, repo HandlerStore, now func() time.Time) {
+	h := handler{repo: repo, now: now}
+	r.Query("followUps.list", router.Typed(h.list))
+	r.Query("followUps.listByClient", router.Typed(h.listByClient))
+	r.Query("followUps.listBySession", router.Typed(h.listBySession))
+	r.Mutation("followUps.setDone", router.Typed(h.setDone))
 }
 
 // PageSize is how many follow-ups a list loads at a time.

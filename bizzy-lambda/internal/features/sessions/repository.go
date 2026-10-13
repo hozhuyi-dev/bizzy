@@ -75,11 +75,11 @@ func (r Repository) ListByStatus(ctx context.Context, status Status) ([]Session,
 }
 
 // ListWithoutClient returns the sessions matched to no client (unreadable,
-// unmatched, or tentative under an unknown name), for when a client gains
-// an alias.
+// unmatched, tentative under an unknown name, or removed while so), for
+// when a client gains an alias or a document stops covering one.
 func (r Repository) ListWithoutClient(ctx context.Context) ([]Session, error) {
 	var out []Session
-	for _, status := range []Status{StatusParseError, StatusUnmatched, StatusTentative} {
+	for _, status := range []Status{StatusParseError, StatusUnmatched, StatusTentative, StatusRemoved} {
 		found, err := r.ListByStatus(ctx, status)
 		if err != nil {
 			return nil, err

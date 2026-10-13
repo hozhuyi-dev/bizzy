@@ -43,9 +43,9 @@ type FollowUpDraft struct {
 const followUpMinutes = 15
 
 func RegisterFollowUpEditor(r *router.Router, e FollowUpEditor) {
-	r.Register("followUps.create", router.Typed(e.create))
-	r.Register("followUps.update", router.Typed(e.update))
-	r.Register("followUps.delete", router.Typed(e.delete))
+	r.Mutation("followUps.create", router.Typed(e.create))
+	r.Mutation("followUps.update", router.Typed(e.update))
+	r.Mutation("followUps.delete", router.Typed(e.delete))
 }
 
 func (e FollowUpEditor) create(ctx context.Context, d FollowUpDraft) (any, error) {

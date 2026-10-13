@@ -6,8 +6,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"bizzy-lambda/internal/features/packages"
+	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/schema"
+	"bizzy-lambda/internal/shared/docref"
 )
 
 // Keys: see schema.DocumentKeys and the DOCREV, COUNTER and DOCSHARE rows
@@ -131,8 +134,9 @@ type Write struct {
 	Counter *CounterBump
 	// Revision is stored when the document is issued.
 	Revision *Revision
-	// Links are the patches to the sessions and packages it covers.
-	Links []dynamo.Patch
+	// Links hold or release the slots of the sessions and packages it
+	// covers.
+	Links []Link
 	// Share points a new share token at the document, retiring the old one.
 	Share *ShareChange
 }
@@ -201,9 +205,48 @@ func (r Repository) Commit(ctx context.Context, w Write) error {
 		}
 	}
 
-	for i := range w.Links {
-		items = append(items, dynamo.TransactItem{Patch: &w.Links[i]})
+	for _, l := range w.Links {
+		patch, err := l.patch()
+		if err != nil {
+			return err
+		}
+		items = append(items, dynamo.TransactItem{Patch: &patch})
 	}
 
 	return r.store.Transact(ctx, items)
+}
+
+// Link points the slot of a session or package at a document, or releases
+// it. Holding only applies while the slot is free or already this
+// document's, so two documents of a type can never cover one item;
+// releasing only applies while the slot is still this document's.
+type Link struct {
+	Source     Source
+	Slot       docref.Slot
+	DocumentID string
+	// Ref is what the slot now holds; nil releases it.
+	Ref *docref.Ref
+}
+
+// Hold points a source's slot at the document ref names.
+func Hold(src Source, slot docref.Slot, ref docref.Ref) Link {
+	return Link{Source: src, Slot: slot, DocumentID: ref.DocumentID, Ref: &ref}
+}
+
+// Release frees a source's slot from a document.
+func Release(src Source, slot docref.Slot, documentID string) Link {
+	return Link{Source: src, Slot: slot, DocumentID: documentID}
+}
+
+func (l Link) patch() (dynamo.Patch, error) {
+	switch {
+	case l.Ref != nil && l.Source.Kind == SourcePackage:
+		return packages.LinkPatch(l.Source.ID, l.Slot, *l.Ref)
+	case l.Ref != nil:
+		return sessions.LinkPatch(l.Source.ID, l.Slot, *l.Ref)
+	case l.Source.Kind == SourcePackage:
+		return packages.UnlinkPatch(l.Source.ID, l.Slot, l.DocumentID), nil
+	default:
+		return sessions.UnlinkPatch(l.Source.ID, l.Slot, l.DocumentID), nil
+	}
 }

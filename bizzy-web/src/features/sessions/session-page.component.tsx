@@ -13,7 +13,7 @@ import { paymentStep } from "./components/payment-step/payment-step.component";
 import { PipelineLayout } from "./components/pipeline-layout/pipeline-layout.component";
 import { useRecordDraft } from "./components/record-editor/record-editor.hook";
 import { recordStep } from "./components/record-step/record-step.component";
-import { allSessionDocuments, needsFix } from "./session-stage.util";
+import { allSessionDocuments } from "./session-stage.util";
 import { newSessionDraft } from "./sessions.form";
 import { useSessionMessageActions } from "./sessions.hook";
 import { SessionsMutation } from "./sessions.mutation";
@@ -132,7 +132,8 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
   const bought = boughtIn(session.eventId, packages.data?.find((pkg) => pkg.id === session.eventId));
   const covering = session.packageId ? packages.data?.find((pkg) => pkg.id === session.packageId) : undefined;
   const documents = allSessionDocuments(session, bought);
-  const locked = documents.length > 0;
+  // A document fixes what it covers: cancel it to change the booking.
+  const locked = !session.can.editBooking.ok;
   const next = nextTodoSession(todo.data, session.eventId);
   const leave = () => void navigate(returnTo === "home" ? { to: "/" } : { to: "/sessions" });
 
@@ -150,7 +151,7 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
     followUpsStep(session, client, stored.draft, setFollowUp, setNextVisit),
   ];
 
-  const problem = session.drift ?? (needsFix(session) ? session.reason : undefined);
+  const { problem } = session;
 
   return (
     <>

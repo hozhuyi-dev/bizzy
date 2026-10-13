@@ -19,6 +19,10 @@ type Ref struct {
 	Revision int    `json:"revision,omitempty" dynamodbav:"revision,omitempty"`
 	// AmountCents is what the document says the item comes to.
 	AmountCents *int64 `json:"amountCents,omitempty" dynamodbav:"amountCents,omitempty"`
+	// FeeCents is what the item itself cost when the document was issued
+	// (the session's fee, the package's price), which the document's line
+	// may not say (a discount). The sync flags a later change as drift.
+	FeeCents *int64 `json:"feeCents,omitempty" dynamodbav:"feeCents,omitempty"`
 	// Date (YYYY-MM-DD) and ClientID are what the document says, so the
 	// sync can flag a calendar change that contradicts it.
 	Date     string `json:"date,omitempty" dynamodbav:"date,omitempty"`

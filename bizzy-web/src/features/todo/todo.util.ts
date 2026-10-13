@@ -2,7 +2,6 @@ import type { TodoFilter, TodoGroup, TodoItem } from "./todo.types";
 import type { Package } from "~/features/packages/packages.types";
 import type { Payable } from "~/features/payments/payments.types";
 import type { Session, TodoReason } from "~/features/sessions/sessions.types";
-import { dueCents, isBoughtDue, isFeeSettled } from "~/features/sessions/session-stage.util";
 import { addDays, startOfDay } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
@@ -49,11 +48,11 @@ export function nextTodoSession(items: ReadonlyArray<TodoItem> | undefined, curr
 /** What to collect on a session: its fee and the package it bought, each still due. */
 export function sessionPayables(session: Session): Array<Payable> {
   const payables: Array<Payable> = [];
-  if (!isFeeSettled(session)) {
-    payables.push({ item: { kind: "session", id: session.eventId }, label: "Session fee", dueCents: dueCents(session) });
+  if (session.owedCents > session.boughtOwedCents) {
+    payables.push({ item: { kind: "session", id: session.eventId }, label: "Session fee", dueCents: session.dueCents });
   }
-  if (isBoughtDue(session)) {
-    payables.push({ item: { kind: "package", id: session.eventId }, label: "Package", dueCents: session.boughtCents ?? 0 });
+  if (session.boughtOwedCents > 0) {
+    payables.push({ item: { kind: "package", id: session.eventId }, label: "Package", dueCents: session.boughtOwedCents });
   }
   return payables;
 }

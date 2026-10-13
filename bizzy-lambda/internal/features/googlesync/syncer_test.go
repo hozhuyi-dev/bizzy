@@ -11,37 +11,18 @@ import (
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/shared/docref"
+	"bizzy-lambda/internal/testutil/fakecal"
 	"bizzy-lambda/internal/testutil/memory"
 )
 
 var now = time.Date(2026, 10, 11, 13, 0, 0, 0, time.UTC)
-
-type fakeCalendar struct {
-	events []calendar.Event
-	// trash holds deleted events, which Restore brings back.
-	trash []calendar.Event
-}
-
-func (f *fakeCalendar) Events(_ context.Context, from, to time.Time) ([]calendar.Event, error) {
-	var out []calendar.Event
-	for _, e := range f.events {
-		start := e.Start
-		if e.AllDay {
-			start, _ = time.Parse(time.DateOnly, e.Date)
-		}
-		if !start.Before(from) && start.Before(to) {
-			out = append(out, e)
-		}
-	}
-	return out, nil
-}
 
 func ev(id string, daysAgo int, title string) calendar.Event {
 	start := now.Add(-time.Duration(daysAgo) * 24 * time.Hour)
 	return calendar.Event{ID: id, Title: title, Start: start, End: start.Add(time.Hour)}
 }
 
-func newSyncer(m *memory.Store, cal *fakeCalendar) Syncer {
+func newSyncer(m *memory.Store, cal *fakecal.Calendar) Syncer {
 	return Syncer{
 		Events:    cal,
 		Clients:   m.Clients(),
@@ -61,16 +42,16 @@ func newReconciler(m *memory.Store) *billing.Reconciler {
 	}
 }
 
-func setup() (*memory.Store, *fakeCalendar) {
+func setup() (*memory.Store, *fakecal.Calendar) {
 	m := memory.New()
 	fee := int64(9000)
 	m.ClientMap["jane"] = clients.Client{ID: "jane", Name: "Jane Smith", Aliases: []string{"jane smith"}, DefaultFeeCents: &fee}
-	return m, &fakeCalendar{}
+	return m, &fakecal.Calendar{}
 }
 
 func TestRunImportsAndIsIdempotent(t *testing.T) {
 	m, cal := setup()
-	cal.events = []calendar.Event{
+	cal.Live = []calendar.Event{
 		ev("e1", 3, "Jane Smith"),
 		ev("e2", 2, "Bob Lee 120"),
 		ev("e3", 1, "Pick up kids"),
@@ -111,7 +92,7 @@ func TestRunImportsAndIsIdempotent(t *testing.T) {
 
 func TestRunRemovesDeletedEvents(t *testing.T) {
 	m, cal := setup()
-	cal.events = []calendar.Event{ev("e1", 3, "Jane Smith"), ev("e2", 2, "Jane Smith")}
+	cal.Live = []calendar.Event{ev("e1", 3, "Jane Smith"), ev("e2", 2, "Jane Smith")}
 	s := newSyncer(m, cal)
 	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
@@ -120,7 +101,7 @@ func TestRunRemovesDeletedEvents(t *testing.T) {
 	// e1 deleted; e2 cancelled.
 	e2 := ev("e2", 2, "Jane Smith")
 	e2.Cancelled = true
-	cal.events = []calendar.Event{e2}
+	cal.Live = []calendar.Event{e2}
 	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +112,7 @@ func TestRunRemovesDeletedEvents(t *testing.T) {
 
 func TestRunKeepsReceiptedSessionAsRemoved(t *testing.T) {
 	m, cal := setup()
-	cal.events = []calendar.Event{ev("e1", 3, "Jane Smith")}
+	cal.Live = []calendar.Event{ev("e1", 3, "Jane Smith")}
 	s := newSyncer(m, cal)
 	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
@@ -140,7 +121,7 @@ func TestRunKeepsReceiptedSessionAsRemoved(t *testing.T) {
 	stored.Receipt = &docref.Ref{DocumentID: "d1", Number: "RCP260001", ClientID: "jane"}
 	m.SessionMap["e1"] = stored
 
-	cal.events = nil
+	cal.Live = nil
 	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +136,7 @@ func TestRunRecordsNextBooking(t *testing.T) {
 	m, cal := setup()
 	soon := ev("f1", -5, "Jane Smith")
 	later := ev("f2", -9, "Jane Smith")
-	cal.events = []calendar.Event{later, soon}
+	cal.Live = []calendar.Event{later, soon}
 
 	if _, err := newSyncer(m, cal).Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
@@ -170,7 +151,7 @@ func TestRunRecordsNextBooking(t *testing.T) {
 
 func TestRunReconcilesSessionsOnceTheyHappen(t *testing.T) {
 	m, cal := setup()
-	cal.events = []calendar.Event{ev("f1", -1, "Jane Smith")}
+	cal.Live = []calendar.Event{ev("f1", -1, "Jane Smith")}
 	s := newSyncer(m, cal)
 	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
@@ -202,7 +183,7 @@ func TestRunSyncsFollowUps(t *testing.T) {
 	timed.Description = "Ask about the left knee too"
 	timed.Private = map[string]string{calendar.PropSessionID: "e9"}
 	allDay := calendar.Event{ID: "u2", Title: "! Bob: call", AllDay: true, Date: now.AddDate(0, 0, 3).Format(time.DateOnly)}
-	cal.events = []calendar.Event{timed, allDay, ev("e1", 1, "Jane Smith")}
+	cal.Live = []calendar.Event{timed, allDay, ev("e1", 1, "Jane Smith")}
 	s := newSyncer(m, cal)
 
 	summary, err := s.Run(context.Background(), Range{})
@@ -232,7 +213,7 @@ func TestRunSyncsFollowUps(t *testing.T) {
 	}
 
 	// Deleted in the calendar.
-	cal.events = cal.events[1:]
+	cal.Live = cal.Live[1:]
 	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +230,7 @@ func TestRunRefreshesContactCopies(t *testing.T) {
 	m, _ := setup()
 	m.ClientMap["jane"] = withContact(m.ClientMap["jane"], clients.Contact{ResourceName: "people/jane", ETag: "j1", Phone: "012"})
 	m.ClientMap["bob"] = withContact(clients.Client{ID: "bob", Name: "Bob", Aliases: []string{"bob"}}, clients.Contact{ResourceName: "people/bob", ETag: "b1", Phone: "019"})
-	s := newSyncer(m, &fakeCalendar{})
+	s := newSyncer(m, &fakecal.Calendar{})
 	s.Contacts = fakeContacts{{ResourceName: "people/jane", ETag: "j2", Phone: "013", DisplayName: "Jane"}}
 
 	summary, err := s.Run(context.Background(), Range{})
@@ -282,7 +263,7 @@ func withContact(c clients.Client, contact clients.Contact) clients.Client {
 
 func TestRunOnlyTouchesItsRange(t *testing.T) {
 	m, cal := setup()
-	cal.events = []calendar.Event{ev("old", 90, "Jane Smith"), ev("new", 3, "Jane Smith")}
+	cal.Live = []calendar.Event{ev("old", 90, "Jane Smith"), ev("new", 3, "Jane Smith")}
 	s := newSyncer(m, cal)
 	if _, err := s.Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
@@ -290,7 +271,7 @@ func TestRunOnlyTouchesItsRange(t *testing.T) {
 
 	// Both deleted in the calendar; a run over the last 60 days only
 	// removes the recent one.
-	cal.events = nil
+	cal.Live = nil
 	if _, err := s.Run(context.Background(), Range{From: now.Add(-SyncWindow)}); err != nil {
 		t.Fatal(err)
 	}

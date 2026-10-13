@@ -11,7 +11,8 @@ import (
 	"bizzy-lambda/internal/shared/money"
 )
 
-type store interface {
+// HandlerStore is what the handlers read and write.
+type HandlerStore interface {
 	Get(ctx context.Context, id string) (Package, bool, error)
 	List(ctx context.Context) ([]Package, error)
 	ListOpen(ctx context.Context) ([]Package, error)
@@ -24,17 +25,17 @@ type store interface {
 type AfterChange func(ctx context.Context, clientIDs ...string) error
 
 type handler struct {
-	repo        store
+	repo        HandlerStore
 	afterChange AfterChange
 	now         func() time.Time
 	loc         *time.Location
 }
 
-func Register(r *router.Router, repo store, afterChange AfterChange, loc *time.Location) {
-	h := handler{repo: repo, afterChange: afterChange, now: time.Now, loc: loc}
-	r.Register("packages.list", router.Typed(h.list))
-	r.Register("packages.save", router.Typed(h.save))
-	r.Register("packages.delete", router.Typed(h.delete))
+func Register(r *router.Router, repo HandlerStore, afterChange AfterChange, loc *time.Location, now func() time.Time) {
+	h := handler{repo: repo, afterChange: afterChange, now: now, loc: loc}
+	r.Query("packages.list", router.Typed(h.list))
+	r.Mutation("packages.save", router.Typed(h.save))
+	r.Mutation("packages.delete", router.Typed(h.delete))
 }
 
 type listInput struct {
@@ -43,10 +44,12 @@ type listInput struct {
 }
 
 func (h handler) list(ctx context.Context, in listInput) (any, error) {
+	list := h.repo.ListOpen
 	if in.All {
-		return h.repo.List(ctx)
+		list = h.repo.List
 	}
-	return h.repo.ListOpen(ctx)
+	all, err := list(ctx)
+	return Views(all, h.now()), err
 }
 
 type saveInput struct {
@@ -85,11 +88,8 @@ func (h handler) save(ctx context.Context, in saveInput) (any, error) {
 		if !found {
 			return nil, apperr.NotFound("package not found")
 		}
-		if existing.Source != SourceApp {
-			return nil, apperr.Conflict("this package comes from the calendar; change it there")
-		}
-		if existing.HasDocuments() {
-			return nil, apperr.Conflict("cancel the documents for this package first")
+		if err := existing.CanEdit(); err != nil {
+			return nil, err
 		}
 		p, previousClient = existing, existing.ClientID
 	} else {
@@ -102,7 +102,7 @@ func (h handler) save(ctx context.Context, in saveInput) (any, error) {
 	var payment *money.Payment
 	if in.Paid != nil && p.Payment == nil {
 		var err error
-		if payment, err = money.New(*in.Paid, p.PriceCents, h.now(), h.loc); err != nil {
+		if payment, err = money.New(*in.Paid, p.PriceCents, p.PriceCents, h.now(), h.loc); err != nil {
 			return nil, err
 		}
 	}
@@ -119,7 +119,13 @@ func (h handler) save(ctx context.Context, in saveInput) (any, error) {
 	if err := h.afterChange(ctx, p.ClientID, previousClient); err != nil {
 		return nil, err
 	}
-	return p, nil
+	// The reconcile may have used its credits.
+	if saved, found, err := h.repo.Get(ctx, p.ID); err != nil {
+		return nil, err
+	} else if found {
+		p = saved
+	}
+	return p.View(h.now()), nil
 }
 
 type deleteInput struct {
@@ -134,8 +140,8 @@ func (h handler) delete(ctx context.Context, in deleteInput) (any, error) {
 	if !found {
 		return nil, apperr.NotFound("package not found")
 	}
-	if existing.Source != SourceApp {
-		return nil, apperr.Conflict("this package comes from the calendar; remove it there")
+	if err := existing.CanDelete(); err != nil {
+		return nil, err
 	}
 	deleted, err := h.repo.Delete(ctx, in.ID)
 	if err != nil {

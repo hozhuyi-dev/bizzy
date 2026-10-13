@@ -119,19 +119,19 @@ func TestTheFeeAndThePackageAreDueSeparately(t *testing.T) {
 
 func TestDocumentsNeedTheirStage(t *testing.T) {
 	s := happened()
-	if !s.CanInvoice() || s.CanReceipt() {
+	if s.CanInvoice() != nil || s.CanReceipt() == nil {
 		t.Errorf("unpaid: invoice %v receipt %v, want invoice only", s.CanInvoice(), s.CanReceipt())
 	}
 	s.Payment = &money.Payment{Status: money.Paid, Method: money.MethodTNG, AmountCents: 9500}
-	if !s.CanReceipt() {
+	if s.CanReceipt() != nil {
 		t.Error("a paid session can get a receipt")
 	}
 	s.Invoice = &docref.Ref{DocumentID: "d"}
-	if s.CanInvoice() {
+	if s.CanInvoice() == nil {
 		t.Error("one invoice per session")
 	}
 	s.Payment = &money.Payment{Status: money.Waived}
-	if s.CanReceipt() {
+	if s.CanReceipt() == nil {
 		t.Error("a waived session has nothing to receipt")
 	}
 }

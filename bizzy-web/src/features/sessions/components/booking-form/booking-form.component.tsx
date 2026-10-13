@@ -1,11 +1,11 @@
-import { useForm } from "@tanstack/react-form";
-import { paymentCover } from "../../session-payment.util";
+import { useForm, useStore } from "@tanstack/react-form";
 import { toBookingValues, toSessionDraft } from "../../sessions.form";
 import type { BookingValues, PriceIs } from "../../sessions.form";
 import type { Session, SessionDraft } from "../../sessions.types";
+import type { Cover, PreviewInput } from "~/features/billing/billing.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { creditsLeft } from "~/features/packages/packages.util";
+import { BillingQuery } from "~/features/billing/billing.query";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
@@ -59,27 +59,25 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
     .map((client) => ({ value: client.id, label: client.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const coverOf = (values: BookingValues) => {
-    const draft = toSessionDraft(values);
-    return paymentCover({
-      client: clientsById.get(values.clientId),
-      start: new Date(draft.start),
-      packages: packages.data ?? [],
-      boughtHere: draft.package !== undefined,
-      session,
-    });
-  };
+  // What would pay for it, as the reconcile will price it once saved.
+  const previewInput = useStore(form.store, (state) => previewOf(state.values, session));
+  const preview = BillingQuery.usePreview(previewInput);
+  const cover: Cover | undefined = previewInput ? preview.data : undefined;
 
   const describeCover = (values: BookingValues): string => {
     const name = clientsById.get(values.clientId)?.name;
     if (!name) return "Choose a client to see what covers it.";
+    if (!cover) return "Working out what covers it…";
     const prefix = values.fee.trim() ? "Takes priority over" : "Leave blank to use";
-    const cover = coverOf(values);
     switch (cover.kind) {
       case "bought":
         return `${prefix} the package bought in this session.`;
-      case "credit":
-        return `${prefix} ${name}'s package bought ${formatDate(cover.pkg.purchasedAt)}: ${creditsLeft(cover.pkg)} of ${cover.pkg.sessions} credits left.`;
+      case "credit": {
+        const { packageId } = cover;
+        const pkg = packages.data?.find((p) => p.id === packageId);
+        if (!pkg) return `${prefix} a credit of one of ${name}'s packages.`;
+        return `${prefix} ${name}'s package bought ${formatDate(pkg.purchasedAt)}: ${pkg.creditsLeft} of ${pkg.sessions} credits left.`;
+      }
       case "default":
         return `${prefix} ${name}'s default fee of ${formatCents(cover.feeCents)}; no package credits left.`;
       case "none":
@@ -230,7 +228,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
             onChangeListenTo: ["clientId", "date", "time", "packageSessions", "packagePrice"],
             onChange: ({ value }) => {
               if (value.trim()) return parseCents(value) !== null ? undefined : "Like 95 or 95.50";
-              return coverOf(form.state.values).kind === "none"
+              return cover?.kind === "none"
                 ? "Enter the fee: no package credit or default fee covers it"
                 : undefined;
             },
@@ -370,4 +368,11 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
       )}
     </form>
   );
+}
+
+/** The booking to price, once it names a client and a time. */
+function previewOf(values: BookingValues, session: Session | undefined): PreviewInput | undefined {
+  if (!values.clientId || !values.date || !values.time) return undefined;
+  const draft = toSessionDraft(values);
+  return { clientId: draft.clientId, start: draft.start, eventId: session?.eventId, buysPackage: draft.package !== undefined };
 }

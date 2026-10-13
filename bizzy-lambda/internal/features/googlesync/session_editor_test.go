@@ -3,8 +3,6 @@ package googlesync
 import (
 	"context"
 	"errors"
-	"fmt"
-	"slices"
 	"testing"
 	"time"
 
@@ -14,82 +12,11 @@ import (
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/shared/docref"
+	"bizzy-lambda/internal/testutil/fakecal"
 	"bizzy-lambda/internal/testutil/memory"
 )
 
-// The fake calendar's write side. Every write bumps the event's etag, and a
-// write against an older one is refused, as Google does.
-
-func (f *fakeCalendar) find(id string) int {
-	return slices.IndexFunc(f.events, func(e calendar.Event) bool { return e.ID == id })
-}
-
-func (f *fakeCalendar) Get(_ context.Context, id string) (calendar.Event, error) {
-	i := f.find(id)
-	if i < 0 {
-		return calendar.Event{}, calendar.ErrGone
-	}
-	return f.events[i], nil
-}
-
-// write applies an input the way a patch does.
-func write(e *calendar.Event, in calendar.EventInput) {
-	e.Title, e.ColorID = in.Title, in.ColorID
-	e.Start, e.End, e.Date, e.AllDay = in.Start, in.End, in.Date, in.Date != ""
-	if in.Description != nil {
-		e.Description = *in.Description
-	}
-	if in.Private != nil {
-		e.Private = in.Private
-	}
-}
-
-func (f *fakeCalendar) Insert(_ context.Context, in calendar.EventInput) (calendar.Event, error) {
-	e := calendar.Event{ID: fmt.Sprintf("new%d", len(f.events)+len(f.trash)+1), ETag: "1"}
-	write(&e, in)
-	f.events = append(f.events, e)
-	return e, nil
-}
-
-func (f *fakeCalendar) Restore(_ context.Context, id string) (calendar.Event, error) {
-	i := slices.IndexFunc(f.trash, func(e calendar.Event) bool { return e.ID == id })
-	if i < 0 {
-		return calendar.Event{}, calendar.ErrGone
-	}
-	e := f.trash[i]
-	f.trash = slices.Delete(f.trash, i, i+1)
-	f.events = append(f.events, e)
-	return e, nil
-}
-
-func (f *fakeCalendar) Update(_ context.Context, id, etag string, in calendar.EventInput) (calendar.Event, error) {
-	i := f.find(id)
-	if i < 0 {
-		return calendar.Event{}, calendar.ErrGone
-	}
-	e := &f.events[i]
-	if e.ETag != etag {
-		return calendar.Event{}, calendar.ErrChanged
-	}
-	write(e, in)
-	e.ETag += "+"
-	return *e, nil
-}
-
-func (f *fakeCalendar) Delete(_ context.Context, id, etag string) error {
-	i := f.find(id)
-	if i < 0 {
-		return calendar.ErrGone
-	}
-	if f.events[i].ETag != etag {
-		return calendar.ErrChanged
-	}
-	f.trash = append(f.trash, f.events[i])
-	f.events = slices.Delete(f.events, i, i+1)
-	return nil
-}
-
-func newEditor(m *memory.Store, cal *fakeCalendar) Editor {
+func newEditor(m *memory.Store, cal *fakecal.Calendar) Editor {
 	return Editor{
 		Calendar: func(context.Context) (Calendar, error) { return cal, nil },
 		Clients:  m.Clients(),
@@ -101,11 +28,11 @@ func newEditor(m *memory.Store, cal *fakeCalendar) Editor {
 
 // synced puts events in the calendar and runs the sync, as if she had
 // written them in Google.
-func synced(t *testing.T, m *memory.Store, cal *fakeCalendar, events ...calendar.Event) {
+func synced(t *testing.T, m *memory.Store, cal *fakecal.Calendar, events ...calendar.Event) {
 	t.Helper()
 	for _, e := range events {
 		e.ETag = "1"
-		cal.events = append(cal.events, e)
+		cal.Live = append(cal.Live, e)
 	}
 	if _, err := newSyncer(m, cal).Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
@@ -113,7 +40,7 @@ func synced(t *testing.T, m *memory.Store, cal *fakeCalendar, events ...calendar
 }
 
 // quiet checks that a sync after the edit has nothing left to do.
-func quiet(t *testing.T, m *memory.Store, cal *fakeCalendar) {
+func quiet(t *testing.T, m *memory.Store, cal *fakecal.Calendar) {
 	t.Helper()
 	m.Writes = 0
 	if _, err := newSyncer(m, cal).Run(context.Background(), Range{}); err != nil {
@@ -136,10 +63,10 @@ func TestCreatePastSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(cal.events) != 1 {
-		t.Fatalf("calendar = %+v, want one event", cal.events)
+	if len(cal.Live) != 1 {
+		t.Fatalf("calendar = %+v, want one event", cal.Live)
 	}
-	event := cal.events[0]
+	event := cal.Live[0]
 	if event.Title != "Jane Smith 95.50" || !event.End.Equal(start.Add(time.Hour)) || event.ColorID != "" {
 		t.Errorf("event = %+v", event)
 	}
@@ -159,11 +86,11 @@ func TestCreateFutureSessionIsABooking(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if s := m.SessionMap[cal.events[0].ID]; !s.Upcoming || s.Status != sessions.StatusTentative {
+	if s := m.SessionMap[cal.Live[0].ID]; !s.Upcoming || s.Status != sessions.StatusTentative {
 		t.Errorf("session = %+v, want an upcoming tentative booking", s)
 	}
-	if cal.events[0].Title != "? Jane Smith" {
-		t.Errorf("title = %q", cal.events[0].Title)
+	if cal.Live[0].Title != "? Jane Smith" {
+		t.Errorf("title = %q", cal.Live[0].Title)
 	}
 	if got := m.ClientMap["jane"].NextBookedAt; got == nil || !got.Equal(start) {
 		t.Errorf("NextBookedAt = %v, want %v", got, start)
@@ -174,8 +101,8 @@ func TestCreateRefusesUnknownClient(t *testing.T) {
 	m, cal := setup()
 	_, err := newEditor(m, cal).create(context.Background(), Draft{ClientID: "nobody", Start: now})
 	var appErr *apperr.Error
-	if !errors.As(err, &appErr) || appErr.Code != apperr.CodeNotFound || len(cal.events) != 0 {
-		t.Errorf("err = %v, events = %v", err, cal.events)
+	if !errors.As(err, &appErr) || appErr.Code != apperr.CodeNotFound || len(cal.Live) != 0 {
+		t.Errorf("err = %v, events = %v", err, cal.Live)
 	}
 }
 
@@ -204,7 +131,7 @@ func TestUpdateConfirmsAndKeepsHerName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := cal.events[0]; got.Title != "Janey 95" || got.End.Sub(got.Start) != 45*time.Minute {
+	if got := cal.Live[0]; got.Title != "Janey 95" || got.End.Sub(got.Start) != 45*time.Minute {
 		t.Errorf("event = %+v", got)
 	}
 	if got := m.SessionMap["e1"].Status; got != sessions.StatusPriced {
@@ -224,7 +151,7 @@ func TestUpdateFixesAnUnreadableTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := cal.events[0].Title; got != "Jane Smith 100" {
+	if got := cal.Live[0].Title; got != "Jane Smith 100" {
 		t.Errorf("title = %q", got)
 	}
 	if got := m.SessionMap["e1"]; got.Status != sessions.StatusPriced || got.ClientID != "jane" {
@@ -261,7 +188,7 @@ func TestDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if cal.find("e1") >= 0 {
+	if cal.Find("e1") >= 0 {
 		t.Error("event still in the calendar")
 	}
 	if _, ok := m.SessionMap["e1"]; ok {
@@ -276,7 +203,7 @@ func TestDelete(t *testing.T) {
 func TestDeleteAlreadyGoneFromCalendar(t *testing.T) {
 	m, cal := setup()
 	synced(t, m, cal, ev("e1", 1, "Jane Smith"))
-	cal.events = nil
+	cal.Live = nil
 
 	if _, err := newEditor(m, cal).delete(context.Background(), eventInput{EventID: "e1"}); err != nil {
 		t.Fatal(err)
@@ -291,13 +218,13 @@ func TestDeleteAlreadyGoneFromCalendar(t *testing.T) {
 func TestEditRefusedWhenCalendarChanged(t *testing.T) {
 	m, cal := setup()
 	synced(t, m, cal, ev("e1", 1, "? Jane Smith"))
-	cal.events[0].Title, cal.events[0].ETag = "Jane Smith 120", "2"
+	cal.Live[0].Title, cal.Live[0].ETag = "Jane Smith 120", "2"
 
 	_, err := newEditor(m, cal).delete(context.Background(), eventInput{EventID: "e1"})
 	if !errors.Is(err, calendar.ErrChanged) {
 		t.Fatalf("err = %v, want ErrChanged", err)
 	}
-	if cal.find("e1") < 0 {
+	if cal.Find("e1") < 0 {
 		t.Error("event deleted")
 	}
 	if got := m.SessionMap["e1"]; got.Title != "Jane Smith 120" || got.Status != sessions.StatusPriced {
@@ -314,7 +241,7 @@ func TestEditRefusedWithReceipt(t *testing.T) {
 
 	_, err := newEditor(m, cal).delete(context.Background(), eventInput{EventID: "e1"})
 	var appErr *apperr.Error
-	if !errors.As(err, &appErr) || appErr.Code != apperr.CodeConflict || cal.find("e1") < 0 {
+	if !errors.As(err, &appErr) || appErr.Code != apperr.CodeConflict || cal.Find("e1") < 0 {
 		t.Errorf("err = %v, want a conflict and the event kept", err)
 	}
 }
@@ -351,7 +278,7 @@ func TestHomeVisitIsReadBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := m.SessionMap[cal.events[0].ID].Location; got != sessions.LocationHome {
+	if got := m.SessionMap[cal.Live[0].ID].Location; got != sessions.LocationHome {
 		t.Errorf("location = %s, want home", got)
 	}
 }
@@ -380,7 +307,7 @@ func TestRestoreAndDiscardDeletedSessions(t *testing.T) {
 		m.SessionMap[id] = s
 	}
 	// Deleted in Google Calendar, from her phone.
-	cal.trash, cal.events = cal.events, nil
+	cal.Trash, cal.Live = cal.Live, nil
 	if _, err := newSyncer(m, cal).Run(context.Background(), Range{}); err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +319,7 @@ func TestRestoreAndDiscardDeletedSessions(t *testing.T) {
 	if _, err := e.restore(context.Background(), eventInput{EventID: "e1"}); err != nil {
 		t.Fatal(err)
 	}
-	if s := m.SessionMap["e1"]; s.RemovedAt != nil || !s.Recorded() || cal.find("e1") < 0 {
+	if s := m.SessionMap["e1"]; s.RemovedAt != nil || !s.Recorded() || cal.Find("e1") < 0 {
 		t.Errorf("restored = %+v", s)
 	}
 
@@ -405,7 +332,7 @@ func TestRestoreAndDiscardDeletedSessions(t *testing.T) {
 	quiet(t, m, cal)
 }
 
-func newFollowUpEditor(m *memory.Store, cal *fakeCalendar) FollowUpEditor {
+func newFollowUpEditor(m *memory.Store, cal *fakecal.Calendar) FollowUpEditor {
 	return FollowUpEditor{
 		Calendar:  func(context.Context) (Calendar, error) { return cal, nil },
 		Clients:   m.Clients(),
@@ -426,7 +353,7 @@ func TestFollowUpFromASession(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := got.(followups.FollowUp)
-	event := cal.events[0]
+	event := cal.Live[0]
 	if event.Title != "! Jane Smith: Check MRI results" || event.Date != due || event.Description != "Left knee" || event.Private[calendar.PropSessionID] != "e9" {
 		t.Errorf("event = %+v", event)
 	}
@@ -449,7 +376,7 @@ func TestFollowUpFromASession(t *testing.T) {
 	if _, err := e.delete(context.Background(), eventInput{EventID: f.EventID}); err != nil {
 		t.Fatal(err)
 	}
-	if len(cal.events) != 0 || len(m.FollowUpMap) != 0 {
-		t.Errorf("left: events %v, follow-ups %v", cal.events, m.FollowUpMap)
+	if len(cal.Live) != 0 || len(m.FollowUpMap) != 0 {
+		t.Errorf("left: events %v, follow-ups %v", cal.Live, m.FollowUpMap)
 	}
 }

@@ -11,7 +11,7 @@
 //	CLIENT        id                          -            -                   -                        -                   -               clients.Client
 //	SESSION       eventId                     start        clientId#start      start, on her to-do      status#start        -               sessions.Session
 //	SESSIONNOTES  eventId                     -            -                   -                        -                   -               sessions.Notes
-//	FOLLOWUP      eventId                     due          clientId#due        due, until done          open|done#due       sessionId#due   followups.FollowUp
+//	FOLLOWUP      eventId                     due          clientId#due (*)    due, until done          open|done#due       sessionId#due   followups.FollowUp
 //	PACKAGE       id                          purchasedAt  clientId#purchased  purchasedAt, credits     source#purchasedAt  -               packages.Package
 //	                                                                           left or unpaid
 //	DOC           id                          date#created clientId#date#…     date#…, draft open       type#date#…         -               documents.Document
@@ -22,6 +22,9 @@
 //	SETTINGS      BUSINESS                    -            -                   -                        -                   -               settings.Settings
 //	GOOGLE        CONNECTION                  -            -                   -                        -                   -               googleconnect.Connection (kept by Reset)
 //	SYNC          LAST                        -            -                   -                        -                   -               googlesync.Run
+//
+// (*) A follow-up no client matched is keyed "#due", so all of them are
+// found at once, done or not, when a client gains an alias.
 //
 // The table design, in short (see platform/dynamo for the mechanics):
 //   - One partition per entity type. One user means little data, and a
@@ -96,10 +99,9 @@ func FollowUpKeys(eventID string, due time.Time, clientID string, done bool, ses
 	if done {
 		state = "done"
 	}
-	keys := dynamo.Keys{PK: FollowUp, SK: eventID, LSI1SK: at, LSI4SK: state + "#" + at}
-	if clientID != "" {
-		keys.LSI2SK = clientID + "#" + at
-	}
+	// One no client matched is keyed "#due", so they are all found at once,
+	// done or not, when a client gains an alias.
+	keys := dynamo.Keys{PK: FollowUp, SK: eventID, LSI1SK: at, LSI2SK: clientID + "#" + at, LSI4SK: state + "#" + at}
 	if !done {
 		keys.LSI3SK = at
 	}
