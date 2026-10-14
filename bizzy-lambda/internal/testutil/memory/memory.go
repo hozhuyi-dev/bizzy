@@ -5,6 +5,7 @@ package memory
 import (
 	"cmp"
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
+	"bizzy-lambda/internal/features/recovery"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/dynamo"
@@ -32,9 +34,24 @@ type Store struct {
 	ItemMap       map[string]expenses.Item
 	// CategoryList is nil until saved: the defaults.
 	CategoryList []expenses.Category
+	JournalMap   map[string]recovery.Entry
 
 	// Writes counts saves and deletes, to check that quiet runs write nothing.
 	Writes int
+	// onWrite runs before each write; a test can panic in it to stop the
+	// process there, as a Lambda timeout would.
+	onWrite func(op string)
+}
+
+// OnWrite sets what runs before each write, op naming it.
+func (m *Store) OnWrite(f func(op string)) { m.onWrite = f }
+
+// BeforeWrite runs the OnWrite hook; the repositories over the store (here
+// and in memdocs) call it before they change anything.
+func (m *Store) BeforeWrite(op string) {
+	if m.onWrite != nil {
+		m.onWrite(op)
+	}
 }
 
 func New() *Store {
@@ -48,7 +65,34 @@ func New() *Store {
 		AttachmentMap: map[string]attachments.Attachment{},
 		ExpenseMap:    map[string]expenses.Expense{},
 		ItemMap:       map[string]expenses.Item{},
+		JournalMap:    map[string]recovery.Entry{},
 	}
+}
+
+// Journal exposes the store as recovery.Store.
+func (m *Store) Journal() *JournalRepo { return (*JournalRepo)(m) }
+
+type JournalRepo Store
+
+func (r *JournalRepo) Put(_ context.Context, e recovery.Entry) error {
+	(*Store)(r).BeforeWrite("journal.put")
+	r.JournalMap[e.ID] = e
+	return nil
+}
+
+func (r *JournalRepo) Delete(_ context.Context, id string) error {
+	(*Store)(r).BeforeWrite("journal.delete")
+	delete(r.JournalMap, id)
+	return nil
+}
+
+func (r *JournalRepo) List(context.Context) ([]recovery.Entry, error) {
+	out := make([]recovery.Entry, 0, len(r.JournalMap))
+	for _, e := range r.JournalMap {
+		out = append(out, e)
+	}
+	slices.SortFunc(out, func(a, b recovery.Entry) int { return strings.Compare(a.ID, b.ID) })
+	return out, nil
 }
 
 // Clients, Sessions, FollowUps, Packages and Settings expose the store as
@@ -81,6 +125,7 @@ func (r *ClientRepo) Get(_ context.Context, id string) (clients.Client, bool, er
 }
 
 func (r *ClientRepo) SaveProfile(_ context.Context, c clients.Client) error {
+	(*Store)(r).BeforeWrite("clients.saveProfile")
 	existing := r.ClientMap[c.ID]
 	c.Activity, c.LastSessionAt, c.NextBookedAt, c.LastContactedAt = existing.Activity, existing.LastSessionAt, existing.NextBookedAt, existing.LastContactedAt
 	r.ClientMap[c.ID] = c
@@ -89,6 +134,7 @@ func (r *ClientRepo) SaveProfile(_ context.Context, c clients.Client) error {
 }
 
 func (r *ClientRepo) SaveActivity(_ context.Context, c clients.Client) error {
+	(*Store)(r).BeforeWrite("clients.saveActivity")
 	existing := r.ClientMap[c.ID]
 	existing.Activity, existing.LastSessionAt, existing.NextBookedAt = c.Activity, c.LastSessionAt, c.NextBookedAt
 	r.ClientMap[c.ID] = existing
@@ -97,6 +143,7 @@ func (r *ClientRepo) SaveActivity(_ context.Context, c clients.Client) error {
 }
 
 func (r *ClientRepo) RefreshContact(_ context.Context, id string, previous, next clients.Contact) (bool, error) {
+	(*Store)(r).BeforeWrite("clients.refreshContact")
 	c, ok := r.ClientMap[id]
 	if !ok || c.Contact == nil || c.Contact.ResourceName != previous.ResourceName || c.Contact.ETag != previous.ETag {
 		return false, nil
@@ -109,6 +156,7 @@ func (r *ClientRepo) RefreshContact(_ context.Context, id string, previous, next
 
 // SetContacted writes only when she last contacted the client.
 func (r *ClientRepo) SetContacted(_ context.Context, id string, at *time.Time) error {
+	(*Store)(r).BeforeWrite("clients.setContacted")
 	c, ok := r.ClientMap[id]
 	if !ok {
 		return nil
@@ -169,6 +217,7 @@ func (r *SessionRepo) ListWithoutClient(context.Context) ([]sessions.Session, er
 
 // Save checks the version as the real repository does.
 func (r *SessionRepo) Save(_ context.Context, s sessions.Session) (sessions.Session, error) {
+	(*Store)(r).BeforeWrite("sessions.save")
 	stored, exists := r.SessionMap[s.EventID]
 	if exists != (s.Version > 0) || (exists && stored.Version != s.Version) {
 		return sessions.Session{}, dynamo.ErrConflict
@@ -180,6 +229,7 @@ func (r *SessionRepo) Save(_ context.Context, s sessions.Session) (sessions.Sess
 }
 
 func (r *SessionRepo) Delete(_ context.Context, s sessions.Session) error {
+	(*Store)(r).BeforeWrite("sessions.delete")
 	stored, ok := r.SessionMap[s.EventID]
 	if !ok || stored.Version != s.Version || stored.HasDocuments() {
 		return dynamo.ErrConflict
@@ -195,6 +245,7 @@ func (r *SessionRepo) Notes(_ context.Context, id string) (sessions.Notes, error
 }
 
 func (r *SessionRepo) SaveNotes(_ context.Context, n sessions.Notes) error {
+	(*Store)(r).BeforeWrite("sessions.saveNotes")
 	if n.Text == "" {
 		delete(r.NotesMap, n.EventID)
 	} else {
@@ -261,6 +312,7 @@ func (r *FollowUpRepo) PageByClient(_ context.Context, id, _ string, _ int) (dyn
 
 // Save checks the version as the real repository does.
 func (r *FollowUpRepo) Save(_ context.Context, f followups.FollowUp) (followups.FollowUp, error) {
+	(*Store)(r).BeforeWrite("followUps.save")
 	stored, exists := r.FollowUpMap[f.EventID]
 	if exists != (f.Version > 0) || (exists && stored.Version != f.Version) {
 		return followups.FollowUp{}, dynamo.ErrConflict
@@ -272,6 +324,7 @@ func (r *FollowUpRepo) Save(_ context.Context, f followups.FollowUp) (followups.
 }
 
 func (r *FollowUpRepo) Delete(_ context.Context, id string) error {
+	(*Store)(r).BeforeWrite("followUps.delete")
 	delete(r.FollowUpMap, id)
 	r.Writes++
 	return nil
@@ -314,6 +367,7 @@ func (r *PackageRepo) ListByClient(_ context.Context, id string) ([]packages.Pac
 
 // Save keeps the payment and document links, as the real repository does.
 func (r *PackageRepo) Save(_ context.Context, p packages.Package) error {
+	(*Store)(r).BeforeWrite("packages.save")
 	stored := r.PackageMap[p.ID]
 	p.Payment, p.Invoice, p.Receipt = stored.Payment, stored.Invoice, stored.Receipt
 	r.PackageMap[p.ID] = p
@@ -323,6 +377,7 @@ func (r *PackageRepo) Save(_ context.Context, p packages.Package) error {
 
 // SetPayment writes only the payment, unless a receipt covers the package.
 func (r *PackageRepo) SetPayment(_ context.Context, p packages.Package) error {
+	(*Store)(r).BeforeWrite("packages.setPayment")
 	stored, ok := r.PackageMap[p.ID]
 	if !ok || stored.Receipt != nil {
 		return dynamo.ErrConflict
@@ -334,6 +389,7 @@ func (r *PackageRepo) SetPayment(_ context.Context, p packages.Package) error {
 }
 
 func (r *PackageRepo) Delete(_ context.Context, id string) (bool, error) {
+	(*Store)(r).BeforeWrite("packages.delete")
 	if p, ok := r.PackageMap[id]; ok && p.HasDocuments() {
 		return false, nil
 	}
@@ -349,6 +405,7 @@ func (r *SettingsRepo) Get(context.Context) (settings.Settings, error) {
 }
 
 func (r *SettingsRepo) Put(_ context.Context, s settings.Settings) error {
+	(*Store)(r).BeforeWrite("settings.put")
 	r.SettingsVal = s
 	return nil
 }
@@ -366,6 +423,7 @@ func (r *PaymentRepo) GetPackage(ctx context.Context, id string) (packages.Packa
 }
 
 func (r *PaymentRepo) Commit(_ context.Context, ss []sessions.Session, ps []packages.Package) error {
+	(*Store)(r).BeforeWrite("payments.commit")
 	for _, s := range ss {
 		if stored, ok := r.SessionMap[s.EventID]; !ok || stored.Version != s.Version {
 			return dynamo.ErrConflict
@@ -407,18 +465,29 @@ func (r *AttachmentRepo) List(_ context.Context, kind attachments.OwnerKind, own
 	return out, nil
 }
 
+func (r *AttachmentRepo) ListAll(context.Context) ([]attachments.Attachment, error) {
+	keys := slices.Sorted(maps.Keys(r.AttachmentMap))
+	out := make([]attachments.Attachment, len(keys))
+	for i, k := range keys {
+		out[i] = r.AttachmentMap[k]
+	}
+	return out, nil
+}
+
 func (r *AttachmentRepo) Get(_ context.Context, kind attachments.OwnerKind, ownerID, id string) (attachments.Attachment, bool, error) {
 	a, ok := r.AttachmentMap[attachmentKey(kind, ownerID, id)]
 	return a, ok, nil
 }
 
 func (r *AttachmentRepo) Put(_ context.Context, a attachments.Attachment) error {
+	(*Store)(r).BeforeWrite("attachments.put")
 	r.AttachmentMap[attachmentKey(a.OwnerKind, a.OwnerID, a.ID)] = a
 	r.Writes++
 	return nil
 }
 
 func (r *AttachmentRepo) Delete(_ context.Context, a attachments.Attachment) error {
+	(*Store)(r).BeforeWrite("attachments.delete")
 	delete(r.AttachmentMap, attachmentKey(a.OwnerKind, a.OwnerID, a.ID))
 	r.Writes++
 	return nil
@@ -446,6 +515,7 @@ func (r *ExpenseRepo) Get(_ context.Context, id string) (expenses.Expense, bool,
 
 // Save checks the version as the real repository does.
 func (r *ExpenseRepo) Save(_ context.Context, e expenses.Expense) (expenses.Expense, error) {
+	(*Store)(r).BeforeWrite("expenses.save")
 	stored, exists := r.ExpenseMap[e.ID]
 	if exists != (e.Version > 0) || (exists && stored.Version != e.Version) {
 		return expenses.Expense{}, dynamo.ErrConflict
@@ -457,6 +527,7 @@ func (r *ExpenseRepo) Save(_ context.Context, e expenses.Expense) (expenses.Expe
 }
 
 func (r *ExpenseRepo) Delete(_ context.Context, e expenses.Expense) error {
+	(*Store)(r).BeforeWrite("expenses.delete")
 	if stored, ok := r.ExpenseMap[e.ID]; !ok || stored.Version != e.Version {
 		return dynamo.ErrConflict
 	}
@@ -476,6 +547,7 @@ func (r *ExpenseRepo) Items(context.Context) ([]expenses.Item, error) {
 
 // SaveItem keeps the last amount, as the real repository's patch does.
 func (r *ExpenseRepo) SaveItem(_ context.Context, it expenses.Item) error {
+	(*Store)(r).BeforeWrite("expenses.saveItem")
 	it.LastAmountCents = r.ItemMap[it.ID].LastAmountCents
 	r.ItemMap[it.ID] = it
 	r.Writes++
@@ -483,6 +555,7 @@ func (r *ExpenseRepo) SaveItem(_ context.Context, it expenses.Item) error {
 }
 
 func (r *ExpenseRepo) SetLastAmount(_ context.Context, id string, cents int64) error {
+	(*Store)(r).BeforeWrite("expenses.setLastAmount")
 	it := r.ItemMap[id]
 	it.ID, it.LastAmountCents = id, &cents
 	r.ItemMap[id] = it
@@ -498,6 +571,7 @@ func (r *ExpenseRepo) Categories(context.Context) ([]expenses.Category, error) {
 }
 
 func (r *ExpenseRepo) SaveCategories(_ context.Context, all []expenses.Category) error {
+	(*Store)(r).BeforeWrite("expenses.saveCategories")
 	r.CategoryList = slices.Clone(all)
 	r.Writes++
 	return nil

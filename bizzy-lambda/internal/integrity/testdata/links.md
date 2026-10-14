@@ -8,6 +8,13 @@ Checked and reported, but not yet made to hold: each awaits a decision on the su
 
 None.
 
+## Tolerated
+
+May break for a while by design: reported, and put right later as said.
+
+- **every-file-is-attached**: Every confirmed file in blob storage belongs to an attachment, so a file she deleted, or never saw saved, isn't kept
+  A request that dies between a file and its item (confirm clears the pending tag first; remove and an owner's deletion drop the item first) leaves a file nothing links to, never an item without its file. The quarterly job's sweep (cmd/job-quarterly) deletes it.
+
 ## Rules
 
 | rule | why | kept by |

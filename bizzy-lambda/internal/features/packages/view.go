@@ -20,6 +20,9 @@ type View struct {
 	Rules []string `json:"rules"`
 	// Todo is what is left to do on it now.
 	Todo []statemodel.Reason `json:"todo"`
+	// Fixes are the actions its to-do rules say resolve them (ResolvedBy):
+	// the app offers these as its to-do item's quick actions.
+	Fixes []string `json:"fixes"`
 	// Problem explains what to fix, if anything.
 	Problem     string `json:"problem,omitempty"`
 	CreditsLeft int    `json:"creditsLeft"`
@@ -35,6 +38,8 @@ type Can struct {
 	Receipt statemodel.Verdict `json:"receipt"`
 	Edit    statemodel.Verdict `json:"edit"`
 	Delete  statemodel.Verdict `json:"delete"`
+	// MakeStandalone keeps a package the calendar no longer buys.
+	MakeStandalone statemodel.Verdict `json:"makeStandalone"`
 }
 
 // View is the package as of now.
@@ -48,10 +53,15 @@ func (p Package) View(now time.Time) View {
 			Receipt: statemodel.Check(p.CanBill(docref.SlotReceipt)),
 			Edit:    statemodel.Check(p.CanEdit()),
 			Delete:  statemodel.Check(p.CanDelete()),
+
+			MakeStandalone: statemodel.Check(p.CanMakeStandalone()),
 		},
 	}
 	if v.Todo == nil {
 		v.Todo = []statemodel.Reason{}
+	}
+	if v.Fixes = Rules.Fixes(st); v.Fixes == nil {
+		v.Fixes = []string{}
 	}
 	for _, r := range Rules.Evaluate(st).Fired {
 		v.Rules = append(v.Rules, r.ID)

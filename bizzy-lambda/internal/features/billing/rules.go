@@ -57,7 +57,7 @@ func Derive(s sessions.Session, env Env) Entry {
 	out := s
 	out.Status, out.Name, out.ClientID, out.SuggestedClientID = "", "", "", ""
 	out.FeeCents, out.FeeSource, out.PackageID, out.ValueCents = nil, "", "", 0
-	out.BoughtCents, out.BoughtSettled, out.BoughtDocumented = 0, false, false
+	out.BoughtCents, out.BoughtSettled = 0, false
 	out.Reason, out.Drift = "", ""
 	out.Upcoming = s.RemovedAt == nil && s.Start.After(env.Now)
 
@@ -174,7 +174,7 @@ func Allocate(client clients.Client, entries []*Entry, pkgs []*packages.Package,
 		if p := e.Title.Package; p != nil {
 			s.BoughtCents = p.PriceCents
 			if bought := find(pkgs, s.EventID); bought != nil {
-				s.BoughtSettled, s.BoughtDocumented = bought.Settled(), bought.HasDocuments()
+				s.BoughtSettled = bought.Settled()
 			}
 		}
 

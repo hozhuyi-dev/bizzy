@@ -17,8 +17,8 @@ func TestTable(t *testing.T) {
 			t.Errorf("rule %s: duplicate id", r.ID)
 		}
 		ids[r.ID] = true
-		if r.Pending == "" && len(r.GuardedBy) == 0 && r.ByConstruction == "" {
-			t.Errorf("rule %s: needs GuardedBy, ByConstruction or Pending", r.ID)
+		if r.Pending == "" && r.Tolerated == "" && len(r.GuardedBy) == 0 && r.ByConstruction == "" {
+			t.Errorf("rule %s: needs GuardedBy, ByConstruction, Tolerated or Pending", r.ID)
 		}
 	}
 	statemodel.Golden(t, "testdata/links.md", Table())

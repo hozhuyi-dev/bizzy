@@ -68,6 +68,14 @@ type Reconciler interface {
 	Reconcile(ctx context.Context, scope billing.Scope) (billing.Result, error)
 }
 
+// EditorBilling is the reconcile, and what it would make of an edit before
+// it is written.
+type EditorBilling interface {
+	Reconciler
+	BookingImpact(ctx context.Context, eventID string, event calendar.Event, updatePayment bool) (sessions.Session, []billing.Brought, error)
+	DeletionImpact(ctx context.Context, eventID string, deletePackage bool) (billing.Impact, error)
+}
+
 type StatusStore interface {
 	Put(ctx context.Context, run Run) error
 }

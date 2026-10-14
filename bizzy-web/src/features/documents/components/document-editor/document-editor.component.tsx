@@ -141,6 +141,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                           <Input
                             id={field.name}
                             type="date"
+                            readOnly={line.source !== undefined}
                             value={field.state.value}
                             onChange={(e) => field.handleChange(e.target.value)}
                           />
@@ -155,6 +156,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                             id={field.name}
                             inputMode="decimal"
                             className="text-right"
+                            readOnly={line.source !== undefined}
                             value={field.state.value}
                             onChange={(e) => field.handleChange(e.target.value)}
                           />
@@ -174,7 +176,8 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                   </div>
                   {line.source && (
                     <span className="text-xs text-muted-foreground">
-                      Covers this {line.source.kind}. Removing the line releases it when issued.
+                      Covers this {line.source.kind}: its date and amount follow it (the fee, or on a receipt what
+                      was paid) until issued. Removing the line releases it when issued.
                     </span>
                   )}
                 </div>

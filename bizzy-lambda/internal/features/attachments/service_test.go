@@ -17,7 +17,11 @@ import (
 type owner struct {
 	files  map[string]int
 	refuse error
+	// gone are owners deleted meanwhile.
+	gone map[string]bool
 }
+
+func (o *owner) Exists(_ context.Context, id string) (bool, error) { return !o.gone[id], nil }
 
 func (o *owner) CanAttach(context.Context, string) error { return o.refuse }
 
@@ -149,5 +153,69 @@ func TestRefusals(t *testing.T) {
 	}
 	if !strings.Contains(attachments.KeyOf(attachments.OwnerExpense, "x1", "a1", "application/pdf"), "attachments/expense/x1/a1/original.pdf") {
 		t.Error("expense keys follow the same layout")
+	}
+}
+
+// After a request died partway, Heal counts each owner's items again and
+// drops the items, and files, of an owner that is gone.
+func TestHeal(t *testing.T) {
+	ctx := context.Background()
+	svc, blobs, o := setup()
+	o.gone = map[string]bool{}
+	for _, owner := range []string{"e1", "e2"} {
+		up, err := svc.RequestUpload(ctx, attachments.UploadInput{OwnerKind: attachments.OwnerSession, OwnerID: owner, Name: "a.jpg", ContentType: "image/jpeg", SizeBytes: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := attachments.KeyOf(attachments.OwnerSession, owner, up.ID, "image/jpeg")
+		if err := blobs.Put(key); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.Confirm(ctx, attachments.ConfirmInput{OwnerKind: attachments.OwnerSession, OwnerID: owner, ID: up.ID, Name: "a.jpg", ContentType: "image/jpeg"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// e1's count was lost, and e2 was deleted before its files went.
+	o.files["e1"] = 0
+	o.gone["e2"] = true
+
+	if err := svc.Heal(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if o.files["e1"] != 1 {
+		t.Errorf("e1 counts %d, want 1", o.files["e1"])
+	}
+	if left, _ := svc.Repo.List(ctx, attachments.OwnerSession, "e2"); len(left) != 0 {
+		t.Errorf("e2's attachments %v, want gone", left)
+	}
+	if len(blobs.Blobs) != 1 {
+		t.Errorf("files %v, want only e1's", blobs.Blobs)
+	}
+}
+
+// Sweep deletes the files no attachment links to, and leaves the rest.
+func TestSweep(t *testing.T) {
+	ctx := context.Background()
+	svc, blobs, _ := setup()
+	up, err := svc.RequestUpload(ctx, attachments.UploadInput{OwnerKind: attachments.OwnerSession, OwnerID: "e1", Name: "a.jpg", ContentType: "image/jpeg", SizeBytes: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := attachments.KeyOf(attachments.OwnerSession, "e1", up.ID, "image/jpeg")
+	if err := blobs.Put(kept); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Confirm(ctx, attachments.ConfirmInput{OwnerKind: attachments.OwnerSession, OwnerID: "e1", ID: up.ID, Name: "a.jpg", ContentType: "image/jpeg"}); err != nil {
+		t.Fatal(err)
+	}
+	stray := attachments.KeyPrefix + "session/e2/x/original.jpg"
+	blobs.Blobs[stray] = memblob.Blob{Size: 10, ContentType: "image/jpeg"}
+
+	deleted, err := svc.Sweep(ctx, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := blobs.Blobs[kept]; deleted != 1 || !ok || len(blobs.Blobs) != 1 {
+		t.Errorf("deleted %d, files %v: want only the stray one gone", deleted, blobs.Blobs)
 	}
 }

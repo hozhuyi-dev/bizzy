@@ -3,11 +3,10 @@ import { CheckIcon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 import { BookingForm } from "../booking-form/booking-form.component";
 import { hasHappened, needsFix } from "../../session-stage.util";
-import { SessionsMutation } from "../../sessions.mutation";
+import { useBookingSave, useConfirmBooking } from "../../sessions-booking.hook";
 import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
 import type { Session, SessionDraft } from "../../sessions.types";
 import { Button } from "~/components/ui/button";
-import { isStaleEdit } from "~/core/utils/api-error.util";
 import { formatDate, formatSessionTime } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
@@ -23,7 +22,7 @@ function Lines({ children }: { children: Array<string | false | undefined> }) {
   );
 }
 
-export function bookingStep(session: Session, draft: SessionDraft, locked: boolean, onCancel: () => void): PipelineStep {
+export function bookingStep(session: Session, draft: SessionDraft, onCancel: () => void): PipelineStep {
   const tentative = session.status === "tentative";
   const problem = tentative || needsFix(session);
   const happened = hasHappened(session);
@@ -43,24 +42,19 @@ export function bookingStep(session: Session, draft: SessionDraft, locked: boole
         ]}
       </Lines>
     ),
-    content: <BookingStep session={session} draft={draft} locked={locked} onCancel={onCancel} />,
+    content: <BookingStep session={session} draft={draft} onCancel={onCancel} />,
   };
 }
 
-function BookingStep({
-  session,
-  draft,
-  locked,
-  onCancel,
-}: {
-  session: Session;
-  draft: SessionDraft;
-  locked: boolean;
-  onCancel: () => void;
-}) {
-  const update = SessionsMutation.useUpdate();
-  const confirm = SessionsMutation.useConfirm();
+function BookingStep({ session, draft, onCancel }: { session: Session; draft: SessionDraft; onCancel: () => void }) {
+  const confirm = useConfirmBooking();
   const [editing, setEditing] = useState(needsFix(session));
+  // What it would bring on is shown first; an edit that would contradict an
+  // issued document is refused with why.
+  const save = useBookingSave(session, (next) => {
+    toast.success(new Date(next.start) > new Date() ? `Booked for ${formatSessionTime(next.start)}` : "Booking saved");
+    setEditing(false);
+  });
   const tentative = session.status === "tentative";
   const end = new Date(session.end);
   const minutes = Math.round((end.getTime() - new Date(session.start).getTime()) / 60_000);
@@ -73,19 +67,16 @@ function BookingStep({
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-status-waiting px-3 py-2 text-sm text-status-waiting-foreground">
           <span>Not confirmed with the client yet.</span>
           <span className="flex gap-2">
-            <Button
-              size="sm"
-              disabled={confirm.isPending || locked}
-              onClick={() =>
-                confirm.mutate(session.eventId, {
-                  onSuccess: () => toast.success("Confirmed"),
-                  onError: (error) => toast.error(error.message),
-                })
-              }
-            >
+            <Button size="sm" disabled={confirm.pending} onClick={() => confirm.confirm(session.eventId)}>
               <CheckIcon /> Confirm
             </Button>
-            <Button size="sm" variant="outline" disabled={locked} onClick={onCancel}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!session.can.delete.ok}
+              title={session.can.delete.why}
+              onClick={onCancel}
+            >
               Cancel booking
             </Button>
           </span>
@@ -98,7 +89,7 @@ function BookingStep({
           {session.feeCents !== undefined && <> · {formatCents(session.feeCents)}</>}
           {session.status === "package" && <> · package credit</>}
         </span>
-        {!locked && !session.removedAt && !editing && (
+        {!session.removedAt && !editing && (
           <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
             <PencilIcon /> Edit booking
           </Button>
@@ -110,17 +101,14 @@ function BookingStep({
           key={calendarKey}
           initial={draft}
           session={session}
-          locked={locked}
           submitLabel="Save booking"
           onSubmit={async (next) => {
             try {
-              await update.mutateAsync({ eventId: session.eventId, draft: next });
+              await save.submit(next);
             } catch (error) {
               toast.error((error as Error).message);
               throw error;
             }
-            toast.success(new Date(next.start) > new Date() ? `Booked for ${formatSessionTime(next.start)}` : "Booking saved");
-            setEditing(false);
           }}
           extraActions={
             <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
@@ -129,7 +117,8 @@ function BookingStep({
           }
         />
       )}
-      {update.error && !isStaleEdit(update.error) && <p className="text-sm text-destructive">{update.error.message}</p>}
+      {save.dialog}
+      {confirm.dialog}
     </>
   );
 }

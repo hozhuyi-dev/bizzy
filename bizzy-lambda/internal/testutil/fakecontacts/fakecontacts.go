@@ -17,6 +17,17 @@ type Directory struct {
 	People []contacts.Person
 	// created numbers new contacts.
 	created int
+	// onWrite runs before each write (see memory.Store.OnWrite).
+	onWrite func(op string)
+}
+
+// OnWrite sets what runs before each write, op naming it.
+func (d *Directory) OnWrite(hook func(op string)) { d.onWrite = hook }
+
+func (d *Directory) beforeWrite(op string) {
+	if d.onWrite != nil {
+		d.onWrite(op)
+	}
 }
 
 func (d *Directory) Find(resourceName string) int {
@@ -36,6 +47,7 @@ func (d *Directory) Get(_ context.Context, resourceName string) (contacts.Person
 }
 
 func (d *Directory) Create(_ context.Context, in contacts.Details) (contacts.Person, error) {
+	d.beforeWrite("contacts.create")
 	d.created++
 	p := contacts.Person{ResourceName: fmt.Sprintf("people/c%d", d.created), ETag: "1"}
 	p.GivenName, p.FamilyName = in.GivenName, in.FamilyName
@@ -46,6 +58,7 @@ func (d *Directory) Create(_ context.Context, in contacts.Details) (contacts.Per
 }
 
 func (d *Directory) Update(_ context.Context, resourceName, etag string, in contacts.Details) (contacts.Person, error) {
+	d.beforeWrite("contacts.update")
 	i := d.Find(resourceName)
 	if i < 0 {
 		return contacts.Person{}, apperr.NotFound("That contact is no longer in Google Contacts.")
@@ -59,7 +72,10 @@ func (d *Directory) Update(_ context.Context, resourceName, etag string, in cont
 	return *p, nil
 }
 
-func (d *Directory) Label(context.Context, string) error { return nil }
+func (d *Directory) Label(context.Context, string) error {
+	d.beforeWrite("contacts.label")
+	return nil
+}
 
 func apply(p *contacts.Person, in contacts.Details) {
 	p.Email, p.Phone, p.Address = in.Email, in.Phone, in.Address

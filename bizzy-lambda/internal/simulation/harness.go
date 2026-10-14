@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"slices"
 	"time"
 
@@ -65,6 +64,22 @@ type World struct {
 	// pendingSeen are the known gaps (integrity.Rule.Pending) this run
 	// reached, logged once each.
 	pendingSeen map[string]bool
+	// crashAt counts down the writes to the one the process dies before (see
+	// faultActions); 0 when no crash is due.
+	crashAt int
+	// loseResponse makes the next request do everything, but its answer
+	// never arrives, as when the connection drops at the end.
+	loseResponse bool
+	// retry makes the user tap again, with the same request, when one
+	// fails that way.
+	retry bool
+	// unhealed says a request died partway since the last sync, which
+	// repairs after it (internal/features/recovery): until then the stores
+	// may be half changed.
+	unhealed bool
+	// allowed is what the preview of the action running listed, when she
+	// confirmed it: what the action may bring on (see Previewed).
+	allowed []billing.Brought
 }
 
 // fataler is what newWorld needs of a test: *testing.T or *rapid.T.
@@ -110,6 +125,10 @@ func newWorld(t fataler) *World {
 		})
 	}
 
+	w.Store.OnWrite(w.beforeWrite)
+	w.Calendar.OnWrite(w.beforeWrite)
+	w.Contacts.OnWrite(w.beforeWrite)
+	w.Blobs.OnWrite(w.beforeWrite)
 	w.App = app.New(w.deps(w.Store, w.Docs, w.Blobs))
 	if _, err := w.App.Sync(context.Background(), googlesync.Range{}); err != nil {
 		t.Fatalf("seed sync: %v", err)
@@ -127,6 +146,8 @@ func (w *World) deps(m *memory.Store, docs *memdocs.Repo, blobs *memblob.Store) 
 		Directory: w.Contacts,
 		Location:  kl,
 		Now:       func() time.Time { return w.Now },
+		// One request at a time: an entry left behind is one that died.
+		Journal: m.Journal(), StaleAfter: 0,
 	}
 }
 
@@ -143,9 +164,28 @@ func (w *World) Call(t *rapid.T, action string, payload any, mayRefresh bool) (j
 		t.Fatalf("marshal %s payload: %v", action, err)
 	}
 	before := w.snapshot()
-	res, err := w.App.Router.Handle(context.Background(), router.Request{Action: action, Payload: body})
+	res, err, died := w.handle(action, body)
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
+	}
+	lost := died == nil && w.loseResponse
+	if died != nil || lost {
+		w.loseResponse = false
+		if died != nil {
+			// Whatever was written before stays; Google and the stores may
+			// now disagree until the next sync repairs it.
+			t.Logf("%s %s → crashed before %s", action, body, died.op)
+			outsideChange(w)
+			w.unhealed = true
+		} else {
+			t.Logf("%s %s → %s, but the answer was lost", action, body, outcome(res))
+		}
+		if w.retry {
+			w.retry = false
+			t.Logf("she taps again")
+			return w.Call(t, action, payload, true)
+		}
+		return nil, &router.ErrorBody{Code: "crashed", Message: "The connection dropped."}
 	}
 	t.Logf("%s %s → %s", action, body, outcome(res))
 
@@ -165,12 +205,91 @@ func (w *World) Call(t *rapid.T, action string, payload any, mayRefresh bool) (j
 	return data, nil
 }
 
+// crash is what a write panics with when the process is to die before it.
+type crash struct{ op string }
+
+// beforeWrite runs before every write to Google, the stores and blob
+// storage, and dies before the one crashAt counted down to.
+func (w *World) beforeWrite(op string) {
+	if w.crashAt == 0 {
+		return
+	}
+	w.crashAt--
+	if w.crashAt == 0 {
+		panic(crash{op})
+	}
+}
+
+// handle runs an action through the router, and reports a crash rather
+// than the panic that stopped it.
+func (w *World) handle(action string, body []byte) (res router.Response, err error, died *crash) {
+	defer func() {
+		if r := recover(); r != nil {
+			c, ok := r.(crash)
+			if !ok {
+				panic(r)
+			}
+			died = &c
+		}
+	}()
+	res, err = w.App.Router.Handle(context.Background(), router.Request{Action: action, Payload: body})
+	return res, err, nil
+}
+
+// preview is what a form's preview says saving would bring on.
+func (w *World) preview(t *rapid.T, action string, payload any) billing.Impact {
+	t.Helper()
+	var impact billing.Impact
+	if data, refused := w.Call(t, action, payload, false); refused == nil {
+		if err := json.Unmarshal(data, &impact); err != nil {
+			t.Fatalf("%s result: %v", action, err)
+		}
+	}
+	return impact
+}
+
+// Previewed saves a form the way the app does: it asks the form's preview
+// what saving would bring on, and confirms it or not, as drawn. When
+// confirmed, what the preview listed is what the action may bring on (see
+// noNewContradictions).
+func (w *World) Previewed(t *rapid.T, preview string, previewPayload any, action string, payload map[string]any, confirm, mayRefresh bool) (json.RawMessage, *router.ErrorBody) {
+	t.Helper()
+	data, refused := w.Call(t, preview, previewPayload, false)
+	if refused != nil {
+		return w.Call(t, action, payload, mayRefresh)
+	}
+	var impact billing.Impact
+	if err := json.Unmarshal(data, &impact); err != nil {
+		t.Fatalf("%s result: %v", preview, err)
+	}
+	if confirm {
+		payload = with(payload, map[string]any{"confirm": true})
+	}
+	data, refused = w.Call(t, action, payload, mayRefresh)
+	if confirm && refused == nil {
+		w.allowed = append(w.allowed, impact.Brings...)
+	}
+	return data, refused
+}
+
 // CallAsViewed calls an action the app offered (or explained) from an
 // entity's view: when the view said no, the API must refuse with the same
 // message, so the app never shows an action the API won't take.
 func (w *World) CallAsViewed(t *rapid.T, action string, payload any, viewed statemodel.Verdict) {
 	t.Helper()
 	_, refused := w.Call(t, action, payload, false)
+	asViewed(t, action, refused, viewed, false)
+}
+
+// asViewed checks the API refused an action the view said no to, with the
+// same message. A stale view (the calendar changed since the last sync,
+// and the action applies that first) is not held to it: the action
+// answers for the calendar as it is now.
+func asViewed(t *rapid.T, action string, refused *router.ErrorBody, viewed statemodel.Verdict, stale bool) {
+	t.Helper()
+	if stale || (refused != nil && refused.Code == "crashed") {
+		return
+	}
 	if !viewed.OK && (refused == nil || refused.Message != viewed.Why) {
 		t.Fatalf("%s: the view said %q, the API said %v", action, viewed.Why, refused)
 	}
@@ -217,22 +336,28 @@ func (s snapshot) diff(other snapshot) []string {
 	return changed
 }
 
-// clone copies the stores, so a check can run a sync or reconcile without
-// touching the world.
-func (w *World) clone(t *rapid.T) (*memory.Store, app.App) {
+// fork copies the whole world, Google and the files included, so a check
+// can sync or reconcile it without touching the world. Nothing in it
+// crashes.
+func (w *World) fork(t *rapid.T) *World {
 	t.Helper()
-	m := memory.New()
-	b, err := json.Marshal(w.Store)
-	if err == nil {
-		err = json.Unmarshal(b, m)
+	f := &World{
+		Store: memory.New(), Blobs: memblob.New(), Calendar: &fakecal.Calendar{}, Contacts: &fakecontacts.Directory{},
+		Now: w.Now, InSync: w.InSync, status: &syncStatus{last: w.status.last}, pendingSeen: map[string]bool{},
 	}
-	if err != nil {
-		t.Fatalf("clone: %v", err)
+	f.Docs = memdocs.New(f.Store)
+	for _, part := range [][2]any{{w.Store, f.Store}, {w.Docs, f.Docs}, {w.Blobs, f.Blobs}, {w.Calendar, f.Calendar}, {w.Contacts, f.Contacts}} {
+		b, err := json.Marshal(part[0])
+		if err == nil {
+			err = json.Unmarshal(b, part[1])
+		}
+		if err != nil {
+			t.Fatalf("fork: %v", err)
+		}
 	}
-	m.Writes = 0
-	blobs := memblob.New()
-	maps.Copy(blobs.Blobs, w.Blobs.Blobs)
-	return m, app.New(w.deps(m, memdocs.New(m), blobs))
+	f.Store.Writes = 0
+	f.App = app.New(f.deps(f.Store, f.Docs, f.Blobs))
+	return f
 }
 
 // syncStatus keeps the last sync run in memory.

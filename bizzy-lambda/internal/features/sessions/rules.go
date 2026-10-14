@@ -20,6 +20,10 @@ const (
 	ReasonCollect Reason = "collect"
 )
 
+// A fix that edits the booking (sessions.update) may not contradict an
+// issued document (billing.ImpactOf): each such rule offers cancelling it
+// too.
+//
 // Rules is the session's rule table, in priority order: each Stop rule
 // hides the reasons after it, as there is no point confirming a session no
 // client matches, or recording one still tentative. The to-do list (Todo,
@@ -29,31 +33,31 @@ var Rules = statemodel.Rules[State]{
 		ID: "deleted", Bucket: statemodel.Contradiction, Reason: ReasonDeleted, Stop: true,
 		Why:        "Gone from the calendar, kept for what was recorded on it",
 		When:       func(s State) bool { return s.Presence == Removed },
-		ResolvedBy: []string{"sessions.restore", "sessions.discard"},
+		ResolvedBy: []string{"sessions.restore", "sessions.discard", "payments.set", "documents.cancel", "documents.discardDraft"},
 	},
 	{
 		ID: "title-unreadable", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
 		Why:        "The calendar title can't be read",
 		When:       func(s State) bool { return s.Status == StatusParseError },
-		ResolvedBy: []string{"sessions.update"},
+		ResolvedBy: []string{"sessions.update", "documents.cancel"},
 	},
 	{
 		ID: "client-unmatched", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
 		Why:        "No client has the name in the title",
 		When:       func(s State) bool { return s.Status == StatusUnmatched },
-		ResolvedBy: []string{"sessions.update", "clients.save"},
+		ResolvedBy: []string{"sessions.update", "clients.save", "documents.cancel"},
 	},
 	{
 		ID: "fee-missing", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
 		Why:        "No amount in the title, no package credit and no fee set for the client",
 		When:       func(s State) bool { return s.Status == StatusMissingFee },
-		ResolvedBy: []string{"sessions.update", "clients.save", "packages.save"},
+		ResolvedBy: []string{"sessions.update", "clients.save", "packages.save", "documents.cancel"},
 	},
 	{
 		ID: "tentative-unknown-client", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
 		Why:        "Tentative under a name no client has",
 		When:       func(s State) bool { return s.Status == StatusTentative && s.Client == ClientNone },
-		ResolvedBy: []string{"sessions.update", "clients.save"},
+		ResolvedBy: []string{"sessions.update", "clients.save", "documents.cancel"},
 	},
 	{
 		ID: "contradicts-document", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
@@ -63,15 +67,15 @@ var Rules = statemodel.Rules[State]{
 	},
 	{
 		ID: "fee-changed-after-payment", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
-		Why:        "The calendar changed the fee after it was paid, and the amount paid doesn't match it",
-		When:       func(s State) bool { return s.PaidFor == PaidForOutdated },
-		ResolvedBy: []string{"payments.set", "sessions.update"},
+		Why:        "The calendar changed the fee after it was paid, and the amount paid doesn't match it; only once the fee is known (confirmed, read and priced)",
+		When:       func(s State) bool { return s.PaidFor == PaidForOutdated && s.Status.Priced() },
+		ResolvedBy: []string{"payments.set", "sessions.update", "documents.cancel"},
 	},
 	{
 		ID: "unconfirmed", Bucket: statemodel.NeedsAction, Reason: ReasonConfirm, Stop: true,
 		Why:        "Still tentative (`?` title)",
 		When:       func(s State) bool { return s.Status == StatusTentative },
-		ResolvedBy: []string{"sessions.update"},
+		ResolvedBy: []string{"sessions.update", "sessions.delete", "documents.cancel"},
 	},
 	{
 		ID: "unrecorded", Bucket: statemodel.NeedsAction, Reason: ReasonRecord,

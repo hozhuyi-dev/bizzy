@@ -5,6 +5,8 @@ import type { ITable } from "aws-cdk-lib/aws-dynamodb";
 import type { IBucket } from "aws-cdk-lib/aws-s3";
 import { type IRole, Policy, PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType, HttpMethod } from "aws-cdk-lib/aws-lambda";
+import { Rule, Schedule } from "aws-cdk-lib/aws-events";
+import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 import { GoFunction } from "./common/api/go-function";
 import { FileBucket } from "./common/data/file-bucket";
 import type { Environment } from "../utils/environment.util";
@@ -125,6 +127,40 @@ export class ApiStack extends cdk.Stack {
           resources: [this.api.function.functionArn],
         }),
       ],
+    });
+
+    // The upkeep that runs every quarter (see bizzy-lambda/cmd/job-quarterly):
+    // for now, sweeping the attachment files no attachment links to. It reads
+    // the table and lists and deletes attachment files, nothing else. A job
+    // on another schedule gets its own function and rule (job-<interval>).
+    const quarterly = new GoFunction(this, "JobQuarterly", {
+      projectName: projectName,
+      environment: environment,
+      command: "job-quarterly",
+      timeout: Duration.minutes(5),
+      environmentVariables: {
+        TABLE_NAME: table.tableName,
+        BUCKET_NAME: files.bucketName,
+      },
+    });
+    table.grantReadData(quarterly.function);
+    quarterly.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["s3:DeleteObject"],
+        resources: [attachments],
+      }),
+    );
+    quarterly.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["s3:ListBucket"],
+        resources: [files.bucketArn],
+        conditions: { StringLike: { "s3:prefix": [`${FileBucket.ATTACHMENTS_PREFIX}*`] } },
+      }),
+    );
+    new Rule(this, "JobQuarterlySchedule", {
+      // 03:00 in Kuala Lumpur on the first of January, April, July and October.
+      schedule: Schedule.cron({ minute: "0", hour: "19", day: "L", month: "3,6,9,12" }),
+      targets: [new LambdaFunction(quarterly.function)],
     });
 
     // The one thing reachable without signing in, so it is its own function

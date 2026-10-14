@@ -25,6 +25,7 @@
 //	SETTINGS      EXPENSECATEGORIES           -            -                   -                        -                   -               `categories`: []expenses.Category
 //	GOOGLE        CONNECTION                  -            -                   -                        -                   -               googleconnect.Connection (kept by Reset)
 //	SYNC          LAST                        -            -                   -                        -                   -               googlesync.Run
+//	JOURNAL       id                          -            -                   -                        -                   -               recovery.Entry: a mutation running, or that died
 //
 // (*) A follow-up no client matched is keyed "#due", so all of them are
 // found at once, done or not, when a client gains an alias.
@@ -73,6 +74,7 @@ const (
 	Settings         = "SETTINGS"
 	Google           = "GOOGLE"
 	SyncStatus       = "SYNC"
+	Journal          = "JOURNAL"
 )
 
 // ClientKeys keys a client.
@@ -182,3 +184,5 @@ func ExpenseCategoriesKeys() dynamo.Keys { return dynamo.Keys{PK: Settings, SK: 
 func SettingsKeys() dynamo.Keys   { return dynamo.Keys{PK: Settings, SK: "BUSINESS"} }
 func GoogleKeys() dynamo.Keys     { return dynamo.Keys{PK: Google, SK: "CONNECTION"} }
 func SyncStatusKeys() dynamo.Keys { return dynamo.Keys{PK: SyncStatus, SK: "LAST"} }
+
+func JournalKeys(id string) dynamo.Keys { return dynamo.Keys{PK: Journal, SK: id} }

@@ -23,6 +23,7 @@ import (
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/payments"
+	"bizzy-lambda/internal/features/recovery"
 	"bizzy-lambda/internal/features/reset"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
@@ -66,7 +67,10 @@ func main() {
 		SyncStatus:  googlesync.NewStatusRepository(store),
 		Attachments: attachments.NewRepository(store),
 		Expenses:    expenses.NewRepository(store),
-		Blobs:       blobs,
+		Journal:     recovery.NewRepository(store),
+		// The Lambda's timeout (bizzy-infra api-stack), with a margin.
+		StaleAfter: 3 * time.Minute,
+		Blobs:      blobs,
 		Calendar: func(ctx context.Context) (googlesync.Calendar, error) {
 			return connections.Calendar(ctx, auth.Client)
 		},

@@ -1,4 +1,4 @@
-import { BanknoteIcon, FileTextIcon, PencilIcon, ReceiptIcon, Trash2Icon } from "lucide-react";
+import { BanknoteIcon, FileTextIcon, PackageCheckIcon, PencilIcon, ReceiptIcon, Trash2Icon } from "lucide-react";
 import { clientName, paymentText } from "./packages.util";
 import type { ReactNode } from "react";
 import type { Package } from "./packages.types";
@@ -17,6 +17,7 @@ export interface PackageHandlers {
   clientsById: ReadonlyMap<string, Client>;
   onEdit: (pkg: Package) => void;
   onDelete: (pkg: Package) => void;
+  onMakeStandalone: (pkg: Package) => void;
   onPay: (pkg: Package) => void;
   onDocument: (type: DocumentType, pkg: Package) => void;
 }
@@ -84,8 +85,9 @@ export function PackageDocuments({
 }
 
 /**
- * Calendar packages are changed in the calendar; only app ones (and ones
- * unlinked from their session) are editable here. A receipt needs payment.
+ * Calendar packages are changed in the calendar; only app ones are editable
+ * here. One the calendar no longer buys is kept as its own, or deleted. A
+ * receipt needs payment.
  */
 export function packageActions(pkg: Package, handlers: PackageHandlers): Array<RowAction> {
   const actions: Array<RowAction> = [];
@@ -100,6 +102,9 @@ export function packageActions(pkg: Package, handlers: PackageHandlers): Array<R
   }
   if (pkg.payment && pkg.can.pay.ok) {
     actions.push({ label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
+  }
+  if (pkg.can.makeStandalone.ok) {
+    actions.push({ label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
   }
   if (pkg.can.edit.ok) actions.push({ label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) });
   if (pkg.can.delete.ok) {

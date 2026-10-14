@@ -8,8 +8,10 @@ import {
   ChevronDownIcon,
   LinkIcon,
   NotebookPenIcon,
+  PackageCheckIcon,
   PencilLineIcon,
   RotateCcwIcon,
+  Trash2Icon,
   XIcon,
 } from "lucide-react";
 import { TODO_FILTERS, TODO_GROUPS } from "../../todo.constant";
@@ -29,6 +31,9 @@ import { DeleteSessionDialog } from "~/features/sessions/components/delete-sessi
 import { LinkClientDialog } from "~/features/sessions/components/link-client-dialog/link-client-dialog.component";
 import { isUnmatched } from "~/features/sessions/session-stage.util";
 import { SessionsMutation } from "~/features/sessions/sessions.mutation";
+import { useConfirmBooking } from "~/features/sessions/sessions-booking.hook";
+import { PackagesMutation } from "~/features/packages/packages.mutation";
+import { DeletePackageDialog } from "~/features/packages/components/delete-package-dialog/delete-package-dialog.component";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
@@ -251,39 +256,46 @@ interface QuickActionsProps {
 }
 
 function QuickActions({ session, reasons, hasClient, writing, payables, onCancel, onLink, onWrite, onPayOther }: QuickActionsProps) {
-  const confirm = SessionsMutation.useConfirm();
+  const confirm = useConfirmBooking();
   const restore = SessionsMutation.useRestore();
   const fail = (error: Error) => toast.error(error.message);
+  // Each button is one of the fixes its to-do rules name (session.fixes).
+  const offers = (action: string) => session.fixes.includes(action);
 
-  if (reasons.includes("confirm") && hasClient) {
+  if (reasons.includes("confirm") && hasClient && offers("sessions.update")) {
     return (
       <>
-        <Button
-          size="sm"
-          disabled={confirm.isPending}
-          onClick={() => confirm.mutate(session.eventId, { onSuccess: () => toast.success("Confirmed"), onError: fail })}
-        >
+        <Button size="sm" disabled={confirm.pending} onClick={() => confirm.confirm(session.eventId)}>
           <CheckIcon /> Confirm
         </Button>
-        <Button size="sm" variant="outline" onClick={() => onCancel(session)}>
-          <XIcon /> Cancel
-        </Button>
+        {offers("sessions.delete") && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!session.can.delete.ok}
+            title={session.can.delete.why}
+            onClick={() => onCancel(session)}
+          >
+            <XIcon /> Cancel
+          </Button>
+        )}
+        {confirm.dialog}
       </>
     );
   }
-  if (reasons.includes("deleted")) {
+  if (reasons.includes("deleted") && offers("sessions.restore")) {
     return (
       <Button
         size="sm"
         variant="outline"
-        disabled={restore.isPending}
+        disabled={restore.isPending || !session.can.restore.ok}
         onClick={() => restore.mutate(session.eventId, { onSuccess: () => toast.success("Restored"), onError: fail })}
       >
         <RotateCcwIcon /> Restore
       </Button>
     );
   }
-  if (reasons.includes("fix") && isUnmatched(session)) {
+  if (reasons.includes("fix") && isUnmatched(session) && offers("clients.save")) {
     return (
       <Button size="sm" variant="outline" onClick={() => onLink(session)}>
         <LinkIcon /> Link client
@@ -292,12 +304,12 @@ function QuickActions({ session, reasons, hasClient, writing, payables, onCancel
   }
   return (
     <>
-      {reasons.includes("record") && !writing && (
+      {reasons.includes("record") && offers("sessions.saveRecord") && !writing && (
         <Button size="sm" variant="outline" onClick={onWrite}>
           <PencilLineIcon /> Add summary
         </Button>
       )}
-      {payables.length > 0 && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}
+      {payables.length > 0 && offers("payments.set") && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}
     </>
   );
 }
@@ -433,6 +445,10 @@ function PackageTodo({ pkg, reasons, onPayOther }: PackageTodoProps) {
   const client = clientsById.get(pkg.clientId);
   const payable = packagePayable(pkg);
   const collecting = reasons.includes("collect");
+  const makeStandalone = PackagesMutation.useMakeStandalone();
+  const [deleting, setDeleting] = useState(false);
+  // Each button is one of the fixes its to-do rules name (pkg.fixes).
+  const offers = (action: string) => pkg.fixes.includes(action);
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
@@ -455,6 +471,11 @@ function PackageTodo({ pkg, reasons, onPayOther }: PackageTodoProps) {
           Package of {pkg.sessions} · bought {formatDate(pkg.purchasedAt)}
           {collecting && <> · {formatCents(pkg.priceCents)} due</>}
         </span>
+        {pkg.unlinked && (
+          <span className="text-sm text-muted-foreground">
+            The calendar no longer buys it: keep it as its own, or delete it.
+          </span>
+        )}
         {pkg.drift && (
           <span className="text-sm text-muted-foreground">
             {pkg.drift} · <PackageDocuments pkg={pkg} />
@@ -463,7 +484,33 @@ function PackageTodo({ pkg, reasons, onPayOther }: PackageTodoProps) {
         {pkg.note && <span className="line-clamp-1 text-xs text-muted-foreground">{pkg.note}</span>}
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {collecting && <PaidMenu payables={[payable]} onOther={() => onPayOther([payable])} />}
+        {offers("packages.makeStandalone") && pkg.can.makeStandalone.ok && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={makeStandalone.isPending}
+            onClick={() =>
+              makeStandalone.mutate(pkg.id, {
+                onSuccess: () => toast.success("Kept as its own package"),
+                onError: (error) => toast.error(error.message),
+              })
+            }
+          >
+            <PackageCheckIcon /> Keep
+          </Button>
+        )}
+        {offers("packages.delete") && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!pkg.can.delete.ok}
+            title={pkg.can.delete.why}
+            onClick={() => setDeleting(true)}
+          >
+            <Trash2Icon /> Delete
+          </Button>
+        )}
+        {collecting && offers("payments.set") && <PaidMenu payables={[payable]} onOther={() => onPayOther([payable])} />}
         <Button
           variant="ghost"
           size="sm"
@@ -474,6 +521,11 @@ function PackageTodo({ pkg, reasons, onPayOther }: PackageTodoProps) {
           <span className="hidden sm:inline">Packages</span> <ArrowRightIcon />
         </Button>
       </div>
+      <DeletePackageDialog
+        pkg={deleting ? pkg : null}
+        clientName={client?.name ?? "Unknown client"}
+        onClose={() => setDeleting(false)}
+      />
     </div>
   );
 }

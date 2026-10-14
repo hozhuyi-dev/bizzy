@@ -79,6 +79,21 @@ func (rs Rules[S]) Reasons(s S) []Reason {
 	return reasons
 }
 
+// Fixes are the actions that resolve the to-do rules a state puts on the
+// list, in rule order, each once: the quick actions its to-do item offers.
+// Nil when there is nothing to do.
+func (rs Rules[S]) Fixes(s S) []string {
+	var out []string
+	for _, r := range rs.Evaluate(s).Fired {
+		for _, a := range r.ResolvedBy {
+			if r.Bucket != Impossible && !slices.Contains(out, a) {
+				out = append(out, a)
+			}
+		}
+	}
+	return out
+}
+
 // Violations are the Impossible rules that hold for a state.
 func (rs Rules[S]) Violations(s S) []Rule[S] {
 	var out []Rule[S]

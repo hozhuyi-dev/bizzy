@@ -16,8 +16,12 @@ type Source string
 const (
 	// SourceCalendar packages come from a `10x85` / `10@850` title. Their ID
 	// is the event ID, so the sync always maps an event to the same package.
-	// Once the title no longer buys it, the reconcile unlinks it: it becomes
-	// an app package, kept with what she recorded, until she deletes it.
+	// Once the title no longer buys it (the event was deleted, or its title
+	// changed), the reconcile marks it Unlinked: still a calendar package,
+	// kept with its credits, payment and documents, and on the to-do list
+	// until the user deletes it or makes it standalone (an app package).
+	// Should a title buy it again meanwhile, it is linked back; once
+	// standalone, it stays so.
 	SourceCalendar Source = "calendar"
 	SourceApp      Source = "app"
 )
@@ -32,7 +36,9 @@ type Package struct {
 	Note        string    `json:"note,omitempty" dynamodbav:"note,omitempty"`
 
 	// Derived by the billing reconcile.
-	CreditsUsed int `json:"creditsUsed" dynamodbav:"creditsUsed"`
+	// Unlinked says no calendar title buys this calendar package any more.
+	Unlinked    bool `json:"unlinked,omitempty" dynamodbav:"unlinked,omitempty"`
+	CreditsUsed int  `json:"creditsUsed" dynamodbav:"creditsUsed"`
 	// Drift explains how the calendar now disagrees with an issued document
 	// covering it: its event names another client, or moved.
 	Drift string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
@@ -73,7 +79,7 @@ func (p Package) Settled() bool {
 // contradicts a document: the open index is where the to-do list reads
 // packages from.
 func (p Package) Open() bool {
-	return p.CreditsLeft() > 0 || !p.Settled() || p.Drift != ""
+	return p.CreditsLeft() > 0 || !p.Settled() || len(Rules.Reasons(p.State(p.PurchasedAt))) > 0
 }
 
 // CollectOnItsOwn reports whether it goes on her to-do list as itself: a

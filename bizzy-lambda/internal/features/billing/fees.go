@@ -39,8 +39,11 @@ type FeeChange struct {
 type FeeImpact struct {
 	Changes []FeeChange `json:"changes"`
 	// NeedsConfirm says a change touches a session already paid or on a
-	// document, which saving would put on her to-do list to fix.
+	// document, or brings on something to fix (see Impact): clients.save
+	// refuses the latter unless confirmed.
 	NeedsConfirm bool `json:"needsConfirm"`
+	// Impact is what saving the rates would bring on.
+	Impact Impact `json:"impact"`
 }
 
 // FeeImpact prices a client's sessions with their fees now and with the
@@ -120,6 +123,13 @@ func (r *Reconciler) FeeImpact(ctx context.Context, in FeeImpactInput) (FeeImpac
 	slices.SortFunc(out.Changes, func(a, b FeeChange) int {
 		return cmp.Or(a.Start.Compare(b.Start), cmp.Compare(a.EventID, b.EventID))
 	})
+
+	brought, err := r.ClientImpact(ctx, proposed)
+	if err != nil {
+		return out, err
+	}
+	out.Impact = ImpactOf(brought)
+	out.NeedsConfirm = out.NeedsConfirm || out.Impact.NeedsConfirm
 	return out, nil
 }
 

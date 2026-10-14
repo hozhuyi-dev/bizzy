@@ -225,7 +225,7 @@ describe("api", () => {
     }
   });
 
-  test("scopes the api's S3 access to attachment keys", () => {
+  test("scopes the api's and the quarterly job's S3 access to attachment keys", () => {
     type Policy = {
       Properties: {
         PolicyDocument: { Statement: Array<{ Action: unknown; Resource: unknown }> };
@@ -236,15 +236,21 @@ describe("api", () => {
     );
     const s3 = statements.filter((s) => JSON.stringify(s.Action).includes("s3:"));
 
-    expect(s3).toHaveLength(2);
+    // The api's two statements, and the quarterly job's two.
+    expect(s3).toHaveLength(4);
     for (const s of s3) {
       expect(JSON.stringify(s)).toContain("attachments/*");
     }
   });
 
-  test("has the api and public functions and no schedule; the app runs the sync", () => {
-    api.resourceCountIs("AWS::Lambda::Function", 2);
+  test("has the api, public and quarterly job functions; the app runs the sync, a rule the job", () => {
+    api.resourceCountIs("AWS::Lambda::Function", 3);
     api.resourceCountIs("AWS::Scheduler::Schedule", 0);
+    api.resourceCountIs("AWS::Events::Rule", 1);
+    // 03:00 in Kuala Lumpur on the first day of each quarter.
+    api.hasResourceProperties("AWS::Events::Rule", {
+      ScheduleExpression: "cron(0 19 L 3,6,9,12 ? *)",
+    });
   });
 
   test("serves share links publicly, GET only", () => {

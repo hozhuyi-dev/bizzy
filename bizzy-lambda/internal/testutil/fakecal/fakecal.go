@@ -19,6 +19,17 @@ type Calendar struct {
 	Trash []calendar.Event
 	// inserted numbers new events.
 	inserted int
+	// onWrite runs before each write (see memory.Store.OnWrite).
+	onWrite func(op string)
+}
+
+// OnWrite sets what runs before each write, op naming it.
+func (f *Calendar) OnWrite(hook func(op string)) { f.onWrite = hook }
+
+func (f *Calendar) beforeWrite(op string) {
+	if f.onWrite != nil {
+		f.onWrite(op)
+	}
 }
 
 // Events lists the live events starting in [from, to); a zero from reads
@@ -63,6 +74,7 @@ func Write(e *calendar.Event, in calendar.EventInput) {
 }
 
 func (f *Calendar) Insert(_ context.Context, in calendar.EventInput) (calendar.Event, error) {
+	f.beforeWrite("calendar.insert")
 	f.inserted++
 	e := calendar.Event{ID: fmt.Sprintf("new%d", f.inserted), ETag: "1"}
 	Write(&e, in)
@@ -71,6 +83,7 @@ func (f *Calendar) Insert(_ context.Context, in calendar.EventInput) (calendar.E
 }
 
 func (f *Calendar) Restore(_ context.Context, id string) (calendar.Event, error) {
+	f.beforeWrite("calendar.restore")
 	i := slices.IndexFunc(f.Trash, func(e calendar.Event) bool { return e.ID == id })
 	if i < 0 {
 		return calendar.Event{}, calendar.ErrGone
@@ -82,6 +95,7 @@ func (f *Calendar) Restore(_ context.Context, id string) (calendar.Event, error)
 }
 
 func (f *Calendar) Update(_ context.Context, id, etag string, in calendar.EventInput) (calendar.Event, error) {
+	f.beforeWrite("calendar.update")
 	i := f.Find(id)
 	if i < 0 {
 		return calendar.Event{}, calendar.ErrGone
@@ -96,6 +110,7 @@ func (f *Calendar) Update(_ context.Context, id, etag string, in calendar.EventI
 }
 
 func (f *Calendar) Delete(_ context.Context, id, etag string) error {
+	f.beforeWrite("calendar.delete")
 	i := f.Find(id)
 	if i < 0 {
 		return calendar.ErrGone

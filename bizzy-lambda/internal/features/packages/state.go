@@ -10,7 +10,9 @@ import (
 // State is a package reduced to the independent axes its rules read (see
 // rules.go and testdata/states.md).
 type State struct {
-	Source  Source       `json:"source"`
+	Source Source `json:"source"`
+	// Link says whether a calendar title still buys it.
+	Link    Link         `json:"link"`
 	Timing  Timing       `json:"timing"`
 	Credits Credits      `json:"credits"`
 	Price   Price        `json:"price"`
@@ -21,6 +23,14 @@ type State struct {
 	Receipt DocSlot `json:"receipt"`
 	Drift   Drift   `json:"drift"`
 }
+
+type Link string
+
+const (
+	Linked Link = "linked"
+	// Unlinked: a calendar package no title buys any more.
+	Unlinked Link = "unlinked"
+)
 
 type Timing string
 
@@ -79,6 +89,7 @@ const (
 
 var Axes = statemodel.Axes[State]{
 	statemodel.NewAxis("source", []Source{SourceCalendar, SourceApp}, func(s *State, v Source) { s.Source = v }),
+	statemodel.NewAxis("link", []Link{Linked, Unlinked}, func(s *State, v Link) { s.Link = v }),
 	statemodel.NewAxis("timing", []Timing{Ahead, Purchased}, func(s *State, v Timing) { s.Timing = v }),
 	statemodel.NewAxis("credits", []Credits{CreditsLeft, CreditsUsedUp}, func(s *State, v Credits) { s.Credits = v }),
 	statemodel.NewAxis("price", []Price{Free, Priced}, func(s *State, v Price) { s.Price = v }),
@@ -92,8 +103,11 @@ var Axes = statemodel.Axes[State]{
 // State reduces the package to its axes as of now.
 func (p Package) State(now time.Time) State {
 	st := State{
-		Source: p.Source, Timing: Purchased, Credits: CreditsLeft, Price: Priced, Payment: PaymentNone, PaidFor: PaidForCurrent,
+		Source: p.Source, Link: Linked, Timing: Purchased, Credits: CreditsLeft, Price: Priced, Payment: PaymentNone, PaidFor: PaidForCurrent,
 		Invoice: slotOf(p.Invoice), Receipt: slotOf(p.Receipt), Drift: DriftNone,
+	}
+	if p.Unlinked {
+		st.Link = Unlinked
 	}
 	if p.Drift != "" {
 		st.Drift = Drifted

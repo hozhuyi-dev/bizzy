@@ -1,7 +1,7 @@
+import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { toast } from "sonner";
 import { toPackageInput, toPackageValues } from "../../packages.form";
-import { PackagesMutation } from "../../packages.mutation";
+import { usePackageSave } from "../../packages-impact.hook";
 import type { Package } from "../../packages.types";
 import { fieldErrors } from "~/core/utils/form.util";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
@@ -26,14 +26,18 @@ interface PackageFormProps {
  */
 export function PackageForm({ pkg, onDone }: PackageFormProps) {
   const clients = ClientsQuery.useList();
-  const save = PackagesMutation.useSave();
+  const save = usePackageSave(pkg, onDone);
+  const [error, setError] = useState<string | null>(null);
 
   const form = useForm({
     defaultValues: toPackageValues(pkg),
     onSubmit: async ({ value }) => {
-      await save.mutateAsync(toPackageInput(value, pkg?.id));
-      toast.success(pkg ? "Package updated" : "Package added");
-      onDone();
+      setError(null);
+      try {
+        await save.submit(toPackageInput(value, pkg?.id));
+      } catch (e) {
+        setError((e as Error).message);
+      }
     },
   });
 
@@ -196,9 +200,9 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
           </form.Field>
         )}
 
-        {save.error && (
+        {error && (
           <p role="alert" className="text-sm text-destructive">
-            {save.error.message}
+            {error}
           </p>
         )}
       </FieldGroup>
@@ -214,6 +218,7 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
           )}
         </form.Subscribe>
       </DialogFooter>
+      {save.dialog}
     </form>
   );
 }

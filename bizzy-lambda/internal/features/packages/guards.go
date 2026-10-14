@@ -28,6 +28,8 @@ func (p Package) CanBill(slot docref.Slot) error {
 		return apperr.Conflict("this package already has a receipt")
 	case slot == docref.SlotReceipt && !p.Payment.IsPaid():
 		return apperr.Conflict("only a paid package can get a receipt")
+	case slot == docref.SlotReceipt && p.Payment.Outdated(p.PriceCents):
+		return apperr.Conflict("The price changed since it was paid: record the payment at the new price first.")
 	}
 	return nil
 }
@@ -36,6 +38,8 @@ func (p Package) CanBill(slot docref.Slot) error {
 // calendar is changed there, and a document freezes it.
 func (p Package) CanEdit() error {
 	switch {
+	case p.Unlinked:
+		return apperr.Conflict("Its session is gone from the calendar: make it a standalone package first.")
 	case p.Source != SourceApp:
 		return apperr.Conflict("this package comes from the calendar; change it there")
 	case p.HasDocuments():
@@ -44,13 +48,27 @@ func (p Package) CanEdit() error {
 	return nil
 }
 
-// CanDelete reports whether it can be deleted in the app.
+// CanDelete reports whether it can be deleted in the app: one added in the
+// app, or one the calendar no longer buys; not while paid, as the record
+// of money received would go with it, nor while a document covers it.
 func (p Package) CanDelete() error {
 	switch {
-	case p.Source != SourceApp:
+	case p.Source != SourceApp && !p.Unlinked:
 		return apperr.Conflict("this package comes from the calendar; remove it there")
+	case p.Payment.IsPaid():
+		return apperr.Conflict("Undo the payment first: deleting the package would lose the record of it.")
 	case p.HasDocuments():
 		return apperr.Conflict("cancel the documents for this package first")
+	}
+	return nil
+}
+
+// CanMakeStandalone reports whether it can become one of the app's, kept
+// with its credits, payment and documents: once the calendar no longer
+// buys it.
+func (p Package) CanMakeStandalone() error {
+	if !p.Unlinked {
+		return apperr.Conflict("Only a package whose session is gone from the calendar can be made standalone.")
 	}
 	return nil
 }

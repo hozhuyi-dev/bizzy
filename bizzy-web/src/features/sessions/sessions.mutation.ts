@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
-import type { SessionDraft } from "./sessions.types";
+import type { BookingOptions, PackageChoice, SessionDraft } from "./sessions.types";
 import { SessionKeys } from "~/core/constants/query-keys.constant";
 import { isStaleEdit } from "~/core/utils/api-error.util";
 import { invalidateBilling } from "~/core/utils/query.util";
@@ -29,31 +29,26 @@ function useSessionMutation<TInput, TResult>(
 }
 
 export const SessionsMutation = {
-  useCreate: () => useSessionMutation((draft: SessionDraft) => SessionsService.create(draft)),
+  // Saving a booking goes through its preview: see useBookingSave.
+  useCreate: () =>
+    useSessionMutation(({ draft, options }: { draft: SessionDraft; options?: BookingOptions }) =>
+      SessionsService.create(draft, options),
+    ),
 
   useUpdate: () =>
     useSessionMutation(
-      ({ eventId, draft }: { eventId: string; draft: SessionDraft }) => SessionsService.update(eventId, draft),
+      ({ eventId, draft, options }: { eventId: string; draft: SessionDraft; options?: BookingOptions }) =>
+        SessionsService.update(eventId, draft, options),
       ({ eventId }) => eventId,
       true,
     ),
 
-  /** Removes the `?`, keeping the rest of the title. */
-  useConfirm: () =>
-    useSessionMutation(
-      async (eventId: string) => {
-        const { draft } = await SessionsService.get(eventId);
-        return SessionsService.update(eventId, { ...draft, tentative: false });
-      },
-      (eventId) => eventId,
-      true,
-    ),
-
-  /** Deletes the event and the session, with anything recorded on it. */
+  /** Deletes the event and the session, with anything recorded on it, and keeps or deletes the package it bought. */
   useDelete: () =>
     useSessionMutation(
-      (eventId: string) => SessionsService.delete(eventId),
-      (eventId) => eventId,
+      ({ eventId, pkg, confirm }: { eventId: string; pkg: PackageChoice; confirm: boolean }) =>
+        SessionsService.delete(eventId, pkg, confirm),
+      ({ eventId }) => eventId,
     ),
 
   /** Brings back a session deleted in the calendar. */

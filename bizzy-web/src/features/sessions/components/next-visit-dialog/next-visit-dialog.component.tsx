@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { SessionsMutation } from "../../sessions.mutation";
+import { useBookingSave } from "../../sessions-booking.hook";
 import type { SessionDraft } from "../../sessions.types";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -38,8 +38,18 @@ export function NextVisitDialog({ from, clientName, onClose }: NextVisitDialogPr
 }
 
 function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clientName: string; onClose: () => void }) {
-  const create = SessionsMutation.useCreate();
   const navigate = useNavigate();
+  // A new booking can take a package credit from a later one: what that
+  // leaves to fix is shown first.
+  const save = useBookingSave(undefined, (draft, eventId) => {
+    toast.success(`Booked ${clientName} for ${formatSessionTime(draft.start)}`, {
+      action: {
+        label: "Open",
+        onClick: () => void navigate({ to: "/sessions/$id", params: { id: eventId } }),
+      },
+    });
+    onClose();
+  });
   const start = new Date(from.start);
   const [date, setDate] = useState(toISODate(addDays(start, 7)));
   const [time, setTime] = useState(toTimeInput(start));
@@ -53,18 +63,7 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
       homeVisit: from.homeVisit,
       tentative,
     };
-    create.mutate(draft, {
-      onSuccess: (created) => {
-        toast.success(`Booked ${clientName} for ${formatSessionTime(draft.start)}`, {
-          action: {
-            label: "Open",
-            onClick: () => void navigate({ to: "/sessions/$id", params: { id: created.eventId } }),
-          },
-        });
-        onClose();
-      },
-      onError: (error) => toast.error(error.message),
-    });
+    save.submit(draft).catch((error: Error) => toast.error(error.message));
   };
 
   return (
@@ -104,10 +103,11 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!date || !time || create.isPending}>
-          {create.isPending ? "Booking…" : "Book"}
+        <Button type="submit" disabled={!date || !time || save.saving}>
+          {save.saving ? "Booking…" : "Book"}
         </Button>
       </DialogFooter>
+      {save.dialog}
     </form>
   );
 }

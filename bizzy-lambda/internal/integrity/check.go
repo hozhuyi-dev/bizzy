@@ -22,6 +22,8 @@ type Violation struct {
 	Detail string
 	// Pending is the suggested resolution of a known gap (see Rule.Pending).
 	Pending string
+	// Tolerated says what puts it right later (see Rule.Tolerated).
+	Tolerated string
 }
 
 func (v Violation) String() string { return v.Rule + ": " + v.Detail }
@@ -51,7 +53,7 @@ func Check(w World) []Violation {
 	}
 	for _, r := range AllLinks() {
 		for _, detail := range r.Broken(w) {
-			out = append(out, Violation{Rule: r.ID, Detail: detail, Pending: r.Pending})
+			out = append(out, Violation{Rule: r.ID, Detail: detail, Pending: r.Pending, Tolerated: r.Tolerated})
 		}
 	}
 	return out

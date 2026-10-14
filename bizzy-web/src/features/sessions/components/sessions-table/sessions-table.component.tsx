@@ -11,7 +11,7 @@ import {
   createSessionColumns,
   sessionActions,
 } from "../../sessions.columns";
-import { SessionsMutation } from "../../sessions.mutation";
+import { useConfirmBooking } from "../../sessions-booking.hook";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
 import type { Session, SessionReturnTo  } from "../../sessions.types";
@@ -42,7 +42,8 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
 
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
-  const { mutate: confirm } = SessionsMutation.useConfirm();
+  const booking = useConfirmBooking();
+  const confirm = booking.confirm;
 
   const packagesById = useMemo(
     () => new Map((packages.data ?? []).map((pkg) => [pkg.id, pkg])),
@@ -57,11 +58,7 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
       onLink: setLinking,
       onEditClient: (client) =>
         void navigate({ to: "/clients/$id", params: { id: client.id }, hash: "profile" }),
-      onConfirm: (session) =>
-        confirm(session.eventId, {
-          onSuccess: () => toast.success("Session confirmed"),
-          onError: (error) => toast.error(error.message),
-        }),
+      onConfirm: (session) => confirm(session.eventId),
     }),
     [from, clientsById, packagesById, confirm, navigate],
   );
@@ -103,6 +100,7 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
       />
 
       <LinkClientDialog session={linking} onClose={() => setLinking(null)} />
+      {booking.dialog}
     </>
   );
 }

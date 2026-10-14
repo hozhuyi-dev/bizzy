@@ -5,7 +5,7 @@ import { formatDate } from "~/core/utils/date.util";
 
 /** The package a session's title bought, while it still does. */
 export function boughtIn(sessionId: string, pkg: Package | undefined): Package | undefined {
-  return pkg && pkg.id === sessionId && pkg.source === "calendar" ? pkg : undefined;
+  return pkg && pkg.id === sessionId && pkg.source === "calendar" && !pkg.unlinked ? pkg : undefined;
 }
 
 export function clientName(pkg: Package, clientsById: ReadonlyMap<string, Client>): string {

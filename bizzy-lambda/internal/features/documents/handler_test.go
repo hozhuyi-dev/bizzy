@@ -158,14 +158,19 @@ func TestLifecycle(t *testing.T) {
 		t.Errorf("paid by = %q, want what she recorded", draft.Draft.PaidBy)
 	}
 
-	// She edits freely before issuing.
+	// She edits the wording freely before issuing; a line's date and amount
+	// follow the session and its payment.
 	content := *draft.Draft
 	content.Lines[0].AmountCents = 9000
+	content.Lines[0].Date = "2026-10-06"
 	content.PaidBy = "Cash"
 	draft = must[Document](t)(h.saveDraft(ctx, saveDraftInput{ID: draft.ID, Version: draft.Version, Content: content}))
+	if line := draft.Draft.Lines[0]; line.AmountCents != 9500 || line.Date != "2026-10-05" || draft.Draft.PaidBy != "Cash" {
+		t.Errorf("saved = %+v paid by %q, want the line as the session and payment say, the wording hers", line, draft.Draft.PaidBy)
+	}
 
 	issued := must[Document](t)(h.issue(ctx, idInput{ID: draft.ID, Version: draft.Version}))
-	if issued.Number != "RCP260001" || *issued.Revision != 0 || issued.Content.TotalCents != 9000 || issued.Draft != nil {
+	if issued.Number != "RCP260001" || *issued.Revision != 0 || issued.Content.TotalCents != 9500 || issued.Draft != nil {
 		t.Fatalf("issued = %+v", issued)
 	}
 	if len(*reconciled) == 0 {

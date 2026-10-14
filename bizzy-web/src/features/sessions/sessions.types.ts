@@ -67,6 +67,11 @@ export interface Session {
   rules: Array<string>;
   /** What is left to do on it now. */
   todo: Array<TodoReason>;
+  /**
+   * The actions its to-do rules say resolve them, e.g. "sessions.update" or
+   * "payments.set": what its to-do item offers.
+   */
+  fixes: Array<string>;
   /** The first thing to fix, explained. */
   problem?: string;
   /** Its own fee, when one applies. */
@@ -109,7 +114,8 @@ export interface SessionCan {
   record: Verdict;
   /** Files can be attached or removed. */
   attach: Verdict;
-  editBooking: Verdict;
+  /** It can be deleted, with what is recorded on it: not while paid or on a document. */
+  delete: Verdict;
   restore: Verdict;
   discard: Verdict;
 }
@@ -131,6 +137,17 @@ export interface SessionDraft {
   package?: { sessions: number; priceCents: number };
   homeVisit: boolean;
   tentative: boolean;
+}
+
+/** What happens to the package a deleted session bought; mirrors googlesync.KeepPackage / DeletePackage. */
+export type PackageChoice = "keep" | "delete";
+
+/** What saving a booking also does, once she has seen its preview. */
+export interface BookingOptions {
+  /** She confirmed what the preview said saving brings on. */
+  confirm?: boolean;
+  /** Move what was paid for it, and for the package it buys, to the new amounts. */
+  updatePayment?: boolean;
 }
 
 /** A stored session with the draft to edit it from, and its notes; mirrors googlesync.Stored. */

@@ -46,6 +46,24 @@ const (
 type Router struct {
 	handlers map[string]Handler
 	kinds    map[string]Kind
+	// Journal, when set, notes each mutation before it runs and drops the
+	// note once it finished or was refused (see internal/features/recovery).
+	Journal Journal
+}
+
+// Journal notes the mutations running, so that one that died partway is
+// found and repaired.
+type Journal interface {
+	Begin(ctx context.Context, action string) (string, error)
+	End(ctx context.Context, id string) error
+}
+
+type entryKey struct{}
+
+// EntryOf is the journal entry of the mutation ctx belongs to; "" when none.
+func EntryOf(ctx context.Context) string {
+	id, _ := ctx.Value(entryKey{}).(string)
+	return id
 }
 
 func New() *Router {
@@ -88,18 +106,37 @@ func (r *Router) Handle(ctx context.Context, req Request) (Response, error) {
 		return errorResponse(apperr.Invalid("unknown action %q", req.Action)), nil
 	}
 
-	data, err := handler(ctx, req.Payload)
-	if err != nil {
-		var appErr *apperr.Error
-		if errors.As(err, &appErr) {
-			return errorResponse(appErr), nil
+	entry := ""
+	if r.Journal != nil && r.kinds[req.Action] == KindMutation {
+		id, err := r.Journal.Begin(ctx, req.Action)
+		if err != nil {
+			slog.ErrorContext(ctx, "journal", "action", req.Action, "error", err)
+			return internalError, nil
 		}
-		slog.ErrorContext(ctx, "action failed", "action", req.Action, "error", err)
-		return Response{Error: &ErrorBody{Code: "internal", Message: "Something went wrong."}}, nil
+		entry, ctx = id, context.WithValue(ctx, entryKey{}, id)
 	}
 
+	data, err := handler(ctx, req.Payload)
+	var appErr *apperr.Error
+	refused := errors.As(err, &appErr)
+	// A failure leaves its entry: what it wrote before failing is repaired
+	// with the next sync, as after a crash.
+	if entry != "" && (err == nil || refused) {
+		if err := r.Journal.End(ctx, entry); err != nil {
+			slog.ErrorContext(ctx, "journal", "action", req.Action, "error", err)
+		}
+	}
+	switch {
+	case refused:
+		return errorResponse(appErr), nil
+	case err != nil:
+		slog.ErrorContext(ctx, "action failed", "action", req.Action, "error", err)
+		return internalError, nil
+	}
 	return Response{Data: data}, nil
 }
+
+var internalError = Response{Error: &ErrorBody{Code: "internal", Message: "Something went wrong."}}
 
 // Typed adapts a handler that takes a decoded payload.
 func Typed[In any](fn func(ctx context.Context, in In) (any, error)) Handler {

@@ -36,6 +36,14 @@ type Store interface {
 	// DeletePrefix removes every file whose key starts with prefix, for
 	// resetting a test environment.
 	DeletePrefix(ctx context.Context, prefix string) (int, error)
+	// List returns every file whose key starts with prefix.
+	List(ctx context.Context, prefix string) ([]Listed, error)
+}
+
+// Listed is one stored file, as a listing shows it.
+type Listed struct {
+	Key      string
+	Modified time.Time
 }
 
 // Upload is a presigned PUT: the browser sends the file to URL with these

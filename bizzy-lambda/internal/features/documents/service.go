@@ -44,8 +44,12 @@ type Deps struct {
 	// AfterChange reconciles the clients whose sessions or packages a
 	// document now covers differently (amounts, drift).
 	AfterChange func(ctx context.Context, clientIDs ...string) error
-	Location    *time.Location
-	Now         func() time.Time
+	// Refresh applies what the calendar changed since the last sync on
+	// these events (sessions, and the packages their titles buy), so a
+	// document is issued from what the calendar says now. Nil skips it.
+	Refresh  func(ctx context.Context, eventIDs ...string) error
+	Location *time.Location
+	Now      func() time.Time
 }
 
 // Service is a document's lifecycle: draft, issue, revise, discard, cancel
@@ -92,11 +96,20 @@ func summaries(docs []Document) []Summary {
 	return out
 }
 
-// Get returns a document and its issued revisions.
+// Get returns a document and its issued revisions. A draft shows its lines
+// as they follow what they cover now (see follow); saving or issuing it
+// writes them.
 func (svc Service) Get(ctx context.Context, id string) (Document, []Revision, error) {
 	doc, err := svc.load(ctx, id, 0)
 	if err != nil {
 		return doc, nil, err
+	}
+	if doc.Draft != nil {
+		// A receipt whose payment no longer settles it shows as it was:
+		// issuing it says why it can't be.
+		if followed, err := svc.follow(ctx, doc.Type, *doc.Draft); err == nil {
+			doc.Draft = &followed
+		}
 	}
 	revisions, err := svc.Repo.Revisions(ctx, id)
 	return doc, revisions, err
@@ -191,6 +204,9 @@ func (svc Service) SaveDraft(ctx context.Context, id string, version int, conten
 	if err != nil {
 		return Document{}, err
 	}
+	if content, err = svc.follow(ctx, doc.Type, content); err != nil {
+		return Document{}, err
+	}
 
 	updated := doc
 	updated.Draft = &content
@@ -208,12 +224,34 @@ func (svc Service) SaveDraft(ctx context.Context, id string, version int, conten
 // Issue makes the draft final: the first time it takes a number (rev 0),
 // afterwards it becomes the next revision under the same number.
 func (svc Service) Issue(ctx context.Context, id string, version int) (Document, error) {
+	if svc.Refresh != nil {
+		doc, err := svc.load(ctx, id, version)
+		if err != nil {
+			return Document{}, err
+		}
+		var events []string
+		for _, src := range doc.Sources {
+			events = append(events, src.ID)
+		}
+		if err := svc.Refresh(ctx, events...); err != nil {
+			return Document{}, err
+		}
+	}
 	// A conflict on the counter means another document took the number
 	// first; read it again and retry.
 	for attempt := 0; ; attempt++ {
 		doc, err := svc.load(ctx, id, version)
 		if err != nil {
 			return Document{}, err
+		}
+		if doc.Draft != nil {
+			// What it says follows the calendar and the payments up to the
+			// moment it is issued.
+			followed, err := svc.follow(ctx, doc.Type, *doc.Draft)
+			if err != nil {
+				return Document{}, err
+			}
+			doc.Draft = &followed
 		}
 		now, err := svc.sourcesNow(ctx, doc)
 		if err != nil {
@@ -557,6 +595,71 @@ func (svc Service) sourceNow(ctx context.Context, src Source) (sourceNow, error)
 	}
 	fee := s.DueCents()
 	return sourceNow{clientID: s.ClientID, feeCents: &fee}, nil
+}
+
+// follow sets each line a session or package has to what it says now: the
+// date it happened or was bought, and the amount, its fee or price on an
+// invoice and what was received for it on a receipt. A draft can't then be
+// issued saying something the calendar or the payments no longer do, which
+// drift would flag at once. Lines of her own, the descriptions and how it
+// was paid stay as she wrote them, and a receipt waits for a payment that
+// settles the amount due.
+func (svc Service) follow(ctx context.Context, docType Type, c Content) (Content, error) {
+	out := c
+	out.Lines = slices.Clone(c.Lines)
+	out.TotalCents = 0
+	for i, line := range out.Lines {
+		if line.Source != nil {
+			date, amount, err := svc.says(ctx, docType, *line.Source)
+			if err != nil {
+				return c, err
+			}
+			if date != "" {
+				out.Lines[i].Date, out.Lines[i].AmountCents = date, amount
+			}
+		}
+		out.TotalCents += out.Lines[i].AmountCents
+	}
+	return out, nil
+}
+
+// says is what a source's line says now on a document of the type: its
+// date, and its amount (on a receipt, what the payment received). The
+// date is "" when the source is gone.
+func (svc Service) says(ctx context.Context, docType Type, src Source) (date string, amount int64, err error) {
+	var due int64
+	var at time.Time
+	var payment *money.Payment
+	if src.Kind == SourcePackage {
+		p, found, err := svc.Packages.Get(ctx, src.ID)
+		if !found || err != nil {
+			return "", 0, err
+		}
+		at, due, payment = p.PurchasedAt, p.PriceCents, p.Payment
+	} else {
+		s, found, err := svc.Sessions.Get(ctx, src.ID)
+		if !found || err != nil {
+			return "", 0, err
+		}
+		if s.RemovedAt == nil && s.Status != sessions.StatusPriced {
+			return "", 0, apperr.Conflict("The calendar changed the session on %s: it has no fee of its own now. Fix it, or take its line off, first.", s.Start.In(svc.Location).Format("2 Jan"))
+		}
+		at, due, payment = s.Start, s.DueCents(), s.Payment
+		if s.FeeCents != nil && s.Status != sessions.StatusPriced {
+			due = *s.FeeCents
+		}
+	}
+	date = at.In(svc.Location).Format(time.DateOnly)
+	if docType != TypeReceipt {
+		return date, due, nil
+	}
+	switch {
+	case !payment.IsPaid():
+		return "", 0, apperr.Conflict("A receipt confirms money received: record the payment first.")
+	case payment.Outdated(due):
+		return "", 0, apperr.Conflict("The amount due is now %s, but %s was paid: record the payment at the new amount first.", money.Format(due), money.Format(payment.AmountCents))
+	}
+	return date, payment.AmountCents, nil
 }
 
 func conflictErr(err error) error {

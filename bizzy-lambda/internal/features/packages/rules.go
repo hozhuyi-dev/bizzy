@@ -18,6 +18,14 @@ const (
 // only one bought otherwise is collected on its own.
 var Rules = statemodel.Rules[State]{
 	{
+		ID: "purchase-gone", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
+		Why:  "The calendar no longer buys it: the event was deleted, or its title changed",
+		When: func(s State) bool { return s.Link == Unlinked },
+		// Deleting it waits for its payment to be undone and its documents
+		// cancelled.
+		ResolvedBy: []string{"packages.makeStandalone", "packages.delete", "payments.set", "documents.cancel", "documents.discardDraft"},
+	},
+	{
 		ID: "contradicts-document", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
 		Why:        "The calendar changed after an invoice or receipt was issued: the event names another client, or moved",
 		When:       func(s State) bool { return s.Drift == Drifted },
@@ -27,7 +35,7 @@ var Rules = statemodel.Rules[State]{
 		ID: "price-changed-after-payment", Bucket: statemodel.Contradiction, Reason: ReasonFix, Stop: true,
 		Why:        "The calendar changed the price after it was paid, and the amount paid doesn't match it",
 		When:       func(s State) bool { return s.PaidFor == PaidForOutdated },
-		ResolvedBy: []string{"payments.set", "sessions.update"},
+		ResolvedBy: []string{"payments.set", "sessions.update", "documents.cancel"},
 	},
 	{
 		ID: "unpaid", Bucket: statemodel.NeedsAction, Reason: ReasonCollect,
@@ -36,6 +44,13 @@ var Rules = statemodel.Rules[State]{
 			return s.Source == SourceApp && s.Timing == Purchased && s.Price == Priced && s.Payment == PaymentNone
 		},
 		ResolvedBy: []string{"payments.set"},
+	},
+	{
+		ID: "unlinked-app-package", Bucket: statemodel.Impossible,
+		Why:            "Only a calendar package is bought in a title, to be unlinked from it",
+		When:           func(s State) bool { return s.Source == SourceApp && s.Link == Unlinked },
+		GuardedBy:      []string{"packages.makeStandalone"},
+		ByConstruction: "the reconcile unlinks only calendar packages, and links one back as a calendar package",
 	},
 	{
 		ID: "drift-without-issued-document", Bucket: statemodel.Impossible,

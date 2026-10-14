@@ -1,6 +1,7 @@
 import type { FeeRate } from "~/features/clients/clients.types";
 
-// Mirrors bizzy-lambda/internal/features/billing/preview.go and fees.go.
+// Mirrors bizzy-lambda/internal/features/billing/preview.go, fees.go and
+// impact.go.
 
 /** A booking as the form has it, with no amount typed. */
 export interface PreviewInput {
@@ -40,6 +41,36 @@ export interface FeeChange {
 
 export interface FeeImpact {
   changes: Array<FeeChange>;
-  /** A change touches a session already paid or on a document. */
+  /** A change touches a session already paid or on a document, or brings on something to fix. */
   needsConfirm: boolean;
+  /** What saving the rates would bring on. */
+  impact: Impact;
+}
+
+/** Something a change would leave needing a fix, on a session or package that needs none now; mirrors billing.Brought. */
+export interface Brought {
+  kind: "session" | "package";
+  id: string;
+  start: string;
+  /** The rule that would hold, e.g. "fee-missing". */
+  rule: string;
+  /** What she would have to fix. */
+  problem: string;
+}
+
+/**
+ * What a form's save would bring on, from its preview (sessions.impact,
+ * sessions.deleteImpact, packages.impact, clients.impact); mirrors
+ * billing.Impact. The save refuses what is brought on unless confirmed.
+ */
+export interface Impact {
+  brings: Array<Brought>;
+  /** Saving brings something on: it needs her confirmation. */
+  needsConfirm: boolean;
+  /** Why saving is refused anyway, confirmed or not. */
+  refused?: string;
+  /** A booking needs its fee entered (see refused). */
+  needsFee?: boolean;
+  /** The client with no usual fee whose sessions it would leave without one: giving them one settles it. */
+  needsClientFee?: string;
 }

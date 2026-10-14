@@ -37,6 +37,11 @@ const (
 
 // Delivered reports whether a session with this status counts toward the
 // client's activity once it has happened.
+// Priced says the fee is known: its own, or a package credit's.
+func (s Status) Priced() bool {
+	return s == StatusPriced || s == StatusPackage
+}
+
 func (s Status) Delivered() bool {
 	return s == StatusPriced || s == StatusPackage || s == StatusMissingFee
 }
@@ -108,13 +113,10 @@ type Session struct {
 	// title says `10x85`). The package is paid on its own (see
 	// packages.Package.Payment), but she collects it with the session, so
 	// BoughtSettled mirrors whether it is.
-	BoughtCents   int64 `json:"boughtCents,omitempty" dynamodbav:"boughtCents,omitempty"`
-	BoughtSettled bool  `json:"boughtSettled,omitempty" dynamodbav:"boughtSettled,omitempty"`
-	// BoughtDocumented mirrors whether a document covers that package,
-	// which locks the booking as the session's own documents do.
-	BoughtDocumented bool     `json:"boughtDocumented,omitempty" dynamodbav:"boughtDocumented,omitempty"`
-	Location         Location `json:"location,omitempty" dynamodbav:"location,omitempty"`
-	LocationSource   string   `json:"locationSource,omitempty" dynamodbav:"locationSource,omitempty"`
+	BoughtCents    int64    `json:"boughtCents,omitempty" dynamodbav:"boughtCents,omitempty"`
+	BoughtSettled  bool     `json:"boughtSettled,omitempty" dynamodbav:"boughtSettled,omitempty"`
+	Location       Location `json:"location,omitempty" dynamodbav:"location,omitempty"`
+	LocationSource string   `json:"locationSource,omitempty" dynamodbav:"locationSource,omitempty"`
 	// Reason explains StatusUnmatched / StatusParseError / StatusMissingFee,
 	// or a tentative one under a name no client has.
 	Reason string `json:"reason,omitempty" dynamodbav:"reason,omitempty"`

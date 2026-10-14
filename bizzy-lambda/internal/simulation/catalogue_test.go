@@ -4,7 +4,11 @@ import (
 	"slices"
 	"testing"
 
+	"bizzy-lambda/internal/features/followups"
+	"bizzy-lambda/internal/features/packages"
+	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/integrity"
+	"bizzy-lambda/internal/platform/statemodel"
 	"bizzy-lambda/internal/router"
 )
 
@@ -35,4 +39,31 @@ func TestCatalogueCoversEveryMutation(t *testing.T) {
 			t.Errorf("a rule names %s, which is not a router mutation", a)
 		}
 	}
+	for _, it := range resolvable() {
+		for _, a := range it.resolvedBy {
+			if _, ok := resolvers[a]; !ok {
+				t.Errorf("rule %s is resolved by %s, which recovery.go can't try: add it to resolvers", it.rule, a)
+			}
+		}
+	}
+}
+
+// resolvable are the to-do rules of every entity, as items.
+func resolvable() []todoItem {
+	var out []todoItem
+	add := func(rules []todoItem) { out = append(out, rules...) }
+	add(ruleItems("session", sessions.Rules))
+	add(ruleItems("package", packages.Rules))
+	add(ruleItems("follow-up", followups.Rules))
+	return out
+}
+
+func ruleItems[S any](kind string, rules statemodel.Rules[S]) []todoItem {
+	var out []todoItem
+	for _, r := range rules {
+		if r.Bucket != statemodel.Impossible {
+			out = append(out, todoItem{kind: kind, rule: r.ID, resolvedBy: r.ResolvedBy})
+		}
+	}
+	return out
 }

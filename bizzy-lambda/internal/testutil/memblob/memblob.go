@@ -25,6 +25,17 @@ type Store struct {
 	// Presigned are the uploads the API allowed, by key, as a browser
 	// could only PUT what it was given a URL for.
 	Presigned map[string]Blob
+	// onWrite runs before each write by the API (see memory.Store.OnWrite).
+	onWrite func(op string)
+}
+
+// OnWrite sets what runs before each write, op naming it.
+func (s *Store) OnWrite(hook func(op string)) { s.onWrite = hook }
+
+func (s *Store) beforeWrite(op string) {
+	if s.onWrite != nil {
+		s.onWrite(op)
+	}
 }
 
 func New() *Store {
@@ -52,6 +63,7 @@ func (s *Store) PresignGet(_ context.Context, key, _ string, _ bool, _ time.Dura
 }
 
 func (s *Store) Confirm(_ context.Context, key string) (blobstore.Object, error) {
+	s.beforeWrite("blobs.confirm")
 	blob, ok := s.Blobs[key]
 	if !ok {
 		return blobstore.Object{}, blobstore.ErrMissing
@@ -62,6 +74,7 @@ func (s *Store) Confirm(_ context.Context, key string) (blobstore.Object, error)
 }
 
 func (s *Store) Delete(_ context.Context, keys ...string) error {
+	s.beforeWrite("blobs.delete")
 	for _, key := range keys {
 		delete(s.Blobs, key)
 	}
@@ -76,6 +89,18 @@ func (s *Store) DeletePrefix(ctx context.Context, prefix string) (int, error) {
 		}
 	}
 	return len(keys), s.Delete(ctx, keys...)
+}
+
+// List returns every file under prefix, as if modified long ago: the
+// tests have no clock here.
+func (s *Store) List(_ context.Context, prefix string) ([]blobstore.Listed, error) {
+	var out []blobstore.Listed
+	for _, key := range slices.Sorted(maps.Keys(s.Blobs)) {
+		if strings.HasPrefix(key, prefix) {
+			out = append(out, blobstore.Listed{Key: key})
+		}
+	}
+	return out, nil
 }
 
 // Expire drops pending uploads, as the bucket's lifecycle rule does after

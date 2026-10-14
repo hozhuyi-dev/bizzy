@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
+import { DeletePackageDialog } from "./components/delete-package-dialog/delete-package-dialog.component";
 import { PackageForm } from "./components/package-form/package-form.component";
 import { PackageCredits, PackageDocuments, PackagePayment, PackagePrice, PackageSource, createPackageColumns, packageActions } from "./packages.columns";
 import { clientName } from "./packages.util";
@@ -20,15 +21,6 @@ import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { formatDate } from "~/core/utils/date.util";
@@ -54,7 +46,7 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
   const [search, setSearch] = useState("");
   const packages = PackagesQuery.useList(view === "all");
   const clientsById = ClientsQuery.useById();
-  const remove = PackagesMutation.useDelete();
+  const makeStandalone = PackagesMutation.useMakeStandalone();
   const { create: createDocument } = useCreateDocument();
   // Read from the list, so the dialog shows the payment once it is saved.
   const paying = packages.data?.find((pkg) => pkg.id === payingId);
@@ -64,10 +56,15 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
       clientsById,
       onEdit: (pkg) => setEditing({ mode: "edit", pkg }),
       onDelete: setDeleting,
+      onMakeStandalone: (pkg) =>
+        makeStandalone.mutate(pkg.id, {
+          onSuccess: () => toast.success("Kept as its own package"),
+          onError: (error) => toast.error(error.message),
+        }),
       onPay: (pkg) => setPayingId(pkg.id),
       onDocument: (type, pkg) => createDocument(type, [{ kind: "package", id: pkg.id }]),
     }),
-    [clientsById, createDocument],
+    [clientsById, createDocument, makeStandalone],
   );
 
   const columns = useMemo(() => createPackageColumns(handlers), [handlers]);
@@ -187,42 +184,11 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this package?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleting && (
-                <>
-                  {clientName(deleting, clientsById)}, {deleting.sessions} sessions for {formatCents(deleting.priceCents)}.
-                  {deleting.payment?.status === "paid" &&
-                    ` The ${formatCents(deleting.payment.amountCents)} she paid for it comes off your income.`}{" "}
-                  Sessions on its credits go back to their usual fee. This can't be undone.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              disabled={remove.isPending}
-              onClick={() =>
-                deleting &&
-                remove.mutate(deleting.id, {
-                  onSuccess: () => {
-                    toast.success("Package deleted");
-                    setDeleting(null);
-                  },
-                  onError: (error) => toast.error(error.message),
-                })
-              }
-            >
-              Delete
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeletePackageDialog
+        pkg={deleting}
+        clientName={deleting ? clientName(deleting, clientsById) : ""}
+        onClose={() => setDeleting(null)}
+      />
     </>
   );
 }

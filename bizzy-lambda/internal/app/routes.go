@@ -13,9 +13,11 @@ import (
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/payments"
+	"bizzy-lambda/internal/features/recovery"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/features/todo"
+	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/router"
 )
 
@@ -58,6 +60,28 @@ func New(d Deps) App {
 	}
 
 	r := router.New()
+	r.Journal = recovery.Journal{Store: d.Journal, NewID: dynamo.NewID, Now: d.Now}
+	// What a request that died partway can leave, put right.
+	healer := recovery.Healer{
+		Store:      d.Journal,
+		StaleAfter: d.StaleAfter,
+		Now:        d.Now,
+		Repairs: []func(ctx context.Context) error{
+			func(ctx context.Context) error {
+				return reconcile(ctx, billing.Scope{AllClients: true, Unmatched: true})
+			},
+			func(ctx context.Context) error {
+				all, err := d.Clients.List(ctx)
+				for _, c := range all {
+					if err == nil {
+						err = followups.Rematch(ctx, d.FollowUps, all, c.ID)
+					}
+				}
+				return err
+			},
+			files.Heal,
+		},
+	}
 
 	// A saved client's aliases can match (or unmatch) sessions and
 	// follow-ups, not just at the next sync.
@@ -70,7 +94,7 @@ func New(d Deps) App {
 			return err
 		}
 		return followups.Rematch(ctx, d.FollowUps, all, id)
-	}, d.Location, d.Now)
+	}, clientImpact{reconciler}, d.Location, d.Now)
 	contacts.Register(r, d.Directory, d.Clients, d.Now)
 	billing.Register(r, reconciler)
 	sessions.Register(r, d.Sessions, d.Now)
@@ -82,24 +106,36 @@ func New(d Deps) App {
 		},
 		Now: d.Now,
 	})
-	payments.Register(r, d.Payments, reconcileClients, d.Location, d.Now)
-	followups.Register(r, d.FollowUps, d.Now)
-	todo.Register(r, d.Sessions, d.Packages, d.FollowUps, d.Settings, d.Now)
-	googlesync.RegisterEditor(r, googlesync.Editor{
+	editor := googlesync.Editor{
 		Calendar: d.Calendar,
 		Clients:  d.Clients,
 		Sessions: d.Sessions,
 		Settings: d.Settings,
 		Billing:  reconciler,
+		Payments: d.Payments,
+		Packages: d.Packages,
 		Now:      d.Now,
-	})
+	}
+	// What she pays, she pays as the calendar says now.
+	payments.Register(r, d.Payments, reconcileClients, editor.Refresh, func(ctx context.Context, ids ...string) error {
+		changes := make([]billing.Change, len(ids))
+		for i, id := range ids {
+			changes[i] = billing.Change{EventID: id}
+		}
+		return reconcile(ctx, billing.Scope{Changes: changes})
+	}, d.Location, d.Now)
+	followups.Register(r, d.FollowUps, d.Now)
+	todo.Register(r, d.Sessions, d.Packages, d.FollowUps, d.Settings, d.Now)
+	googlesync.RegisterEditor(r, editor)
 	googlesync.RegisterFollowUpEditor(r, googlesync.FollowUpEditor{
 		Calendar:  d.Calendar,
 		Clients:   d.Clients,
 		FollowUps: d.FollowUps,
 		Location:  d.Location,
 	})
-	packages.Register(r, d.Packages, reconcileClients, d.Location, d.Now)
+	packages.Register(r, d.Packages, func(ctx context.Context, packageID string, clientIDs ...string) error {
+		return reconcile(ctx, billing.Scope{ClientIDs: clientIDs, EventIDs: []string{packageID}})
+	}, packageImpact{reconciler}, setClientFee(d.Clients), editor.Refresh, d.Location, d.Now)
 	settings.Register(r, d.Settings, func(ctx context.Context) error {
 		return reconcile(ctx, billing.Scope{AllClients: true, Unmatched: true})
 	})
@@ -114,11 +150,15 @@ func New(d Deps) App {
 		AfterChange: func(ctx context.Context, ids ...string) error {
 			return reconcile(ctx, billing.Scope{ClientIDs: ids, Unmatched: true})
 		},
+		Refresh:  editor.Refresh,
 		Location: d.Location,
 		Now:      d.Now,
 	})
 
 	sync := func(ctx context.Context, rng googlesync.Range) (googlesync.Summary, error) {
+		if _, err := healer.Heal(ctx, router.EntryOf(ctx)); err != nil {
+			return googlesync.Summary{}, err
+		}
 		cal, err := d.Calendar(ctx)
 		if err != nil {
 			return googlesync.Summary{}, err
@@ -138,4 +178,48 @@ func New(d Deps) App {
 	googlesync.Register(r, d.SyncStatus, d.Location, sync, d.Now)
 
 	return App{Router: r, Sync: sync, Reconciler: reconciler, Attachments: files}
+}
+
+// clientImpact and packageImpact give the clients and packages features
+// billing's impact, which they can't import.
+type clientImpact struct{ r *billing.Reconciler }
+
+func (i clientImpact) Preview(ctx context.Context, proposed clients.Client) (any, error) {
+	brought, err := i.r.ClientImpact(ctx, proposed)
+	return billing.ImpactOf(brought), err
+}
+
+func (i clientImpact) Check(ctx context.Context, proposed clients.Client, confirmed bool) error {
+	brought, err := i.r.ClientImpact(ctx, proposed)
+	if err != nil {
+		return err
+	}
+	return billing.ImpactOf(brought).Check(confirmed)
+}
+
+type packageImpact struct{ r *billing.Reconciler }
+
+func (i packageImpact) Preview(ctx context.Context, id string, next *packages.Package, clientFee *int64) (any, error) {
+	return i.r.PackageImpact(ctx, id, next, clientFee)
+}
+
+func (i packageImpact) Check(ctx context.Context, id string, next *packages.Package, clientFee *int64, confirmed bool) error {
+	impact, err := i.r.PackageImpact(ctx, id, next, clientFee)
+	if err != nil {
+		return err
+	}
+	return impact.Check(confirmed)
+}
+
+// setClientFee gives a client with no usual fee one, from a package's
+// form (packages.Impact.NeedsClientFee).
+func setClientFee(store ClientStore) packages.SetClientFee {
+	return func(ctx context.Context, clientID string, cents int64) error {
+		c, found, err := store.Get(ctx, clientID)
+		if err != nil || !found || len(c.FeeRates) > 0 {
+			return err
+		}
+		c.FeeRates = []clients.FeeRate{{Cents: cents}}
+		return store.SaveProfile(ctx, c)
+	}
 }

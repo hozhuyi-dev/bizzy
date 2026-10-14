@@ -21,6 +21,7 @@ import (
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/payments"
+	"bizzy-lambda/internal/features/recovery"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/features/todo"
@@ -70,6 +71,10 @@ type Deps struct {
 	Attachments attachments.Store
 	Blobs       blobstore.Store
 	Expenses    expenses.Store
+	// Journal notes the mutations running; one left after StaleAfter (how
+	// long a request can run) died, and the next sync repairs after it.
+	Journal    recovery.Store
+	StaleAfter time.Duration
 
 	// Calendar opens the sessions calendar she chose.
 	Calendar  func(ctx context.Context) (googlesync.Calendar, error)

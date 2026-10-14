@@ -17,7 +17,7 @@ const can: SessionCan = {
   receipt: no("only a paid session without a receipt can get one"),
   record: yes,
   attach: yes,
-  editBooking: yes,
+  delete: yes,
   restore: no("This session is still in the calendar."),
   discard: no("This session is still in the calendar."),
 };
@@ -49,6 +49,7 @@ function session(overrides: Partial<Session> = {}): Session {
     },
     rules: [],
     todo: [],
+    fixes: [],
     dueCents: 9500,
     owedCents: 0,
     boughtOwedCents: 0,
@@ -88,7 +89,14 @@ describe("stageBadges", () => {
 });
 
 describe("documentItems", () => {
-  const pkgCan: PackageCan = { pay: yes, invoice: yes, receipt: no("only a paid package can get a receipt"), edit: no("x"), delete: no("x") };
+  const pkgCan: PackageCan = {
+    pay: yes,
+    invoice: yes,
+    receipt: no("only a paid package can get a receipt"),
+    edit: no("x"),
+    delete: no("x"),
+    makeStandalone: no("x"),
+  };
   const bought: Package = {
     id: "e1",
     clientId: "jane",
@@ -99,6 +107,7 @@ describe("documentItems", () => {
     creditsUsed: 1,
     rules: [],
     todo: [],
+    fixes: [],
     creditsLeft: 9,
     owedCents: 85000,
     can: pkgCan,
@@ -119,5 +128,6 @@ describe("documentItems", () => {
 
   test("a package no longer bought in the session is not its document's", () => {
     expect(documentItems("invoice", session(), { ...bought, source: "app" })).toHaveLength(1);
+    expect(documentItems("invoice", session(), { ...bought, unlinked: true })).toHaveLength(1);
   });
 });

@@ -15,6 +15,7 @@ import { FeeImpactDialog } from "./components/fee-impact-dialog/fee-impact-dialo
 import { contactProblem, toClientRow } from "./clients.util";
 import type { ChosenContact, Client, ClientReturnTo } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import { ImpactDialog } from "~/features/billing/components/impact-dialog/impact-dialog.component";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { documentLabel, documentRoute } from "~/features/documents/documents.util";
@@ -329,7 +330,8 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
           void form.handleSubmit();
         }}
       />
-      <FeeImpactDialog impact={save.impact} saving={save.isSaving} onConfirm={save.confirm} onCancel={save.cancel} />
+      <FeeImpactDialog impact={save.feeImpact} saving={save.isSaving} onConfirm={save.confirm} onCancel={save.cancel} />
+      <ImpactDialog impact={save.impact} saving={save.isSaving} onConfirm={save.confirm} onCancel={save.cancel} />
       <SectionLayout
         banner={
           (problem || save.error) && (

@@ -98,7 +98,11 @@ func sessionTitle(t *rapid.T) string {
 	return calendar.FormatTitle(title)
 }
 
+// followUpTitle draws a follow-up title, sometimes one with no name.
 func followUpTitle(t *rapid.T) string {
+	if rapid.IntRange(0, 9).Draw(t, "follow-up malformed?") == 0 {
+		return "!: check knee"
+	}
 	return calendar.FormatFollowUp(calendar.FollowUpTitle{
 		Name:    rapid.SampledFrom(names).Draw(t, "name"),
 		Summary: rapid.SampledFrom([]string{"", "check knee", "send exercises"}).Draw(t, "summary"),

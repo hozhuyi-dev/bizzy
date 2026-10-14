@@ -13,9 +13,11 @@ export interface Package {
   purchasedAt: string;
   /**
    * Bought in a session's title (`calendar`, keyed by its event), or added
-   * here. A calendar package whose title no longer buys it becomes `app`.
+   * here (or made standalone): `app`.
    */
   source: "calendar" | "app";
+  /** A calendar package no title buys any more: its event is gone, or its title changed. On the to-do list until deleted or made standalone. */
+  unlinked?: boolean;
   note?: string;
   creditsUsed: number;
   /** How the calendar now disagrees with an issued document covering it: its event names another client, or moved. */
@@ -31,6 +33,8 @@ export interface Package {
   rules: Array<string>;
   /** What is left to do on it now. */
   todo: Array<TodoReason>;
+  /** The actions its to-do rules say resolve them, e.g. "packages.makeStandalone": what its to-do item offers. */
+  fixes: Array<string>;
   /** What to fix, explained. */
   problem?: string;
   creditsLeft: number;
@@ -45,7 +49,10 @@ export interface PackageCan {
   invoice: Verdict;
   receipt: Verdict;
   edit: Verdict;
+  /** Not while paid or on a document; one bought in the calendar only once it no longer is. */
   delete: Verdict;
+  /** Keep a package the calendar no longer buys as one of its own. */
+  makeStandalone: Verdict;
 }
 
 export interface SavePackageInput {
@@ -57,6 +64,16 @@ export interface SavePackageInput {
   note: string;
   /** Paid there and then, when adding it. */
   paid?: PaymentInput;
+}
+
+/** What saving or deleting a package also does, once she has seen its preview. */
+export interface PackageOptions {
+  /** She confirmed what the preview said it brings on. */
+  confirm?: boolean;
+  /** Move what was paid for it to a new price. */
+  updatePayment?: boolean;
+  /** Give its client this usual fee, when they have none and the change leaves sessions without one. */
+  clientFeeCents?: number | undefined;
 }
 
 /** Open packages (credits left), or every one. */

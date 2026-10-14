@@ -25,8 +25,6 @@ interface BookingFormProps {
   initial: SessionDraft;
   /** The session being edited; omitted for a new one. */
   session?: Session | undefined;
-  /** A document covers it: shown, not editable. */
-  locked?: boolean;
   submitLabel: string;
   /** Resolves once saved; a rejection leaves the form as it is. */
   onSubmit: (draft: SessionDraft) => Promise<void>;
@@ -39,7 +37,7 @@ interface BookingFormProps {
  * calendar. She fills in fields; the API writes the title, so it always
  * parses and matches the client.
  */
-export function BookingForm({ initial, session, locked = false, submitLabel, onSubmit, extraActions }: BookingFormProps) {
+export function BookingForm({ initial, session, submitLabel, onSubmit, extraActions }: BookingFormProps) {
   const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
@@ -108,7 +106,6 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
               <Select
                 items={items}
                 value={field.state.value}
-                disabled={locked}
                 onValueChange={(value) => field.handleChange(value ?? "")}
               >
                 <SelectTrigger className="w-full max-w-sm">
@@ -136,8 +133,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
                 <Input
                   id={field.name}
                   type="date"
-                  disabled={locked}
-                  value={field.state.value}
+                    value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
                 <FieldError errors={fieldErrors(field.state.meta.errors)} />
@@ -153,8 +149,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
                   id={field.name}
                   type="time"
                   step={300}
-                  disabled={locked}
-                  value={field.state.value}
+                    value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
                 <FieldError errors={fieldErrors(field.state.meta.errors)} />
@@ -175,8 +170,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
                 <Input
                   id={field.name}
                   inputMode="numeric"
-                  disabled={locked}
-                  value={field.state.value}
+                    value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
@@ -191,7 +185,6 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
             <Field orientation="horizontal">
               <Checkbox
                 id={field.name}
-                disabled={locked}
                 checked={field.state.value}
                 onCheckedChange={(checked) => field.handleChange(checked)}
               />
@@ -208,7 +201,6 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
             <Field orientation="horizontal">
               <Checkbox
                 id={field.name}
-                disabled={locked}
                 checked={field.state.value}
                 onCheckedChange={(checked) => field.handleChange(checked)}
               />
@@ -225,10 +217,11 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
         <form.Field
           name="fee"
           validators={{
-            onChangeListenTo: ["clientId", "date", "time", "packageSessions", "packagePrice"],
-            onChange: ({ value }) => {
+            onChangeListenTo: ["clientId", "date", "time", "packageSessions", "packagePrice", "tentative"],
+            onChange: ({ value, fieldApi }) => {
               if (value.trim()) return parseCents(value) !== null ? undefined : "Like 95 or 95.50";
-              return cover?.kind === "none"
+              // A booking not yet confirmed can wait for its fee.
+              return cover?.kind === "none" && !fieldApi.form.getFieldValue("tentative")
                 ? "Enter the fee: no package credit or client fee covers it"
                 : undefined;
             },
@@ -240,7 +233,6 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
               <Input
                 id={field.name}
                 inputMode="decimal"
-                disabled={locked}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
@@ -276,8 +268,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
                   id={field.name}
                   inputMode="numeric"
                   placeholder="Sessions"
-                  disabled={locked}
-                  value={field.state.value}
+                    value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
@@ -305,8 +296,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
                 <Input
                   id={field.name}
                   inputMode="decimal"
-                  disabled={locked}
-                  value={field.state.value}
+                    value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
@@ -322,8 +312,7 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
                 <Select
                   items={PRICE_IS_ITEMS}
                   value={field.state.value}
-                  disabled={locked}
-                  onValueChange={(value) => value && field.handleChange(value)}
+                    onValueChange={(value) => value && field.handleChange(value)}
                 >
                   <SelectTrigger className="w-full" aria-label="The price is">
                     <SelectValue />
@@ -354,18 +343,16 @@ export function BookingForm({ initial, session, locked = false, submitLabel, onS
         </form.Subscribe>
       </FieldGroup>
 
-      {!locked && (
-        <div className="flex flex-wrap items-center gap-2">
-          <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
-            {([canSubmit, isSubmitting]) => (
-              <Button type="submit" disabled={!canSubmit || isSubmitting}>
-                {isSubmitting ? "Saving…" : submitLabel}
-              </Button>
-            )}
-          </form.Subscribe>
-          {extraActions}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
+          {([canSubmit, isSubmitting]) => (
+            <Button type="submit" disabled={!canSubmit || isSubmitting}>
+              {isSubmitting ? "Saving…" : submitLabel}
+            </Button>
+          )}
+        </form.Subscribe>
+        {extraActions}
+      </div>
     </form>
   );
 }

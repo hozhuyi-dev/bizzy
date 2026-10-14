@@ -61,3 +61,16 @@ func SortOldestFirst(all []Attachment) {
 		return cmp.Or(a.UploadedAt.Compare(b.UploadedAt), cmp.Compare(a.ID, b.ID))
 	})
 }
+
+// ListAll returns every attachment, by owner.
+func (r Repository) ListAll(ctx context.Context) ([]Attachment, error) {
+	records, err := dynamo.QueryAll[record](ctx, r.store, dynamo.Query{PK: schema.Attachment})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Attachment, len(records))
+	for i, rec := range records {
+		out[i] = rec.Attachment
+	}
+	return out, nil
+}

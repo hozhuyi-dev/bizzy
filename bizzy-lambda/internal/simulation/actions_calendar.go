@@ -63,6 +63,14 @@ var calendarActions = []Action{
 		w.Calendar.Live = slices.Delete(w.Calendar.Live, i, i+1)
 		outsideChange(w)
 	}},
+	{Name: "calendar.emptyTrash", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		// Google keeps deleted events about 30 days.
+		if len(w.Calendar.Trash) == 0 {
+			t.Skip("nothing deleted")
+		}
+		t.Logf("calendar: emptied the trash")
+		w.Calendar.Trash = nil
+	}},
 	{Name: "calendar.restore", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
 		if len(w.Calendar.Trash) == 0 {
 			t.Skip("nothing deleted")

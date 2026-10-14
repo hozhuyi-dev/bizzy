@@ -14,7 +14,7 @@ import (
 func TestEveryAttributeHasAnOwner(t *testing.T) {
 	p := Package{
 		ID: "p", ClientID: "c", Sessions: 1, PriceCents: 1, PurchasedAt: time.Now(), Source: SourceApp,
-		Note: "n", CreditsUsed: 0, Payment: &money.Payment{Status: money.Paid},
+		Note: "n", CreditsUsed: 0, Unlinked: true, Payment: &money.Payment{Status: money.Paid},
 		Invoice: &docref.Ref{DocumentID: "i"}, Receipt: &docref.Ref{DocumentID: "r"},
 	}
 	item, err := attributevalue.MarshalMap(toRecord(p))

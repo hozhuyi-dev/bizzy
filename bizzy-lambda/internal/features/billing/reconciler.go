@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"maps"
 	"time"
 
 	"bizzy-lambda/internal/features/calendar"
@@ -68,6 +69,9 @@ type Scope struct {
 	Changes []Change
 	// ClientIDs are the clients to reconcile; "" (no client) is ignored.
 	ClientIDs []string
+	// EventIDs are stored sessions to re-derive as they are, with their
+	// clients: the session that bought a package that changed.
+	EventIDs []string
 	// Unmatched re-derives every session without a client, for when a
 	// client gains an alias.
 	Unmatched bool
@@ -133,6 +137,8 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 	original := map[string]sessions.Session{}
 	current := map[string]sessions.Session{}
 	gone := map[string]bool{}
+	storedPackages := map[string]packages.Package{}
+	owners := map[string]string{}
 
 	for _, c := range scope.Changes {
 		stored, found, err := r.Sessions.Get(ctx, c.EventID)
@@ -144,6 +150,15 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 			if stored.ClientID != "" {
 				affected[stored.ClientID] = true
 			}
+		}
+		// The package the event bought, under whichever client it is, is
+		// linked, held or unlinked by what the event now says.
+		owner, err := r.packageOwner(ctx, c.EventID, storedPackages, owners)
+		if err != nil {
+			return result, err
+		}
+		if owner != "" {
+			affected[owner] = true
 		}
 
 		switch {
@@ -161,6 +176,19 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 		}
 	}
 
+	for _, id := range scope.EventIDs {
+		stored, found, err := r.Sessions.Get(ctx, id)
+		if err != nil {
+			return result, err
+		}
+		if found {
+			keep(original, current, gone, stored)
+			if stored.ClientID != "" {
+				affected[stored.ClientID] = true
+			}
+		}
+	}
+
 	if scope.Unmatched || scope.AllClients {
 		unmatched, err := r.Sessions.ListWithoutClient(ctx)
 		if err != nil {
@@ -173,9 +201,7 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 
 	// Load each affected client's whole history. Deriving can match a session
 	// to a client not loaded yet (an alias moved), so repeat until stable.
-	storedPackages := map[string]packages.Package{}
 	loaded := map[string]bool{}
-	owners := map[string]string{}
 	for {
 		for _, s := range current {
 			e := Derive(s, env)
@@ -230,7 +256,7 @@ func (r *Reconciler) reconcile(ctx context.Context, scope Scope) (Result, error)
 		entries[id] = &e
 	}
 
-	finalPackages, err := r.calendarPackages(ctx, entries, storedPackages)
+	finalPackages, err := r.calendarPackages(ctx, env, entries, gone, storedPackages)
 	if err != nil {
 		return result, err
 	}
@@ -358,48 +384,110 @@ func withEvent(stored sessions.Session, event calendar.Event) sessions.Session {
 // buys any more is unlinked: it becomes an app package, kept with its
 // payment, credits and documents until she deletes it. Should the title buy
 // it again, it is linked back rather than bought twice.
-func (r *Reconciler) calendarPackages(ctx context.Context, entries map[string]*Entry, stored map[string]packages.Package) (map[string]*packages.Package, error) {
-	final := map[string]*packages.Package{}
-
-	desired := map[string]packages.Package{}
+func (r *Reconciler) calendarPackages(ctx context.Context, env Env, entries map[string]*Entry, gone map[string]bool, stored map[string]packages.Package) (map[string]*packages.Package, error) {
+	held, err := r.heldElsewhere(ctx, env, entries, gone, stored)
+	if err != nil {
+		return nil, err
+	}
 	for _, e := range entries {
-		if p, ok := CalendarPackage(*e); ok {
-			desired[p.ID] = p
-		}
-	}
-
-	for id, p := range stored {
-		if want, ok := desired[id]; ok {
-			merged := mergeCalendarPackage(p, want)
-			final[id] = &merged
-			continue
-		}
-		// Its client is affected, so every session of theirs is loaded: none
-		// buys this package any more.
-		p.Source = packages.SourceApp
-		final[id] = &p
-	}
-
-	for id, want := range desired {
-		if _, ok := final[id]; ok {
+		p, ok := CalendarPackage(*e)
+		if _, known := stored[p.ID]; !ok || known {
 			continue
 		}
 		// Stored under a client this run did not load: fetch it so its
 		// payment and document links are kept.
-		existing, found, err := r.Packages.Get(ctx, id)
+		existing, found, err := r.Packages.Get(ctx, p.ID)
 		if err != nil {
 			return nil, err
 		}
 		if found {
-			stored[id] = existing
-			merged := mergeCalendarPackage(existing, want)
+			stored[p.ID] = existing
+		}
+	}
+	return linkPackages(entries, stored, held), nil
+}
+
+// heldElsewhere are the stored calendar packages whose session this run
+// didn't load (one no client matches now, which a client's reconcile
+// doesn't read) and whose title can't be read, matched or is tentative:
+// still held, as linkPackages has it, whichever run looks. One this run
+// deletes is gone, whatever is still stored.
+func (r *Reconciler) heldElsewhere(ctx context.Context, env Env, entries map[string]*Entry, gone map[string]bool, stored map[string]packages.Package) (map[string]bool, error) {
+	held := map[string]bool{}
+	for id, p := range stored {
+		if _, loaded := entries[id]; loaded || gone[id] || p.Source != packages.SourceCalendar {
+			continue
+		}
+		s, found, err := r.Sessions.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if found && holds(Derive(s, env)) {
+			held[id] = true
+		}
+	}
+	return held, nil
+}
+
+// holds says a session in the calendar keeps the package it bought as it
+// is: its title can't be read, so what it buys can't be told, or it still
+// buys one but no client matches it or it is still tentative.
+func holds(e Entry) bool {
+	s := e.Session
+	if s.RemovedAt != nil || s.Status == "" || s.Status == sessions.StatusRemoved {
+		return false
+	}
+	return s.Status == sessions.StatusParseError || e.Title.Package != nil
+}
+
+// linkPackages is calendarPackages over packages already read: each title's
+// package merged into the stored one, or new, and the stored calendar
+// packages no title buys unlinked. A title that can't be read, or still
+// buys the package but can't be matched or is tentative, leaves it as it
+// is (see holds): the session is what needs fixing, the package isn't gone.
+func linkPackages(entries map[string]*Entry, stored map[string]packages.Package, heldElsewhere map[string]bool) map[string]*packages.Package {
+	desired := map[string]packages.Package{}
+	held := maps.Clone(heldElsewhere)
+	for id, e := range entries {
+		if p, ok := CalendarPackage(*e); ok {
+			desired[p.ID] = p
+			continue
+		}
+		if holds(*e) {
+			held[id] = true
+		}
+	}
+
+	final := map[string]*packages.Package{}
+	for id, p := range stored {
+		want, ok := desired[id]
+		if ok && p.Source == packages.SourceCalendar {
+			merged := mergeCalendarPackage(p, want)
 			final[id] = &merged
 			continue
 		}
-		final[id] = &want
+		if ok {
+			// One she made standalone stays hers, whatever the title says:
+			// the session buys nothing, and the package is collected on its
+			// own.
+			entries[id].Title.Package = nil
+			final[id] = &p
+			continue
+		}
+		// Its client is affected, so every session of theirs is loaded: none
+		// buys this package any more, or the one that did is gone. One of the
+		// app's never was.
+		if p.Source == packages.SourceCalendar && !held[id] {
+			p.Unlinked = true
+		}
+		final[id] = &p
 	}
-
-	return final, nil
+	for id, want := range desired {
+		if _, ok := final[id]; !ok {
+			final[id] = &want
+		}
+	}
+	return final
 }
 
 func mergeCalendarPackage(stored, want packages.Package) packages.Package {
@@ -408,6 +496,6 @@ func mergeCalendarPackage(stored, want packages.Package) packages.Package {
 	merged.Sessions = want.Sessions
 	merged.PriceCents = want.PriceCents
 	merged.PurchasedAt = want.PurchasedAt
-	merged.Source = packages.SourceCalendar
+	merged.Source, merged.Unlinked = packages.SourceCalendar, false
 	return merged
 }

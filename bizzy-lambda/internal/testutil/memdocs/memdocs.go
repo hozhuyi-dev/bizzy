@@ -76,6 +76,7 @@ func (r *Repo) Counter(_ context.Context, key string) (int64, error) {
 // Commit checks every condition the DynamoDB transaction does before it
 // applies anything, so a refused write changes nothing.
 func (r *Repo) Commit(_ context.Context, w documents.Write) error {
+	r.m.BeforeWrite("documents.commit")
 	existing, exists := r.Docs[w.Doc.ID]
 	if (w.PreviousVersion == 0 && exists) || (w.PreviousVersion > 0 && (!exists || existing.Version != w.PreviousVersion)) {
 		return dynamo.ErrTransactionConflict

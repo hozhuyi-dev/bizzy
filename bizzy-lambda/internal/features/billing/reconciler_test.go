@@ -10,6 +10,7 @@ import (
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/platform/statemodel"
 	"bizzy-lambda/internal/shared/docref"
 	"bizzy-lambda/internal/shared/money"
 	"bizzy-lambda/internal/testutil/memory"
@@ -308,11 +309,15 @@ func TestPackageRemovedFromTitleIsUnlinked(t *testing.T) {
 
 	sync(t, m, event("e1", 1, "Jane Smith"))
 
-	// Kept as an app package, with everything she recorded, until she
-	// deletes it herself.
+	// Kept as a calendar package the calendar no longer buys, with
+	// everything she recorded, and on the to-do list until she deletes it
+	// or makes it standalone.
 	p, ok := m.PackageMap["e1"]
-	if !ok || p.Source != packages.SourceApp || p.Payment == nil || p.Receipt == nil || p.CreditsUsed != 2 {
+	if !ok || p.Source != packages.SourceCalendar || !p.Unlinked || p.Payment == nil || p.Receipt == nil || p.CreditsUsed != 2 {
 		t.Fatalf("package = %+v, want unlinked and kept", p)
+	}
+	if got := p.Todo(p.PurchasedAt); !slices.Equal(got, []statemodel.Reason{packages.ReasonFix}) {
+		t.Errorf("to-do = %v, want fix (purchase-gone)", got)
 	}
 	// e1 buys nothing now, but the package dates from it: its first credit.
 	if s := m.SessionMap["e1"]; s.BoughtCents != 0 || s.Status != sessions.StatusPackage || s.PackageID != "e1" {
@@ -324,7 +329,7 @@ func TestPackageRemovedFromTitleIsUnlinked(t *testing.T) {
 
 	// The title buys it again: linked back, not bought twice.
 	sync(t, m, event("e1", 1, "Jane Smith 10x85"))
-	if p := m.PackageMap["e1"]; p.Source != packages.SourceCalendar || p.Payment == nil || len(m.PackageMap) != 1 {
+	if p := m.PackageMap["e1"]; p.Source != packages.SourceCalendar || p.Unlinked || p.Payment == nil || len(m.PackageMap) != 1 {
 		t.Errorf("package = %+v, want linked back with its payment", p)
 	}
 	if s := m.SessionMap["e1"]; !s.BoughtSettled {
@@ -365,7 +370,7 @@ func TestPackageLinkedBackLeavesTheClientItWasMovedTo(t *testing.T) {
 	}
 }
 
-func TestUnpaidUnlinkedPackageIsCollectedOnItsOwn(t *testing.T) {
+func TestUnpaidStandalonePackageIsCollectedOnItsOwn(t *testing.T) {
 	m := memory.New()
 	m.ClientMap["jane"] = jane()
 	sync(t, m, event("e1", 1, "Jane Smith 10x85"))
@@ -373,9 +378,16 @@ func TestUnpaidUnlinkedPackageIsCollectedOnItsOwn(t *testing.T) {
 		t.Error("a linked package is collected on its session")
 	}
 
+	// Unlinked, it asks what to do with it first.
 	sync(t, m, event("e1", 1, "Jane Smith"))
-	if p := m.PackageMap["e1"]; !p.CollectOnItsOwn() {
-		t.Errorf("package = %+v, want collected on its own once unlinked", p)
+	p := m.PackageMap["e1"]
+	if p.CollectOnItsOwn() {
+		t.Errorf("package = %+v, want it to ask what to do first", p)
+	}
+	// Made standalone, she collects it.
+	p.Source, p.Unlinked = packages.SourceApp, false
+	if !p.CollectOnItsOwn() {
+		t.Errorf("package = %+v, want collected on its own once standalone", p)
 	}
 }
 
@@ -504,5 +516,53 @@ func TestPreview(t *testing.T) {
 	}
 	if got, _ := r.Preview(ctx, PreviewInput{ClientID: "jane", Start: day(4), BuysPackage: true}); got.Kind != CoverBought {
 		t.Errorf("buying = %+v, want bought", got)
+	}
+}
+
+// A title that can't be read, or still buys the package but turns
+// tentative or unmatched, leaves the package as it is: the session needs
+// fixing, the package isn't gone.
+func TestBrokenTitleKeepsItsPackageLinked(t *testing.T) {
+	for _, title := range []string{"? Jane Smith 10x85", "Jane Smyth 10x85", "Jane Smith 95 120"} {
+		m := memory.New()
+		m.ClientMap["jane"] = jane()
+		sync(t, m, event("e1", 1, "Jane Smith 10x85"))
+		sync(t, m, event("e1", 1, title))
+		if p := m.PackageMap["e1"]; p.Unlinked || p.Source != packages.SourceCalendar {
+			t.Errorf("%q: package = %+v, want still linked", title, p)
+		}
+	}
+}
+
+// A title that reads but no longer buys the package unlinks it, matched or
+// not.
+func TestTitleWithoutThePackageUnlinksIt(t *testing.T) {
+	m := memory.New()
+	m.ClientMap["jane"] = jane()
+	sync(t, m, event("e1", 1, "Jane Smith 10x85"))
+	sync(t, m, event("e1", 1, "Jane Smyth 95"))
+	if p := m.PackageMap["e1"]; !p.Unlinked {
+		t.Errorf("package = %+v, want unlinked", p)
+	}
+}
+
+// A package she made standalone stays hers when the event that bought it
+// comes back: the session buys nothing, and the package is collected on its
+// own.
+func TestStandalonePackageStaysStandalone(t *testing.T) {
+	m := memory.New()
+	m.ClientMap["jane"] = jane()
+	sync(t, m, event("e1", 1, "Jane Smith 10x85"))
+	gone(t, m, "e1", false)
+	p := m.PackageMap["e1"]
+	p.Source, p.Unlinked, p.PriceCents = packages.SourceApp, false, 80000
+	m.PackageMap["e1"] = p
+
+	sync(t, m, event("e1", 1, "Jane Smith 10x85"))
+	if p := m.PackageMap["e1"]; p.Source != packages.SourceApp || p.PriceCents != 80000 || len(m.PackageMap) != 1 {
+		t.Errorf("package = %+v, want still standalone at its own price", p)
+	}
+	if s := m.SessionMap["e1"]; s.BoughtCents != 0 {
+		t.Errorf("the session buys %d, want nothing: the package is collected on its own", s.BoughtCents)
 	}
 }

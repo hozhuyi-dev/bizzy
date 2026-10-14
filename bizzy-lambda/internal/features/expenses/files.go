@@ -26,6 +26,11 @@ func (f Files) CanAttach(ctx context.Context, id string) error {
 	return err
 }
 
+func (f Files) Exists(ctx context.Context, id string) (bool, error) {
+	_, found, err := f.Repo.Get(ctx, id)
+	return found, err
+}
+
 // SetFiles records the count, retrying when the expense was saved in
 // between.
 func (f Files) SetFiles(ctx context.Context, id string, n int) error {

@@ -23,9 +23,21 @@ func Table() string {
 		b.WriteString("None.\n")
 	}
 
+	b.WriteString("\n## Tolerated\n\nMay break for a while by design: reported, and put right later as said.\n\n")
+	tolerated := 0
+	for _, r := range AllLinks() {
+		if r.Tolerated != "" {
+			tolerated++
+			fmt.Fprintf(&b, "- **%s**: %s\n  %s\n", r.ID, r.Why, r.Tolerated)
+		}
+	}
+	if tolerated == 0 {
+		b.WriteString("None.\n")
+	}
+
 	b.WriteString("\n## Rules\n\n| rule | why | kept by |\n|---|---|---|\n")
 	for _, r := range AllLinks() {
-		if r.Pending != "" {
+		if r.Pending != "" || r.Tolerated != "" {
 			continue
 		}
 		kept := strings.Join(r.GuardedBy, ", ")

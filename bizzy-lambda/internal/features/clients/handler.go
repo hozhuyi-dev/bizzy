@@ -24,6 +24,14 @@ type HandlerStore interface {
 // sessions, and new fees or home-visit setting reprice theirs.
 type AfterSave func(ctx context.Context, clientID string) error
 
+// Impact previews and checks what saving a client as proposed would bring
+// on (see billing.ClientImpact): its fees re-price its sessions, and its
+// names match or unmatch them. The app wires billing's.
+type Impact interface {
+	Preview(ctx context.Context, proposed Client) (any, error)
+	Check(ctx context.Context, proposed Client, confirmed bool) error
+}
+
 // Linker reads a Google contact for a client to link to. The contacts
 // feature implements it; it depends on this package, not the other way.
 type Linker interface {
@@ -34,13 +42,15 @@ type handler struct {
 	repo      HandlerStore
 	contacts  Linker
 	afterSave AfterSave
+	impact    Impact
 	loc       *time.Location
 	now       func() time.Time
 }
 
-func Register(r *router.Router, repo HandlerStore, contacts Linker, afterSave AfterSave, loc *time.Location, now func() time.Time) {
-	h := handler{repo: repo, contacts: contacts, afterSave: afterSave, loc: loc, now: now}
+func Register(r *router.Router, repo HandlerStore, contacts Linker, afterSave AfterSave, impact Impact, loc *time.Location, now func() time.Time) {
+	h := handler{repo: repo, contacts: contacts, afterSave: afterSave, impact: impact, loc: loc, now: now}
 	r.Query("clients.list", h.list)
+	r.Query("clients.impact", router.Typed(h.preview))
 	r.Mutation("clients.save", router.Typed(h.save))
 	r.Mutation("clients.markContacted", router.Typed(h.markContacted))
 }
@@ -62,12 +72,30 @@ func (h handler) today() string {
 	return h.now().In(h.loc).Format(time.DateOnly)
 }
 
+type saveInput struct {
+	Client
+	// Confirm says she saw what saving brings on (clients.impact) and saves
+	// anyway.
+	Confirm bool `json:"confirm"`
+}
+
+// preview is what saving the client would bring on, for the form to show
+// before she saves.
+func (h handler) preview(ctx context.Context, in Client) (any, error) {
+	client, err := Prepare(in)
+	if err != nil {
+		return nil, err
+	}
+	return h.impact.Preview(ctx, client)
+}
+
 // save creates a client when ID is empty, otherwise replaces it. Only the
 // contact's resource name is read from the input: the details are copied
 // from Google when the link is made or changes, and an existing client sent
 // without one is unlinked.
-func (h handler) save(ctx context.Context, in Client) (any, error) {
-	client, err := prepare(in)
+func (h handler) save(ctx context.Context, sent saveInput) (any, error) {
+	in := sent.Client
+	client, err := Prepare(in)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +105,9 @@ func (h handler) save(ctx context.Context, in Client) (any, error) {
 		return nil, err
 	}
 	if err := checkAliases(client, existing); err != nil {
+		return nil, err
+	}
+	if err := h.impact.Check(ctx, client, sent.Confirm); err != nil {
 		return nil, err
 	}
 
@@ -143,9 +174,10 @@ func (h handler) markContacted(ctx context.Context, in markContactedInput) (any,
 	return nil, h.repo.SetContacted(ctx, in.ID, at)
 }
 
-// prepare validates a client and normalises its aliases, making sure the
-// client's own name is one of them.
-func prepare(in Client) (Client, error) {
+// Prepare validates a client as saving it would store it: its name tidied,
+// its fee rates in order, and its aliases normalised with its own name
+// among them.
+func Prepare(in Client) (Client, error) {
 	client := Client{
 		ID:         in.ID,
 		Name:       strings.Join(strings.Fields(in.Name), " "),

@@ -98,7 +98,7 @@ export function sessionActions(session: Session, handlers: SessionHandlers): Arr
   const client = clientOf(handlers.clientsById, session.clientId);
   const actions: Array<RowAction> = [];
 
-  if (session.can.editBooking.ok && session.todo.includes("confirm") && client) {
+  if (session.todo.includes("confirm") && session.fixes.includes("sessions.update") && client) {
     actions.push({ label: "Confirm", icon: CheckIcon, onClick: () => handlers.onConfirm(session) });
   }
   if (isUnmatched(session)) {

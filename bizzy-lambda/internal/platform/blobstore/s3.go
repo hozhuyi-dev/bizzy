@@ -124,6 +124,21 @@ func (s *S3) Delete(ctx context.Context, keys ...string) error {
 	return nil
 }
 
+func (s *S3) List(ctx context.Context, prefix string) ([]Listed, error) {
+	var out []Listed
+	pages := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{Bucket: aws.String(s.bucket), Prefix: aws.String(prefix)})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, obj := range page.Contents {
+			out = append(out, Listed{Key: aws.ToString(obj.Key), Modified: aws.ToTime(obj.LastModified)})
+		}
+	}
+	return out, nil
+}
+
 func (s *S3) DeletePrefix(ctx context.Context, prefix string) (int, error) {
 	var keys []string
 	pages := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{Bucket: aws.String(s.bucket), Prefix: aws.String(prefix)})

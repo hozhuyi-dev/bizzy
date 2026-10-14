@@ -4,15 +4,21 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"time"
 
 	"bizzy-lambda/internal/features/billing"
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/packages"
+	"bizzy-lambda/internal/features/payments"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/statemodel"
 	"bizzy-lambda/internal/router"
+	"bizzy-lambda/internal/shared/docref"
 )
 
 const defaultMinutes = 60
@@ -48,7 +54,16 @@ type Editor struct {
 	}
 	Sessions EditorSessions
 	Settings SettingsStore
-	Billing  Reconciler
+	Billing  EditorBilling
+	// Payments moves what was paid to a new amount, when she asks to with
+	// an edit (Draft.UpdatePayment).
+	Payments payments.Store
+	// Packages keeps or deletes the package a deleted session bought.
+	Packages interface {
+		Get(ctx context.Context, id string) (packages.Package, bool, error)
+		Save(ctx context.Context, p packages.Package) error
+		Delete(ctx context.Context, id string) (bool, error)
+	}
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -67,6 +82,13 @@ type Draft struct {
 	Package   *DraftPackage `json:"package,omitempty"`
 	HomeVisit bool          `json:"homeVisit"`
 	Tentative bool          `json:"tentative"`
+	// Confirm says she saw what saving brings on (sessions.impact) and
+	// saves anyway.
+	Confirm bool `json:"confirm"`
+	// UpdatePayment moves what was paid for it, and for the package it
+	// buys, to the new amounts: what she collected or refunded with the
+	// change.
+	UpdatePayment bool `json:"updatePayment"`
 }
 
 type DraftPackage struct {
@@ -76,6 +98,8 @@ type DraftPackage struct {
 
 func RegisterEditor(r *router.Router, e Editor) {
 	r.Query("sessions.get", router.Typed(e.get))
+	r.Query("sessions.impact", router.Typed(e.preview))
+	r.Query("sessions.deleteImpact", router.Typed(e.deletionPreview))
 	r.Mutation("sessions.create", router.Typed(e.create))
 	r.Mutation("sessions.update", router.Typed(e.update))
 	r.Mutation("sessions.delete", router.Typed(e.delete))
@@ -111,7 +135,20 @@ func (e Editor) get(ctx context.Context, in eventInput) (any, error) {
 	if e.Now != nil {
 		now = e.Now
 	}
-	return Stored{Session: s.View(now()), Draft: draftOf(s), Notes: notes.Text}, nil
+	d := draftOf(s)
+	// A title that can't be read still holds the package it bought (see
+	// billing.linkPackages): the form starts from it, so fixing the title
+	// keeps it.
+	if _, err := calendar.ParseTitle(s.Title); err != nil && e.Packages != nil {
+		p, found, err := e.Packages.Get(ctx, s.EventID)
+		if err != nil {
+			return nil, err
+		}
+		if found && p.Source == packages.SourceCalendar && !p.Unlinked {
+			d.Package = &DraftPackage{Sessions: p.Sessions, PriceCents: p.PriceCents}
+		}
+	}
+	return Stored{Session: s.View(now()), Draft: d, Notes: notes.Text}, nil
 }
 
 func draftOf(s sessions.Session) Draft {
@@ -130,6 +167,13 @@ func draftOf(s sessions.Session) Draft {
 			d.Package = &DraftPackage{Sessions: p.Sessions, PriceCents: p.PriceCents}
 		}
 	}
+	// With no amount, the fee an issued document says keeps it true.
+	for _, slot := range docref.Slots {
+		if ref := s.Ref(slot); d.FeeCents == nil && ref.Issued() && ref.FeeCents != nil {
+			fee := *ref.FeeCents
+			d.FeeCents = &fee
+		}
+	}
 	return d
 }
 
@@ -146,6 +190,9 @@ func (e Editor) create(ctx context.Context, d Draft) (any, error) {
 	}
 	in, err := e.eventInput(ctx, d, client, nil)
 	if err != nil {
+		return nil, err
+	}
+	if err := e.check(ctx, "", d, client, in); err != nil {
 		return nil, err
 	}
 
@@ -172,7 +219,7 @@ func (e Editor) update(ctx context.Context, in updateInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	cal, live, err := e.current(ctx, in.EventID)
+	cal, live, err := e.current(ctx, in.EventID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -180,30 +227,135 @@ func (e Editor) update(ctx context.Context, in updateInput) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := e.check(ctx, in.EventID, in.Draft, client, input); err != nil {
+		return nil, err
+	}
 
 	event, err := cal.Update(ctx, in.EventID, live.ETag, input)
 	if err != nil {
 		return nil, err
 	}
-	return nil, e.apply(ctx, in.EventID, &event, false)
+	if err := e.apply(ctx, in.EventID, &event, false); err != nil {
+		return nil, err
+	}
+	if !in.UpdatePayment {
+		return nil, nil
+	}
+	ids, err := payments.Reprice(ctx, e.Payments, in.EventID, e.now())
+	if err != nil || len(ids) == 0 {
+		return nil, err
+	}
+	_, err = e.Billing.Reconcile(ctx, billing.Scope{ClientIDs: ids})
+	return nil, err
 }
 
-// delete removes the event from the calendar, and the session with it,
-// notes and payment included: she chose to.
-func (e Editor) delete(ctx context.Context, in eventInput) (any, error) {
-	cal, live, err := e.current(ctx, in.EventID)
-	if errors.Is(err, calendar.ErrGone) {
-		// Already deleted in the calendar.
-		return nil, e.apply(ctx, in.EventID, nil, true)
+func (e Editor) now() time.Time {
+	if e.Now != nil {
+		return e.Now()
 	}
+	return time.Now()
+}
+
+// What happens to the package a deleted session bought.
+const (
+	// KeepPackage keeps it as a standalone package, with its credits,
+	// payment and documents.
+	KeepPackage = "keep"
+	// DeletePackage deletes it too, as packages.delete would.
+	DeletePackage = "delete"
+)
+
+type deleteInput struct {
+	EventID string `json:"eventId"`
+	// Package says what happens to the package its title bought, if any:
+	// KeepPackage (the default) or DeletePackage. She is asked, rather
+	// than left to sort it out on the to-do list.
+	Package string `json:"package"`
+	// Confirm says she saw what deleting its package brings on
+	// (sessions.deleteImpact) and deletes anyway.
+	Confirm bool `json:"confirm"`
+}
+
+// delete removes the event from the calendar, and the session with it and
+// its notes: she chose to. Not while paid or on a document.
+func (e Editor) delete(ctx context.Context, in deleteInput) (any, error) {
+	// The session's own guard first, as its view says.
+	if s, found, err := e.Sessions.Get(ctx, in.EventID); err != nil {
+		return nil, err
+	} else if found {
+		if err := s.CanDelete(); err != nil {
+			return nil, err
+		}
+	}
+	bought, err := e.boughtPackage(ctx, in)
 	if err != nil {
 		return nil, err
 	}
-
-	if err := cal.Delete(ctx, in.EventID, live.ETag); err != nil && !errors.Is(err, calendar.ErrGone) {
+	cal, live, err := e.current(ctx, in.EventID, sessions.Session.CanDelete)
+	switch {
+	case errors.Is(err, calendar.ErrGone):
+		// Already deleted in the calendar.
+	case err != nil:
+		return nil, err
+	default:
+		if err := cal.Delete(ctx, in.EventID, live.ETag); err != nil && !errors.Is(err, calendar.ErrGone) {
+			return nil, err
+		}
+	}
+	if err := e.apply(ctx, in.EventID, nil, true); err != nil || bought == nil {
 		return nil, err
 	}
-	return nil, e.apply(ctx, in.EventID, nil, true)
+	// Unlinked by now: kept or deleted as she chose.
+	if in.Package == DeletePackage {
+		if _, err := e.Packages.Delete(ctx, bought.ID); err != nil {
+			return nil, err
+		}
+	} else {
+		p, found, err := e.Packages.Get(ctx, bought.ID)
+		if err != nil || !found {
+			return nil, err
+		}
+		p.Source, p.Unlinked = packages.SourceApp, false
+		if err := e.Packages.Save(ctx, p); err != nil {
+			return nil, err
+		}
+	}
+	_, err = e.Billing.Reconcile(ctx, billing.Scope{ClientIDs: []string{bought.ClientID}})
+	return nil, err
+}
+
+// boughtPackage is the package the session's title bought, once she said
+// what happens to it, and it can: nil when it bought none.
+func (e Editor) boughtPackage(ctx context.Context, in deleteInput) (*packages.Package, error) {
+	p, found, err := e.Packages.Get(ctx, in.EventID)
+	if err != nil || !found || p.Source != packages.SourceCalendar {
+		return nil, err
+	}
+	switch in.Package {
+	case KeepPackage, "":
+	case DeletePackage:
+		// As packages.delete, once the calendar no longer buys it.
+		p.Unlinked = true
+		if err := p.CanDelete(); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, apperr.Invalid("A package bought in a session is kept or deleted with it.")
+	}
+	impact, err := e.Billing.DeletionImpact(ctx, in.EventID, in.Package == DeletePackage)
+	if err != nil {
+		return nil, err
+	}
+	if err := impact.Check(in.Confirm); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// deletionPreview is what deleting the session would bring on, with its
+// package kept or deleted as chosen, for the dialog to show first.
+func (e Editor) deletionPreview(ctx context.Context, in deleteInput) (any, error) {
+	return e.Billing.DeletionImpact(ctx, in.EventID, in.Package == DeletePackage)
 }
 
 // restore brings back a session deleted in the calendar, with its event.
@@ -281,11 +433,11 @@ func findClient(ctx context.Context, store interface {
 	return clients.Client{}, apperr.NotFound("client not found")
 }
 
-// current reads the event behind a stored session she is about to change. A
-// session with an invoice or receipt can't be changed. If the calendar
-// changed since the last sync, the change is applied and the edit refused,
-// so she sees the latest before deciding again.
-func (e Editor) current(ctx context.Context, eventID string) (Calendar, calendar.Event, error) {
+// current reads the event behind a stored session she is about to change,
+// once guard (if any) allows it. If the calendar changed since the last
+// sync, the change is applied and the edit refused, so she sees the latest
+// before deciding again.
+func (e Editor) current(ctx context.Context, eventID string, guard func(sessions.Session) error) (Calendar, calendar.Event, error) {
 	before, found, err := e.Sessions.Get(ctx, eventID)
 	if err != nil {
 		return nil, calendar.Event{}, err
@@ -293,8 +445,10 @@ func (e Editor) current(ctx context.Context, eventID string) (Calendar, calendar
 	if !found {
 		return nil, calendar.Event{}, apperr.NotFound("session not found")
 	}
-	if err := before.CanEditBooking(); err != nil {
-		return nil, calendar.Event{}, err
+	if guard != nil {
+		if err := guard(before); err != nil {
+			return nil, calendar.Event{}, err
+		}
 	}
 
 	cal, err := e.Calendar(ctx)
@@ -318,6 +472,130 @@ func (e Editor) current(ctx context.Context, eventID string) (Calendar, calendar
 		return nil, calendar.Event{}, calendar.ErrChanged
 	}
 	return cal, live, nil
+}
+
+// Refresh applies whatever the calendar changed on these sessions' events
+// since the last sync, as the sync would, so what is about to be issued
+// from them says what the calendar does now: one gone or changed, one back,
+// or the event of a package whose session was discarded.
+func (e Editor) Refresh(ctx context.Context, eventIDs ...string) error {
+	if len(eventIDs) == 0 {
+		return nil
+	}
+	cal, err := e.Calendar(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range eventIDs {
+		before, found, err := e.Sessions.Get(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !found {
+			// A package whose session was discarded: its event may be back.
+			if _, bought, err := e.Packages.Get(ctx, id); err != nil || !bought {
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			before.RemovedAt = &time.Time{}
+		}
+		live, err := cal.Get(ctx, id)
+		switch {
+		case errors.Is(err, calendar.ErrGone) || (err == nil && !isSession(live)):
+			err = nil
+			if before.RemovedAt == nil {
+				err = e.apply(ctx, id, nil, false)
+			}
+		case err != nil:
+		case before.RemovedAt != nil || calendarChanged(before, live):
+			// Changed, or back in the calendar.
+			err = e.apply(ctx, id, &live, false)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// impact is what writing in for the session (eventID "" for a new one)
+// would bring on. Besides what billing.ImpactOf refuses, a booking can't
+// leave a confirmed session without a fee: the form asks for one.
+func (e Editor) impact(ctx context.Context, eventID string, d Draft, client clients.Client, in calendar.EventInput) (billing.Impact, error) {
+	_, brought, err := e.Billing.BookingImpact(ctx, eventID, calendar.Event{Title: in.Title, Start: in.Start, End: in.End, ColorID: in.ColorID}, d.UpdatePayment)
+	if err != nil {
+		return billing.Impact{}, err
+	}
+	out := billing.ImpactOf(brought)
+	if d.UpdatePayment && out.Refused == "" {
+		if err := e.canReprice(ctx, eventID); err != nil {
+			out.Refused = statemodel.Check(err).Why
+		}
+	}
+	self := cmp.Or(eventID, "new")
+	if out.Refused == "" && slices.ContainsFunc(brought, func(b billing.Brought) bool {
+		return b.Kind == "session" && b.ID == self && b.Rule == "fee-missing"
+	}) {
+		out.Refused = fmt.Sprintf("Enter the fee: %s has no usual fee, and no package credit covers this session.", client.Name)
+		out.NeedsFee = true
+	}
+	return out, nil
+}
+
+// canReprice says whether what was paid for the session, and for the
+// package it bought, can move to new amounts: not while a receipt covers
+// it.
+func (e Editor) canReprice(ctx context.Context, eventID string) error {
+	if s, found, err := e.Sessions.Get(ctx, eventID); err != nil {
+		return err
+	} else if found && s.Payment.IsPaid() && s.Receipt != nil {
+		return apperr.Conflict("A receipt covers this payment. Cancel or discard it first.")
+	}
+	if p, found, err := e.Packages.Get(ctx, eventID); err != nil {
+		return err
+	} else if found && p.Payment.IsPaid() {
+		return p.CanPay()
+	}
+	return nil
+}
+
+// check refuses a booking edit its impact doesn't allow.
+func (e Editor) check(ctx context.Context, eventID string, d Draft, client clients.Client, in calendar.EventInput) error {
+	impact, err := e.impact(ctx, eventID, d, client, in)
+	if err != nil {
+		return err
+	}
+	return impact.Check(d.Confirm)
+}
+
+// preview is what saving the draft would bring on, for the form to show
+// before she saves. It reads the event without applying any change.
+func (e Editor) preview(ctx context.Context, in updateInput) (any, error) {
+	client, err := e.validate(ctx, in.Draft)
+	if err != nil {
+		return nil, err
+	}
+	var existing *calendar.Event
+	if in.EventID != "" {
+		cal, err := e.Calendar(ctx)
+		if err != nil {
+			return nil, err
+		}
+		live, err := cal.Get(ctx, in.EventID)
+		if err != nil && !errors.Is(err, calendar.ErrGone) {
+			return nil, err
+		}
+		if err == nil {
+			existing = &live
+		}
+	}
+	input, err := e.eventInput(ctx, in.Draft, client, existing)
+	if err != nil {
+		return nil, err
+	}
+	return e.impact(ctx, in.EventID, in.Draft, client, input)
 }
 
 // apply makes the stored session match the event (nil when it is gone) as

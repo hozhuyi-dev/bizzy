@@ -25,10 +25,13 @@ func (s Session) CanPay() error {
 }
 
 // CanUndoPayment reports whether a payment recorded by mistake can be
-// removed.
+// removed: also once the session is gone from the calendar, so that it can
+// then be discarded.
 func (s Session) CanUndoPayment() error {
-	if err := s.CanSettle(); err != nil {
-		return err
+	if s.RemovedAt == nil {
+		if err := s.CanSettle(); err != nil {
+			return err
+		}
 	}
 	if s.Receipt != nil {
 		return apperr.Conflict("A receipt covers this payment. Cancel or discard it first.")
@@ -64,6 +67,9 @@ func (s Session) CanReceipt() error {
 	if s.RemovedAt != nil || s.Status != StatusPriced || s.FeeCents == nil || s.Receipt != nil || !s.Payment.IsPaid() {
 		return apperr.Conflict("only a paid session without a receipt can get one")
 	}
+	if s.Payment.Outdated(s.DueCents()) {
+		return apperr.Conflict("The fee changed since it was paid: record the payment at the new fee first.")
+	}
 	return nil
 }
 
@@ -93,11 +99,14 @@ func (s Session) CanAttach(now time.Time) error {
 	return nil
 }
 
-// CanEditBooking reports whether its calendar event can be changed or
-// deleted from the app: not while a document covers it, or the package
-// its title bought.
-func (s Session) CanEditBooking() error {
-	if s.HasDocuments() || s.BoughtDocumented {
+// CanDelete reports whether it can be deleted from the app with what is
+// recorded on it: not while paid, as the record of money received would go
+// with it, nor while a document covers it.
+func (s Session) CanDelete() error {
+	switch {
+	case s.Payment.IsPaid():
+		return apperr.Conflict("Undo the payment first: deleting the session would lose the record of it.")
+	case s.HasDocuments():
 		return apperr.Conflict("Cancel or discard the invoice and receipt for this session first.")
 	}
 	return nil
@@ -118,5 +127,5 @@ func (s Session) CanDiscard() error {
 	if err := s.CanRestore(); err != nil {
 		return err
 	}
-	return s.CanEditBooking()
+	return s.CanDelete()
 }

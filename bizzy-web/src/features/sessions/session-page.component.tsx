@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRightIcon, BanIcon, CircleAlertIcon, LockIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
+import { useBookingSave } from "./sessions-booking.hook";
 import { BookingForm } from "./components/booking-form/booking-form.component";
 import { bookingStep } from "./components/booking-step/booking-step.component";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
@@ -59,15 +60,21 @@ export function SessionPage(props: SessionPageProps) {
 }
 
 function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
-  const create = SessionsMutation.useCreate();
   const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const save = useBookingSave(undefined, (draft, eventId) => {
+    const booked = new Date(draft.start) > new Date();
+    toast.success(booked ? `Booked for ${formatSessionTime(draft.start)}` : "Session added");
+    // Straight to its notes and payment.
+    void navigate({ to: "/sessions/$id", params: { id: eventId }, search: { from: returnTo }, replace: true });
+  });
 
   return (
     <>
       <PageHeader parent={parentOf(returnTo)} title="New session" />
-      {create.error && (
+      {error && (
         <div className="-mx-4 -mt-4 mb-4">
-          <Banner tone="attention" icon={CircleAlertIcon} title={create.error.message} role="alert" />
+          <Banner tone="attention" icon={CircleAlertIcon} title={error} role="alert" />
         </div>
       )}
       <Card className="max-w-3xl">
@@ -76,15 +83,18 @@ function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
             initial={newSessionDraft()}
             submitLabel="Add session"
             onSubmit={async (draft) => {
-              const created = await create.mutateAsync(draft);
-              const booked = new Date(draft.start) > new Date();
-              toast.success(booked ? `Booked for ${formatSessionTime(draft.start)}` : "Session added");
-              // Straight to its notes and payment.
-              void navigate({ to: "/sessions/$id", params: { id: created.eventId }, search: { from: returnTo }, replace: true });
+              setError(null);
+              try {
+                await save.submit(draft);
+              } catch (e) {
+                setError((e as Error).message);
+                throw e;
+              }
             }}
           />
         </CardContent>
       </Card>
+      {save.dialog}
     </>
   );
 }
@@ -132,19 +142,26 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
   const bought = boughtIn(session.eventId, packages.data?.find((pkg) => pkg.id === session.eventId));
   const covering = session.packageId ? packages.data?.find((pkg) => pkg.id === session.packageId) : undefined;
   const documents = allSessionDocuments(session, bought);
-  // A document fixes what it covers: cancel it to change the booking.
-  const locked = !session.can.editBooking.ok;
+  // An issued document stays true: an edit that would contradict it is
+  // refused, and says to cancel it first.
+  const issued = documents.filter(({ ref }) => ref.number);
   const next = nextTodoSession(todo.data, session.eventId);
   const leave = () => void navigate(returnTo === "home" ? { to: "/" } : { to: "/sessions" });
 
   const messages = useSessionMessageActions(session, client, documents);
   const more: Array<RowAction> = [...messages];
-  if (!locked && !session.removedAt) {
-    more.push({ label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => setDeleting(true) });
+  if (!session.removedAt) {
+    more.push({
+      label: "Delete",
+      icon: Trash2Icon,
+      destructive: true,
+      disabled: !session.can.delete.ok,
+      onClick: () => setDeleting(true),
+    });
   }
 
   const steps: Array<PipelineStep> = [
-    bookingStep(session, stored.draft, locked, () => setDeleting(true)),
+    bookingStep(session, stored.draft, () => setDeleting(true)),
     recordStep(session, record),
     paymentStep(session, covering, bought),
     documentsStep(session, bought),
@@ -174,7 +191,7 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
       />
       <PipelineLayout
         banner={
-          (session.removedAt || locked || problem) && (
+          (session.removedAt || issued.length > 0 || problem) && (
             <>
               {session.removedAt && (
                 <Banner tone="attention" icon={BanIcon} title="Deleted from your calendar.">
@@ -199,9 +216,9 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
                   .
                 </Banner>
               )}
-              {locked && !session.removedAt && (
-                <Banner tone="neutral" icon={LockIcon} title="The booking is on a document.">
-                  Cancel {documentLinks(documents)} to change it.
+              {issued.length > 0 && !session.removedAt && (
+                <Banner tone="neutral" icon={LockIcon} title="The booking is on an issued document.">
+                  Its client, day and fee stay as {documentLinks(issued)} says; cancel it to change them.
                 </Banner>
               )}
               {problem && <Banner tone="attention" icon={CircleAlertIcon} title={problem} />}

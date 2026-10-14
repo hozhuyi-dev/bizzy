@@ -22,6 +22,9 @@ type Rule struct {
 	// resolution: it is still checked and reported, but doesn't fail the
 	// simulation. Fixing it means deleting this and making it hold.
 	Pending string
+	// Tolerated says it may break for a while by design, and what puts it
+	// right: reported, but it doesn't fail the simulation.
+	Tolerated string
 }
 
 // Links are the rules between documents and what they cover: a document

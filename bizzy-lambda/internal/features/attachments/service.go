@@ -17,6 +17,8 @@ import (
 type Store interface {
 	// List returns one owner's attachments, oldest first.
 	List(ctx context.Context, kind OwnerKind, ownerID string) ([]Attachment, error)
+	// ListAll returns every attachment, by owner.
+	ListAll(ctx context.Context) ([]Attachment, error)
 	Get(ctx context.Context, kind OwnerKind, ownerID, id string) (Attachment, bool, error)
 	Put(ctx context.Context, a Attachment) error
 	Delete(ctx context.Context, a Attachment) error
@@ -30,6 +32,8 @@ type Owner interface {
 	CanAttach(ctx context.Context, id string) error
 	// SetFiles records how many files it has.
 	SetFiles(ctx context.Context, id string, n int) error
+	// Exists reports whether it is still there.
+	Exists(ctx context.Context, id string) (bool, error)
 }
 
 // Service keeps the items, the files and the owners' counts in step.
@@ -189,13 +193,90 @@ func (s Service) Remove(ctx context.Context, kind OwnerKind, ownerID, id string)
 	if err := o.CanAttach(ctx, ownerID); err != nil {
 		return err
 	}
+	// Counted without it first: should the request die before the item
+	// goes, the count is one short, which Heal finds from the items.
+	all, err := s.Repo.List(ctx, kind, ownerID)
+	if err != nil {
+		return err
+	}
+	if err := o.SetFiles(ctx, ownerID, len(all)-1); err != nil {
+		return err
+	}
 	if err := s.Repo.Delete(ctx, a); err != nil {
 		return err
 	}
-	if err := s.count(ctx, o, kind, ownerID); err != nil {
+	return s.Blobs.Delete(ctx, a.Key)
+}
+
+// Sweep deletes the files no attachment has that were last written before
+// cutoff: those a request that died partway left behind (see Heal). The
+// cutoff leaves alone an upload under way, and a pending one the bucket
+// expires itself. It returns how many it deleted.
+func (s Service) Sweep(ctx context.Context, cutoff time.Time) (int, error) {
+	all, err := s.Repo.ListAll(ctx)
+	if err != nil {
+		return 0, err
+	}
+	attached := make(map[string]bool, len(all))
+	for _, a := range all {
+		attached[a.Key] = true
+	}
+	files, err := s.Blobs.List(ctx, KeyPrefix)
+	if err != nil {
+		return 0, err
+	}
+	var stray []string
+	for _, f := range files {
+		if !attached[f.Key] && f.Modified.Before(cutoff) {
+			stray = append(stray, f.Key)
+		}
+	}
+	return len(stray), s.Blobs.Delete(ctx, stray...)
+}
+
+// Heal puts the items and the owners' counts back in step after a request
+// died partway: the items of an owner that is gone go, with their files,
+// and every other owner counts its items. Each step is ordered so a crash
+// leaves only a count short, or items of an owner gone, both found from the
+// items; a file left without its item is the sweep's (see Sweep).
+func (s Service) Heal(ctx context.Context) error {
+	all, err := s.Repo.ListAll(ctx)
+	if err != nil {
 		return err
 	}
-	return s.Blobs.Delete(ctx, a.Key)
+	type owner struct {
+		kind OwnerKind
+		id   string
+	}
+	byOwner := map[owner][]Attachment{}
+	var order []owner
+	for _, a := range all {
+		key := owner{a.OwnerKind, a.OwnerID}
+		if _, seen := byOwner[key]; !seen {
+			order = append(order, key)
+		}
+		byOwner[key] = append(byOwner[key], a)
+	}
+	for _, key := range order {
+		o, err := s.owner(key.kind)
+		if err != nil {
+			return err
+		}
+		exists, err := o.Exists(ctx, key.id)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if err := s.DeleteOwner(ctx, key.kind, key.id); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := o.SetFiles(ctx, key.id, len(byOwner[key])); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DeleteOwner deletes every file of an owner that is gone. It leaves the

@@ -16,8 +16,10 @@ import (
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/expenses"
+	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/platform/statemodel"
+	"bizzy-lambda/internal/router"
 )
 
 // userActions are what the user does in the app: one per router mutation,
@@ -50,15 +52,16 @@ var userActions = []Action{
 			person := rapid.SampledFrom(w.Contacts.People).Draw(t, "contact")
 			c["contact"] = map[string]any{"resourceName": person.ResourceName}
 		}
+		confirm := confirms(t)
 		if !feesOnly || !w.InSync {
-			w.Call(t, "clients.save", c, false)
+			w.Previewed(t, "clients.impact", c, "clients.save", c, confirm, false)
 			return
 		}
 		// What the form shows before saving new fees must be exactly what
 		// saving reprices.
 		data, refused := w.Call(t, "billing.feeImpact", map[string]any{"clientId": c["id"], "feeRates": c["feeRates"]}, false)
 		before := fees(w)
-		if _, err := w.Call(t, "clients.save", c, false); err != nil || refused != nil {
+		if _, err := w.Previewed(t, "clients.impact", c, "clients.save", c, confirm, false); err != nil || refused != nil {
 			return
 		}
 		var impact billing.FeeImpact
@@ -95,16 +98,23 @@ var userActions = []Action{
 	// Sessions: the booking goes through the calendar, the record and the
 	// payment stay here.
 	{Name: "sessions.create", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.Call(t, "sessions.create", sessionDraft(t, w), false)
+		d := sessionDraft(t, w)
+		w.Previewed(t, "sessions.impact", d, "sessions.create", d, confirms(t), false)
 	}},
 	{Name: "sessions.update", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		s := pickSession(t, w, nil)
 		d := sessionDraft(t, w)
 		d["eventId"] = s.EventID
-		w.Call(t, "sessions.update", d, true)
+		if s.Payment.IsPaid() {
+			d["updatePayment"] = rapid.Bool().Draw(t, "update the payment?")
+		}
+		w.Previewed(t, "sessions.impact", d, "sessions.update", d, confirms(t), true)
 	}},
 	{Name: "sessions.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.Call(t, "sessions.delete", map[string]any{"eventId": pickSession(t, w, nil).EventID}, true)
+		s := pickSession(t, w, nil)
+		stale := !w.InSync
+		refused := deleteSession(t, w, s.EventID)
+		asViewed(t, "sessions.delete", refused, s.View(w.Now).Can.Delete, stale)
 	}},
 	{Name: "sessions.restore", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		s := pickSession(t, w, removedOrAny(t))
@@ -259,10 +269,12 @@ var userActions = []Action{
 			in["payment"] = paymentInput(t)
 		}
 		if len(items) > 1 {
-			w.Call(t, "payments.set", in, false)
+			w.Call(t, "payments.set", in, true)
 			return
 		}
-		w.CallAsViewed(t, "payments.set", in, viewed)
+		stale := !w.InSync
+		_, refused := w.Call(t, "payments.set", in, true)
+		asViewed(t, "payments.set", refused, viewed, stale)
 	}},
 	{Name: "packages.save", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		in := map[string]any{
@@ -277,11 +289,25 @@ var userActions = []Action{
 		if rapid.Bool().Draw(t, "paid now?") {
 			in["paid"] = paymentInput(t)
 		}
-		w.Call(t, "packages.save", in, false)
+		if _, editing := in["id"]; editing {
+			in["updatePayment"] = rapid.Bool().Draw(t, "update the payment?")
+		}
+		withClientFee(t, in)
+		w.Previewed(t, "packages.impact", in, "packages.save", in, confirms(t), true)
 	}},
 	{Name: "packages.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		p := pickPackage(t, w, nil)
-		w.CallAsViewed(t, "packages.delete", map[string]any{"id": p.ID}, p.View(w.Now).Can.Delete)
+		in := map[string]any{"id": p.ID}
+		withClientFee(t, in)
+		stale := !w.InSync
+		_, refused := w.Previewed(t, "packages.impact", with(in, map[string]any{"delete": true}), "packages.delete", in, confirms(t), true)
+		asViewed(t, "packages.delete", refused, p.View(w.Now).Can.Delete, stale)
+	}},
+	{Name: "packages.makeStandalone", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		p := pickPackage(t, w, nil)
+		stale := !w.InSync
+		_, refused := w.Call(t, "packages.makeStandalone", map[string]any{"id": p.ID}, true)
+		asViewed(t, "packages.makeStandalone", refused, p.View(w.Now).Can.MakeStandalone, stale)
 	}},
 
 	// Documents.
@@ -350,7 +376,8 @@ var userActions = []Action{
 	{Name: "followUps.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.Call(t, "followUps.delete", map[string]any{"eventId": pickFollowUp(t, w, nil).EventID}, false)
 	}},
-	{Name: "followUps.setDone", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+	// Reopening shows again what its title says.
+	{Name: "followUps.setDone", Actor: ActorUser, Reveals: true, Run: func(t *rapid.T, w *World) {
 		f := pickFollowUp(t, w, nil)
 		w.Call(t, "followUps.setDone", map[string]any{"eventId": f.EventID, "done": f.DoneAt == nil}, false)
 	}},
@@ -366,6 +393,30 @@ var userActions = []Action{
 			w.InSync = true
 		}
 	}},
+}
+
+// deleteSession deletes a session as the dialog does: it asks what happens
+// to the package it bought, if any, and shows what that brings on first.
+func deleteSession(t *rapid.T, w *World, eventID string) *router.ErrorBody {
+	in := map[string]any{"eventId": eventID}
+	if p, ok := w.Store.PackageMap[eventID]; ok && p.Source == packages.SourceCalendar {
+		in["package"] = rapid.SampledFrom([]string{"keep", "delete"}).Draw(t, "its package")
+	}
+	if _, chose := in["package"]; chose {
+		_, refused := w.Previewed(t, "sessions.deleteImpact", in, "sessions.delete", in, confirms(t), true)
+		return refused
+	}
+	_, refused := w.Call(t, "sessions.delete", in, true)
+	return refused
+}
+
+// withClientFee sometimes gives the package's client a usual fee in the
+// same save, as the form offers when the change leaves sessions without
+// one.
+func withClientFee(t *rapid.T, in map[string]any) {
+	if rapid.IntRange(0, 3).Draw(t, "give the client a usual fee?") == 0 {
+		in["clientFeeCents"] = rapid.SampledFrom([]int64{9000, 15000}).Draw(t, "usual fee")
+	}
 }
 
 // itemNames are things she buys, one of them typed differently.
@@ -454,7 +505,7 @@ func docStep(action string, keep func(documents.Document) bool) func(t *rapid.T,
 		if rapid.IntRange(0, 9).Draw(t, "stale tab?") == 0 {
 			version--
 		}
-		w.Call(t, action, map[string]any{"id": d.ID, "version": version, "reason": "Wrong amount"}, false)
+		w.Call(t, action, map[string]any{"id": d.ID, "version": version, "reason": "Wrong amount"}, action == "documents.issue")
 	}
 }
 

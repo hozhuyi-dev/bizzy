@@ -23,6 +23,8 @@ func newEditor(m *memory.Store, cal *fakecal.Calendar) Editor {
 		Sessions: m.Sessions(),
 		Settings: m.Settings(),
 		Billing:  newReconciler(m),
+		Packages: m.Packages(),
+		Payments: m.Payments(),
 	}
 }
 
@@ -184,7 +186,7 @@ func TestDelete(t *testing.T) {
 	m, cal := setup()
 	synced(t, m, cal, ev("e1", 1, "? Jane Smith"), ev("e2", 2, "Jane Smith"))
 
-	if _, err := newEditor(m, cal).delete(context.Background(), eventInput{EventID: "e1"}); err != nil {
+	if _, err := newEditor(m, cal).delete(context.Background(), deleteInput{EventID: "e1"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -205,7 +207,7 @@ func TestDeleteAlreadyGoneFromCalendar(t *testing.T) {
 	synced(t, m, cal, ev("e1", 1, "Jane Smith"))
 	cal.Live = nil
 
-	if _, err := newEditor(m, cal).delete(context.Background(), eventInput{EventID: "e1"}); err != nil {
+	if _, err := newEditor(m, cal).delete(context.Background(), deleteInput{EventID: "e1"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := m.SessionMap["e1"]; ok {
@@ -220,7 +222,7 @@ func TestEditRefusedWhenCalendarChanged(t *testing.T) {
 	synced(t, m, cal, ev("e1", 1, "? Jane Smith"))
 	cal.Live[0].Title, cal.Live[0].ETag = "Jane Smith 120", "2"
 
-	_, err := newEditor(m, cal).delete(context.Background(), eventInput{EventID: "e1"})
+	_, err := newEditor(m, cal).delete(context.Background(), deleteInput{EventID: "e1"})
 	if !errors.Is(err, calendar.ErrChanged) {
 		t.Fatalf("err = %v, want ErrChanged", err)
 	}
@@ -239,7 +241,7 @@ func TestEditRefusedWithReceipt(t *testing.T) {
 	s.Receipt = &docref.Ref{DocumentID: "d1"}
 	m.SessionMap["e1"] = s
 
-	_, err := newEditor(m, cal).delete(context.Background(), eventInput{EventID: "e1"})
+	_, err := newEditor(m, cal).delete(context.Background(), deleteInput{EventID: "e1"})
 	var appErr *apperr.Error
 	if !errors.As(err, &appErr) || appErr.Code != apperr.CodeConflict || cal.Find("e1") < 0 {
 		t.Errorf("err = %v, want a conflict and the event kept", err)
@@ -290,7 +292,7 @@ func TestDeleteDropsHerData(t *testing.T) {
 	s.Record = &sessions.Record{Summary: "Knee"}
 	m.SessionMap["e1"] = s
 
-	if _, err := newEditor(m, cal).delete(context.Background(), eventInput{EventID: "e1"}); err != nil {
+	if _, err := newEditor(m, cal).delete(context.Background(), deleteInput{EventID: "e1"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := m.SessionMap["e1"]; ok {

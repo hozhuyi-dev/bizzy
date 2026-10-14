@@ -20,6 +20,9 @@ type View struct {
 	Rules []string `json:"rules"`
 	// Todo is what is left to do on it now.
 	Todo []Reason `json:"todo"`
+	// Fixes are the actions its to-do rules say resolve them (ResolvedBy):
+	// the app offers these as its to-do item's quick actions.
+	Fixes []string `json:"fixes"`
 	// Problem explains the first thing to fix, if any.
 	Problem string `json:"problem,omitempty"`
 	// DueCents is its own fee, when one applies. OwedCents is what is still
@@ -44,7 +47,7 @@ type Can struct {
 	Receipt     statemodel.Verdict `json:"receipt"`
 	Record      statemodel.Verdict `json:"record"`
 	Attach      statemodel.Verdict `json:"attach"`
-	EditBooking statemodel.Verdict `json:"editBooking"`
+	Delete      statemodel.Verdict `json:"delete"`
 	Restore     statemodel.Verdict `json:"restore"`
 	Discard     statemodel.Verdict `json:"discard"`
 }
@@ -63,13 +66,16 @@ func (s Session) View(now time.Time) View {
 			Receipt:     statemodel.Check(s.CanReceipt()),
 			Record:      statemodel.Check(s.CanRecord(now)),
 			Attach:      statemodel.Check(s.CanAttach(now)),
-			EditBooking: statemodel.Check(s.CanEditBooking()),
+			Delete:      statemodel.Check(s.CanDelete()),
 			Restore:     statemodel.Check(s.CanRestore()),
 			Discard:     statemodel.Check(s.CanDiscard()),
 		},
 	}
 	if v.Todo == nil {
 		v.Todo = []Reason{}
+	}
+	if v.Fixes = Rules.Fixes(st); v.Fixes == nil {
+		v.Fixes = []string{}
 	}
 	for _, r := range Rules.Evaluate(st).Fired {
 		v.Rules = append(v.Rules, r.ID)

@@ -45,6 +45,25 @@ var FileLinks = []Rule{
 		ByConstruction: "confirm writes the item only for a file that arrived, and clears its pending tag",
 	},
 	{
+		ID:  "every-file-is-attached",
+		Why: "Every confirmed file in blob storage belongs to an attachment, so a file she deleted, or never saw saved, isn't kept",
+		Broken: func(w World) []string {
+			attached := map[string]bool{}
+			for _, a := range w.Attachments {
+				attached[a.Key] = true
+			}
+			var out []string
+			for _, key := range sortedKeys(w.Files) {
+				if w.Files[key] && !attached[key] {
+					out = append(out, fmt.Sprintf("file %s is kept, but no attachment has it", key))
+				}
+			}
+			return out
+		},
+		Tolerated: "A request that dies between a file and its item (confirm clears the pending tag first; remove and an owner's deletion drop the item first) leaves a file nothing links to, " +
+			"never an item without its file. The quarterly job's sweep (cmd/job-quarterly) deletes it.",
+	},
+	{
 		ID:  "owner-counts-its-files",
 		Why: "A session's or expense's count of files is how many attachments it has",
 		Broken: func(w World) []string {

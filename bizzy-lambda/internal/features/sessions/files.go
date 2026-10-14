@@ -24,6 +24,11 @@ func (f Files) CanAttach(ctx context.Context, eventID string) error {
 	return s.CanAttach(f.Now())
 }
 
+func (f Files) Exists(ctx context.Context, eventID string) (bool, error) {
+	_, found, err := f.Repo.Get(ctx, eventID)
+	return found, err
+}
+
 func (f Files) SetFiles(ctx context.Context, eventID string, n int) error {
 	now := f.Now().UTC()
 	_, err := Update(ctx, f.Repo, eventID, func(s *Session) error {

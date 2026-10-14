@@ -18,6 +18,12 @@ const (
 	ActorContacts Actor = "contacts"
 	// ActorClock moves time on.
 	ActorClock Actor = "clock"
+	// ActorFault makes the backend die halfway through.
+	ActorFault Actor = "fault"
+	// ActorScenario is the user taking several steps in one go.
+	ActorScenario Actor = "scenario"
+	// ActorMaintenance is a scheduled job.
+	ActorMaintenance Actor = "maintenance"
 )
 
 // Action is one thing an actor can do. A user action is named after the
@@ -29,11 +35,15 @@ type Action struct {
 	// Run draws its inputs from the world and does it. It skips (t.Skip)
 	// when there is nothing to do it to.
 	Run func(t *rapid.T, w *World)
+	// Reveals says what it brings on was there already, hidden: reopening
+	// a follow-up shows again what its title says. It isn't held to
+	// bringing on nothing unshown (see noNewContradictions).
+	Reveals bool
 }
 
 // Catalogue is every action the simulation draws from.
 func Catalogue() []Action {
-	return slices.Concat(userActions, calendarActions, contactsActions, clockActions)
+	return slices.Concat(userActions, calendarActions, contactsActions, clockActions, faultActions, scenarioActions, maintenanceActions)
 }
 
 // outsideChange marks the world out of sync with Google: the next sync has
