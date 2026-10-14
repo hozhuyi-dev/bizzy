@@ -55,7 +55,7 @@ export function FollowUpsPage({ view }: { view: FollowUpView }) {
             <CardContent>
               <ul className="flex flex-col divide-y">
                 {items.map((followUp) => (
-                  <li key={followUp.eventId} className="py-3 first:pt-0 last:pb-0">
+                  <li key={followUp.id} className="py-3 first:pt-0 last:pb-0">
                     <FollowUpRow followUp={followUp} onEdit={(f) => setTarget({ mode: "edit", followUp: f })} />
                   </li>
                 ))}

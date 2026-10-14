@@ -3,25 +3,12 @@ package packages
 import (
 	"context"
 
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-
-	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/schema"
-	"bizzy-lambda/internal/shared/docref"
 )
 
 // Keys: see schema.PackageKeys.
 const Partition = schema.Package
-
-// ownedAttributes are written by Save; the payment is the payments
-// feature's (PaymentPatch), and the document slots (and the version their
-// links bump) the documents feature's.
-var ownedAttributes = append([]string{
-	"id", "clientId", "sessions", "priceCents", "purchasedAt", "source", "note",
-	"creditsUsed", "drift", "unlinked",
-}, dynamo.IndexAttributes...)
 
 type record struct {
 	dynamo.Keys
@@ -29,7 +16,7 @@ type record struct {
 }
 
 func toRecord(p Package) record {
-	return record{Keys: schema.PackageKeys(p.ID, p.PurchasedAt, p.ClientID, string(p.Source), p.Open()), Package: p}
+	return record{Keys: schema.PackageKeys(p.ID, p.PurchasedAt, p.ClientID, p.Open()), Package: p}
 }
 
 type Repository struct {
@@ -74,67 +61,15 @@ func (r Repository) query(ctx context.Context, q dynamo.Query) ([]Package, error
 	return all, nil
 }
 
-// Save writes everything but the payment and the document links.
-func (r Repository) Save(ctx context.Context, p Package) error {
-	patch, err := dynamo.OwnedFrom(Partition, p.ID, toRecord(p), ownedAttributes)
-	if err != nil {
-		return err
-	}
-	_, err = r.store.Apply(ctx, patch)
-	return err
+// PutItem is the write that stores a package if it is still at the version
+// read (0 for a new one), and the package at its new version.
+func PutItem(p Package) (Package, dynamo.TransactItem) {
+	previous := p.Version
+	p.Version++
+	return p, dynamo.TransactItem{Put: toRecord(p), When: dynamo.VersionIs(previous)}
 }
 
-// SetPayment writes p.Payment; see PaymentPatch.
-func (r Repository) SetPayment(ctx context.Context, p Package) error {
-	patch, err := PaymentPatch(p)
-	if err != nil {
-		return err
-	}
-	applied, err := r.store.Apply(ctx, patch)
-	if err == nil && !applied {
-		return apperr.Conflict("a receipt covers this package; cancel or discard it first")
-	}
-	return err
-}
-
-// Delete removes a package unless a document has claimed it.
-func (r Repository) Delete(ctx context.Context, id string) (bool, error) {
-	return r.store.Delete(ctx, Partition, id, docref.NoDocuments())
-}
-
-// PaymentPatch writes p.Payment (nil clears it) and moves the package in or
-// out of the open index to match. It only applies while no receipt covers
-// the package, and leaves everything else to Save.
-func PaymentPatch(p Package) (dynamo.Patch, error) {
-	patch := dynamo.Patch{
-		PK: Partition, SK: p.ID,
-		Set: map[string]types.AttributeValue{},
-		When: &dynamo.Condition{
-			Expression: "attribute_exists(PK) AND attribute_not_exists(#receipt)",
-			Names:      map[string]string{"#receipt": string(docref.SlotReceipt)},
-		},
-	}
-	if p.Payment == nil {
-		patch.Remove = append(patch.Remove, "payment")
-	} else {
-		av, err := attributevalue.Marshal(p.Payment)
-		if err != nil {
-			return dynamo.Patch{}, err
-		}
-		patch.Set["payment"] = av
-	}
-	if open := toRecord(p).LSI3SK; open != "" {
-		patch.Set["LSI3SK"] = dynamo.S(open)
-	} else {
-		patch.Remove = append(patch.Remove, "LSI3SK")
-	}
-	return patch, nil
-}
-
-func LinkPatch(id string, slot docref.Slot, ref docref.Ref) (dynamo.Patch, error) {
-	return docref.LinkPatch(Partition, id, slot, ref)
-}
-
-func UnlinkPatch(id string, slot docref.Slot, documentID string) dynamo.Patch {
-	return docref.UnlinkPatch(Partition, id, slot, documentID)
+// DeleteItem is the write that deletes a package at the version read.
+func DeleteItem(p Package) dynamo.TransactItem {
+	return dynamo.TransactItem{Delete: &[2]string{Partition, p.ID}, When: dynamo.VersionIs(p.Version)}
 }

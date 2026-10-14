@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"pgregory.net/rapid"
 
 	"bizzy-lambda/internal/features/calendar"
+	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
@@ -48,7 +50,7 @@ func pickPackage(t *rapid.T, w *World, keep func(packages.Package) bool) package
 }
 
 func pickDocument(t *rapid.T, w *World, keep func(documents.Document) bool) documents.Document {
-	return w.Docs.Docs[pick(t, "document", w.Docs.Docs, keep)]
+	return w.Store.Docs[pick(t, "document", w.Store.Docs, keep)]
 }
 
 func pickFollowUp(t *rapid.T, w *World, keep func(followups.FollowUp) bool) followups.FollowUp {
@@ -83,12 +85,13 @@ var names = []string{"Jane Smith", "Bob Lee", "Amy Tan", "Jane Smyth", "Zed Zee"
 // that can't be read.
 func sessionTitle(t *rapid.T) string {
 	if rapid.IntRange(0, 9).Draw(t, "malformed?") == 0 {
-		return rapid.SampledFrom([]string{"95", "Jane Smith 95 120", "Bob Lee 0x85", "? 120", "Jane Smith 5x80 10x80"}).Draw(t, "malformed title")
+		return rapid.SampledFrom([]string{"95", "Jane Smith 95 120", "Bob Lee 0x85", "? 120", "Jane Smith 5x80 10x80", "Amy Tan (X)", "Bob Lee (V) (H)"}).Draw(t, "malformed title")
 	}
 	title := calendar.Title{
 		Tentative: rapid.IntRange(0, 4).Draw(t, "tentative?") == 0,
 		Name:      rapid.SampledFrom(names).Draw(t, "name"),
 	}
+	title.Place = rapid.SampledFrom([]string{"", "", calendar.PlaceVisit, calendar.PlaceHome}).Draw(t, "place")
 	if rapid.Bool().Draw(t, "amount?") {
 		title.FeeCents = rapid.SampledFrom([]*int64{cents(0), cents(9500), cents(12000)}).Draw(t, "amount")
 	}
@@ -109,13 +112,42 @@ func followUpTitle(t *rapid.T) string {
 	})
 }
 
-// paymentInput draws how something was settled.
+// paymentInput draws how something was paid, in full.
 func paymentInput(t *rapid.T) *money.Input {
-	if rapid.IntRange(0, 4).Draw(t, "waived?") == 0 {
-		return &money.Input{Status: money.Waived}
-	}
 	method := rapid.SampledFrom(slices.Sorted(maps.Keys(money.MethodLabels))).Draw(t, "method")
-	return &money.Input{Status: money.Paid, Method: method}
+	return &money.Input{Method: method}
+}
+
+// feeRateChoices are fees the client form can save: none, one, or one
+// raised around the time the clock starts (the day before, or two days
+// after).
+var feeRateChoices = [][]clients.FeeRate{
+	nil,
+	{{Cents: 9000}},
+	{{Cents: 15000}},
+	{{Cents: 9000}, {From: "2026-10-12", Cents: 10000}},
+	{{Cents: 9000}, {From: "2026-10-15", Cents: 10000}},
+}
+
+// sessionCan is what the app shows of the actions on a session: its view,
+// judged by the book as it is.
+func (w *World) sessionCan(t *rapid.T, s sessions.Session) sessions.Can {
+	t.Helper()
+	cans, err := w.App.Book.JudgeSessions(context.Background(), []sessions.Session{s})
+	if err != nil {
+		t.Fatalf("judge session: %v", err)
+	}
+	return s.View(w.Now, cans[s.ID]).Can
+}
+
+// packageCan is what the app shows of the actions on a package.
+func (w *World) packageCan(t *rapid.T, p packages.Package) packages.Can {
+	t.Helper()
+	cans, err := w.App.Book.JudgePackages(context.Background(), []packages.Package{p})
+	if err != nil {
+		t.Fatalf("judge package: %v", err)
+	}
+	return p.View(w.Now, cans[p.ID]).Can
 }
 
 // sessionDraft draws a session as the user fills it in.

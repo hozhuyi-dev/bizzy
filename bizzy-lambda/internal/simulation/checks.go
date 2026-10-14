@@ -6,15 +6,14 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"pgregory.net/rapid"
 
-	"bizzy-lambda/internal/features/billing"
-	"bizzy-lambda/internal/features/followups"
+	"bizzy-lambda/internal/features/book"
+	"bizzy-lambda/internal/features/calendar"
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/integrity"
-	"bizzy-lambda/internal/platform/statemodel"
 	"bizzy-lambda/internal/testutil/memory"
 )
 
@@ -31,6 +30,7 @@ func check(t *rapid.T, w *World) {
 	everyPackageToDoIsListed(t, w)
 	if w.InSync {
 		derivedFieldsAreCurrent(t, w)
+		calendarMirrorsBizzy(t, w)
 	}
 }
 
@@ -54,22 +54,30 @@ func everyPackageToDoIsListed(t *rapid.T, w *World) {
 	}
 }
 
-// noImpossibleStates: no entity is in a state its rule table calls
-// impossible, and the links between them hold (see internal/integrity).
-func noImpossibleStates(t *rapid.T, w *World) {
-	t.Helper()
+// world is everything stored, as integrity checks it.
+func (w *World) world() integrity.World {
 	world := integrity.World{
-		Clients: w.Store.ClientMap, Sessions: w.Store.SessionMap, Packages: w.Store.PackageMap,
-		FollowUps: w.Store.FollowUpMap, Documents: w.Docs.Docs, Revisions: w.Docs.Revs, Shares: w.Docs.SharesMap,
+		Settings: w.Store.SettingsVal.WithDefaults(), Clients: w.Store.ClientMap,
+		Sessions: w.Store.SessionMap, Packages: w.Store.PackageMap, FollowUps: w.Store.FollowUpMap,
+		Documents: w.Store.Docs, Revisions: w.Store.Revs, Shares: w.Store.SharesMap,
+		Conflicts: w.Store.ConflictMap, Externals: w.Store.ExternalMap,
 		Attachments: w.Store.AttachmentMap, Files: map[string]bool{},
 		Expenses: w.Store.ExpenseMap, Items: w.Store.ItemMap, Categories: w.Store.CategoryList,
-		Now: w.Now,
+		Location: kl, Now: w.Now,
 	}
 	for key, blob := range w.Blobs.Blobs {
 		world.Files[key] = !blob.Pending
 	}
+	return world
+}
+
+// noImpossibleStates: no entity is in a state its rule table calls
+// impossible, the book's invariants hold, and so do the links between
+// entities (see internal/integrity).
+func noImpossibleStates(t *rapid.T, w *World) {
+	t.Helper()
 	var broken []integrity.Violation
-	for _, v := range integrity.Check(world) {
+	for _, v := range integrity.Check(w.world()) {
 		if v.Pending == "" && v.Tolerated == "" {
 			broken = append(broken, v)
 		} else if !w.pendingSeen[v.Rule] {
@@ -83,10 +91,9 @@ func noImpossibleStates(t *rapid.T, w *World) {
 }
 
 // derivedFieldsAreCurrent: while nothing changed outside since the last
-// sync, a sync and a full reconcile find nothing to write. Every action in
-// the app applies its change exactly as the next sync would, so what the
-// reconcile derives (statuses, fees, credits, drift, activity) is never
-// stale.
+// sync, a sync and a re-derivation of every client find nothing to write.
+// Every action applies its change completely: what items copy is never
+// stale, and the calendar shows it.
 func derivedFieldsAreCurrent(t *rapid.T, w *World) {
 	t.Helper()
 	ctx := context.Background()
@@ -97,132 +104,109 @@ func derivedFieldsAreCurrent(t *rapid.T, w *World) {
 	if diff := changes(w.Store, f.Store); len(diff) > 0 {
 		t.Fatalf("a sync right after the last one changed %v", diff)
 	}
-	if _, err := f.App.Reconciler.Reconcile(ctx, fullReconcile); err != nil {
-		t.Fatalf("reconcile: %v", err)
+	if err := f.App.RederiveAll(ctx); err != nil {
+		t.Fatalf("rederive: %v", err)
 	}
 	if diff := changes(w.Store, f.Store); len(diff) > 0 {
-		t.Fatalf("a full reconcile changed %v", diff)
+		t.Fatalf("re-deriving every client changed %v", diff)
 	}
 }
 
-// contradictions are the Contradiction rules that hold for each session,
-// package and follow-up, keyed "<kind> <id>", whether or not a Stop rule
-// hides them from the to-do list.
+// calendarMirrorsBizzy: once synced, every session's and follow-up's event
+// shows it as it is (its projection), unless she has an edit there waiting
+// as a conflict; and every session or follow-up event in the calendar shows
+// one, waits as a conflict, or was said not to be bizzy's.
+func calendarMirrorsBizzy(t *rapid.T, w *World) {
+	t.Helper()
+	ctx := context.Background()
+	live := map[string]calendar.Event{}
+	for _, e := range w.Calendar.Live {
+		live[e.ID] = e
+	}
+	books := map[string]*book.Book{}
+	bookOf := func(clientID string) *book.Book {
+		b, ok := books[clientID]
+		if !ok {
+			var err error
+			if b, err = w.App.Book.Load(ctx, book.Scope{Clients: []string{clientID}}); err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			books[clientID] = b
+		}
+		return b
+	}
+	mirrors := func(what string, link calendar.Link, snapshot func(calendar.Event) calendar.Snapshot, want func() calendar.Snapshot) {
+		if _, waiting := w.Store.ConflictMap[conflicts.Key(conflicts.SurfaceCalendar, link.EventID)]; waiting {
+			return
+		}
+		e, ok := live[link.EventID]
+		switch {
+		case link.EventID == "" || link.Pending:
+			t.Fatalf("%s's event is still to be written after a sync: %+v", what, link)
+		case !ok:
+			t.Fatalf("%s's event %s isn't in the calendar", what, link.EventID)
+		case !snapshot(e).Same(*link.Seen):
+			t.Fatalf("%s's event says %+v, not %+v as last agreed", what, snapshot(e), *link.Seen)
+		case !want().Same(*link.Seen):
+			t.Fatalf("%s's event says %+v, but it is %+v", what, *link.Seen, want())
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(w.Store.SessionMap)) {
+		s := w.Store.SessionMap[id]
+		mirrors("session "+id, s.Event, calendar.SnapshotOf, func() calendar.Snapshot {
+			b := bookOf(s.ClientID)
+			return b.Projection(b.Sessions[id])
+		})
+	}
+	for _, id := range slices.Sorted(maps.Keys(w.Store.FollowUpMap)) {
+		f := w.Store.FollowUpMap[id]
+		mirrors("follow-up "+id, f.Event, calendar.NotedSnapshotOf, func() calendar.Snapshot {
+			b := bookOf(f.ClientID)
+			return b.FollowUpProjection(b.FollowUps[id])
+		})
+	}
+	for _, e := range w.Calendar.Live {
+		if e.AllDay && !calendar.IsFollowUp(e.Title) {
+			continue
+		}
+		key := conflicts.Key(conflicts.SurfaceCalendar, e.ID)
+		if _, shown := w.Store.ExternalMap[key]; shown {
+			continue
+		}
+		if _, waiting := w.Store.ConflictMap[key]; !waiting {
+			t.Fatalf("event %s %q shows nothing, and waits for nothing", e.ID, e.Title)
+		}
+	}
+}
+
+// contradictions are what needs fixing because of something outside the
+// app: each conflict, keyed "conflict <key>".
 func (w *World) contradictions() map[string][]string {
 	out := map[string][]string{}
-	for id, s := range w.Store.SessionMap {
-		out["session "+id] = billing.SessionContradictions(s, w.Now)
-	}
-	for id, p := range w.Store.PackageMap {
-		out["package "+id] = billing.PackageContradictions(p, w.Now)
-	}
-	for id, f := range w.Store.FollowUpMap {
-		out["follow-up "+id] = holding(followups.Rules, f.State())
+	for key, c := range w.Store.ConflictMap {
+		guards := []string{}
+		for _, v := range c.Violations {
+			guards = append(guards, v.Guard)
+		}
+		out["conflict "+key] = guards
 	}
 	return out
 }
 
-func holding[S any](rules statemodel.Rules[S], s S) []string {
-	var ids []string
-	for _, r := range rules {
-		if r.Bucket == statemodel.Contradiction && r.When(s) {
-			ids = append(ids, r.ID)
-		}
-	}
-	return ids
-}
-
-// settled are the contradictions once whatever changed outside is synced:
-// as they are while nothing waits to be, else those of a copy of the world
-// that syncs. Comparing these before and after a user action leaves out
-// what the calendar and Google Contacts bring on meanwhile. stale are the
-// sessions, packages and follow-ups that sync would change (or add, or
-// remove): what she and the forms' previews could not see as it will be.
-func (w *World) settled(t *rapid.T) (contradictions map[string][]string, stale map[string]bool) {
-	t.Helper()
-	if w.InSync && !w.unhealed {
-		return w.contradictions(), nil
-	}
-	f := w.fork(t)
-	if _, err := f.App.Sync(context.Background(), googlesync.Range{}); err != nil {
-		t.Fatalf("sync of a copy: %v", err)
-	}
-	stale = map[string]bool{}
-	mark := func(kind string, before, after map[string][]byte) {
-		for id := range before {
-			if string(before[id]) != string(after[id]) {
-				stale[kind+" "+id] = true
-			}
-		}
-		for id := range after {
-			if _, ok := before[id]; !ok {
-				stale[kind+" "+id] = true
-			}
-		}
-	}
-	mark("session", jsonEach(w.Store.SessionMap), jsonEach(f.Store.SessionMap))
-	mark("package", jsonEach(w.Store.PackageMap), jsonEach(f.Store.PackageMap))
-	mark("follow-up", jsonEach(w.Store.FollowUpMap), jsonEach(f.Store.FollowUpMap))
-	// What a session's title buys is as stale as the session.
-	for key := range stale {
-		if id, ok := strings.CutPrefix(key, "session "); ok {
-			stale["package "+id] = true
-		}
-	}
-	return f.contradictions(), stale
-}
-
-// noNewContradictions: in the app, the user brings on nothing to fix that
-// the form didn't show her first: only the calendar and Google Contacts
-// changing underneath do (see statemodel.Contradiction). A form's preview
-// lists what saving would bring on (billing.Impact), and what she confirmed
-// is allowed; anything else is a bug. With exact (nothing outside could
-// interfere), so is a preview listing what didn't then happen. As
-// billing.Brings has it, something already needing a fix that needs a
-// different one isn't new work; nor is what the pending sync changes
-// (stale), which she acted on unseen.
-func noNewContradictions(t *rapid.T, action string, before, after map[string][]string, allowed []billing.Brought, exact bool, stale map[string]bool) {
+// noNewContradictions: in the app, the user brings on nothing to fix: the
+// app refuses what isn't allowed, so only the calendar and Google Contacts
+// changing underneath can. Checked while nothing outside waits to be
+// synced, which could bring on a conflict of its own during the action.
+func noNewContradictions(t *rapid.T, action string, before, after map[string][]string) {
 	t.Helper()
 	var brought []string
-	matched := make([]bool, len(allowed))
 	for _, key := range slices.Sorted(maps.Keys(after)) {
-		if len(before[key]) > 0 {
-			continue
-		}
-		kind, id, _ := strings.Cut(key, " ")
-		_, existed := before[key]
-		if stale[key] || (!existed && !exact) {
-			// The calendar's changes still waiting to be synced change it,
-			// or it is new beside them (a booking whose credit an unsynced
-			// event takes first), which neither she nor the preview could
-			// see: those changes, not her, decide it.
-			continue
-		}
-		for _, rule := range after[key] {
-			i := slices.IndexFunc(allowed, func(b billing.Brought) bool {
-				return b.Kind == kind && b.Rule == rule && (b.ID == id || (b.ID == "new" && !existed))
-			})
-			if i < 0 {
-				was := "absent"
-				if existed {
-					was = "quiet"
-				}
-				brought = append(brought, fmt.Sprintf("%s: %s (was %s)", key, rule, was))
-				continue
-			}
-			matched[i] = true
+		if _, had := before[key]; !had {
+			brought = append(brought, fmt.Sprintf("%s: %v", key, after[key]))
 		}
 	}
 	if len(brought) > 0 {
-		t.Fatalf("%s brought on what the user must now fix, unshown: %v", action, brought)
-	}
-	if !exact {
-		return
-	}
-	for i, b := range allowed {
-		if !matched[i] {
-			t.Fatalf("%s: the preview listed %s %s: %s, which it didn't bring on", action, b.Kind, b.ID, b.Rule)
-		}
+		t.Fatalf("%s brought on what the user must now fix: %v", action, brought)
 	}
 }
 
@@ -244,7 +228,10 @@ func changes(before, after *memory.Store) []string {
 	diff("session", jsonEach(before.SessionMap), jsonEach(after.SessionMap))
 	diff("follow-up", jsonEach(before.FollowUpMap), jsonEach(after.FollowUpMap))
 	diff("package", jsonEach(before.PackageMap), jsonEach(after.PackageMap))
+	diff("document", jsonEach(before.Docs), jsonEach(after.Docs))
 	diff("client", jsonEach(before.ClientMap), jsonEach(after.ClientMap))
+	diff("conflict", jsonEach(before.ConflictMap), jsonEach(after.ConflictMap))
+	diff("external", jsonEach(before.ExternalMap), jsonEach(after.ExternalMap))
 	diff("attachment", jsonEach(before.AttachmentMap), jsonEach(after.AttachmentMap))
 	return out
 }

@@ -39,13 +39,12 @@ export function NextVisitDialog({ from, clientName, onClose }: NextVisitDialogPr
 
 function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clientName: string; onClose: () => void }) {
   const navigate = useNavigate();
-  // A new booking can take a package credit from a later one: what that
-  // leaves to fix is shown first.
-  const save = useBookingSave(undefined, (draft, eventId) => {
+  // A refusal (no fee known, say) is shown with what would settle it.
+  const save = useBookingSave(undefined, (draft, id) => {
     toast.success(`Booked ${clientName} for ${formatSessionTime(draft.start)}`, {
       action: {
         label: "Open",
-        onClick: () => void navigate({ to: "/sessions/$id", params: { id: eventId } }),
+        onClick: () => void navigate({ to: "/sessions/$id", params: { id } }),
       },
     });
     onClose();
@@ -63,7 +62,8 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
       homeVisit: from.homeVisit,
       tentative,
     };
-    save.submit(draft).catch((error: Error) => toast.error(error.message));
+    // A refusal is shown by the save, with its remedies.
+    save.submit(draft).catch(() => undefined);
   };
 
   return (
@@ -107,7 +107,6 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
           {save.saving ? "Booking…" : "Book"}
         </Button>
       </DialogFooter>
-      {save.dialog}
     </form>
   );
 }

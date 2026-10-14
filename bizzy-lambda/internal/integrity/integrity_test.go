@@ -1,9 +1,12 @@
 package integrity
 
 import (
+	"slices"
 	"testing"
 	"time"
 
+	"bizzy-lambda/internal/features/calendar"
+	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/platform/statemodel"
@@ -24,48 +27,47 @@ func TestTable(t *testing.T) {
 	statemodel.Golden(t, "testdata/links.md", Table())
 }
 
-// A receipt covering two sessions, each pointing back: the many-to-one link
-// both ways.
+// An issued invoice covering two sessions, each copying it: the
+// many-to-one link both ways, and what breaks when one side lets go.
 func TestLinksBothWays(t *testing.T) {
+	now := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
 	rev := 0
-	receipt := documents.Document{
-		ID: "r1", Type: documents.TypeReceipt, Status: documents.StatusIssued, Number: "RCP260001", Revision: &rev,
-		ClientID: "jane", ShareToken: "tok",
-		Sources: []documents.Source{{Kind: documents.SourceSession, ID: "e1"}, {Kind: documents.SourceSession, ID: "e2"}},
+	line := func(id, src string) documents.Line {
+		return documents.Line{ID: id, Description: "Physio", AmountCents: 9500, Source: &documents.Source{Kind: documents.SourceSession, ID: src}}
 	}
-	ref := &docref.Ref{DocumentID: "r1", Number: "RCP260001", ClientID: "jane"}
+	content := documents.Content{Date: "2026-10-12", Lines: []documents.Line{line("l1", "s1"), line("l2", "s2")}, TotalCents: 19000}
+	invoice := documents.Document{
+		ID: "d1", Type: documents.TypeInvoice, Status: documents.StatusIssued, Number: "INV260001", Revision: &rev,
+		ClientID: "jane", ShareToken: "tok", Date: "2026-10-12", TotalCents: 19000, Content: &content,
+		Sources: []documents.Source{{Kind: documents.SourceSession, ID: "s1"}, {Kind: documents.SourceSession, ID: "s2"}},
+	}
+	ref := &docref.Ref{DocumentID: "d1", Number: "INV260001"}
+	session := func(id string, hours int) sessions.Session {
+		start := now.Add(time.Duration(hours-48) * time.Hour)
+		return sessions.Session{ID: id, ClientID: "jane", Start: start, End: start.Add(time.Hour), Location: sessions.LocationOwn,
+			FeeCents: 9500, Invoice: ref, Event: calendar.Link{Pending: true}}
+	}
 	w := World{
-		Sessions: map[string]sessions.Session{
-			"e1": {EventID: "e1", ClientID: "jane", Status: sessions.StatusPriced, Receipt: ref},
-			"e2": {EventID: "e2", ClientID: "jane", Status: sessions.StatusPriced, Receipt: ref},
-		},
-		Documents: map[string]documents.Document{"r1": receipt},
-		Revisions: []documents.Revision{{DocumentID: "r1", Revision: 0}},
-		Shares:    map[string]string{"tok": "r1"},
-		Now:       time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC),
+		Clients:   map[string]clients.Client{"jane": {ID: "jane", Name: "Jane", Aliases: []string{"jane"}}},
+		Sessions:  map[string]sessions.Session{"s1": session("s1", 0), "s2": session("s2", 2)},
+		Documents: map[string]documents.Document{"d1": invoice},
+		Revisions: []documents.Revision{{DocumentID: "d1", Revision: 0, Number: "INV260001", Content: content}},
+		Shares:    map[string]string{"tok": "d1"},
+		Now:       now,
 	}
-	for _, v := range linkViolations(w) {
-		t.Errorf("consistent world: %v", v)
+	if got := Check(w); len(got) > 0 {
+		t.Fatalf("consistent world: %v", got)
 	}
 
-	// e2 lets go of the receipt on its side only.
-	s := w.Sessions["e2"]
-	s.Receipt = nil
-	w.Sessions["e2"] = s
-	got := linkViolations(w)
-	if len(got) != 1 || got[0].Rule != "document-sources-point-back" {
-		t.Errorf("violations = %v, want the receipt's source not pointing back", got)
-	}
-}
-
-func linkViolations(w World) []Violation {
-	var out []Violation
+	// s2 lets go of the invoice on its side only.
+	s := w.Sessions["s2"]
+	s.Invoice, s.FeeCents = nil, 0
+	w.Sessions["s2"] = s
+	var rules []string
 	for _, v := range Check(w) {
-		for _, r := range AllLinks() {
-			if r.ID == v.Rule {
-				out = append(out, v)
-			}
-		}
+		rules = append(rules, v.Rule)
 	}
-	return out
+	if !slices.Contains(rules, "copies-are-current") {
+		t.Errorf("violations = %v, want the session's copy out of date", rules)
+	}
 }

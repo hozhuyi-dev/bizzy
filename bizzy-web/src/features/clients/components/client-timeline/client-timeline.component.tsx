@@ -35,13 +35,13 @@ export function ClientTimeline({ client }: { client: Client }) {
     <div className="flex flex-col gap-3">
       <ol className="relative flex flex-col gap-5 border-l pl-5">
         {sessions.map((session) => (
-          <li key={session.eventId} className="relative">
+          <li key={session.id} className="relative">
             <span
               aria-hidden="true"
               className="absolute top-1.5 -left-[1.6rem] size-2.5 rounded-full border-2 border-background bg-muted-foreground"
             />
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <TextLink to="/sessions/$id" params={{ id: session.eventId }} className="text-sm">
+              <TextLink to="/sessions/$id" params={{ id: session.id }} className="text-sm">
                 {formatSessionTime(session.start)}
               </TextLink>
               {stageBadges(session).map((badge) => (

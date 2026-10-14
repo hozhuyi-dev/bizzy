@@ -16,8 +16,8 @@ import (
 	"bizzy-lambda/internal/platform/apperr"
 )
 
-// newShareToken returns 128 random bits, URL-safe (22 characters).
-func newShareToken() string {
+// NewShareToken returns 128 random bits, URL-safe (22 characters).
+func NewShareToken() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
@@ -62,16 +62,11 @@ func (svc Service) ResetShare(ctx context.Context, id string, version int) (Docu
 
 func (svc Service) newShareToken(ctx context.Context, doc Document) (Document, error) {
 	updated := doc
-	updated.ShareToken = newShareToken()
-	updated.Version++
-	w := Write{
-		Doc:             updated,
-		PreviousVersion: doc.Version,
-		Share:           &ShareChange{New: updated.ShareToken, Old: doc.ShareToken},
-	}
-	if err := svc.commit(ctx, w); err != nil {
+	updated.ShareToken = NewShareToken()
+	if err := conflictErr(svc.Repo.SetShare(ctx, updated, ShareChange{New: updated.ShareToken, Old: doc.ShareToken})); err != nil {
 		return doc, err
 	}
+	updated.Version++
 	return updated, nil
 }
 

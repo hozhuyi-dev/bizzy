@@ -13,6 +13,8 @@ export interface PackageFormValues {
   /** Paid there and then: how. Unset leaves it to collect. */
   paidBy: PaymentMethod | "";
   paid: boolean;
+  /** Move what was received to a new price, on a receipt not issued yet. */
+  updatePayment: boolean;
 }
 
 /** A package to edit, or a new one of 10 bought today. */
@@ -25,21 +27,24 @@ export function toPackageValues(pkg: Package | undefined): PackageFormValues {
     note: pkg?.note ?? "",
     paid: false,
     paidBy: "",
+    updatePayment: false,
   };
 }
 
-export function toPackageInput(values: PackageFormValues, id: string | undefined): SavePackageInput {
+export function toPackageInput(values: PackageFormValues, pkg: Package | undefined): SavePackageInput {
   const [year = 0, month = 1, day = 1] = values.purchasedOn.split("-").map(Number);
+  // The day as it was keeps the time it was bought (a package bought in a
+  // session is bought when the session is); another day starts with it, so
+  // it covers that day's sessions.
+  const sameDay = pkg && toISODate(new Date(pkg.purchasedAt)) === values.purchasedOn;
   return {
-    ...(id ? { id } : {}),
+    ...(pkg ? { id: pkg.id } : {}),
     clientId: values.clientId,
     sessions: Number(values.sessions),
     priceCents: parseCents(values.price) ?? 0,
-    // Start of her day, so it covers that day's sessions.
-    purchasedAt: new Date(year, month - 1, day).toISOString(),
+    purchasedAt: sameDay ? pkg.purchasedAt : new Date(year, month - 1, day).toISOString(),
     note: values.note,
-    ...(values.paid && values.paidBy
-      ? { paid: { status: "paid" as const, method: values.paidBy, paidOn: values.purchasedOn } }
-      : {}),
+    ...(values.paid && values.paidBy ? { paid: { method: values.paidBy, paidOn: values.purchasedOn } } : {}),
+    ...(values.updatePayment ? { updatePayment: true } : {}),
   };
 }

@@ -1,41 +1,41 @@
-// Mirrors bizzy-lambda/internal/shared/money and features/payments.
+import type { DocumentRef } from "~/features/documents/documents.types";
 
-export type PaymentStatus = "paid" | "waived";
+// Mirrors bizzy-lambda/internal/shared/money and the book's payments.set.
+
 export type PaymentMethod = "cash" | "tng" | "grab" | "bank_transfer";
 
-/** How a session's fee or a package was settled, in full. */
-export interface Payment {
-  status: PaymentStatus;
-  method?: PaymentMethod;
+/**
+ * What a session's or package's receipt says was received for it: always in
+ * full. Copied onto the item by the API; the receipt is where it lives.
+ */
+export interface Paid {
   amountCents: number;
+  method: PaymentMethod;
   /** YYYY-MM-DD. */
   paidOn: string;
-  updatedAt: string;
 }
 
 /** One thing paid for: a session's own fee, or a package. */
 export interface PayItem {
   kind: "session" | "package";
   id: string;
-  /** Defaults to what it costs. */
-  amountCents?: number;
 }
 
-/** The payment for the items; the amount is each item's own. */
+/** A payment for the items, each paid what it owes. */
 export interface PaymentInput {
-  status: PaymentStatus;
-  method?: PaymentMethod;
+  method: PaymentMethod;
   /** YYYY-MM-DD; defaults to today. */
   paidOn?: string;
 }
 
-/** One thing to settle: a session's fee or a package. */
+/** One thing to pay for: a session's fee or a package. */
 export interface Payable {
   item: PayItem;
   /** "Session fee", "Package of 10". */
   label: string;
+  /** What it costs: what its invoice charges. */
   dueCents: number;
-  payment?: Payment | undefined;
-  /** A receipt covers it, so its payment can't change. */
-  receipted?: boolean;
+  paid?: Paid | undefined;
+  /** The receipt recording its payment; once issued, the payment can't change. */
+  receipt?: DocumentRef | undefined;
 }

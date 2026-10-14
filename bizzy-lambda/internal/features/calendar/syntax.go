@@ -3,22 +3,39 @@ package calendar
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
 
 // Title is a session event title parsed against the agreed syntax:
 //
-//	[?] <name> [amount] [NxPRICE | N@TOTAL]
+//	[?] <name> [(PLACE)] [amount] [NxPRICE | N@TOTAL]
 //
-// The two trailing tokens may come in either order. A title with both means
-// the client paid `amount` for this session and bought a package for later.
+// The trailing tokens may come in any order. A title with an amount and a
+// package means the client paid `amount` for this session and bought a
+// package for later.
 type Title struct {
 	Tentative bool
 	Name      string
-	FeeCents  *int64
-	Package   *PackageSpec
+	// Place is where the session is, as one of Places' letters; "" leaves
+	// it to the client's usual place.
+	Place    string
+	FeeCents *int64
+	Package  *PackageSpec
 }
+
+// The places a title can mark, by letter: `(V)` a home visit at the
+// client's, `(H)` her own place. A new place (a centre she works from)
+// is a new letter.
+const (
+	PlaceVisit = "V"
+	PlaceHome  = "H"
+)
+
+// Places are the letters a title may mark a place with, in the order a
+// refusal lists them.
+var Places = []string{PlaceVisit, PlaceHome}
 
 // PackageSpec is a package bought in a session: `10x85` is 10 sessions at 85
 // each, `10@1000` is 10 sessions for 1000 in total (for when the price per
@@ -40,6 +57,7 @@ var (
 	// A leading `RM` is tolerated even though the syntax does not need it.
 	amountPattern  = regexp.MustCompile(`^(?i:RM)?(\d+(?:\.\d{1,2})?)$`)
 	packagePattern = regexp.MustCompile(`^(\d+)([xX@])(?i:RM)?(\d+(?:\.\d{1,2})?)$`)
+	placePattern   = regexp.MustCompile(`^\(([A-Za-z])\)$`)
 )
 
 // ParseTitle reads an event title. Any name without trailing tokens parses;
@@ -59,7 +77,16 @@ func ParseTitle(raw string) (Title, error) {
 	for len(tokens) > 0 {
 		last := tokens[len(tokens)-1]
 
-		if match := packagePattern.FindStringSubmatch(last); match != nil {
+		if match := placePattern.FindStringSubmatch(last); match != nil {
+			if title.Place != "" {
+				return title, &ParseError{Reason: "more than one place, like (V) or (H), in the title"}
+			}
+			place := strings.ToUpper(match[1])
+			if !slices.Contains(Places, place) {
+				return title, &ParseError{Reason: fmt.Sprintf("%s marks no place: %s", last, placeHelp())}
+			}
+			title.Place = place
+		} else if match := packagePattern.FindStringSubmatch(last); match != nil {
 			if title.Package != nil {
 				return title, &ParseError{Reason: "more than one package (10x85 or 10@850) in the title"}
 			}
@@ -112,6 +139,9 @@ func FormatTitle(t Title) string {
 	if t.Tentative {
 		parts[0] = "? " + t.Name
 	}
+	if t.Place != "" {
+		parts = append(parts, "("+t.Place+")")
+	}
 	if t.FeeCents != nil {
 		parts = append(parts, formatCents(*t.FeeCents))
 	}
@@ -123,6 +153,11 @@ func FormatTitle(t Title) string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// placeHelp lists the places a title can mark.
+func placeHelp() string {
+	return "(V) is a home visit and (H) your place"
 }
 
 // formatCents is the inverse of toCents: 9500 → "95", 9550 → "95.50".

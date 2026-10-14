@@ -15,17 +15,12 @@ type HandlerStore interface {
 	Put(ctx context.Context, s Settings) error
 }
 
-// AfterSave runs when the home-visit colour or the tracking date changes,
-// since every session's location and to-dos depend on them.
-type AfterSave func(ctx context.Context) error
-
 type handler struct {
-	repo      HandlerStore
-	afterSave AfterSave
+	repo HandlerStore
 }
 
-func Register(r *router.Router, repo HandlerStore, afterSave AfterSave) {
-	h := handler{repo: repo, afterSave: afterSave}
+func Register(r *router.Router, repo HandlerStore) {
+	h := handler{repo: repo}
 	r.Query("settings.get", h.get)
 	r.Mutation("settings.save", router.Typed(h.save))
 }
@@ -35,11 +30,6 @@ func (h handler) get(ctx context.Context, _ json.RawMessage) (any, error) {
 }
 
 func (h handler) save(ctx context.Context, in Settings) (any, error) {
-	previous, err := h.repo.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	s := Settings{
 		BusinessName:      strings.TrimSpace(in.BusinessName),
 		RegistrationNo:    strings.TrimSpace(in.RegistrationNo),
@@ -50,7 +40,6 @@ func (h handler) save(ctx context.Context, in Settings) (any, error) {
 		AccountName:       strings.TrimSpace(in.AccountName),
 		AccountNo:         strings.TrimSpace(in.AccountNo),
 		ServiceName:       strings.TrimSpace(in.ServiceName),
-		HomeVisitColorID:  strings.TrimSpace(in.HomeVisitColorID),
 		PaymentMessage:    strings.TrimSpace(in.PaymentMessage),
 		DocumentMessage:   strings.TrimSpace(in.DocumentMessage),
 		ConfirmAheadDays:  in.ConfirmAheadDays,
@@ -65,12 +54,6 @@ func (h handler) save(ctx context.Context, in Settings) (any, error) {
 
 	if err := h.repo.Put(ctx, s); err != nil {
 		return nil, err
-	}
-	changed := s.HomeVisitColorID != previous.HomeVisitColorID
-	if changed && h.afterSave != nil {
-		if err := h.afterSave(ctx); err != nil {
-			return nil, err
-		}
 	}
 	return s, nil
 }

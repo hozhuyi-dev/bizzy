@@ -12,7 +12,7 @@ import type { PackageHandlers } from "./packages.columns";
 import type { Package, PackagesView } from "./packages.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
-import { useCreateDocument } from "~/features/documents/documents.hook";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -47,7 +47,6 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
   const packages = PackagesQuery.useList(view === "all");
   const clientsById = ClientsQuery.useById();
   const makeStandalone = PackagesMutation.useMakeStandalone();
-  const { create: createDocument } = useCreateDocument();
   // Read from the list, so the dialog shows the payment once it is saved.
   const paying = packages.data?.find((pkg) => pkg.id === payingId);
 
@@ -59,12 +58,11 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
       onMakeStandalone: (pkg) =>
         makeStandalone.mutate(pkg.id, {
           onSuccess: () => toast.success("Kept as its own package"),
-          onError: (error) => toast.error(error.message),
+          onError: toastRefusal,
         }),
       onPay: (pkg) => setPayingId(pkg.id),
-      onDocument: (type, pkg) => createDocument(type, [{ kind: "package", id: pkg.id }]),
     }),
-    [clientsById, createDocument, makeStandalone],
+    [clientsById, makeStandalone],
   );
 
   const columns = useMemo(() => createPackageColumns(handlers), [handlers]);
@@ -175,8 +173,8 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
                   item: { kind: "package", id: paying.id },
                   label: `Package of ${paying.sessions}`,
                   dueCents: paying.priceCents,
-                  payment: paying.payment,
-                  receipted: Boolean(paying.receipt),
+                  paid: paying.paid,
+                  receipt: paying.receipt,
                 },
               ]}
             />

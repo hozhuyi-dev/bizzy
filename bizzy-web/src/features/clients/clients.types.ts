@@ -13,7 +13,7 @@ export interface Client {
   feeRates?: Array<FeeRate>;
   /** What a session without an amount would be charged today; worked out by the API. */
   feeTodayCents?: number;
-  /** Sessions are home visits unless the event colour says otherwise. */
+  /** Sessions are home visits unless their title says (H). */
   homeVisits?: boolean;
 
   /** Keyed by month ("2026-10"); kept up to date by the API. */

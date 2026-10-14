@@ -1,5 +1,5 @@
 // Package memory is an in-memory stand-in for the repositories, for tests of
-// the logic that spans several of them (billing, sync, documents).
+// the logic that spans several of them (the book, the sync).
 package memory
 
 import (
@@ -12,6 +12,8 @@ import (
 
 	"bizzy-lambda/internal/features/attachments"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/conflicts"
+	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
@@ -35,6 +37,14 @@ type Store struct {
 	// CategoryList is nil until saved: the defaults.
 	CategoryList []expenses.Category
 	JournalMap   map[string]recovery.Entry
+
+	Docs      map[string]documents.Document
+	Revs      []documents.Revision
+	Counters  map[string]int64
+	SharesMap map[string]string
+	// ConflictMap and ExternalMap are keyed as conflicts.Key.
+	ConflictMap map[string]conflicts.Conflict
+	ExternalMap map[string]conflicts.External
 
 	// Writes counts saves and deletes, to check that quiet runs write nothing.
 	Writes int
@@ -66,6 +76,12 @@ func New() *Store {
 		ExpenseMap:    map[string]expenses.Expense{},
 		ItemMap:       map[string]expenses.Item{},
 		JournalMap:    map[string]recovery.Entry{},
+
+		Docs:        map[string]documents.Document{},
+		Counters:    map[string]int64{},
+		SharesMap:   map[string]string{},
+		ConflictMap: map[string]conflicts.Conflict{},
+		ExternalMap: map[string]conflicts.External{},
 	}
 }
 
@@ -102,7 +118,6 @@ func (m *Store) Sessions() *SessionRepo   { return (*SessionRepo)(m) }
 func (m *Store) FollowUps() *FollowUpRepo { return (*FollowUpRepo)(m) }
 func (m *Store) Packages() *PackageRepo   { return (*PackageRepo)(m) }
 func (m *Store) Settings() *SettingsRepo  { return (*SettingsRepo)(m) }
-func (m *Store) Payments() *PaymentRepo   { return (*PaymentRepo)(m) }
 func (m *Store) Attachments() *AttachmentRepo {
 	return (*AttachmentRepo)(m)
 }
@@ -181,7 +196,7 @@ func (r *SessionRepo) sorted(keep func(sessions.Session) bool) []sessions.Sessio
 			out = append(out, s)
 		}
 	}
-	slices.SortFunc(out, func(a, b sessions.Session) int { return a.Start.Compare(b.Start) })
+	slices.SortFunc(out, func(a, b sessions.Session) int { return cmp.Or(a.Start.Compare(b.Start), strings.Compare(a.ID, b.ID)) })
 	return out
 }
 
@@ -203,41 +218,21 @@ func (r *SessionRepo) ListTodo(_ context.Context, until time.Time) ([]sessions.S
 	return r.sorted(func(s sessions.Session) bool { return s.Open() && !s.Start.After(until) }), nil
 }
 
-func (r *SessionRepo) ListByStatus(_ context.Context, status sessions.Status) ([]sessions.Session, error) {
-	all := r.sorted(func(s sessions.Session) bool { return s.Status == status })
-	slices.Reverse(all)
-	return all, nil
-}
-
-func (r *SessionRepo) ListWithoutClient(context.Context) ([]sessions.Session, error) {
-	return r.sorted(func(s sessions.Session) bool {
-		return s.ClientID == "" && (s.Status == sessions.StatusParseError || s.Status == sessions.StatusUnmatched || s.Status == sessions.StatusTentative || s.Status == sessions.StatusRemoved)
-	}), nil
+func (r *SessionRepo) ListPending(context.Context) ([]sessions.Session, error) {
+	return r.sorted(func(s sessions.Session) bool { return s.Event.Pending }), nil
 }
 
 // Save checks the version as the real repository does.
 func (r *SessionRepo) Save(_ context.Context, s sessions.Session) (sessions.Session, error) {
 	(*Store)(r).BeforeWrite("sessions.save")
-	stored, exists := r.SessionMap[s.EventID]
+	stored, exists := r.SessionMap[s.ID]
 	if exists != (s.Version > 0) || (exists && stored.Version != s.Version) {
 		return sessions.Session{}, dynamo.ErrConflict
 	}
 	s.Version++
-	r.SessionMap[s.EventID] = s
+	r.SessionMap[s.ID] = s
 	r.Writes++
 	return s, nil
-}
-
-func (r *SessionRepo) Delete(_ context.Context, s sessions.Session) error {
-	(*Store)(r).BeforeWrite("sessions.delete")
-	stored, ok := r.SessionMap[s.EventID]
-	if !ok || stored.Version != s.Version || stored.HasDocuments() {
-		return dynamo.ErrConflict
-	}
-	delete(r.SessionMap, s.EventID)
-	delete(r.NotesMap, s.EventID)
-	r.Writes++
-	return nil
 }
 
 func (r *SessionRepo) Notes(_ context.Context, id string) (sessions.Notes, error) {
@@ -247,9 +242,9 @@ func (r *SessionRepo) Notes(_ context.Context, id string) (sessions.Notes, error
 func (r *SessionRepo) SaveNotes(_ context.Context, n sessions.Notes) error {
 	(*Store)(r).BeforeWrite("sessions.saveNotes")
 	if n.Text == "" {
-		delete(r.NotesMap, n.EventID)
+		delete(r.NotesMap, n.SessionID)
 	} else {
-		r.NotesMap[n.EventID] = n
+		r.NotesMap[n.SessionID] = n
 	}
 	return nil
 }
@@ -268,7 +263,7 @@ func (r *FollowUpRepo) sorted(keep func(followups.FollowUp) bool) []followups.Fo
 			out = append(out, f)
 		}
 	}
-	slices.SortFunc(out, func(a, b followups.FollowUp) int { return a.Due.Compare(b.Due) })
+	slices.SortFunc(out, func(a, b followups.FollowUp) int { return cmp.Or(a.Due.Compare(b.Due), cmp.Compare(a.ID, b.ID)) })
 	return out
 }
 
@@ -280,8 +275,8 @@ func (r *FollowUpRepo) ListOpen(_ context.Context, until time.Time) ([]followups
 	return r.sorted(func(f followups.FollowUp) bool { return f.DoneAt == nil && !f.Due.After(until) }), nil
 }
 
-func (r *FollowUpRepo) ListWithoutClient(context.Context) ([]followups.FollowUp, error) {
-	return r.sorted(func(f followups.FollowUp) bool { return f.ClientID == "" }), nil
+func (r *FollowUpRepo) ListPending(context.Context) ([]followups.FollowUp, error) {
+	return r.sorted(func(f followups.FollowUp) bool { return f.Event.Pending }), nil
 }
 
 func (r *FollowUpRepo) ListByClient(_ context.Context, id string) ([]followups.FollowUp, error) {
@@ -313,21 +308,14 @@ func (r *FollowUpRepo) PageByClient(_ context.Context, id, _ string, _ int) (dyn
 // Save checks the version as the real repository does.
 func (r *FollowUpRepo) Save(_ context.Context, f followups.FollowUp) (followups.FollowUp, error) {
 	(*Store)(r).BeforeWrite("followUps.save")
-	stored, exists := r.FollowUpMap[f.EventID]
+	stored, exists := r.FollowUpMap[f.ID]
 	if exists != (f.Version > 0) || (exists && stored.Version != f.Version) {
 		return followups.FollowUp{}, dynamo.ErrConflict
 	}
 	f.Version++
-	r.FollowUpMap[f.EventID] = f
+	r.FollowUpMap[f.ID] = f
 	r.Writes++
 	return f, nil
-}
-
-func (r *FollowUpRepo) Delete(_ context.Context, id string) error {
-	(*Store)(r).BeforeWrite("followUps.delete")
-	delete(r.FollowUpMap, id)
-	r.Writes++
-	return nil
 }
 
 type PackageRepo Store
@@ -337,65 +325,31 @@ func (r *PackageRepo) Get(_ context.Context, id string) (packages.Package, bool,
 	return p, ok, nil
 }
 
-func (r *PackageRepo) List(context.Context) ([]packages.Package, error) {
+func (r *PackageRepo) sorted(keep func(packages.Package) bool) []packages.Package {
 	var out []packages.Package
 	for _, p := range r.PackageMap {
-		out = append(out, p)
+		if keep(p) {
+			out = append(out, p)
+		}
 	}
-	return out, nil
+	slices.SortFunc(out, func(a, b packages.Package) int {
+		return cmp.Or(a.PurchasedAt.Compare(b.PurchasedAt), strings.Compare(a.ID, b.ID))
+	})
+	return out
+}
+
+func (r *PackageRepo) List(context.Context) ([]packages.Package, error) {
+	all := r.sorted(func(packages.Package) bool { return true })
+	slices.Reverse(all)
+	return all, nil
 }
 
 func (r *PackageRepo) ListOpen(context.Context) ([]packages.Package, error) {
-	var out []packages.Package
-	for _, p := range r.PackageMap {
-		if p.Open() {
-			out = append(out, p)
-		}
-	}
-	return out, nil
+	return r.sorted(packages.Package.Open), nil
 }
 
 func (r *PackageRepo) ListByClient(_ context.Context, id string) ([]packages.Package, error) {
-	var out []packages.Package
-	for _, p := range r.PackageMap {
-		if p.ClientID == id {
-			out = append(out, p)
-		}
-	}
-	return out, nil
-}
-
-// Save keeps the payment and document links, as the real repository does.
-func (r *PackageRepo) Save(_ context.Context, p packages.Package) error {
-	(*Store)(r).BeforeWrite("packages.save")
-	stored := r.PackageMap[p.ID]
-	p.Payment, p.Invoice, p.Receipt = stored.Payment, stored.Invoice, stored.Receipt
-	r.PackageMap[p.ID] = p
-	r.Writes++
-	return nil
-}
-
-// SetPayment writes only the payment, unless a receipt covers the package.
-func (r *PackageRepo) SetPayment(_ context.Context, p packages.Package) error {
-	(*Store)(r).BeforeWrite("packages.setPayment")
-	stored, ok := r.PackageMap[p.ID]
-	if !ok || stored.Receipt != nil {
-		return dynamo.ErrConflict
-	}
-	stored.Payment = p.Payment
-	r.PackageMap[p.ID] = stored
-	r.Writes++
-	return nil
-}
-
-func (r *PackageRepo) Delete(_ context.Context, id string) (bool, error) {
-	(*Store)(r).BeforeWrite("packages.delete")
-	if p, ok := r.PackageMap[id]; ok && p.HasDocuments() {
-		return false, nil
-	}
-	delete(r.PackageMap, id)
-	r.Writes++
-	return true, nil
+	return r.sorted(func(p packages.Package) bool { return p.ClientID == id }), nil
 }
 
 type SettingsRepo Store
@@ -407,44 +361,6 @@ func (r *SettingsRepo) Get(context.Context) (settings.Settings, error) {
 func (r *SettingsRepo) Put(_ context.Context, s settings.Settings) error {
 	(*Store)(r).BeforeWrite("settings.put")
 	r.SettingsVal = s
-	return nil
-}
-
-// PaymentRepo is payments.Store: it commits all or none, as the real
-// transaction does.
-type PaymentRepo Store
-
-func (r *PaymentRepo) GetSession(ctx context.Context, id string) (sessions.Session, bool, error) {
-	return (*SessionRepo)(r).Get(ctx, id)
-}
-
-func (r *PaymentRepo) GetPackage(ctx context.Context, id string) (packages.Package, bool, error) {
-	return (*PackageRepo)(r).Get(ctx, id)
-}
-
-func (r *PaymentRepo) Commit(_ context.Context, ss []sessions.Session, ps []packages.Package) error {
-	(*Store)(r).BeforeWrite("payments.commit")
-	for _, s := range ss {
-		if stored, ok := r.SessionMap[s.EventID]; !ok || stored.Version != s.Version {
-			return dynamo.ErrConflict
-		}
-	}
-	for _, p := range ps {
-		if stored, ok := r.PackageMap[p.ID]; !ok || stored.Receipt != nil {
-			return dynamo.ErrConflict
-		}
-	}
-	for _, s := range ss {
-		s.Version++
-		r.SessionMap[s.EventID] = s
-		r.Writes++
-	}
-	for _, p := range ps {
-		stored := r.PackageMap[p.ID]
-		stored.Payment = p.Payment
-		r.PackageMap[p.ID] = stored
-		r.Writes++
-	}
 	return nil
 }
 

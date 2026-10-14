@@ -6,9 +6,10 @@ import "time"
 type Summary struct {
 	// Sessions is how many sessions the window holds.
 	Sessions int `json:"sessions"`
-	// Session writes this run made.
-	Saved   int `json:"saved"`
-	Deleted int `json:"deleted"`
+	// Saved is how many changes made in the calendar it applied.
+	Saved int `json:"saved"`
+	// Conflicts is how many calendar edits wait for her.
+	Conflicts int `json:"conflicts"`
 	// FollowUps is how many follow-ups it added, changed or removed.
 	FollowUps int `json:"followUps"`
 	// Contacts is how many clients' contact copies changed.

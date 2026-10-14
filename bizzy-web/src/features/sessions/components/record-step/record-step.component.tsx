@@ -1,5 +1,4 @@
 import { RecordEditor } from "../record-editor/record-editor.component";
-import { needsFix } from "../../session-stage.util";
 import type { PipelineStep, StepState } from "../pipeline-layout/pipeline-layout.component";
 import type { RecordDraft } from "../record-editor/record-editor.hook";
 import type { Session } from "../../sessions.types";
@@ -7,8 +6,8 @@ import { AttachmentList } from "~/features/attachments/components/attachment-lis
 
 export function recordStep(session: Session, record: RecordDraft): PipelineStep {
   const { can } = session;
-  // Notes wait until the booking is confirmed and fixed.
-  const blocked = session.todo.includes("confirm") || needsFix(session);
+  // Notes wait until the booking is confirmed.
+  const blocked = session.todo.includes("confirm");
   const summary = record.summary.trim();
   const files = session.record?.files ?? 0;
   let state: StepState = "todo";
@@ -27,7 +26,7 @@ export function recordStep(session: Session, record: RecordDraft): PipelineStep 
     content: (
       <>
         <RecordEditor draft={record} disabled={can.record.ok ? undefined : can.record.why} />
-        <AttachmentList owner={{ ownerKind: "session", ownerId: session.eventId }} can={can.attach} />
+        <AttachmentList owner={{ ownerKind: "session", ownerId: session.id }} can={can.attach} />
       </>
     ),
   };

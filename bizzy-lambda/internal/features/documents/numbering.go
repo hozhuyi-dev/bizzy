@@ -25,7 +25,7 @@ func Label(number string, revision int) string {
 	return fmt.Sprintf("%s-%02d", number, revision)
 }
 
-// counterKey is the sequence a document of a type issued at t draws from.
-func counterKey(docType Type, t time.Time) string {
+// CounterKey is the sequence a document of a type issued at t draws from.
+func CounterKey(docType Type, t time.Time) string {
 	return schema.CounterKeys(string(docType), t.Year()).SK
 }

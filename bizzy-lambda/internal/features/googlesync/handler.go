@@ -7,15 +7,14 @@ import (
 	"log/slog"
 	"time"
 
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/command"
 	"bizzy-lambda/internal/router"
 )
 
 // StatusHistory keeps the last run.
-type StatusHistory interface {
-	StatusStore
-	Get(ctx context.Context) (*Run, error)
-}
+type StatusHistory = StatusStore
 
 // Register serves the sync and its last run. The app runs it on load and
 // whenever she taps "Sync now".
@@ -78,4 +77,87 @@ func (in RunInput) Range(loc *time.Location, now time.Time) (Range, error) {
 		return Range{}, apperr.Invalid("the end date is before the start date")
 	}
 	return Range{From: from, To: to.AddDate(0, 0, 1)}, nil
+}
+
+// RegisterConflicts serves what settles an edit she made in the calendar
+// that bizzy didn't apply: undo it there, apply it once a remedy allows it,
+// or say a new event isn't bizzy's.
+func RegisterConflicts(r *router.Router, sy Syncer) {
+	r.Mutation("calendar.revert", router.Typed(sy.revert))
+	r.Mutation("conflicts.apply", router.Typed(sy.apply))
+	r.Mutation("calendar.ignore", router.Typed(sy.ignore))
+}
+
+type keyInput struct {
+	// Key is the conflict's ("calendar#<eventId>").
+	Key string `json:"key"`
+}
+
+var errSettled = apperr.NotFound("This was settled already.")
+
+func (sy Syncer) conflict(ctx context.Context, key string) (conflicts.Conflict, error) {
+	c, found, err := sy.Conflicts.Get(ctx, key)
+	if err != nil {
+		return c, err
+	}
+	if !found {
+		return c, errSettled
+	}
+	return c, nil
+}
+
+// revert writes the session or follow-up back over her edit: its event as
+// it is, or back from the trash.
+func (sy Syncer) revert(ctx context.Context, in keyInput) (any, error) {
+	c, err := sy.conflict(ctx, in.Key)
+	if err != nil {
+		return nil, err
+	}
+	if c.Kind == conflicts.KindNew {
+		return nil, apperr.Conflict("This event shows nothing of bizzy's yet: make it readable, or say it isn't bizzy's.")
+	}
+	cal, err := sy.Calendar(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return nil, sy.push(ctx, cal, target{conflicts.ExternalKind(c.TargetKind), c.TargetID}, pushRevert)
+}
+
+// apply reads her edit again, as a sync would, and applies it if nothing
+// stands in the way now; else it is refused with what still does.
+func (sy Syncer) apply(ctx context.Context, in keyInput) (any, error) {
+	c, err := sy.conflict(ctx, in.Key)
+	if err != nil {
+		return nil, err
+	}
+	if err := sy.Event(withApplying(ctx, in.Key), c.ExternalID, &Summary{}); err != nil {
+		return nil, err
+	}
+	if c, found, err := sy.Conflicts.Get(ctx, in.Key); err != nil {
+		return nil, err
+	} else if found {
+		return nil, refused(c)
+	}
+	return nil, nil
+}
+
+// ignore says a new event isn't bizzy's: the sync leaves it alone.
+func (sy Syncer) ignore(ctx context.Context, in keyInput) (any, error) {
+	c, err := sy.conflict(ctx, in.Key)
+	if err != nil {
+		return nil, err
+	}
+	if c.Kind != conflicts.KindNew {
+		return nil, apperr.Conflict("This event shows a session or follow-up: undo the edit, or apply it.")
+	}
+	if err := sy.Conflicts.PutExternal(ctx, conflicts.External{Surface: c.Surface, ExternalID: c.ExternalID, Kind: conflicts.Ignored}); err != nil {
+		return nil, err
+	}
+	return nil, sy.Conflicts.Delete(ctx, c.Key)
+}
+
+// refused is what a conflict says to the app, when she asks to apply it
+// and it still can't be.
+func refused(c conflicts.Conflict) error {
+	return command.Err(c.Violations)
 }

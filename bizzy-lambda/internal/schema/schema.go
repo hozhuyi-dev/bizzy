@@ -9,15 +9,16 @@
 //
 //	PK            SK                          LSI1 time    LSI2 client         LSI3 open                LSI4 category       LSI5 relation   Stores (model.go)
 //	CLIENT        id                          -            -                   -                        -                   -               clients.Client
-//	SESSION       eventId                     start        clientId#start      start, on her to-do      status#start        -               sessions.Session
-//	SESSIONNOTES  eventId                     -            -                   -                        -                   -               sessions.Notes
-//	FOLLOWUP      eventId                     due          clientId#due (*)    due, until done          open|done#due       sessionId#due   followups.FollowUp
-//	PACKAGE       id                          purchasedAt  clientId#purchased  purchasedAt, credits     source#purchasedAt  -               packages.Package
-//	                                                                           left or unpaid
-//	DOC           id                          date#created clientId#date#…     date#…, draft open       type#date#…         -               documents.Document
+//	SESSION       id                          start        clientId#start      start, on her to-do      start, push pending packageId#start sessions.Session
+//	SESSIONNOTES  sessionId                   -            -                   -                        -                   -               sessions.Notes
+//	FOLLOWUP      id                          due          clientId#due        due, until done          open|done#due       sessionId#due   followups.FollowUp
+//	PACKAGE       id                          purchasedAt  clientId#purchased  purchasedAt, while to-do -                   -               packages.Package
+//	DOC           id                          date#created clientId#date#…     -                        type#date#…         -               documents.Document
 //	DOCREV        documentId#rev (2 digits)   -            -                   -                        -                   -               documents.Revision
-//	COUNTER       type#year                   -            -                   -                        -                   -               `last`: the last number issued
+//	COUNTER       type#year | slot#day        -            -                   -                        -                   -               `last`: the last number issued, or a day's bookings changed
 //	DOCSHARE      share token                 -            -                   -                        -                   -               `documentId` a public link opens
+//	EXTERNAL      surface#externalId          -            -                   -                        -                   -               conflicts.External: what a Google record shows
+//	CONFLICT      surface#externalId          at           clientId#at         at, while open           -                   targetId#at     conflicts.Conflict
 //	ATTACHMENT    ownerKind#ownerId#id        -            -                   -                        -                   -               attachments.Attachment
 //	EXPENSE       id                          date#created -                   -                        -                   -               expenses.Expense
 //	EXPENSEITEM   id                          -            -                   -                        -                   -               expenses.Item
@@ -27,8 +28,12 @@
 //	SYNC          LAST                        -            -                   -                        -                   -               googlesync.Run
 //	JOURNAL       id                          -            -                   -                        -                   -               recovery.Entry: a mutation running, or that died
 //
-// (*) A follow-up no client matched is keyed "#due", so all of them are
-// found at once, done or not, when a client gains an alias.
+// A draft document has no date yet, so it sorts before every issued one in
+// LSI1 and LSI2, and never matches a month in LSI4.
+//
+// A day's slot counter moves on with every change that books a session on
+// that day (UTC), so two changes that would book overlapping sessions can't
+// both commit: the second one reads again and is refused.
 //
 // The table design, in short (see platform/dynamo for the mechanics):
 //   - One partition per entity type. One user means little data, and a
@@ -42,10 +47,14 @@
 //     client, LSI3 open (only while it needs her), LSI4 category, LSI5
 //     relation.
 //   - Times in keys are UTC RFC 3339 (dynamo.TimeKey), so they sort.
-//   - Sessions and follow-ups are written whole with a version check
-//     (dynamo.PutVersioned): the sync, the reconcile and her edits all change
-//     them, and their index keys depend on fields from each. Clients and
-//     packages are patched, each writer setting only its own attributes.
+//   - Sessions, packages, documents and follow-ups are written whole with a
+//     version check, together in one transaction per change (see the book
+//     feature), so what they copy from each other never disagrees. Clients
+//     are patched, each writer setting only its own attributes.
+//   - What a Google record (a calendar event, a contact) shows is looked
+//     up by EXTERNAL, keyed by the surface it lives on ("calendar",
+//     "contacts") and its id there, so one record shows one thing; an edit
+//     made there that isn't allowed waits as a CONFLICT under the same key.
 //   - Long text that lists don't show (session notes) lives in its own item:
 //     a read is billed for the whole item, so lists stay cheap.
 package schema
@@ -68,6 +77,8 @@ const (
 	DocumentRevision = "DOCREV"
 	Counter          = "COUNTER"
 	DocumentShare    = "DOCSHARE"
+	External         = "EXTERNAL"
+	Conflict         = "CONFLICT"
 	Attachment       = "ATTACHMENT"
 	Expense          = "EXPENSE"
 	ExpenseItem      = "EXPENSEITEM"
@@ -82,33 +93,36 @@ func ClientKeys(id string) dynamo.Keys {
 	return dynamo.Keys{PK: Client, SK: id}
 }
 
-// SessionKeys keys a session. open puts it in the to-do index.
-func SessionKeys(eventID string, start time.Time, clientID, status string, open bool) dynamo.Keys {
+// SessionKeys keys a session. open puts it in the to-do index, pending in
+// the index of sessions whose event is still to be written, and packageID
+// is the package whose credit covers it.
+func SessionKeys(id string, start time.Time, clientID string, open, pending bool, packageID string) dynamo.Keys {
 	at := dynamo.TimeKey(start)
-	keys := dynamo.Keys{PK: Session, SK: eventID, LSI1SK: at, LSI4SK: status + "#" + at}
-	if clientID != "" {
-		keys.LSI2SK = clientID + "#" + at
-	}
+	keys := dynamo.Keys{PK: Session, SK: id, LSI1SK: at, LSI2SK: clientID + "#" + at}
 	if open {
 		keys.LSI3SK = at
+	}
+	if pending {
+		keys.LSI4SK = at
+	}
+	if packageID != "" {
+		keys.LSI5SK = packageID + "#" + at
 	}
 	return keys
 }
 
-func SessionNotesKeys(eventID string) dynamo.Keys {
-	return dynamo.Keys{PK: SessionNotes, SK: eventID}
+func SessionNotesKeys(sessionID string) dynamo.Keys {
+	return dynamo.Keys{PK: SessionNotes, SK: sessionID}
 }
 
 // FollowUpKeys keys a follow-up due at due.
-func FollowUpKeys(eventID string, due time.Time, clientID string, done bool, sessionID string) dynamo.Keys {
+func FollowUpKeys(id string, due time.Time, clientID string, done bool, sessionID string) dynamo.Keys {
 	at := dynamo.TimeKey(due)
 	state := "open"
 	if done {
 		state = "done"
 	}
-	// One no client matched is keyed "#due", so they are all found at once,
-	// done or not, when a client gains an alias.
-	keys := dynamo.Keys{PK: FollowUp, SK: eventID, LSI1SK: at, LSI2SK: clientID + "#" + at, LSI4SK: state + "#" + at}
+	keys := dynamo.Keys{PK: FollowUp, SK: id, LSI1SK: at, LSI2SK: clientID + "#" + at, LSI4SK: state + "#" + at}
 	if !done {
 		keys.LSI3SK = at
 	}
@@ -119,32 +133,20 @@ func FollowUpKeys(eventID string, due time.Time, clientID string, done bool, ses
 }
 
 // PackageKeys keys a package. open keeps it in the open index.
-func PackageKeys(id string, purchasedAt time.Time, clientID, source string, open bool) dynamo.Keys {
+func PackageKeys(id string, purchasedAt time.Time, clientID string, open bool) dynamo.Keys {
 	at := dynamo.TimeKey(purchasedAt)
-	keys := dynamo.Keys{
-		PK: Package, SK: id,
-		LSI1SK: at,
-		LSI2SK: clientID + "#" + at,
-		LSI4SK: source + "#" + at,
-	}
+	keys := dynamo.Keys{PK: Package, SK: id, LSI1SK: at, LSI2SK: clientID + "#" + at}
 	if open {
 		keys.LSI3SK = at
 	}
 	return keys
 }
 
-// DocumentKeys keys a document dated date (YYYY-MM-DD). Created breaks ties
-// between documents of the same day.
-func DocumentKeys(id, date string, created time.Time, clientID, docType string, draftOpen bool) dynamo.Keys {
+// DocumentKeys keys a document dated date (YYYY-MM-DD; "" for a draft not
+// issued yet). Created breaks ties between documents of the same day.
+func DocumentKeys(id, date string, created time.Time, clientID, docType string) dynamo.Keys {
 	at := date + "#" + dynamo.TimeKey(created)
-	keys := dynamo.Keys{PK: Document, SK: id, LSI1SK: at, LSI4SK: docType + "#" + at}
-	if clientID != "" {
-		keys.LSI2SK = clientID + "#" + at
-	}
-	if draftOpen {
-		keys.LSI3SK = at
-	}
-	return keys
+	return dynamo.Keys{PK: Document, SK: id, LSI1SK: at, LSI2SK: clientID + "#" + at, LSI4SK: docType + "#" + at}
 }
 
 func DocumentRevisionKeys(documentID string, revision int) dynamo.Keys {
@@ -158,6 +160,22 @@ func CounterKeys(docType string, year int) dynamo.Keys {
 
 func DocumentShareKeys(token string) dynamo.Keys {
 	return dynamo.Keys{PK: DocumentShare, SK: token}
+}
+
+// ExternalKeys keys what a record on a Google surface shows.
+func ExternalKeys(surface, externalID string) dynamo.Keys {
+	return dynamo.Keys{PK: External, SK: surface + "#" + externalID}
+}
+
+// ConflictKeys keys a refused edit of a record on a Google surface. open
+// keeps it in the open index.
+func ConflictKeys(key string, at time.Time, clientID, targetID string) dynamo.Keys {
+	t := dynamo.TimeKey(at)
+	keys := dynamo.Keys{PK: Conflict, SK: key, LSI1SK: t, LSI2SK: clientID + "#" + t, LSI3SK: t}
+	if targetID != "" {
+		keys.LSI5SK = targetID + "#" + t
+	}
+	return keys
 }
 
 // AttachmentPrefix is the SK prefix of one owner's attachments.

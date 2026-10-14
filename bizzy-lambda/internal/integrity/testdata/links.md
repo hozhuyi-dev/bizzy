@@ -15,17 +15,31 @@ May break for a while by design: reported, and put right later as said.
 - **every-file-is-attached**: Every confirmed file in blob storage belongs to an attachment, so a file she deleted, or never saw saved, isn't kept
   A request that dies between a file and its item (confirm clears the pending tag first; remove and an owner's deletion drop the item first) leaves a file nothing links to, never an item without its file. The quarterly job's sweep (cmd/job-quarterly) deletes it.
 
+## Across sessions, packages and documents
+
+The book's invariants (internal/features/book): checked before every commit, and here over everything stored.
+
+| rule | why |
+|---|---|
+| sessions-never-overlap | No two sessions overlap, whoever's they are: she sees one client at a time |
+| follow-ups-are-a-clients | A follow-up is for one of her clients, and about a session of theirs if any |
+| lines-cover-what-exists | Every line of a live document covers a session or package of its client |
+| one-live-document-of-each-type | A session or package is on at most one live invoice and one live receipt, once |
+| invoiced | A package, and a session no credit covers, is on an invoice |
+| paid-in-full | What was received for something is what its invoice charges |
+| credits-of-own-package | A credit covers a session from a package of its own client |
+| bought-in-its-session | A package bought in a session and the session say so of each other, for the same client and day |
+| copies-are-current | What an item copies from its documents and sessions is what they say now |
+
 ## Rules
 
 | rule | why | kept by |
 |---|---|---|
-| slot-points-at-a-live-document | A session's or package's invoice or receipt slot holds a draft or issued document of that type which lists it | by construction: every document write links and unlinks its sources in the same transaction |
-| document-sources-point-back | Every session and package a live document lists holds it in its slot | sessions.discard, sessions.delete, packages.delete; by construction: an item with a document is never deleted (the repositories' conditions) |
-| slot-matches-the-issued-revision | A slot says the number, revision and client of the document as last issued, which drift is checked against | by construction: issuing rewrites every source's slot in the same transaction |
-| session-client-change-is-flagged | When a session an issued document covers now belongs to another client, the session says so (drift) | documents.issue; by construction: the reconcile flags drift on a session against its issued documents |
-| package-client-change-is-flagged | When a package an issued document covers now belongs to another client, the package says so (drift) | documents.issue; by construction: the reconcile flags drift on a package against its issued documents |
+| ref-says-the-document | A session's or package's link to a document says its number and revision as last issued | by construction: the book copies every link from the documents on every write (book.Derive) |
 | share-links-open-their-document | Each issued document's link opens it, and a reset link opens nothing | by construction: a new link retires the old one in the same transaction |
-| every-issue-is-kept | Every revision issued is kept as it was, so its PDF can be rebuilt | by construction: issuing stores the revision in the same transaction |
+| every-issue-is-kept | Every revision issued is kept as it was, so its PDF can be rebuilt | by construction: issuing stores the revision in the same transaction, and nothing else changes issued content |
+| events-show-their-item | A session's or follow-up's event shows it and nothing else: what the calendar record shows says the same | by construction: an item's event is recorded with it, in the same transaction, and forgotten with it |
+| conflicts-are-about-something | A conflict over an event is about the session or follow-up it shows, which exists | by construction: deleting a session or follow-up drops any conflict over its event in the same transaction |
 | attachment-owner-exists | Every attachment belongs to something that exists | attachments.confirm; by construction: deleting a session or expense deletes its attachments |
 | attachment-has-its-file | Every attachment's file is in blob storage, confirmed | attachments.confirm; by construction: confirm writes the item only for a file that arrived, and clears its pending tag |
 | owner-counts-its-files | A session's or expense's count of files is how many attachments it has | attachments.confirm, attachments.delete; by construction: every confirm and delete recounts the owner's attachments |

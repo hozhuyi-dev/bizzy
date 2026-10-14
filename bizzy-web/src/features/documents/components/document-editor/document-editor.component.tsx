@@ -188,7 +188,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    linesField.pushValue({ description: "", date: values.date, amount: "", source: undefined })
+                    linesField.pushValue({ id: "", description: "", date: values.date, amount: "", source: undefined })
                   }
                 >
                   <PlusIcon /> Add line

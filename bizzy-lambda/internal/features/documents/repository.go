@@ -6,11 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
-	"bizzy-lambda/internal/features/packages"
-	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/schema"
-	"bizzy-lambda/internal/shared/docref"
 )
 
 // Keys: see schema.DocumentKeys and the DOCREV, COUNTER and DOCSHARE rows
@@ -33,8 +30,7 @@ type docRecord struct {
 }
 
 func toDocRecord(d Document) docRecord {
-	draftOpen := d.Draft != nil && d.Status != StatusCancelled
-	return docRecord{Keys: schema.DocumentKeys(d.ID, d.Date, d.CreatedAt, d.ClientID, string(d.Type), draftOpen), Document: d}
+	return docRecord{Keys: schema.DocumentKeys(d.ID, d.Date, d.CreatedAt, d.ClientID, string(d.Type)), Document: d}
 }
 
 type revisionRecord struct {
@@ -63,27 +59,20 @@ func (r Repository) Get(ctx context.Context, id string) (Document, bool, error) 
 
 // ListByMonth returns one type of document dated in a month ("2026-10"),
 // newest first. The category index sorts by type#date, so the month is a
-// key prefix.
+// key prefix; drafts have no date yet, so they never match.
 func (r Repository) ListByMonth(ctx context.Context, docType Type, month string) ([]Document, error) {
-	records, err := dynamo.QueryAll[docRecord](ctx, r.store, dynamo.Query{
-		PK: docPartition, Index: dynamo.IndexCategory, Prefix: string(docType) + "#" + month + "-", Descending: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-	all := make([]Document, len(records))
-	for i, rec := range records {
-		all[i] = rec.Document
-	}
-	return all, nil
+	return r.query(ctx, dynamo.Query{Index: dynamo.IndexCategory, Prefix: string(docType) + "#" + month + "-", Descending: true})
 }
 
 // ListByClient returns every document for a client, of any type, newest
-// first.
+// first, drafts last.
 func (r Repository) ListByClient(ctx context.Context, clientID string) ([]Document, error) {
-	records, err := dynamo.QueryAll[docRecord](ctx, r.store, dynamo.Query{
-		PK: docPartition, Index: dynamo.IndexClient, Prefix: clientID + "#", Descending: true,
-	})
+	return r.query(ctx, dynamo.Query{Index: dynamo.IndexClient, Prefix: clientID + "#", Descending: true})
+}
+
+func (r Repository) query(ctx context.Context, q dynamo.Query) ([]Document, error) {
+	q.PK = docPartition
+	records, err := dynamo.QueryAll[docRecord](ctx, r.store, q)
 	if err != nil {
 		return nil, err
 	}
@@ -121,132 +110,73 @@ func (r Repository) Counter(ctx context.Context, key string) (int64, error) {
 	return rec.Last, err
 }
 
-// Write is one change to a document, committed atomically with the links
-// and counters it implies.
-type Write struct {
-	Doc Document
-	// PreviousVersion is the version read before the change; 0 for a new
-	// document. The write fails if someone else changed it since.
-	PreviousVersion int
-	// Delete removes the document instead of writing it (a discarded draft).
-	Delete bool
-	// Counter takes the next number, when the document is first issued.
-	Counter *CounterBump
-	// Revision is stored when the document is issued.
-	Revision *Revision
-	// Links hold or release the slots of the sessions and packages it
-	// covers.
-	Links []Link
-	// Share points a new share token at the document, retiring the old one.
-	Share *ShareChange
+// SetShare stores a document with a new share token, retiring the old one,
+// if it is still at the version read. dynamo.ErrTransactionConflict means
+// it changed meanwhile.
+func (r Repository) SetShare(ctx context.Context, d Document, change ShareChange) error {
+	_, item := PutItem(d)
+	return r.store.Transact(ctx, append([]dynamo.TransactItem{item}, ShareItems(d.ID, change)...))
 }
 
+// PutItem is the write that stores a document if it is still at the
+// version read (0 for a new one), and the document at its new version.
+func PutItem(d Document) (Document, dynamo.TransactItem) {
+	previous := d.Version
+	d.Version++
+	return d, dynamo.TransactItem{Put: toDocRecord(d), When: dynamo.VersionIs(previous)}
+}
+
+// DeleteItem is the write that deletes a document at the version read.
+func DeleteItem(d Document) dynamo.TransactItem {
+	return dynamo.TransactItem{Delete: &[2]string{docPartition, d.ID}, When: dynamo.VersionIs(d.Version)}
+}
+
+// RevisionItem stores an issued revision, once.
+func RevisionItem(rev Revision) dynamo.TransactItem {
+	return dynamo.TransactItem{
+		Put:  revisionRecord{Keys: schema.DocumentRevisionKeys(rev.DocumentID, rev.Revision), Revision: rev},
+		When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
+	}
+}
+
+// CounterBump takes the next number of a sequence.
+type CounterBump struct {
+	Key        string
+	Prev, Next int64
+}
+
+// CounterItem moves a sequence on, if no one took the number first.
+func CounterItem(c CounterBump) dynamo.TransactItem {
+	cond := "#last = :prev"
+	if c.Prev == 0 {
+		cond = "attribute_not_exists(#last) OR #last = :prev"
+	}
+	return dynamo.TransactItem{Patch: &dynamo.Patch{
+		PK: counterPartition, SK: c.Key,
+		Set: map[string]types.AttributeValue{"last": &types.AttributeValueMemberN{Value: strconv.FormatInt(c.Next, 10)}},
+		When: &dynamo.Condition{
+			Expression: cond,
+			Names:      map[string]string{"#last": "last"},
+			Values:     map[string]types.AttributeValue{":prev": &types.AttributeValueMemberN{Value: strconv.FormatInt(c.Prev, 10)}},
+		},
+	}}
+}
+
+// ShareChange points a new share token at a document, retiring the old.
 type ShareChange struct {
 	New string
 	// Old is the token it replaces, if any; its link stops working.
 	Old string
 }
 
-type CounterBump struct {
-	Key        string
-	Prev, Next int64
-}
-
-// Commit applies a Write in one transaction. dynamo.ErrTransactionConflict
-// means something changed since it was read.
-func (r Repository) Commit(ctx context.Context, w Write) error {
-	var items []dynamo.TransactItem
-
-	guard := &dynamo.Condition{Expression: "attribute_not_exists(PK)"}
-	if w.PreviousVersion > 0 {
-		guard = &dynamo.Condition{
-			Expression: "#version = :version",
-			Names:      map[string]string{"#version": "version"},
-			Values:     map[string]types.AttributeValue{":version": &types.AttributeValueMemberN{Value: strconv.Itoa(w.PreviousVersion)}},
-		}
+// ShareItems are the writes of a share change.
+func ShareItems(documentID string, s ShareChange) []dynamo.TransactItem {
+	items := []dynamo.TransactItem{{
+		Put:  shareRecord{Keys: schema.DocumentShareKeys(s.New), DocumentID: documentID},
+		When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
+	}}
+	if s.Old != "" {
+		items = append(items, dynamo.TransactItem{Delete: &[2]string{sharePartition, s.Old}})
 	}
-
-	if w.Delete {
-		items = append(items, dynamo.TransactItem{Delete: &[2]string{docPartition, w.Doc.ID}, When: guard})
-	} else {
-		items = append(items, dynamo.TransactItem{Put: toDocRecord(w.Doc), When: guard})
-	}
-
-	if c := w.Counter; c != nil {
-		cond := "#last = :prev"
-		if c.Prev == 0 {
-			cond = "attribute_not_exists(#last) OR #last = :prev"
-		}
-		items = append(items, dynamo.TransactItem{Patch: &dynamo.Patch{
-			PK: counterPartition, SK: c.Key,
-			Set: map[string]types.AttributeValue{"last": &types.AttributeValueMemberN{Value: strconv.FormatInt(c.Next, 10)}},
-			When: &dynamo.Condition{
-				Expression: cond,
-				Names:      map[string]string{"#last": "last"},
-				Values:     map[string]types.AttributeValue{":prev": &types.AttributeValueMemberN{Value: strconv.FormatInt(c.Prev, 10)}},
-			},
-		}})
-	}
-
-	if rev := w.Revision; rev != nil {
-		items = append(items, dynamo.TransactItem{
-			Put:  revisionRecord{Keys: schema.DocumentRevisionKeys(rev.DocumentID, rev.Revision), Revision: *rev},
-			When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
-		})
-	}
-
-	if s := w.Share; s != nil {
-		items = append(items, dynamo.TransactItem{
-			Put:  shareRecord{Keys: schema.DocumentShareKeys(s.New), DocumentID: w.Doc.ID},
-			When: &dynamo.Condition{Expression: "attribute_not_exists(PK)"},
-		})
-		if s.Old != "" {
-			items = append(items, dynamo.TransactItem{Delete: &[2]string{sharePartition, s.Old}})
-		}
-	}
-
-	for _, l := range w.Links {
-		patch, err := l.patch()
-		if err != nil {
-			return err
-		}
-		items = append(items, dynamo.TransactItem{Patch: &patch})
-	}
-
-	return r.store.Transact(ctx, items)
-}
-
-// Link points the slot of a session or package at a document, or releases
-// it. Holding only applies while the slot is free or already this
-// document's, so two documents of a type can never cover one item;
-// releasing only applies while the slot is still this document's.
-type Link struct {
-	Source     Source
-	Slot       docref.Slot
-	DocumentID string
-	// Ref is what the slot now holds; nil releases it.
-	Ref *docref.Ref
-}
-
-// Hold points a source's slot at the document ref names.
-func Hold(src Source, slot docref.Slot, ref docref.Ref) Link {
-	return Link{Source: src, Slot: slot, DocumentID: ref.DocumentID, Ref: &ref}
-}
-
-// Release frees a source's slot from a document.
-func Release(src Source, slot docref.Slot, documentID string) Link {
-	return Link{Source: src, Slot: slot, DocumentID: documentID}
-}
-
-func (l Link) patch() (dynamo.Patch, error) {
-	switch {
-	case l.Ref != nil && l.Source.Kind == SourcePackage:
-		return packages.LinkPatch(l.Source.ID, l.Slot, *l.Ref)
-	case l.Ref != nil:
-		return sessions.LinkPatch(l.Source.ID, l.Slot, *l.Ref)
-	case l.Source.Kind == SourcePackage:
-		return packages.UnlinkPatch(l.Source.ID, l.Slot, l.DocumentID), nil
-	default:
-		return sessions.UnlinkPatch(l.Source.ID, l.Slot, l.DocumentID), nil
-	}
+	return items
 }

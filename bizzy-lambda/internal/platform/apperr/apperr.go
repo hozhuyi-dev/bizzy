@@ -18,9 +18,29 @@ const (
 type Error struct {
 	Code    Code
 	Message string
+	// Guard names the guard that refused the action (see platform/command),
+	// and Remedies are the actions that would let it through; both empty
+	// for an error no guard raised.
+	Guard    string
+	Remedies []Remedy
+}
+
+// Remedy is an action the user can take to clear a refusal, offered as a
+// button beside the message.
+type Remedy struct {
+	// Action is the router action to call, e.g. "documents.cancel".
+	Action string `json:"action"`
+	// Target is what to call it on, e.g. a document's id.
+	Target string `json:"target,omitempty"`
+	Label  string `json:"label"`
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("%s: %s", e.Code, e.Message) }
+
+// Refused is an action a guard turned down, with the remedies it offers.
+func Refused(guard, message string, remedies []Remedy) *Error {
+	return &Error{Code: CodeConflict, Message: message, Guard: guard, Remedies: remedies}
+}
 
 func Invalid(format string, args ...any) *Error {
 	return &Error{Code: CodeInvalid, Message: fmt.Sprintf(format, args...)}

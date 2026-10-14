@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { toBookingValues, toSessionDraft } from "../../sessions.form";
 import type { BookingValues, PriceIs } from "../../sessions.form";
@@ -26,27 +27,33 @@ interface BookingFormProps {
   /** The session being edited; omitted for a new one. */
   session?: Session | undefined;
   submitLabel: string;
-  /** Resolves once saved; a rejection leaves the form as it is. */
-  onSubmit: (draft: SessionDraft) => Promise<void>;
+  /**
+   * Resolves once saved; a rejection leaves the form as it is.
+   * updatePayment moves what was received to the new amounts.
+   */
+  onSubmit: (draft: SessionDraft, updatePayment: boolean) => Promise<void>;
   /** Shown beside the submit button, e.g. Cancel. */
   extraActions?: React.ReactNode;
 }
 
 /**
- * When and with whom, and what it costs: everything written in the
- * calendar. She fills in fields; the API writes the title, so it always
- * parses and matches the client.
+ * When and with whom, and what it costs: everything the calendar event
+ * shows. She fills in fields; the API writes the event, so its title always
+ * reads back as this booking.
  */
 export function BookingForm({ initial, session, submitLabel, onSubmit, extraActions }: BookingFormProps) {
   const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
+  // What was received follows a new fee only on a receipt not issued yet.
+  const repayable = Boolean(session?.paid && !session.receipt?.number);
+  const [updatePayment, setUpdatePayment] = useState(false);
 
   const form = useForm({
     defaultValues: toBookingValues(initial),
     onSubmit: async ({ value }) => {
       try {
-        await onSubmit(toSessionDraft(value));
+        await onSubmit(toSessionDraft(value), updatePayment);
       } catch {
         // The caller shows what went wrong.
       }
@@ -77,7 +84,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
         return `${prefix} ${name}'s package bought ${formatDate(pkg.purchasedAt)}: ${pkg.creditsLeft} of ${pkg.sessions} credits left.`;
       }
       case "default":
-        return `${prefix} ${name}'s fee of ${formatCents(cover.feeCents)}; no package credits left.`;
+        return `${prefix} ${name}'s usual fee of ${formatCents(cover.feeCents)}; no package credits left.`;
       case "none":
         return `${name} has no package credits left and no fee set.`;
     }
@@ -119,7 +126,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
                   ))}
                 </SelectContent>
               </Select>
-              {session && <FieldDescription>In the calendar as “{session.title}”.</FieldDescription>}
+              {session?.event.seen && <FieldDescription>In the calendar as “{session.event.seen.title}”.</FieldDescription>}
               <FieldError errors={fieldErrors(field.state.meta.errors)} />
             </Field>
           )}
@@ -190,7 +197,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
               />
               <FieldContent>
                 <FieldLabel htmlFor={field.name}>Home visit</FieldLabel>
-                <FieldDescription>Saved as the event's colour.</FieldDescription>
+                <FieldDescription>Shown in the event's title as (V) or (H) when it isn't the client's usual place.</FieldDescription>
               </FieldContent>
             </Field>
           )}
@@ -343,6 +350,19 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
         </form.Subscribe>
       </FieldGroup>
 
+      {repayable && (
+        <Field orientation="horizontal">
+          <Checkbox id="update-payment" checked={updatePayment} onCheckedChange={setUpdatePayment} />
+          <FieldContent>
+            <FieldLabel htmlFor="update-payment">Update the payment with a new fee</FieldLabel>
+            <FieldDescription>
+              What was paid moves to the new amount, as what you collected or refunded with the change. Without it, a
+              new fee waits for the payment to be undone.
+            </FieldDescription>
+          </FieldContent>
+        </Field>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
           {([canSubmit, isSubmitting]) => (
@@ -361,5 +381,5 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
 function previewOf(values: BookingValues, session: Session | undefined): PreviewInput | undefined {
   if (!values.clientId || !values.date || !values.time) return undefined;
   const draft = toSessionDraft(values);
-  return { clientId: draft.clientId, start: draft.start, eventId: session?.eventId, buysPackage: draft.package !== undefined };
+  return { clientId: draft.clientId, start: draft.start, sessionId: session?.id, buysPackage: draft.package !== undefined };
 }

@@ -23,7 +23,7 @@ export function toFollowUpValues(target: FollowUpTarget): FollowUpValues {
   const { followUp } = target;
   const due = new Date(followUp.due);
   return {
-    clientId: followUp.clientId ?? followUp.suggestedClientId ?? "",
+    clientId: followUp.clientId,
     date: toISODate(due),
     allDay: Boolean(followUp.allDay),
     time: toTimeInput(due),

@@ -12,15 +12,15 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/attachments"
-	"bizzy-lambda/internal/features/billing"
+	"bizzy-lambda/internal/features/book"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
-	"bizzy-lambda/internal/features/payments"
 	"bizzy-lambda/internal/features/recovery"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
@@ -32,30 +32,30 @@ import (
 
 type ClientStore interface {
 	clients.HandlerStore
-	billing.ClientStore
 	googlesync.ClientStore
 	contacts.ClientStore
 }
 
 type SessionStore interface {
 	sessions.HandlerStore
-	billing.SessionStore
 	googlesync.SessionStore
-	googlesync.EditorSessions
 	todo.Sessions
 }
 
 type FollowUpStore interface {
 	followups.HandlerStore
-	followups.RematchStore
 	googlesync.FollowUpStore
 	todo.FollowUps
 }
 
 type PackageStore interface {
 	packages.HandlerStore
-	billing.PackageStore
 	todo.Packages
+}
+
+type ConflictStore interface {
+	conflicts.HandlerStore
+	googlesync.ConflictStore
 }
 
 type Deps struct {
@@ -65,8 +65,9 @@ type Deps struct {
 	Packages   PackageStore
 	Settings   settings.HandlerStore
 	Documents  documents.Store
-	Payments   payments.Store
-	SyncStatus googlesync.StatusHistory
+	Conflicts  ConflictStore
+	Book       book.Store
+	SyncStatus googlesync.StatusStore
 	// Attachments are the files' items; Blobs the files themselves.
 	Attachments attachments.Store
 	Blobs       blobstore.Store
@@ -83,4 +84,6 @@ type Deps struct {
 	// Location is her time zone.
 	Location *time.Location
 	Now      func() time.Time
+	// NewID makes ids; nil uses dynamo.NewID.
+	NewID func() string
 }

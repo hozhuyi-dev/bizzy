@@ -1,16 +1,25 @@
 import { describe, expect, test } from "vitest";
 import { groupOf, matchesFilter, nextTodoSession } from "./todo.util";
 import type { TodoItem } from "./todo.types";
+import type { Conflict } from "~/features/conflicts/conflicts.types";
 import type { Session, TodoReason } from "~/features/sessions/sessions.types";
 
-function sessionItem(eventId: string, at: string, reasons: Array<TodoReason>): TodoItem {
-  return { kind: "session", at, reasons, session: { eventId } as Session };
+function sessionItem(id: string, at: string, reasons: Array<TodoReason>): TodoItem {
+  return { kind: "session", at, reasons, session: { id } as Session };
 }
+
+const conflict: TodoItem = {
+  kind: "conflict",
+  at: "2026-10-12T08:00:00",
+  reasons: ["fix"],
+  conflict: { key: "calendar#e1" } as Conflict,
+};
 
 const followUp: TodoItem = {
   kind: "followUp",
   at: "2026-10-12T10:00:00",
-  followUp: { eventId: "f1", title: "! Jane", due: "2026-10-12T10:00:00", version: 1 },
+  reasons: ["followUp"],
+  followUp: { id: "f1", clientId: "jane", due: "2026-10-12T10:00:00", event: {}, createdAt: "2026-10-01T00:00:00Z", version: 1 },
 };
 
 describe("to-do list", () => {
@@ -29,12 +38,12 @@ describe("to-do list", () => {
     expect(matchesFilter(followUp, "followUp")).toBe(true);
     expect(matchesFilter(followUp, undefined)).toBe(true);
     expect(matchesFilter(followUp, "fix")).toBe(false);
-    expect(matchesFilter({ ...followUp, reasons: ["fix"] }, "fix")).toBe(true);
-    expect(matchesFilter({ ...followUp, reasons: ["fix"] }, "followUp")).toBe(true);
+    expect(matchesFilter(conflict, "fix")).toBe(true);
+    expect(matchesFilter(conflict, "record")).toBe(false);
   });
 
   test("the next session wraps round and skips follow-ups", () => {
-    const items = [sessionItem("a", "", ["record"]), followUp, sessionItem("b", "", ["collect"])];
+    const items = [sessionItem("a", "", ["record"]), followUp, conflict, sessionItem("b", "", ["collect"])];
     expect(nextTodoSession(items, "a")).toBe("b");
     expect(nextTodoSession(items, "b")).toBe("a");
     expect(nextTodoSession(items, "gone")).toBe("a");

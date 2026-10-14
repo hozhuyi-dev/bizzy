@@ -1,64 +1,35 @@
-// Package sessions holds sessions imported from the calendar, and what she
-// records about each one afterwards. The calendar is the source of truth for
-// when and with whom: the sync writes what the event says and the billing
-// reconcile derives the rest. Her edits to the booking go to the calendar
-// first (see googlesync.Editor); the notes, payment and documents are hers
-// and live only here.
+// Package sessions holds her sessions with clients. A session is what bizzy
+// says it is: its booking (who, when, where, whether confirmed), what pays
+// for it (a package credit, or a fee charged on an invoice), and what she
+// records about it afterwards. Google Calendar shows each session as an
+// event, and edits made there are read as changes she asks for, applied
+// only when they are allowed (see googlesync and book).
 //
 // A session moves through stages, each derived from facts rather than kept
 // as a state:
 //
 //	unconfirmed (`?` title) → booked → happened → recorded (summary) → paid
 //
-// with an invoice and a receipt as optional side steps. Payment may come
-// before the notes; what is still missing puts it on her to-do list (Todo).
+// Its money is never stored here as a fact of its own: its fee is its
+// invoice's line, and what was received its receipt's (see documents). The
+// fields below that say so are copies the book keeps in step on every write.
 package sessions
 
 import (
 	"time"
 
+	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/shared/docref"
 	"bizzy-lambda/internal/shared/money"
 )
 
-type Status string
-
-const (
-	StatusTentative  Status = "tentative"   // title starts with `?`
-	StatusParseError Status = "parse_error" // malformed title
-	StatusUnmatched  Status = "unmatched"   // no client matched the name
-	StatusMissingFee Status = "missing_fee" // no amount, credit or client fee
-	StatusPriced     Status = "priced"      // fee known
-	StatusPackage    Status = "package"     // covered by a package credit
-	// StatusRemoved is a session gone from the calendar that is kept for
-	// what she recorded on it (see Session.HasHerData).
-	StatusRemoved Status = "removed"
-)
-
-// Delivered reports whether a session with this status counts toward the
-// client's activity once it has happened.
-// Priced says the fee is known: its own, or a package credit's.
-func (s Status) Priced() bool {
-	return s == StatusPriced || s == StatusPackage
-}
-
-func (s Status) Delivered() bool {
-	return s == StatusPriced || s == StatusPackage || s == StatusMissingFee
-}
-
-type FeeSource string
-
-const (
-	FeeFromTitle   FeeSource = "title"
-	FeeFromDefault FeeSource = "default"
-	FeeFromPackage FeeSource = "package"
-)
-
+// Location is where a session is: her own place, or a home visit at the
+// client's (see calendar.Places for how a title marks it).
 type Location string
 
 const (
-	LocationClinic Location = "clinic"
-	LocationHome   Location = "home"
+	LocationOwn   Location = "own"
+	LocationVisit Location = "visit"
 )
 
 // Record is what she keeps about a session after it: a one-line summary
@@ -84,68 +55,54 @@ func (s *Session) setRecord(summary string, hasNotes bool, files int, now time.T
 	s.Record = &Record{Summary: summary, HasNotes: hasNotes, Files: files, UpdatedAt: now}
 }
 
-// Session is keyed by the Google event instance ID, so a moved event is the
-// same item. It is written whole with a version check (see Repository.Save).
+// Session is written whole with a version check (see Repository.Save).
 type Session struct {
-	EventID string `json:"eventId" dynamodbav:"eventId"`
+	ID       string `json:"id" dynamodbav:"id"`
+	ClientID string `json:"clientId" dynamodbav:"clientId"`
 
-	// From the calendar (sync).
-	Title   string    `json:"title" dynamodbav:"title"`
-	Start   time.Time `json:"start" dynamodbav:"start"`
-	End     time.Time `json:"end" dynamodbav:"end"`
-	ColorID string    `json:"colorId,omitempty" dynamodbav:"colorId,omitempty"`
-	// RemovedAt is set when the event left the calendar but the session is
-	// kept for her data on it. Restoring the event clears it.
-	RemovedAt *time.Time `json:"removedAt,omitempty" dynamodbav:"removedAt,omitempty"`
-
-	// Derived by the billing reconcile.
-	Status            Status    `json:"status" dynamodbav:"status"`
-	Name              string    `json:"name,omitempty" dynamodbav:"name,omitempty"`
-	ClientID          string    `json:"clientId,omitempty" dynamodbav:"clientId,omitempty"`
-	SuggestedClientID string    `json:"suggestedClientId,omitempty" dynamodbav:"suggestedClientId,omitempty"`
-	FeeCents          *int64    `json:"feeCents,omitempty" dynamodbav:"feeCents,omitempty"`
-	FeeSource         FeeSource `json:"feeSource,omitempty" dynamodbav:"feeSource,omitempty"`
-	PackageID         string    `json:"packageId,omitempty" dynamodbav:"packageId,omitempty"`
-	// ValueCents is what the session earned: its fee, or its share of the
-	// package that covered it.
-	ValueCents int64 `json:"valueCents,omitempty" dynamodbav:"valueCents,omitempty"`
-	// BoughtCents is the price of the package bought in this session (its
-	// title says `10x85`). The package is paid on its own (see
-	// packages.Package.Payment), but she collects it with the session, so
-	// BoughtSettled mirrors whether it is.
-	BoughtCents    int64    `json:"boughtCents,omitempty" dynamodbav:"boughtCents,omitempty"`
-	BoughtSettled  bool     `json:"boughtSettled,omitempty" dynamodbav:"boughtSettled,omitempty"`
-	Location       Location `json:"location,omitempty" dynamodbav:"location,omitempty"`
-	LocationSource string   `json:"locationSource,omitempty" dynamodbav:"locationSource,omitempty"`
-	// Reason explains StatusUnmatched / StatusParseError / StatusMissingFee,
-	// or a tentative one under a name no client has.
-	Reason string `json:"reason,omitempty" dynamodbav:"reason,omitempty"`
-	// Drift explains how the calendar now disagrees with an issued document.
-	Drift string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
-	// Upcoming is set while it was still ahead at the last reconcile; the
-	// sync reconciles it again once it has happened. Never set on a removed
-	// session, which the sync no longer reads.
-	Upcoming bool `json:"upcoming,omitempty" dynamodbav:"upcoming,omitempty"`
-	// ConfirmedAt is when it stopped being tentative; for one never
-	// tentative, when it was first seen (at the latest its start).
+	// The booking.
+	Start     time.Time `json:"start" dynamodbav:"start"`
+	End       time.Time `json:"end" dynamodbav:"end"`
+	Tentative bool      `json:"tentative,omitempty" dynamodbav:"tentative,omitempty"`
+	// ConfirmedAt is when it stopped being tentative, or was booked
+	// confirmed.
 	ConfirmedAt *time.Time `json:"confirmedAt,omitempty" dynamodbav:"confirmedAt,omitempty"`
+	Location    Location   `json:"location" dynamodbav:"location"`
+
+	// What pays for it: a credit of PackageID, chosen when it was booked;
+	// otherwise its fee, charged on an invoice.
+	PackageID string `json:"packageId,omitempty" dynamodbav:"packageId,omitempty"`
+	// FeeTyped says the fee was entered for this session (its title shows
+	// it), rather than taken from the client's usual fee.
+	FeeTyped bool `json:"feeTyped,omitempty" dynamodbav:"feeTyped,omitempty"`
+	// BoughtPackageID is the package bought in this session (its title
+	// shows `10x85`), collected with it.
+	BoughtPackageID string `json:"boughtPackageId,omitempty" dynamodbav:"boughtPackageId,omitempty"`
+
+	// Copied from its documents by the book on every write.
+	// FeeCents is what its invoice line charges; 0 on a credit.
+	FeeCents int64 `json:"feeCents" dynamodbav:"feeCents"`
+	// Invoice is the invoice charging it (draft or issued); nil on a credit.
+	Invoice *docref.Ref `json:"invoice,omitempty" dynamodbav:"invoice,omitempty"`
+	// Receipt is the receipt recording its payment, and Paid what it says.
+	Receipt *docref.Ref `json:"receipt,omitempty" dynamodbav:"receipt,omitempty"`
+	Paid    *money.Paid `json:"paid,omitempty" dynamodbav:"paid,omitempty"`
+	// BoughtOwedCents is what is still owed for the package bought in it.
+	BoughtOwedCents int64 `json:"boughtOwedCents,omitempty" dynamodbav:"boughtOwedCents,omitempty"`
 
 	// Hers.
 	Record *Record `json:"record,omitempty" dynamodbav:"record,omitempty"`
-	// Payment settles the session's own fee; the package bought in it is
-	// paid on the package.
-	Payment *money.Payment `json:"payment,omitempty" dynamodbav:"payment,omitempty"`
 
-	// The documents covering it, written by the documents feature.
-	Invoice *docref.Ref `json:"invoice,omitempty" dynamodbav:"invoice,omitempty"`
-	Receipt *docref.Ref `json:"receipt,omitempty" dynamodbav:"receipt,omitempty"`
+	// Event is the calendar event showing it.
+	Event calendar.Link `json:"event" dynamodbav:"event"`
 
-	Version int `json:"version" dynamodbav:"version"`
+	CreatedAt time.Time `json:"createdAt" dynamodbav:"createdAt"`
+	Version   int       `json:"version" dynamodbav:"version"`
 }
 
 // Notes are a session's long notes, kept as their own item.
 type Notes struct {
-	EventID   string    `json:"eventId" dynamodbav:"eventId"`
+	SessionID string    `json:"sessionId" dynamodbav:"sessionId"`
 	Text      string    `json:"text" dynamodbav:"text"`
 	UpdatedAt time.Time `json:"updatedAt" dynamodbav:"updatedAt"`
 }
@@ -158,15 +115,17 @@ func (s Session) Ref(slot docref.Slot) *docref.Ref {
 	return s.Receipt
 }
 
-// HasDocuments reports whether any document (draft or issued) covers it.
-func (s Session) HasDocuments() bool {
-	return s.Invoice != nil || s.Receipt != nil
+// OnCredit reports whether a package credit covers it.
+func (s Session) OnCredit() bool {
+	return s.PackageID != ""
 }
 
-// HasHerData reports whether she recorded anything on the session, which
-// keeps it (soft-deleted) when its event leaves the calendar.
-func (s Session) HasHerData() bool {
-	return s.Record != nil || s.Payment != nil || s.HasDocuments()
+// OwedCents is its own fee while not received.
+func (s Session) OwedCents() int64 {
+	if s.Paid != nil {
+		return 0
+	}
+	return s.FeeCents
 }
 
 // Recorded reports whether she has written its summary.
@@ -174,31 +133,15 @@ func (s Session) Recorded() bool {
 	return s.Record != nil && s.Record.Summary != ""
 }
 
-// DueCents is the session's own fee, when one applies: a package credit
-// costs nothing more. The package bought in it is due on the package.
-func (s Session) DueCents() int64 {
-	if s.Status == StatusPriced && s.FeeCents != nil {
-		return *s.FeeCents
-	}
-	return 0
+// HasRecord reports whether she wrote or attached anything on it.
+func (s Session) HasRecord() bool {
+	return s.Record != nil
 }
 
-// FeeSettled reports whether the session's own fee needs nothing more:
-// paid, waived, or nothing due.
-func (s Session) FeeSettled() bool {
-	return !feeOwed(s.State(s.End))
-}
-
-// BoughtDue reports whether the package bought in the session is still to
-// be paid.
-func (s Session) BoughtDue() bool {
-	return boughtOwed(s.State(s.End))
-}
-
-// Paid reports whether nothing more is owed on it: its fee and the package
-// bought in it.
-func (s Session) Paid() bool {
-	return !owes(s.State(s.End))
+// Settled reports whether nothing more is owed on it: its fee and the
+// package bought in it.
+func (s Session) Settled() bool {
+	return s.OwedCents() == 0 && s.BoughtOwedCents == 0
 }
 
 // Todo is what is left to do on the session as of now, from its rule table
@@ -212,8 +155,7 @@ func (s Session) Todo(now time.Time) []Reason {
 // unrecorded, and Todo leaves it out until it has happened; the index is
 // read only up to a few days ahead.
 func (s Session) Open() bool {
-	st := s.State(s.End)
-	return len(Rules.Reasons(st)) > 0
+	return len(Rules.Reasons(s.State(s.End))) > 0
 }
 
 // Files is how many files are attached to it.

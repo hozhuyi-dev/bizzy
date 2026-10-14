@@ -2,12 +2,10 @@ package sessions
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/schema"
-	"bizzy-lambda/internal/shared/docref"
 )
 
 // Keys: see schema.SessionKeys and schema.SessionNotesKeys.
@@ -18,7 +16,7 @@ type record struct {
 }
 
 func toRecord(s Session) record {
-	return record{Keys: schema.SessionKeys(s.EventID, s.Start, s.ClientID, string(s.Status), s.Open()), Session: s}
+	return record{Keys: schema.SessionKeys(s.ID, s.Start, s.ClientID, s.Open(), s.Event.Pending, s.PackageID), Session: s}
 }
 
 type notesRecord struct {
@@ -34,9 +32,9 @@ func NewRepository(store *dynamo.Store) Repository {
 	return Repository{store: store}
 }
 
-func (r Repository) Get(ctx context.Context, eventID string) (Session, bool, error) {
+func (r Repository) Get(ctx context.Context, id string) (Session, bool, error) {
 	var rec record
-	found, err := r.store.Get(ctx, schema.Session, eventID, &rec)
+	found, err := r.store.Get(ctx, schema.Session, id, &rec)
 	return rec.Session, found, err
 }
 
@@ -45,8 +43,7 @@ func (r Repository) ListByTime(ctx context.Context, from, to time.Time) ([]Sessi
 	return r.query(ctx, dynamo.Query{Index: dynamo.IndexTime, From: dynamo.TimeKey(from), To: dynamo.TimeKey(to)})
 }
 
-// ListByClient returns all of a client's sessions, oldest first, for the
-// reconcile: package credits run across them all.
+// ListByClient returns all of a client's sessions, oldest first.
 func (r Repository) ListByClient(ctx context.Context, clientID string) ([]Session, error) {
 	return r.query(ctx, dynamo.Query{Index: dynamo.IndexClient, Prefix: clientID + "#"})
 }
@@ -69,28 +66,9 @@ func (r Repository) ListTodo(ctx context.Context, until time.Time) ([]Session, e
 	return r.query(ctx, dynamo.Query{Index: dynamo.IndexOpen, To: dynamo.TimeKey(until)})
 }
 
-// ListByStatus returns the sessions with a status, newest first.
-func (r Repository) ListByStatus(ctx context.Context, status Status) ([]Session, error) {
-	return r.query(ctx, dynamo.Query{Index: dynamo.IndexCategory, Prefix: string(status) + "#", Descending: true})
-}
-
-// ListWithoutClient returns the sessions matched to no client (unreadable,
-// unmatched, tentative under an unknown name, or removed while so), for
-// when a client gains an alias or a document stops covering one.
-func (r Repository) ListWithoutClient(ctx context.Context) ([]Session, error) {
-	var out []Session
-	for _, status := range []Status{StatusParseError, StatusUnmatched, StatusTentative, StatusRemoved} {
-		found, err := r.ListByStatus(ctx, status)
-		if err != nil {
-			return nil, err
-		}
-		for _, s := range found {
-			if s.ClientID == "" {
-				out = append(out, s)
-			}
-		}
-	}
-	return out, nil
+// ListPending returns the sessions whose event is still to be written.
+func (r Repository) ListPending(ctx context.Context) ([]Session, error) {
+	return r.query(ctx, dynamo.Query{Index: dynamo.IndexCategory})
 }
 
 func (r Repository) query(ctx context.Context, q dynamo.Query) ([]Session, error) {
@@ -131,51 +109,27 @@ func PutItem(s Session) (Session, dynamo.TransactItem) {
 	return s, dynamo.TransactItem{Put: toRecord(s), When: dynamo.VersionIs(previous)}
 }
 
-// Delete removes a session and its notes, if it is still at the version
-// read and no document covers it. dynamo.ErrConflict otherwise.
-func (r Repository) Delete(ctx context.Context, s Session) error {
-	guard := dynamo.VersionIs(s.Version)
-	docs := docref.NoDocuments()
-	cond := &dynamo.Condition{
-		Expression: guard.Expression + " AND " + docs.Expression,
-		Names:      docs.Names,
-		Values:     guard.Values,
+// DeleteItems are the writes that delete a session at the version read,
+// and its notes.
+func DeleteItems(s Session) []dynamo.TransactItem {
+	return []dynamo.TransactItem{
+		{Delete: &[2]string{schema.Session, s.ID}, When: dynamo.VersionIs(s.Version)},
+		{Delete: &[2]string{schema.SessionNotes, s.ID}},
 	}
-	for k, v := range guard.Names {
-		cond.Names[k] = v
-	}
-	err := r.store.Transact(ctx, []dynamo.TransactItem{
-		{Delete: &[2]string{schema.Session, s.EventID}, When: cond},
-		{Delete: &[2]string{schema.SessionNotes, s.EventID}},
-	})
-	if errors.Is(err, dynamo.ErrTransactionConflict) {
-		return dynamo.ErrConflict
-	}
-	return err
 }
 
 // Notes returns a session's long notes; empty when there are none.
-func (r Repository) Notes(ctx context.Context, eventID string) (Notes, error) {
+func (r Repository) Notes(ctx context.Context, id string) (Notes, error) {
 	var rec notesRecord
-	_, err := r.store.Get(ctx, schema.SessionNotes, eventID, &rec)
+	_, err := r.store.Get(ctx, schema.SessionNotes, id, &rec)
 	return rec.Notes, err
 }
 
 // SaveNotes writes a session's notes; empty text deletes them.
 func (r Repository) SaveNotes(ctx context.Context, n Notes) error {
 	if n.Text == "" {
-		_, err := r.store.Delete(ctx, schema.SessionNotes, n.EventID, nil)
+		_, err := r.store.Delete(ctx, schema.SessionNotes, n.SessionID, nil)
 		return err
 	}
-	return r.store.Put(ctx, notesRecord{Keys: schema.SessionNotesKeys(n.EventID), Notes: n})
-}
-
-// LinkPatch reserves or updates a session's document link in a slot.
-func LinkPatch(eventID string, slot docref.Slot, ref docref.Ref) (dynamo.Patch, error) {
-	return docref.LinkPatch(schema.Session, eventID, slot, ref)
-}
-
-// UnlinkPatch releases a session's slot from a document.
-func UnlinkPatch(eventID string, slot docref.Slot, documentID string) dynamo.Patch {
-	return docref.UnlinkPatch(schema.Session, eventID, slot, documentID)
+	return r.store.Put(ctx, notesRecord{Keys: schema.SessionNotesKeys(n.SessionID), Notes: n})
 }

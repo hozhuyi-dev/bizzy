@@ -14,7 +14,9 @@ import (
 
 	"bizzy-lambda/internal/app"
 	"bizzy-lambda/internal/features/attachments"
+	"bizzy-lambda/internal/features/book"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/expenses"
@@ -22,7 +24,6 @@ import (
 	"bizzy-lambda/internal/features/googleconnect"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/packages"
-	"bizzy-lambda/internal/features/payments"
 	"bizzy-lambda/internal/features/recovery"
 	"bizzy-lambda/internal/features/reset"
 	"bizzy-lambda/internal/features/sessions"
@@ -54,16 +55,23 @@ func main() {
 	directory := contacts.NewGoogle(auth.Client)
 	connections := googleconnect.NewRepository(store)
 
+	clientsRepo := clients.NewRepository(store)
 	sessionsRepo := sessions.NewRepository(store)
 	packagesRepo := packages.NewRepository(store)
+	documentsRepo := documents.NewRepository(store)
+	settingsRepo := settings.NewRepository(store)
 	a := app.New(app.Deps{
-		Clients:     clients.NewRepository(store),
-		Sessions:    sessionsRepo,
-		FollowUps:   followups.NewRepository(store),
-		Packages:    packagesRepo,
-		Settings:    settings.NewRepository(store),
-		Documents:   documents.NewRepository(store),
-		Payments:    payments.NewRepository(store, sessionsRepo, packagesRepo),
+		Clients:   clientsRepo,
+		Sessions:  sessionsRepo,
+		FollowUps: followups.NewRepository(store),
+		Packages:  packagesRepo,
+		Settings:  settingsRepo,
+		Documents: documentsRepo,
+		Conflicts: conflicts.NewRepository(store),
+		Book: book.Repository{
+			Store: store, Clients: clientsRepo, Sessions: sessionsRepo, Packages: packagesRepo,
+			Documents: documentsRepo, Settings: settingsRepo,
+		},
 		SyncStatus:  googlesync.NewStatusRepository(store),
 		Attachments: attachments.NewRepository(store),
 		Expenses:    expenses.NewRepository(store),

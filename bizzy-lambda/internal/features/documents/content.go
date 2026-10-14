@@ -2,44 +2,30 @@ package documents
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
-	"bizzy-lambda/internal/features/packages"
-	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/shared/money"
 )
 
-// NewContent prefills a document for a client with the given lines.
-func NewContent(cfg settings.Settings, c clients.Client, today string, lines []Line) Content {
-	return Content{
-		Date:      today,
-		Issuer:    issuerFrom(cfg),
-		Recipient: recipientFrom(c),
-		Lines:     lines,
+// Fill completes a draft as it would be issued now: the business from
+// Settings and the client from their contact, where she hasn't written her
+// own. Issued content is never filled again.
+func Fill(c Content, cfg settings.Settings, client clients.Client) Content {
+	if c.Issuer == (Issuer{}) {
+		c.Issuer = issuerFrom(cfg)
 	}
-}
-
-// SessionLine is a paid session on a receipt.
-func SessionLine(s sessions.Session, cfg settings.Settings, loc *time.Location) Line {
-	return Line{
-		Description: cfg.ServiceName,
-		Date:        s.Start.In(loc).Format(time.DateOnly),
-		AmountCents: *s.FeeCents,
-		Source:      &Source{Kind: SourceSession, ID: s.EventID},
+	if c.Recipient == (Recipient{}) {
+		c.Recipient = recipientFrom(client)
 	}
-}
-
-// PackageLine is a package purchase on a receipt.
-func PackageLine(p packages.Package, cfg settings.Settings, loc *time.Location) Line {
-	return Line{
-		Description: fmt.Sprintf("%s package (%d sessions)", cfg.ServiceName, p.Sessions),
-		Date:        p.PurchasedAt.In(loc).Format(time.DateOnly),
-		AmountCents: p.PriceCents,
-		Source:      &Source{Kind: SourcePackage, ID: p.ID},
+	if c.Payment != nil {
+		c.PaidBy = money.MethodLabels[c.Payment.Method]
 	}
+	return c
 }
 
 func issuerFrom(cfg settings.Settings) Issuer {
@@ -68,28 +54,35 @@ func recipientFrom(c clients.Client) Recipient {
 	return r
 }
 
-// Normalize trims what she typed, checks it and computes the total. Lines
-// keep their sources: editing the text never changes what a line covers.
-func Normalize(in Content, allowed map[Source]bool) (Content, error) {
-	out := Content{
-		Date:       strings.TrimSpace(in.Date),
-		Issuer:     trimIssuer(in.Issuer),
-		Recipient:  trimRecipient(in.Recipient),
-		PaidBy:     strings.TrimSpace(in.PaidBy),
-		Notes:      strings.TrimSpace(in.Notes),
-		TotalCents: 0,
+// Total adds up the lines.
+func (c Content) Total() int64 {
+	var total int64
+	for _, l := range c.Lines {
+		total += l.AmountCents
 	}
+	return total
+}
 
-	if _, err := time.Parse(time.DateOnly, out.Date); err != nil {
-		return out, apperr.Invalid("date must be YYYY-MM-DD")
+// Normalize trims what she typed, checks it and computes the total. A
+// draft may have no date yet (it takes the day it is issued). Lines keep
+// their ids and sources: editing the text never changes what a line covers.
+func Normalize(in Content) (Content, error) {
+	out := Content{
+		Date:      strings.TrimSpace(in.Date),
+		Issuer:    trimIssuer(in.Issuer),
+		Recipient: trimRecipient(in.Recipient),
+		Payment:   in.Payment,
+		PaidBy:    strings.TrimSpace(in.PaidBy),
+		Notes:     strings.TrimSpace(in.Notes),
 	}
-	if out.Recipient.Name == "" {
-		return out, apperr.Invalid("who it's for is required")
+	if out.Date != "" {
+		if _, err := time.Parse(time.DateOnly, out.Date); err != nil {
+			return out, apperr.Invalid("date must be YYYY-MM-DD")
+		}
 	}
 	if len(in.Lines) == 0 {
 		return out, apperr.Invalid("add at least one line")
 	}
-
 	for i, line := range in.Lines {
 		line.Description = strings.TrimSpace(line.Description)
 		line.Date = strings.TrimSpace(line.Date)
@@ -104,26 +97,66 @@ func Normalize(in Content, allowed map[Source]bool) (Content, error) {
 				return out, apperr.Invalid("line %d date must be YYYY-MM-DD", i+1)
 			}
 		}
-		if line.Source != nil && !allowed[*line.Source] {
-			return out, apperr.Invalid("line %d refers to something this document does not cover", i+1)
-		}
 		out.Lines = append(out.Lines, line)
-		out.TotalCents += line.AmountCents
 	}
-
+	out.TotalCents = out.Total()
 	return out, nil
 }
 
-// sourceAmounts sums the lines per source: what the document says each
-// session or package was paid.
-func sourceAmounts(c Content) map[Source]int64 {
-	amounts := map[Source]int64{}
-	for _, line := range c.Lines {
-		if line.Source != nil {
-			amounts[*line.Source] += line.AmountCents
+// Legal says what a revision of an issued document changes that only a
+// new document may: whom it is for is the client's, so only their name as
+// printed may be corrected; what it charges or confirms (each line's item
+// and amount, the total), its date, the business that issued it and, on a
+// receipt, how and when it was paid stay as issued. Descriptions, service
+// dates, notes and contact and bank details may be corrected. "" when the
+// revision changes nothing legal.
+//
+// Changing any of these goes through a new document instead: cancelling
+// this one, or (once built) a credit or debit note.
+func Legal(issued, revision Content) string {
+	switch {
+	case revision.Date != issued.Date:
+		return "its date"
+	case revision.Issuer.Name != issued.Issuer.Name || revision.Issuer.RegistrationNo != issued.Issuer.RegistrationNo:
+		return "the business that issued it"
+	case revision.TotalCents != issued.TotalCents:
+		return "its total"
+	case !samePayment(issued.Payment, revision.Payment):
+		return "how and when it was paid"
+	case len(revision.Lines) != len(issued.Lines):
+		return "its lines"
+	}
+	for _, line := range revision.Lines {
+		i := slices.IndexFunc(issued.Lines, func(l Line) bool { return l.ID == line.ID })
+		switch {
+		case i < 0:
+			return "its lines"
+		case !sameSource(issued.Lines[i].Source, line.Source):
+			return fmt.Sprintf("what line %q covers", line.Description)
+		case issued.Lines[i].AmountCents != line.AmountCents:
+			return fmt.Sprintf("the amount of %q", line.Description)
 		}
 	}
-	return amounts
+	return ""
+}
+
+func samePayment(a, b *Payment) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+func sameSource(a, b *Source) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+// SourceLines indexes the lines that cover an item by what they cover.
+func SourceLines(lines []Line) map[Source]Line {
+	out := map[Source]Line{}
+	for _, line := range lines {
+		if line.Source != nil {
+			out[*line.Source] = line
+		}
+	}
+	return out
 }
 
 func trimIssuer(i Issuer) Issuer {

@@ -10,26 +10,21 @@ import (
 // State is a package reduced to the independent axes its rules read (see
 // rules.go and testdata/states.md).
 type State struct {
-	Source Source `json:"source"`
-	// Link says whether a calendar title still buys it.
-	Link    Link         `json:"link"`
+	Origin  Origin       `json:"origin"`
 	Timing  Timing       `json:"timing"`
 	Credits Credits      `json:"credits"`
 	Price   Price        `json:"price"`
+	Invoice DocSlot      `json:"invoice"`
+	Receipt DocSlot      `json:"receipt"`
 	Payment PaymentState `json:"payment"`
-	// PaidFor says whether the payment settled the price as it is now.
-	PaidFor PaidFor `json:"paidFor"`
-	Invoice DocSlot `json:"invoice"`
-	Receipt DocSlot `json:"receipt"`
-	Drift   Drift   `json:"drift"`
 }
 
-type Link string
+type Origin string
 
 const (
-	Linked Link = "linked"
-	// Unlinked: a calendar package no title buys any more.
-	Unlinked Link = "unlinked"
+	// InSession: bought in a session, collected with it.
+	InSession Origin = "in-session"
+	OnItsOwn  Origin = "on-its-own"
 )
 
 type Timing string
@@ -45,6 +40,8 @@ type Credits string
 const (
 	CreditsLeft   Credits = "left"
 	CreditsUsedUp Credits = "used-up"
+	// CreditsOverdrawn: more sessions use it than it has.
+	CreditsOverdrawn Credits = "overdrawn"
 )
 
 type Price string
@@ -52,23 +49,6 @@ type Price string
 const (
 	Free   Price = "free"
 	Priced Price = "priced"
-)
-
-type PaymentState string
-
-const (
-	PaymentNone   PaymentState = "none"
-	PaymentPaid   PaymentState = "paid"
-	PaymentWaived PaymentState = "waived"
-)
-
-type PaidFor string
-
-const (
-	PaidForCurrent PaidFor = "current"
-	// PaidForOutdated: the price changed since it was paid, and the amount
-	// paid doesn't match it either.
-	PaidForOutdated PaidFor = "outdated"
 )
 
 type DocSlot string
@@ -79,56 +59,46 @@ const (
 	SlotIssued DocSlot = "issued"
 )
 
-type Drift string
+type PaymentState string
 
 const (
-	DriftNone Drift = "none"
-	// Drifted: the calendar now contradicts an issued document.
-	Drifted Drift = "drifted"
+	PaymentNone PaymentState = "none"
+	PaymentPaid PaymentState = "paid"
 )
 
 var Axes = statemodel.Axes[State]{
-	statemodel.NewAxis("source", []Source{SourceCalendar, SourceApp}, func(s *State, v Source) { s.Source = v }),
-	statemodel.NewAxis("link", []Link{Linked, Unlinked}, func(s *State, v Link) { s.Link = v }),
+	statemodel.NewAxis("origin", []Origin{InSession, OnItsOwn}, func(s *State, v Origin) { s.Origin = v }),
 	statemodel.NewAxis("timing", []Timing{Ahead, Purchased}, func(s *State, v Timing) { s.Timing = v }),
-	statemodel.NewAxis("credits", []Credits{CreditsLeft, CreditsUsedUp}, func(s *State, v Credits) { s.Credits = v }),
+	statemodel.NewAxis("credits", []Credits{CreditsLeft, CreditsUsedUp, CreditsOverdrawn}, func(s *State, v Credits) { s.Credits = v }),
 	statemodel.NewAxis("price", []Price{Free, Priced}, func(s *State, v Price) { s.Price = v }),
-	statemodel.NewAxis("payment", []PaymentState{PaymentNone, PaymentPaid, PaymentWaived}, func(s *State, v PaymentState) { s.Payment = v }),
-	statemodel.NewAxis("paid for", []PaidFor{PaidForCurrent, PaidForOutdated}, func(s *State, v PaidFor) { s.PaidFor = v }),
 	statemodel.NewAxis("invoice", []DocSlot{SlotEmpty, SlotDraft, SlotIssued}, func(s *State, v DocSlot) { s.Invoice = v }),
 	statemodel.NewAxis("receipt", []DocSlot{SlotEmpty, SlotDraft, SlotIssued}, func(s *State, v DocSlot) { s.Receipt = v }),
-	statemodel.NewAxis("drift", []Drift{DriftNone, Drifted}, func(s *State, v Drift) { s.Drift = v }),
+	statemodel.NewAxis("payment", []PaymentState{PaymentNone, PaymentPaid}, func(s *State, v PaymentState) { s.Payment = v }),
 }
 
 // State reduces the package to its axes as of now.
 func (p Package) State(now time.Time) State {
 	st := State{
-		Source: p.Source, Link: Linked, Timing: Purchased, Credits: CreditsLeft, Price: Priced, Payment: PaymentNone, PaidFor: PaidForCurrent,
-		Invoice: slotOf(p.Invoice), Receipt: slotOf(p.Receipt), Drift: DriftNone,
+		Origin: OnItsOwn, Timing: Purchased, Credits: CreditsLeft, Price: Priced,
+		Invoice: slotOf(p.Invoice), Receipt: slotOf(p.Receipt), Payment: PaymentNone,
 	}
-	if p.Unlinked {
-		st.Link = Unlinked
-	}
-	if p.Drift != "" {
-		st.Drift = Drifted
-	}
-	if p.Payment.Outdated(p.PriceCents) {
-		st.PaidFor = PaidForOutdated
+	if p.BoughtIn != "" {
+		st.Origin = InSession
 	}
 	if p.PurchasedAt.After(now) {
 		st.Timing = Ahead
 	}
-	if p.CreditsLeft() == 0 {
+	switch {
+	case p.CreditsUsed > p.Sessions:
+		st.Credits = CreditsOverdrawn
+	case p.CreditsUsed == p.Sessions:
 		st.Credits = CreditsUsedUp
 	}
 	if p.PriceCents == 0 {
 		st.Price = Free
 	}
-	switch {
-	case p.Payment.IsPaid():
+	if p.Paid != nil {
 		st.Payment = PaymentPaid
-	case p.Payment != nil:
-		st.Payment = PaymentWaived
 	}
 	return st
 }

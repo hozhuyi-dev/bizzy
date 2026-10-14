@@ -1,4 +1,8 @@
-// Mirrors bizzy-lambda/internal/features/documents/model.go.
+import type { PaymentMethod } from "~/features/payments/payments.types";
+
+// Mirrors bizzy-lambda/internal/features/documents/model.go. Documents are
+// where money lives: a session's fee is its invoice's line, and what was
+// received its receipt's.
 export type DocumentType = "invoice" | "receipt";
 export type DocumentStatus = "draft" | "issued" | "cancelled";
 
@@ -26,6 +30,8 @@ export interface Recipient {
 }
 
 export interface DocumentLine {
+  /** Keeps the line itself as it moves between drafts; a new line has none until saved. */
+  id: string;
   description: string;
   /** Service date, YYYY-MM-DD. */
   date?: string;
@@ -33,12 +39,22 @@ export interface DocumentLine {
   source?: DocumentSource;
 }
 
+/** How and when what a receipt covers was paid. */
+export interface DocumentPayment {
+  method: PaymentMethod;
+  paidOn: string;
+}
+
 /** Everything printed on the document. */
 export interface DocumentContent {
+  /** A draft has none until she sets one: it takes the day it is issued. */
   date: string;
   issuer: Issuer;
   recipient: Recipient;
   lines: Array<DocumentLine>;
+  /** On a receipt. */
+  payment?: DocumentPayment;
+  /** The payment as printed ("Cash"). */
   paidBy?: string;
   notes?: string;
   totalCents: number;
@@ -113,15 +129,12 @@ export interface DocumentDetail {
   revisions: Array<DocumentRevision>;
 }
 
-/** A session's or package's link to a document covering it. */
+/** A session's or package's link to a document covering it; mirrors docref.Ref. */
 export interface DocumentRef {
   documentId: string;
-  /** Set once the document is issued; a draft only reserves. */
+  /** Set once the document is issued. */
   number?: string;
   revision?: number;
-  amountCents?: number;
-  date?: string;
-  clientId?: string;
 }
 
 /** The version she was looking at, so a stale tab can't overwrite. */

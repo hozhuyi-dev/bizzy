@@ -3,28 +3,27 @@ import type { Payable } from "~/features/payments/payments.types";
 import type { Package } from "~/features/packages/packages.types";
 
 /**
- * What a session's payment panel settles: the session's fee (or its
- * payment, once made) and the package its title bought, each on its own.
+ * What a session's payment panel settles: the session's fee (or what was
+ * received for it) and the package bought in it, each on its own.
  */
 export function sessionPayables(session: Session, bought: Package | undefined): Array<Payable> {
-  const due = session.dueCents;
   const payables: Array<Payable> = [];
-  if (due > 0 || session.payment) {
+  if (session.feeCents > 0 || session.paid) {
     payables.push({
-      item: { kind: "session", id: session.eventId },
+      item: { kind: "session", id: session.id },
       label: "Session fee",
-      dueCents: due,
-      payment: session.payment,
-      receipted: Boolean(session.receipt),
+      dueCents: session.feeCents,
+      paid: session.paid,
+      receipt: session.receipt,
     });
   }
-  if (bought) {
+  if (bought && (bought.priceCents > 0 || bought.paid)) {
     payables.push({
       item: { kind: "package", id: bought.id },
       label: `Package of ${bought.sessions}`,
       dueCents: bought.priceCents,
-      payment: bought.payment,
-      receipted: Boolean(bought.receipt),
+      paid: bought.paid,
+      receipt: bought.receipt,
     });
   }
   return payables;

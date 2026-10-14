@@ -7,6 +7,7 @@ const content: DocumentContent = {
   recipient: { name: "Jane Smith" },
   lines: [
     {
+      id: "l1",
       description: "Physiotherapy session",
       date: "2026-10-05",
       amountCents: 9550,
@@ -24,12 +25,12 @@ describe("document form", () => {
 
   test("totals typed amounts and drops empty fields", () => {
     const values = toFormValues(content);
-    values.lines.push({ description: "Taping", date: "", amount: "20", source: undefined });
+    values.lines.push({ id: "", description: "Taping", date: "", amount: "20", source: undefined });
     values.paidBy = " ";
 
     const out = toContent(values);
     expect(out.totalCents).toBe(11550);
     expect(out.paidBy).toBeUndefined();
-    expect(out.lines[1]).toEqual({ description: "Taping", amountCents: 2000 });
+    expect(out.lines[1]).toEqual({ id: "", description: "Taping", amountCents: 2000 });
   });
 });

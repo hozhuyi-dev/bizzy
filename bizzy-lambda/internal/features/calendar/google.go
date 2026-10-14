@@ -129,7 +129,7 @@ func (g *GoogleCalendar) Delete(ctx context.Context, id, etag string) error {
 }
 
 func toItem(in EventInput) *gcal.Event {
-	item := &gcal.Event{Summary: in.Title, ColorId: in.ColorID}
+	item := &gcal.Event{Summary: in.Title}
 	if in.Date != "" {
 		day, _ := time.Parse(time.DateOnly, in.Date)
 		// The end date of an all-day event is exclusive. The time is sent as
@@ -139,10 +139,6 @@ func toItem(in EventInput) *gcal.Event {
 	} else {
 		item.Start = &gcal.EventDateTime{DateTime: in.Start.Format(time.RFC3339), NullFields: []string{"Date"}}
 		item.End = &gcal.EventDateTime{DateTime: in.End.Format(time.RFC3339), NullFields: []string{"Date"}}
-	}
-	if in.ColorID == "" {
-		// Sent as null, so a patch clears the colour instead of skipping it.
-		item.NullFields = append(item.NullFields, "ColorId")
 	}
 	if in.Description != nil {
 		item.Description = *in.Description

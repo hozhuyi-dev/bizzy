@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toPackageInput, toPackageValues } from "../../packages.form";
-import { usePackageSave } from "../../packages-impact.hook";
+import { usePackageSave } from "../../packages-save.hook";
 import type { Package } from "../../packages.types";
 import { fieldErrors } from "~/core/utils/form.util";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
@@ -21,8 +21,8 @@ interface PackageFormProps {
 }
 
 /**
- * For packages bought outside the calendar. Ones bought with `10x85` or
- * `10@850` in a session title are edited in the calendar.
+ * A package's client, sessions, price and day. One bought in a session
+ * stays that session's client's and day: change the session for those.
  */
 export function PackageForm({ pkg, onDone }: PackageFormProps) {
   const clients = ClientsQuery.useList();
@@ -34,7 +34,7 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
     onSubmit: async ({ value }) => {
       setError(null);
       try {
-        await save.submit(toPackageInput(value, pkg?.id));
+        await save.submit(toPackageInput(value, pkg));
       } catch (e) {
         setError((e as Error).message);
       }
@@ -163,7 +163,18 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
           )}
         </form.Field>
 
-        {!pkg?.payment && (
+        {pkg?.paid && !pkg.receipt?.number && (
+          <form.Field name="updatePayment">
+            {(field) => (
+              <Field orientation="horizontal">
+                <Checkbox id={field.name} checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
+                <FieldLabel htmlFor={field.name}>Update the payment with a new price</FieldLabel>
+              </Field>
+            )}
+          </form.Field>
+        )}
+
+        {!pkg?.paid && (
           <form.Field name="paid">
             {(paid) => (
               <Field>
@@ -218,7 +229,6 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
           )}
         </form.Subscribe>
       </DialogFooter>
-      {save.dialog}
     </form>
   );
 }

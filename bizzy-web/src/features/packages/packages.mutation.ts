@@ -1,15 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PackagesService } from "./packages.service";
-import type { PackageOptions, SavePackageInput } from "./packages.types";
+import type { SavePackageInput } from "./packages.types";
 import { invalidateBilling } from "~/core/utils/query.util";
 
-// Saving and deleting go through their preview: see usePackageSave.
+// A refusal says why and offers its remedies (see remedies).
 export const PackagesMutation = {
   useSave: () => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: ({ input, options }: { input: SavePackageInput; options?: PackageOptions }) =>
-        PackagesService.save(input, options),
+      mutationFn: (input: SavePackageInput) => PackagesService.save(input),
       onSuccess: () => invalidateBilling(queryClient),
     });
   },
@@ -17,7 +16,7 @@ export const PackagesMutation = {
   useDelete: () => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: ({ id, options }: { id: string; options?: PackageOptions }) => PackagesService.delete(id, options),
+      mutationFn: (id: string) => PackagesService.delete(id),
       onSuccess: () => invalidateBilling(queryClient),
     });
   },

@@ -6,9 +6,11 @@
 // a fake calendar, fake contacts and a clock. Actions come from four actors
 // (actions_*.go): the user calling the router with JSON as the app does,
 // the calendar and contacts changing underneath, and time passing. The
-// checks (checks.go) are the entities' rule tables (statemodel), plus that
-// a refused action changes nothing and the stored derived fields match a
-// fresh recomputation.
+// checks (checks.go) are the entities' rule tables (statemodel) and the
+// book's invariants, plus that a refused action changes nothing, the stored
+// copies match a fresh derivation, the calendar shows bizzy as it is, the
+// app never brings on a conflict, and an edit made in the calendar does
+// what the same edit in the app does.
 //
 // Run it longer to search deeper:
 //
@@ -26,7 +28,6 @@ import (
 	"pgregory.net/rapid"
 
 	"bizzy-lambda/internal/app"
-	"bizzy-lambda/internal/features/billing"
 	"bizzy-lambda/internal/features/calendar"
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/contacts"
@@ -38,7 +39,6 @@ import (
 	"bizzy-lambda/internal/testutil/fakecal"
 	"bizzy-lambda/internal/testutil/fakecontacts"
 	"bizzy-lambda/internal/testutil/memblob"
-	"bizzy-lambda/internal/testutil/memdocs"
 	"bizzy-lambda/internal/testutil/memory"
 )
 
@@ -50,7 +50,6 @@ var (
 
 type World struct {
 	Store    *memory.Store
-	Docs     *memdocs.Repo
 	Blobs    *memblob.Store
 	Calendar *fakecal.Calendar
 	Contacts *fakecontacts.Directory
@@ -73,13 +72,13 @@ type World struct {
 	// retry makes the user tap again, with the same request, when one
 	// fails that way.
 	retry bool
+	// retried says the last call was tapped again, after one that may
+	// have done everything: what she saw before is not held to it.
+	retried bool
 	// unhealed says a request died partway since the last sync, which
 	// repairs after it (internal/features/recovery): until then the stores
 	// may be half changed.
 	unhealed bool
-	// allowed is what the preview of the action running listed, when she
-	// confirmed it: what the action may bring on (see Previewed).
-	allowed []billing.Brought
 }
 
 // fataler is what newWorld needs of a test: *testing.T or *rapid.T.
@@ -101,13 +100,12 @@ func newWorld(t fataler) *World {
 
 		pendingSeen: map[string]bool{},
 	}
-	w.Docs = memdocs.New(w.Store)
 	ids := 0
 	dynamo.NewID = func() string {
 		ids++
 		return fmt.Sprintf("id%03d", ids)
 	}
-	w.Store.SettingsVal = settings.Settings{BusinessName: "Physio Co", ServiceName: "Physiotherapy", HomeVisitColorID: "5"}
+	w.Store.SettingsVal = settings.Settings{BusinessName: "Physio Co", ServiceName: "Physiotherapy"}
 
 	for _, c := range seedClients {
 		person := contactsPerson(c)
@@ -129,7 +127,7 @@ func newWorld(t fataler) *World {
 	w.Calendar.OnWrite(w.beforeWrite)
 	w.Contacts.OnWrite(w.beforeWrite)
 	w.Blobs.OnWrite(w.beforeWrite)
-	w.App = app.New(w.deps(w.Store, w.Docs, w.Blobs))
+	w.App = app.New(w.deps(w.Store, w.Blobs))
 	if _, err := w.App.Sync(context.Background(), googlesync.Range{}); err != nil {
 		t.Fatalf("seed sync: %v", err)
 	}
@@ -137,10 +135,10 @@ func newWorld(t fataler) *World {
 	return w
 }
 
-func (w *World) deps(m *memory.Store, docs *memdocs.Repo, blobs *memblob.Store) app.Deps {
+func (w *World) deps(m *memory.Store, blobs *memblob.Store) app.Deps {
 	return app.Deps{
 		Clients: m.Clients(), Sessions: m.Sessions(), FollowUps: m.FollowUps(), Packages: m.Packages(),
-		Settings: m.Settings(), Documents: docs, Payments: m.Payments(), SyncStatus: w.status,
+		Settings: m.Settings(), Documents: m.Documents(), Conflicts: m.Conflicts(), Book: m.Book(), SyncStatus: w.status,
 		Attachments: m.Attachments(), Blobs: blobs, Expenses: m.Expenses(),
 		Calendar:  func(context.Context) (googlesync.Calendar, error) { return w.Calendar, nil },
 		Directory: w.Contacts,
@@ -163,6 +161,7 @@ func (w *World) Call(t *rapid.T, action string, payload any, mayRefresh bool) (j
 	if err != nil {
 		t.Fatalf("marshal %s payload: %v", action, err)
 	}
+	w.retried = false
 	before := w.snapshot()
 	res, err, died := w.handle(action, body)
 	if err != nil {
@@ -181,9 +180,11 @@ func (w *World) Call(t *rapid.T, action string, payload any, mayRefresh bool) (j
 			t.Logf("%s %s → %s, but the answer was lost", action, body, outcome(res))
 		}
 		if w.retry {
-			w.retry = false
+			w.retry, w.retried = false, true
 			t.Logf("she taps again")
-			return w.Call(t, action, payload, true)
+			data, refused := w.Call(t, action, payload, true)
+			w.retried = true
+			return data, refused
 		}
 		return nil, &router.ErrorBody{Code: "crashed", Message: "The connection dropped."}
 	}
@@ -236,62 +237,29 @@ func (w *World) handle(action string, body []byte) (res router.Response, err err
 	return res, err, nil
 }
 
-// preview is what a form's preview says saving would bring on.
-func (w *World) preview(t *rapid.T, action string, payload any) billing.Impact {
-	t.Helper()
-	var impact billing.Impact
-	if data, refused := w.Call(t, action, payload, false); refused == nil {
-		if err := json.Unmarshal(data, &impact); err != nil {
-			t.Fatalf("%s result: %v", action, err)
-		}
-	}
-	return impact
-}
-
-// Previewed saves a form the way the app does: it asks the form's preview
-// what saving would bring on, and confirms it or not, as drawn. When
-// confirmed, what the preview listed is what the action may bring on (see
-// noNewContradictions).
-func (w *World) Previewed(t *rapid.T, preview string, previewPayload any, action string, payload map[string]any, confirm, mayRefresh bool) (json.RawMessage, *router.ErrorBody) {
-	t.Helper()
-	data, refused := w.Call(t, preview, previewPayload, false)
-	if refused != nil {
-		return w.Call(t, action, payload, mayRefresh)
-	}
-	var impact billing.Impact
-	if err := json.Unmarshal(data, &impact); err != nil {
-		t.Fatalf("%s result: %v", preview, err)
-	}
-	if confirm {
-		payload = with(payload, map[string]any{"confirm": true})
-	}
-	data, refused = w.Call(t, action, payload, mayRefresh)
-	if confirm && refused == nil {
-		w.allowed = append(w.allowed, impact.Brings...)
-	}
-	return data, refused
-}
-
 // CallAsViewed calls an action the app offered (or explained) from an
 // entity's view: when the view said no, the API must refuse with the same
 // message, so the app never shows an action the API won't take.
 func (w *World) CallAsViewed(t *rapid.T, action string, payload any, viewed statemodel.Verdict) {
 	t.Helper()
 	_, refused := w.Call(t, action, payload, false)
-	asViewed(t, action, refused, viewed, false)
+	w.asViewed(t, action, refused, viewed, false)
 }
 
-// asViewed checks the API refused an action the view said no to, with the
-// same message. A stale view (the calendar changed since the last sync,
-// and the action applies that first) is not held to it: the action
-// answers for the calendar as it is now.
-func asViewed(t *rapid.T, action string, refused *router.ErrorBody, viewed statemodel.Verdict, stale bool) {
+// asViewed checks the API answered an action as the view said it would:
+// refused with the same message and remedies when the view said no, and
+// taken when it said yes. A stale view (the calendar changed since the last
+// sync) is not held to it.
+func (w *World) asViewed(t *rapid.T, action string, refused *router.ErrorBody, viewed statemodel.Verdict, stale bool) {
 	t.Helper()
-	if stale || (refused != nil && refused.Code == "crashed") {
+	if stale || w.retried || (refused != nil && refused.Code == "crashed") {
 		return
 	}
-	if !viewed.OK && (refused == nil || refused.Message != viewed.Why) {
-		t.Fatalf("%s: the view said %q, the API said %v", action, viewed.Why, refused)
+	switch {
+	case !viewed.OK && (refused == nil || refused.Message != viewed.Why || refused.Guard != viewed.Guard):
+		t.Fatalf("%s: the view said %q (%s), the API said %+v", action, viewed.Why, viewed.Guard, refused)
+	case viewed.OK && refused != nil && refused.Guard != "":
+		t.Fatalf("%s: the view said yes, the API's %s refused: %s", action, refused.Guard, refused.Message)
 	}
 }
 
@@ -310,7 +278,8 @@ func (w *World) snapshot() snapshot {
 	parts := map[string]any{
 		"clients": w.Store.ClientMap, "sessions": w.Store.SessionMap, "notes": w.Store.NotesMap,
 		"followUps": w.Store.FollowUpMap, "packages": w.Store.PackageMap, "settings": w.Store.SettingsVal,
-		"documents": w.Docs.Docs, "revisions": w.Docs.Revs, "counters": w.Docs.Counters, "shares": w.Docs.SharesMap,
+		"documents": w.Store.Docs, "revisions": w.Store.Revs, "counters": w.Store.Counters, "shares": w.Store.SharesMap,
+		"conflicts": w.Store.ConflictMap, "externals": w.Store.ExternalMap,
 		"attachments": w.Store.AttachmentMap, "files": w.Blobs.Blobs,
 		"expenses": w.Store.ExpenseMap, "items": w.Store.ItemMap, "categories": w.Store.CategoryList,
 		"calendar": [][]calendar.Event{w.Calendar.Live, w.Calendar.Trash}, "contacts": w.Contacts.People,
@@ -345,8 +314,7 @@ func (w *World) fork(t *rapid.T) *World {
 		Store: memory.New(), Blobs: memblob.New(), Calendar: &fakecal.Calendar{}, Contacts: &fakecontacts.Directory{},
 		Now: w.Now, InSync: w.InSync, status: &syncStatus{last: w.status.last}, pendingSeen: map[string]bool{},
 	}
-	f.Docs = memdocs.New(f.Store)
-	for _, part := range [][2]any{{w.Store, f.Store}, {w.Docs, f.Docs}, {w.Blobs, f.Blobs}, {w.Calendar, f.Calendar}, {w.Contacts, f.Contacts}} {
+	for _, part := range [][2]any{{w.Store, f.Store}, {w.Blobs, f.Blobs}, {w.Calendar, f.Calendar}, {w.Contacts, f.Contacts}} {
 		b, err := json.Marshal(part[0])
 		if err == nil {
 			err = json.Unmarshal(b, part[1])
@@ -356,7 +324,7 @@ func (w *World) fork(t *rapid.T) *World {
 		}
 	}
 	f.Store.Writes = 0
-	f.App = app.New(f.deps(f.Store, f.Docs, f.Blobs))
+	f.App = app.New(f.deps(f.Store, f.Blobs))
 	return f
 }
 
@@ -369,9 +337,6 @@ func (s *syncStatus) Put(_ context.Context, run googlesync.Run) error {
 }
 
 func (s *syncStatus) Get(context.Context) (*googlesync.Run, error) { return s.last, nil }
-
-// fullReconcile re-derives every session, package and client.
-var fullReconcile = billing.Scope{AllClients: true, Unmatched: true}
 
 type seedClient struct {
 	ID, Name   string

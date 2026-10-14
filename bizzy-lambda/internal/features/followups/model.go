@@ -1,81 +1,52 @@
-// Package followups holds her reminders to get back to a client: events in
-// the sessions calendar titled `! Name: summary` (see calendar.ParseFollowUp),
-// with longer notes in the event's description. They come from the calendar
-// like sessions do, or are made in the app (often from a session, which the
-// event then remembers). Marking one done is hers and lives only here.
+// Package followups holds her reminders to get back to a client. Each is
+// shown in the sessions calendar as an event titled `! Name: summary` (see
+// calendar.ParseFollowUp), with its notes as the event's description, so
+// she can add or change one there too; like a session, it is true in
+// bizzy, and changes only through the book (see internal/features/book),
+// which reads a calendar edit as the same command the app sends. Marking
+// one done is hers and lives only here.
 package followups
 
 import (
 	"time"
 
 	"bizzy-lambda/internal/features/calendar"
-	"bizzy-lambda/internal/features/clients"
 )
 
-// FollowUp is keyed by the Google event instance ID.
+// FollowUp is a reminder to get back to a client.
 type FollowUp struct {
-	EventID string `json:"eventId" dynamodbav:"eventId"`
-
-	// From the calendar (sync).
-	Title string `json:"title" dynamodbav:"title"`
-	// Due is the start of a timed event, or the start of the day (in her
-	// time zone) of an all-day one.
-	Due    time.Time `json:"due" dynamodbav:"due"`
-	AllDay bool      `json:"allDay,omitempty" dynamodbav:"allDay,omitempty"`
-	// Notes is the event's description.
-	Notes string `json:"notes,omitempty" dynamodbav:"notes,omitempty"`
-	// SessionID is the session it was made from, kept on the event.
+	ID       string `json:"id" dynamodbav:"id"`
+	ClientID string `json:"clientId" dynamodbav:"clientId"`
+	// SessionID is the session it was made from, if any.
 	SessionID string `json:"sessionId,omitempty" dynamodbav:"sessionId,omitempty"`
 
-	// Derived from the title.
-	Name              string `json:"name,omitempty" dynamodbav:"name,omitempty"`
-	Summary           string `json:"summary,omitempty" dynamodbav:"summary,omitempty"`
-	ClientID          string `json:"clientId,omitempty" dynamodbav:"clientId,omitempty"`
-	SuggestedClientID string `json:"suggestedClientId,omitempty" dynamodbav:"suggestedClientId,omitempty"`
-	// Problem says why the title can't be read or matched.
-	Problem string `json:"problem,omitempty" dynamodbav:"problem,omitempty"`
+	// Due is when it is due: a time, or for an all-day one the start of
+	// its day in her time zone.
+	Due    time.Time `json:"due" dynamodbav:"due"`
+	AllDay bool      `json:"allDay,omitempty" dynamodbav:"allDay,omitempty"`
+	// Minutes is how long its event blocks in the calendar; 0 when all-day.
+	Minutes int    `json:"minutes,omitempty" dynamodbav:"minutes,omitempty"`
+	Summary string `json:"summary,omitempty" dynamodbav:"summary,omitempty"`
+	Notes   string `json:"notes,omitempty" dynamodbav:"notes,omitempty"`
 
-	// Hers.
 	DoneAt *time.Time `json:"doneAt,omitempty" dynamodbav:"doneAt,omitempty"`
 
-	Version int `json:"version" dynamodbav:"version"`
+	// Event is its event in the calendar.
+	Event     calendar.Link `json:"event" dynamodbav:"event"`
+	CreatedAt time.Time     `json:"createdAt" dynamodbav:"createdAt"`
+	Version   int           `json:"version" dynamodbav:"version"`
 }
 
-// FromEvent copies what the calendar says onto a follow-up (stored, or new
-// when zero) and derives the rest, keeping her own fields.
-func FromEvent(stored FollowUp, event calendar.Event, aliases clients.Aliases, loc *time.Location) FollowUp {
-	f := stored
-	f.EventID, f.Title, f.Notes = event.ID, event.Title, event.Description
-	f.SessionID = event.Private[calendar.PropSessionID]
-	f.AllDay = event.AllDay
-	if event.AllDay {
-		day, _ := time.ParseInLocation(time.DateOnly, event.Date, loc)
-		f.Due = day.UTC()
-	} else {
-		f.Due = event.Start.UTC()
-	}
-	return f.Match(aliases)
+// DefaultMinutes is how long a timed follow-up made in the app blocks in
+// the calendar.
+const DefaultMinutes = 15
+
+// End is when its event ends, for a timed one.
+func (f FollowUp) End() time.Time {
+	return f.Due.Add(time.Duration(f.Minutes) * time.Minute)
 }
 
-// Match re-reads the title against the clients' aliases: who it is for, or
-// why no one.
-func (f FollowUp) Match(aliases clients.Aliases) FollowUp {
-	f.Name, f.Summary, f.ClientID, f.SuggestedClientID, f.Problem = "", "", "", "", ""
-	title, err := calendar.ParseFollowUp(f.Title)
-	f.Name, f.Summary = title.Name, title.Summary
-	if err != nil {
-		f.Problem = err.Error()
-		return f
-	}
-	match := clients.MatchName(title.Name, aliases)
-	switch match.Kind {
-	case clients.MatchExact:
-		f.ClientID = match.ClientID
-	case clients.MatchNearMiss:
-		f.SuggestedClientID = match.ClientID
-		f.Problem = "The name is close to a client's, but not the same"
-	default:
-		f.Problem = "No client has this name"
-	}
-	return f
+// Date is the day it is due, in her time zone.
+func (f FollowUp) Date(loc *time.Location) string {
+	return f.Due.In(loc).Format(time.DateOnly)
 }

@@ -9,8 +9,7 @@ export const ClientsMutation = {
   useSave: () => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: ({ input, confirm = false }: { input: SaveClientInput; confirm?: boolean }) =>
-        ClientsService.save(input, confirm),
+      mutationFn: (input: SaveClientInput) => ClientsService.save(input),
       onSuccess: () => invalidateBilling(queryClient),
     });
   },

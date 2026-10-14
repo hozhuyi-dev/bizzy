@@ -1,14 +1,22 @@
 import type { TodoFilter, TodoGroup, TodoItem } from "./todo.types";
 import type { Package } from "~/features/packages/packages.types";
 import type { Payable } from "~/features/payments/payments.types";
-import type { Session, TodoReason } from "~/features/sessions/sessions.types";
+import type { Session } from "~/features/sessions/sessions.types";
 import { addDays, startOfDay } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
 export function matchesFilter(item: TodoItem, filter: TodoFilter | undefined): boolean {
   if (!filter) return true;
-  if (item.kind === "followUp") return filter === "followUp" || (filter === "fix" && Boolean(item.reasons?.includes("fix")));
-  return item.reasons.includes(filter as TodoReason);
+  switch (item.kind) {
+    case "followUp":
+      return filter === "followUp";
+    case "conflict":
+      return filter === "fix";
+    case "package":
+      return filter === "collect";
+    case "session":
+      return item.reasons.includes(filter as Session["todo"][number]);
+  }
 }
 
 /** Which day group an item falls in, in her time zone. */
@@ -24,11 +32,13 @@ export function groupOf(item: TodoItem, now = new Date()): TodoGroup {
 export function todoKey(item: TodoItem): string {
   switch (item.kind) {
     case "session":
-      return `s:${item.session.eventId}`;
+      return `s:${item.session.id}`;
     case "package":
       return `p:${item.package.id}`;
     case "followUp":
-      return `f:${item.followUp.eventId}`;
+      return `f:${item.followUp.id}`;
+    case "conflict":
+      return `c:${item.conflict.key}`;
   }
 }
 
@@ -37,7 +47,7 @@ export function todoKey(item: TodoItem): string {
  * wrapping round, so she can work through it in one go.
  */
 export function nextTodoSession(items: ReadonlyArray<TodoItem> | undefined, current: string): string | undefined {
-  const sessions = (items ?? []).flatMap((item) => (item.kind === "session" ? [item.session.eventId] : []));
+  const sessions = (items ?? []).flatMap((item) => (item.kind === "session" ? [item.session.id] : []));
   const others = sessions.filter((id) => id !== current);
   if (others.length === 0) return undefined;
   const at = sessions.indexOf(current);
@@ -45,14 +55,15 @@ export function nextTodoSession(items: ReadonlyArray<TodoItem> | undefined, curr
   return sessions.slice(at + 1).find((id) => id !== current) ?? others[0];
 }
 
-/** What to collect on a session: its fee and the package it bought, each still due. */
+/** What to collect on a session: its fee and the package bought in it, each still owed. */
 export function sessionPayables(session: Session): Array<Payable> {
   const payables: Array<Payable> = [];
-  if (session.owedCents > session.boughtOwedCents) {
-    payables.push({ item: { kind: "session", id: session.eventId }, label: "Session fee", dueCents: session.dueCents });
+  const bought = session.boughtOwedCents ?? 0;
+  if (session.owedCents > bought) {
+    payables.push({ item: { kind: "session", id: session.id }, label: "Session fee", dueCents: session.feeCents });
   }
-  if (session.boughtOwedCents > 0) {
-    payables.push({ item: { kind: "package", id: session.eventId }, label: "Package", dueCents: session.boughtOwedCents });
+  if (bought > 0 && session.boughtPackageId) {
+    payables.push({ item: { kind: "package", id: session.boughtPackageId }, label: "Package", dueCents: bought });
   }
   return payables;
 }

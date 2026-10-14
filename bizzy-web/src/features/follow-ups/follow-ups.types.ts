@@ -1,28 +1,26 @@
+import type { EventLink } from "~/features/calendar/calendar.types";
+
 // Mirrors bizzy-lambda/internal/features/followups/model.go.
 export interface FollowUp {
-  eventId: string;
-  /** As written in the calendar: `! Name: summary`. */
-  title: string;
+  id: string;
+  clientId: string;
+  /** The session it was made from. */
+  sessionId?: string;
   /** When it is due; for an all-day one, the start of its day. */
   due: string;
   allDay?: boolean;
-  /** The event's description. */
-  notes?: string;
-  /** The session it was made from. */
-  sessionId?: string;
-
-  name?: string;
+  /** How long its event blocks in the calendar; 0 when all-day. */
+  minutes?: number;
   summary?: string;
-  clientId?: string;
-  suggestedClientId?: string;
-  /** Why the title can't be read or matched. */
-  problem?: string;
-
+  /** Shown as the event's description. */
+  notes?: string;
   doneAt?: string;
+  event: EventLink;
+  createdAt: string;
   version: number;
 }
 
-/** A follow-up as she fills it in; mirrors googlesync.FollowUpDraft. */
+/** A follow-up as she fills it in; mirrors book.FollowUpDraft. */
 export interface FollowUpDraft {
   clientId: string;
   sessionId?: string;

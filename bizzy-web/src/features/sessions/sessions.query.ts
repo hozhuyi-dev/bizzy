@@ -9,10 +9,10 @@ export const SessionsQuery = {
    * refetched on focus: a refetch restarts the forms, which would lose what
    * she typed.
    */
-  useDetail: (eventId: string) =>
+  useDetail: (id: string) =>
     useQuery({
-      queryKey: SessionKeys.detail(eventId),
-      queryFn: () => SessionsService.get(eventId),
+      queryKey: SessionKeys.detail(id),
+      queryFn: () => SessionsService.get(id),
       gcTime: 0,
       refetchOnWindowFocus: false,
     }),
@@ -37,12 +37,5 @@ export const SessionsQuery = {
       queryFn: ({ pageParam }) => SessionsService.listByClient(clientId, pageParam),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: (page) => page.next,
-    }),
-
-  /** Deleted from the calendar, kept for what she recorded. */
-  useRemoved: () =>
-    useQuery({
-      queryKey: SessionKeys.removed(),
-      queryFn: () => SessionsService.listRemoved(),
     }),
 };

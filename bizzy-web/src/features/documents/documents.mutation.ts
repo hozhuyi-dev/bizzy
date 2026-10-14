@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DocumentsService } from "./documents.service";
-import type { BizDocument, DocumentContent, DocumentSource, DocumentType, Versioned } from "./documents.types";
+import type { BizDocument, DocumentContent, Versioned } from "./documents.types";
 import { DocumentKeys } from "~/core/constants/query-keys.constant";
 import { invalidateBilling } from "~/core/utils/query.util";
 
 /**
- * Every lifecycle step can change sessions and packages (their receipt link)
- * and client activity, so all billing queries are refreshed.
+ * Every lifecycle step can change sessions and packages (their fee and
+ * payment are the documents') and client activity, so all billing queries
+ * are refreshed.
  */
 function useDocumentMutation<TInput>(fn: (input: TInput) => Promise<BizDocument | null>) {
   const queryClient = useQueryClient();
@@ -17,10 +18,6 @@ function useDocumentMutation<TInput>(fn: (input: TInput) => Promise<BizDocument 
 }
 
 export const DocumentsMutation = {
-  useCreateDraft: () =>
-    useDocumentMutation(({ type, sources }: { type: DocumentType; sources: Array<DocumentSource> }) =>
-      DocumentsService.createDraft(type, sources),
-    ),
   useSaveDraft: () =>
     useDocumentMutation(({ doc, content }: { doc: Versioned; content: DocumentContent }) =>
       DocumentsService.saveDraft(doc, content),
@@ -40,6 +37,14 @@ export const DocumentsMutation = {
     useDocumentMutation(({ doc, reason }: { doc: Versioned; reason: string }) =>
       DocumentsService.cancel(doc, reason),
     ),
+  useMoveLines: () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: ({ from, to, lineIds }: { from: string; to?: string | undefined; lineIds: Array<string> }) =>
+        DocumentsService.moveLines(from, to, lineIds),
+      onSuccess: () => invalidateBilling(queryClient),
+    });
+  },
   /** Share tokens by id; only writes for documents issued before links. */
   useShare: () => {
     const queryClient = useQueryClient();

@@ -3,18 +3,19 @@ package documents
 import "bizzy-lambda/internal/platform/statemodel"
 
 // Rules is the document's rule table: the lifecycle in the package comment,
-// as what must never happen. A document puts nothing on the to-do list; a
-// calendar change that contradicts one shows on the session (drift).
+// as what must never happen. A document puts nothing on the to-do list: what
+// it covers does (a session to collect, say). What its lines say about the
+// items they cover is checked against those items in internal/integrity.
 var Rules = statemodel.Rules[State]{
 	{
 		ID: "draft-without-content", Bucket: statemodel.Impossible,
 		Why:            "A never-issued document is its draft",
 		When:           func(s State) bool { return s.Status == StatusDraft && s.Editing == EditingNone },
-		ByConstruction: "discarding a never-issued draft deletes the document",
+		ByConstruction: "a draft is only deleted, never emptied",
 	},
 	{
 		ID: "number-before-issue", Bucket: statemodel.Impossible,
-		Why:            "The number is taken on the first issue, so discarded drafts leave no gaps",
+		Why:            "The number is taken on the first issue, so drafts leave no gaps",
 		When:           func(s State) bool { return (s.Status == StatusDraft) == (s.Number == NumberTaken) },
 		ByConstruction: "Issue numbers the document as it first issues it",
 	},
@@ -30,11 +31,5 @@ var Rules = statemodel.Rules[State]{
 		When:           func(s State) bool { return s.Status == StatusCancelled && s.Editing == EditingDraft },
 		GuardedBy:      []string{"documents.revise"},
 		ByConstruction: "Cancel drops the draft",
-	},
-	{
-		ID: "draft-covers-nothing", Bucket: statemodel.Impossible,
-		Why:       "A draft starts from what it covers, and keeps it until issued",
-		When:      func(s State) bool { return s.Status == StatusDraft && s.Sources == CoversNothing },
-		GuardedBy: []string{"documents.createDraft"},
 	},
 }

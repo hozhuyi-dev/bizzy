@@ -10,19 +10,19 @@ import (
 
 // Store is the part of the repository that Update and the handlers use.
 type Store interface {
-	Get(ctx context.Context, eventID string) (Session, bool, error)
+	Get(ctx context.Context, id string) (Session, bool, error)
 	Save(ctx context.Context, s Session) (Session, error)
 }
 
 // ErrGone is a session no longer stored.
-var ErrGone = apperr.NotFound("This session is no longer in the calendar.")
+var ErrGone = apperr.NotFound("This session was deleted.")
 
 // Update applies change to the stored session and saves it. When something
 // else wrote it in between (usually the sync), it reads it again and
 // applies the change afresh.
-func Update(ctx context.Context, s Store, eventID string, change func(*Session) error) (Session, error) {
+func Update(ctx context.Context, s Store, id string, change func(*Session) error) (Session, error) {
 	for attempt := 0; ; attempt++ {
-		current, found, err := s.Get(ctx, eventID)
+		current, found, err := s.Get(ctx, id)
 		if err != nil {
 			return Session{}, err
 		}

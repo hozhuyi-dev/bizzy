@@ -2,7 +2,6 @@ import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { SettingsMutation } from "./settings.mutation";
 import { SettingsQuery } from "./settings.query";
-import { EVENT_COLOURS } from "./settings.constant";
 import type { Settings } from "./settings.types";
 import { CAN_RESET } from "~/features/reset/reset.constant";
 import { ResetData } from "~/features/reset/components/reset-data/reset-data.component";
@@ -55,7 +54,7 @@ export function SettingsPage() {
 
 const FORM_ID = "settings-form";
 
-type TextKey = Exclude<keyof Settings, "homeVisitColorId" | "confirmAheadDays" | "followUpAheadDays">;
+type TextKey = Exclude<keyof Settings, "confirmAheadDays" | "followUpAheadDays">;
 
 const placeholderList = (names: ReadonlyArray<string>) => names.map((name) => `{${name}}`).join(" ");
 
@@ -101,11 +100,6 @@ function SettingsForm({ saved }: { saved: Settings }) {
       }
     },
   });
-
-  const colourItems = EVENT_COLOURS.map((colour) => ({
-    value: colour.id,
-    label: colour.name,
-  }));
 
   const textField = ({
     name,
@@ -191,6 +185,8 @@ function SettingsForm({ saved }: { saved: Settings }) {
           {
             id: "sessions",
             title: "Sessions",
+            description:
+              "In a calendar title, (V) marks a home visit and (H) your place, like “Jane (V) 95”. Without either, a session is at the client's usual place.",
             content: (
               <FieldGroup>
                 {textField({
@@ -198,34 +194,6 @@ function SettingsForm({ saved }: { saved: Settings }) {
                   label: "Session description",
                   hint: "How a session reads on an invoice or receipt line.",
                 })}
-                <form.Field name="homeVisitColorId">
-                  {(field) => (
-                    <Field>
-                      <FieldLabel>Home visit colour</FieldLabel>
-                      <Select
-                        items={colourItems}
-                        value={field.state.value}
-                        onValueChange={(value) => value && field.handleChange(value)}
-                      >
-                        <SelectTrigger className="w-48">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {EVENT_COLOURS.map((colour) => (
-                            <SelectItem key={colour.id} value={colour.id}>
-                              <span className="size-3 rounded-full" style={{ backgroundColor: colour.hex }} />
-                              {colour.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FieldDescription>
-                        Give a calendar entry this colour to mark a home visit. Any other colour means
-                        your place; no colour follows the client's usual.
-                      </FieldDescription>
-                    </Field>
-                  )}
-                </form.Field>
               </FieldGroup>
             ),
           },

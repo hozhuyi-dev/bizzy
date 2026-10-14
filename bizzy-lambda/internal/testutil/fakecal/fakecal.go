@@ -35,6 +35,7 @@ func (f *Calendar) beforeWrite(op string) {
 // Events lists the live events starting in [from, to); a zero from reads
 // from the start.
 func (f *Calendar) Events(_ context.Context, from, to time.Time) ([]calendar.Event, error) {
+	f.unique()
 	var out []calendar.Event
 	for _, e := range f.Live {
 		start := e.Start
@@ -46,6 +47,19 @@ func (f *Calendar) Events(_ context.Context, from, to time.Time) ([]calendar.Eve
 		}
 	}
 	return out, nil
+}
+
+// unique panics when an event is live twice, or both live and in the
+// trash: Google keeps one of each, so a fake that doesn't would test
+// something that can't happen.
+func (f *Calendar) unique() {
+	seen := map[string]bool{}
+	for _, e := range slices.Concat(f.Live, f.Trash) {
+		if seen[e.ID] {
+			panic("fakecal: event " + e.ID + " is in the calendar twice")
+		}
+		seen[e.ID] = true
+	}
 }
 
 // Find returns the index of a live event, or -1.
@@ -63,13 +77,16 @@ func (f *Calendar) Get(_ context.Context, id string) (calendar.Event, error) {
 
 // Write applies an input the way a patch does.
 func Write(e *calendar.Event, in calendar.EventInput) {
-	e.Title, e.ColorID = in.Title, in.ColorID
+	e.Title = in.Title
 	e.Start, e.End, e.Date, e.AllDay = in.Start, in.End, in.Date, in.Date != ""
 	if in.Description != nil {
 		e.Description = *in.Description
 	}
-	if in.Private != nil {
-		e.Private = in.Private
+	for k, v := range in.Private {
+		if e.Private == nil {
+			e.Private = map[string]string{}
+		}
+		e.Private[k] = v
 	}
 }
 

@@ -1,6 +1,11 @@
-// Package packages tracks prepaid session bundles. Credits are applied in
-// date order to the client's unpriced sessions from the purchase onward by
-// the billing reconcile, which also records how many are used.
+// Package packages tracks prepaid session bundles. A package is bought in a
+// session (its title says `10x85`, and it is collected with that session) or
+// on its own in the app. Each credit is given to a session when the session
+// is booked, and stays with it (see book).
+//
+// As for sessions, its price is its invoice's line and what was received
+// its receipt's; the fields below that say so are copies the book keeps in
+// step.
 package packages
 
 import (
@@ -11,45 +16,27 @@ import (
 	"bizzy-lambda/internal/shared/money"
 )
 
-type Source string
-
-const (
-	// SourceCalendar packages come from a `10x85` / `10@850` title. Their ID
-	// is the event ID, so the sync always maps an event to the same package.
-	// Once the title no longer buys it (the event was deleted, or its title
-	// changed), the reconcile marks it Unlinked: still a calendar package,
-	// kept with its credits, payment and documents, and on the to-do list
-	// until the user deletes it or makes it standalone (an app package).
-	// Should a title buy it again meanwhile, it is linked back; once
-	// standalone, it stays so.
-	SourceCalendar Source = "calendar"
-	SourceApp      Source = "app"
-)
-
 type Package struct {
 	ID          string    `json:"id" dynamodbav:"id"`
 	ClientID    string    `json:"clientId" dynamodbav:"clientId"`
 	Sessions    int       `json:"sessions" dynamodbav:"sessions"`
-	PriceCents  int64     `json:"priceCents" dynamodbav:"priceCents"`
 	PurchasedAt time.Time `json:"purchasedAt" dynamodbav:"purchasedAt"`
-	Source      Source    `json:"source" dynamodbav:"source"`
-	Note        string    `json:"note,omitempty" dynamodbav:"note,omitempty"`
+	// BoughtIn is the session it was bought in, whose title shows it; ""
+	// for one bought on its own.
+	BoughtIn string `json:"boughtIn,omitempty" dynamodbav:"boughtIn,omitempty"`
+	Note     string `json:"note,omitempty" dynamodbav:"note,omitempty"`
 
-	// Derived by the billing reconcile.
-	// Unlinked says no calendar title buys this calendar package any more.
-	Unlinked    bool `json:"unlinked,omitempty" dynamodbav:"unlinked,omitempty"`
-	CreditsUsed int  `json:"creditsUsed" dynamodbav:"creditsUsed"`
-	// Drift explains how the calendar now disagrees with an issued document
-	// covering it: its event names another client, or moved.
-	Drift string `json:"drift,omitempty" dynamodbav:"drift,omitempty"`
+	// Copied by the book on every write.
+	// CreditsUsed is how many sessions its credits cover.
+	CreditsUsed int `json:"creditsUsed" dynamodbav:"creditsUsed"`
+	// PriceCents is what its invoice line charges.
+	PriceCents int64       `json:"priceCents" dynamodbav:"priceCents"`
+	Invoice    *docref.Ref `json:"invoice,omitempty" dynamodbav:"invoice,omitempty"`
+	Receipt    *docref.Ref `json:"receipt,omitempty" dynamodbav:"receipt,omitempty"`
+	Paid       *money.Paid `json:"paid,omitempty" dynamodbav:"paid,omitempty"`
 
-	// Payment settles its price, in full. Written by the payments feature
-	// only (see PaymentPatch).
-	Payment *money.Payment `json:"payment,omitempty" dynamodbav:"payment,omitempty"`
-
-	// The documents covering it, written by the documents feature.
-	Invoice *docref.Ref `json:"invoice,omitempty" dynamodbav:"invoice,omitempty"`
-	Receipt *docref.Ref `json:"receipt,omitempty" dynamodbav:"receipt,omitempty"`
+	CreatedAt time.Time `json:"createdAt" dynamodbav:"createdAt"`
+	Version   int       `json:"version" dynamodbav:"version"`
 }
 
 // Ref returns the document in a slot.
@@ -60,32 +47,28 @@ func (p Package) Ref(slot docref.Slot) *docref.Ref {
 	return p.Receipt
 }
 
-// HasDocuments reports whether any document (draft or issued) covers it.
-func (p Package) HasDocuments() bool {
-	return p.Invoice != nil || p.Receipt != nil
-}
-
 func (p Package) CreditsLeft() int {
 	return max(p.Sessions-p.CreditsUsed, 0)
 }
 
-// Settled reports whether its price needs nothing more: paid, waived, or
-// free.
-func (p Package) Settled() bool {
-	return p.Payment != nil || p.PriceCents == 0
+// OwedCents is its price while not received.
+func (p Package) OwedCents() int64 {
+	if p.Paid != nil {
+		return 0
+	}
+	return p.PriceCents
 }
 
-// Open reports whether the package is still in use, still to be paid, or
-// contradicts a document: the open index is where the to-do list reads
-// packages from.
+// Open reports whether the package is still in use, or still to be paid:
+// the open index is where the to-do list and the packages page read from.
 func (p Package) Open() bool {
-	return p.CreditsLeft() > 0 || !p.Settled() || len(Rules.Reasons(p.State(p.PurchasedAt))) > 0
+	return p.CreditsLeft() > 0 || p.OwedCents() > 0
 }
 
-// CollectOnItsOwn reports whether it goes on her to-do list as itself: a
-// calendar package is collected with the session that bought it instead.
-func (p Package) CollectOnItsOwn() bool {
-	return slices.Contains(p.Todo(p.PurchasedAt), ReasonCollect)
+// CollectOnItsOwn reports whether it goes on her to-do list as itself: one
+// bought in a session is collected with that session instead.
+func (p Package) CollectOnItsOwn(now time.Time) bool {
+	return slices.Contains(p.Todo(now), ReasonCollect)
 }
 
 // ShareCents is the value of credit i (0-based): the price split evenly, with

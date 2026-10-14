@@ -1,76 +1,62 @@
 package todo
 
 import (
+	"slices"
 	"testing"
 	"time"
 
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/shared/docref"
 	"bizzy-lambda/internal/shared/money"
 )
 
 func TestBuildMergesByWhen(t *testing.T) {
 	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
-	fee := int64(9500)
 	at := func(hours int) time.Time { return now.Add(time.Duration(hours) * time.Hour) }
+	invoice := &docref.Ref{DocumentID: "d"}
 
-	open := []sessions.Session{
+	open := []sessions.View{
 		// Happened yesterday: record and collect.
-		{EventID: "past", Start: at(-24), End: at(-23), Status: sessions.StatusPriced, FeeCents: &fee},
+		(sessions.Session{ID: "past", Start: at(-24), End: at(-23), FeeCents: 9500, Invoice: invoice}).View(now, sessions.Can{}),
 		// Tentative tomorrow: confirm.
-		{EventID: "maybe", Start: at(24), End: at(25), Status: sessions.StatusTentative, ClientID: "jane"},
+		(sessions.Session{ID: "maybe", Start: at(24), End: at(25), Tentative: true, FeeCents: 9500, Invoice: invoice}).View(now, sessions.Can{}),
 		// Booked tomorrow: in the index, nothing to do yet.
-		{EventID: "booked", Start: at(26), End: at(27), Status: sessions.StatusPriced, FeeCents: &fee},
+		(sessions.Session{ID: "booked", Start: at(26), End: at(27), FeeCents: 9500, Invoice: invoice}).View(now, sessions.Can{}),
 	}
 	done := now
 	due := []followups.FollowUp{
-		{EventID: "call", Due: at(2)},
-		{EventID: "done", Due: at(1), DoneAt: &done},
-		// No client has the name: fix.
-		{EventID: "who", Due: at(3), Problem: "No client has this name"},
+		{ID: "call", Due: at(2)},
+		{ID: "done", Due: at(1), DoneAt: &done},
 	}
-
-	unpaid := []packages.Package{
-		// Bought in the app this morning, unpaid: collect.
-		{ID: "app", Source: packages.SourceApp, PriceCents: 85000, PurchasedAt: at(-3)},
+	unpaid := []packages.View{
+		// Bought on its own this morning, unpaid: collect.
+		(packages.Package{ID: "own", PriceCents: 85000, Sessions: 10, PurchasedAt: at(-3), Invoice: invoice}).View(now, packages.Can{}),
 		// Bought in a session: collected on that session instead.
-		{ID: "past", Source: packages.SourceCalendar, PriceCents: 85000, PurchasedAt: at(-24)},
-		// Paid, with credits left: in the index, nothing to do.
-		{ID: "paid", Source: packages.SourceApp, PriceCents: 85000, Sessions: 10, PurchasedAt: at(-2), Payment: &money.Payment{Status: money.Paid, AmountCents: 85000, DueCents: 85000}},
+		(packages.Package{ID: "bought", BoughtIn: "past", PriceCents: 85000, Sessions: 10, PurchasedAt: at(-24), Invoice: invoice}).View(now, packages.Can{}),
+		// Paid, with credits left: nothing to do.
+		(packages.Package{ID: "paid", PriceCents: 85000, Sessions: 10, PurchasedAt: at(-2), Invoice: invoice, Paid: &money.Paid{AmountCents: 85000}}).View(now, packages.Can{}),
 	}
+	waiting := []conflicts.Conflict{{Key: "calendar#e1", Kind: conflicts.KindChanged, TargetID: "x", At: at(-1)}}
 
-	items := Build(open, unpaid, due, now)
+	items := Build(open, unpaid, due, waiting)
 	var got []string
-	for _, item := range items {
-		switch {
-		case item.Session != nil:
-			got = append(got, item.Session.EventID)
-		case item.Package != nil:
-			got = append(got, "package "+item.Package.ID)
-		default:
-			got = append(got, item.FollowUp.EventID)
+	for _, it := range items {
+		switch it.Kind {
+		case KindSession:
+			got = append(got, "session "+it.Session.ID)
+		case KindPackage:
+			got = append(got, "package "+it.Package.ID)
+		case KindFollowUp:
+			got = append(got, "follow-up "+it.FollowUp.ID)
+		case KindConflict:
+			got = append(got, "conflict "+it.Conflict.Key)
 		}
 	}
-	want := []string{"past", "package app", "call", "who", "maybe"}
-	if len(got) != len(want) {
-		t.Fatalf("items = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("items = %v, want %v", got, want)
-		}
-	}
-	if r := items[1].Reasons; len(r) != 1 || r[0] != sessions.ReasonCollect {
-		t.Errorf("package reasons = %v", r)
-	}
-	if r := items[0].Reasons; len(r) != 2 || r[0] != sessions.ReasonRecord || r[1] != sessions.ReasonCollect {
-		t.Errorf("reasons = %v", r)
-	}
-	if r := items[2].Reasons; len(r) != 0 {
-		t.Errorf("follow-up reasons = %v, want none", r)
-	}
-	if r := items[3].Reasons; len(r) != 1 || r[0] != sessions.ReasonFix {
-		t.Errorf("unmatched follow-up reasons = %v, want fix", r)
+	want := []string{"session past", "package own", "conflict calendar#e1", "follow-up call", "session maybe"}
+	if !slices.Equal(got, want) {
+		t.Errorf("items = %v, want %v", got, want)
 	}
 }

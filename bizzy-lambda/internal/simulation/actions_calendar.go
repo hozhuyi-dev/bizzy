@@ -3,6 +3,8 @@ package simulation
 import (
 	"cmp"
 	"context"
+	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -32,7 +34,12 @@ var calendarActions = []Action{
 	}},
 	{Name: "calendar.retitle", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
 		e := &w.Calendar.Live[pickEvent(t, w, nil)]
-		if calendar.IsFollowUp(e.Title) || e.AllDay {
+		followUp := calendar.IsFollowUp(e.Title) || e.AllDay
+		if rapid.IntRange(0, 9).Draw(t, "the other kind?") == 0 {
+			// A session's event retitled as a follow-up, or the other way.
+			followUp = !followUp
+		}
+		if followUp {
 			e.Title = followUpTitle(t)
 		} else {
 			e.Title = sessionTitle(t)
@@ -49,7 +56,46 @@ var calendarActions = []Action{
 		touched(e)
 		outsideChange(w)
 	}},
+	{Name: "calendar.renote", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		e := &w.Calendar.Live[pickEvent(t, w, nil)]
+		e.Description = rapid.SampledFrom([]string{"", "Bring the scan", "Parking at the back"}).Draw(t, "description")
+		t.Logf("calendar: described %s %q as %q", e.ID, e.Title, e.Description)
+		touched(e)
+		outsideChange(w)
+	}},
+	{Name: "calendar.duplicate", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		// Google's Duplicate copies everything, bizzy's private properties
+		// too; she usually moves the copy.
+		e := w.Calendar.Live[pickEvent(t, w, nil)]
+		e.ID, e.ETag = fmt.Sprintf("copy%d", len(w.Calendar.Live)+len(w.Calendar.Trash)), "1"
+		for w.Calendar.Find(e.ID) >= 0 || slices.ContainsFunc(w.Calendar.Trash, func(x calendar.Event) bool { return x.ID == e.ID }) {
+			e.ID += "+"
+		}
+		e.Private = maps.Clone(e.Private)
+		if !e.AllDay {
+			shift := time.Duration(rapid.SampledFrom([]int{0, 2, 24, 168}).Draw(t, "hours later")) * time.Hour
+			e.Start, e.End = e.Start.Add(shift), e.End.Add(shift)
+		}
+		w.Calendar.Live = append(w.Calendar.Live, e)
+		t.Logf("calendar: duplicated as %s %q at %s", e.ID, e.Title, cmp.Or(e.Date, e.Start.Format(time.RFC3339)))
+		outsideChange(w)
+	}},
+	{Name: "calendar.swap", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		// Two bookings dragged into each other's times.
+		timed := func(e calendar.Event) bool { return !e.AllDay && !calendar.IsFollowUp(e.Title) }
+		i, j := pickEvent(t, w, timed), pickEvent(t, w, timed)
+		if i == j {
+			t.Skip("one event")
+		}
+		a, b := &w.Calendar.Live[i], &w.Calendar.Live[j]
+		a.Start, a.End, b.Start, b.End = b.Start, b.Start.Add(a.End.Sub(a.Start)), a.Start, a.Start.Add(b.End.Sub(b.Start))
+		t.Logf("calendar: swapped %s %q and %s %q", a.ID, a.Title, b.ID, b.Title)
+		touched(a)
+		touched(b)
+		outsideChange(w)
+	}},
 	{Name: "calendar.recolor", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		// Colours are hers: bizzy reads nothing from them.
 		e := &w.Calendar.Live[pickEvent(t, w, nil)]
 		e.ColorID = rapid.SampledFrom([]string{"", "1", "5", "11"}).Draw(t, "colour")
 		t.Logf("calendar: coloured %s %q %q", e.ID, e.Title, e.ColorID)

@@ -11,11 +11,9 @@ import { ClientContact } from "./components/client-contact/client-contact.compon
 import { ClientDocuments } from "./components/client-documents/client-documents.component";
 import { ClientFollowUps } from "./components/client-follow-ups/client-follow-ups.component";
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
-import { FeeImpactDialog } from "./components/fee-impact-dialog/fee-impact-dialog.component";
 import { contactProblem, toClientRow } from "./clients.util";
 import type { ChosenContact, Client, ClientReturnTo } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
-import { ImpactDialog } from "~/features/billing/components/impact-dialog/impact-dialog.component";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { documentLabel, documentRoute } from "~/features/documents/documents.util";
@@ -258,7 +256,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
                 <Checkbox id={field.name} checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
                 <FieldContent>
                   <FieldLabel htmlFor={field.name}>Usually a home visit</FieldLabel>
-                  <FieldDescription>An event colour set in the calendar still wins.</FieldDescription>
+                  <FieldDescription>(V) or (H) in a calendar title still wins.</FieldDescription>
                 </FieldContent>
               </Field>
             )}
@@ -330,8 +328,6 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
           void form.handleSubmit();
         }}
       />
-      <FeeImpactDialog impact={save.feeImpact} saving={save.isSaving} onConfirm={save.confirm} onCancel={save.cancel} />
-      <ImpactDialog impact={save.impact} saving={save.isSaving} onConfirm={save.confirm} onCancel={save.cancel} />
       <SectionLayout
         banner={
           (problem || save.error) && (

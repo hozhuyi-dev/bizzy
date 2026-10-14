@@ -25,8 +25,8 @@ type Client struct {
 	// (see FeeOn). A new fee from a date leaves the sessions before it alone,
 	// so changing it never reprices what was already charged.
 	FeeRates []FeeRate `json:"feeRates,omitempty" dynamodbav:"feeRates,omitempty"`
-	// HomeVisits makes her sessions with this client home visits unless the
-	// event's colour says otherwise.
+	// HomeVisits makes her sessions with this client home visits unless their
+	// title says (H) (see calendar.Places).
 	HomeVisits bool `json:"homeVisits,omitempty" dynamodbav:"homeVisits,omitempty"`
 
 	// Activity is keyed by month ("2026-10") in her time zone. Business

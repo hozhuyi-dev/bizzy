@@ -56,9 +56,15 @@ func (r Repository) SaveProfile(ctx context.Context, client Client) error {
 	return r.patch(ctx, client, profileAttributes)
 }
 
-// SaveActivity writes the fields the billing reconcile derives.
+// SaveActivity writes the fields the book derives from the client's
+// sessions and packages.
 func (r Repository) SaveActivity(ctx context.Context, client Client) error {
 	return r.patch(ctx, client, activityAttributes)
+}
+
+// ActivityPatch is SaveActivity as a write in a transaction.
+func ActivityPatch(client Client) (dynamo.Patch, error) {
+	return dynamo.OwnedFrom(partition, client.ID, client, activityAttributes)
 }
 
 // RefreshContact replaces the contact copy, but only while the client is

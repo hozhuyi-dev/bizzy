@@ -10,8 +10,6 @@ export interface Settings {
   accountNo?: string;
   /** Describes a session on a receipt line. */
   serviceName: string;
-  /** The Google Calendar event colour that marks a home visit. */
-  homeVisitColorId: string;
   /** Days ahead an unconfirmed session goes on the to-do list. */
   confirmAheadDays: number;
   /** Days ahead a follow-up goes on the to-do list. */

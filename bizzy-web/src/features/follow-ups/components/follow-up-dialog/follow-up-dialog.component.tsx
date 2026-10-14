@@ -35,7 +35,7 @@ export function FollowUpDialog({ target, onClose }: FollowUpDialogProps) {
   return (
     <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto">
-        {target && <FollowUpForm key={target.mode === "edit" ? target.followUp.eventId : "new"} target={target} onClose={onClose} />}
+        {target && <FollowUpForm key={target.mode === "edit" ? target.followUp.id : "new"} target={target} onClose={onClose} />}
       </DialogContent>
     </Dialog>
   );
@@ -77,7 +77,7 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
       },
       onError: (error: Error) => toast.error(error.message),
     };
-    if (editing) update.mutate({ eventId: editing.eventId, draft }, done);
+    if (editing) update.mutate({ id: editing.id, draft }, done);
     else create.mutate(draft, done);
   };
 
@@ -185,7 +185,7 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
             className="text-destructive hover:text-destructive"
             disabled={busy}
             onClick={() =>
-              remove.mutate(editing.eventId, {
+              remove.mutate(editing.id, {
                 onSuccess: () => {
                   toast.success("Follow-up deleted from your calendar");
                   onClose();

@@ -7,12 +7,12 @@ export function useMarkDone() {
   const { mutate, isPending } = FollowUpsMutation.useSetDone();
   const mark = (followUp: FollowUp, done = true) =>
     mutate(
-      { eventId: followUp.eventId, done },
+      { id: followUp.id, done },
       {
         onSuccess: () => {
           if (!done) return;
           toast.success("Follow-up done", {
-            action: { label: "Undo", onClick: () => mutate({ eventId: followUp.eventId, done: false }) },
+            action: { label: "Undo", onClick: () => mutate({ id: followUp.id, done: false }) },
           });
         },
         onError: (error) => toast.error(error.message),

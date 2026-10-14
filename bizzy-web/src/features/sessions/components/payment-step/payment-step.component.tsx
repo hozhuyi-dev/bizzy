@@ -9,34 +9,30 @@ import { formatDate } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
 export function paymentStep(session: Session, covering: Package | undefined, bought: Package | undefined): PipelineStep {
-  const due = session.dueCents;
-  const { delivered, payment } = session;
-  const blocked = session.can.settle.ok ? undefined : session.can.settle.why;
+  const { paid } = session;
 
   let state: StepState = "todo";
-  if (delivered && session.paid) state = "done";
-  else if (!blocked && hasHappened(session)) state = "current";
+  if (session.settled && (paid || session.feeCents === 0)) state = "done";
+  else if (!session.tentative && hasHappened(session)) state = "current";
 
   const parts: Array<string> = [];
-  if (payment?.status === "paid") {
-    parts.push(`${formatCents(payment.amountCents)} · ${methodLabel(payment.method)} · ${formatDate(payment.paidOn)}`);
-  } else if (payment?.status === "waived") {
-    parts.push(`Waived ${formatDate(payment.paidOn)}`);
-  } else if (delivered && due === 0) {
+  if (paid) {
+    parts.push(`${formatCents(paid.amountCents)} · ${methodLabel(paid.method)} · ${formatDate(paid.paidOn)}`);
+  } else if (session.packageId) {
     parts.push("Covered by a package");
   } else {
-    parts.push(due > 0 ? `${formatCents(due)} due` : "Fee not known yet");
+    parts.push(session.feeCents > 0 ? `${formatCents(session.feeCents)} due` : "Nothing to pay");
   }
-  if (session.boughtOwedCents > 0) parts.push(`package ${formatCents(session.boughtOwedCents)} due`);
-  else if (session.boughtCents) parts.push("package settled");
+  if ((session.boughtOwedCents ?? 0) > 0) parts.push(`package ${formatCents(session.boughtOwedCents ?? 0)} due`);
+  else if (session.boughtPackageId) parts.push("package paid");
 
   return {
     id: "payment",
     title: "Payment",
     state,
     meta: parts.join(" · "),
-    content: blocked ? (
-      <p className="text-sm text-muted-foreground">{blocked}</p>
+    content: session.tentative ? (
+      <p className="text-sm text-muted-foreground">Confirm the session before recording its payment.</p>
     ) : (
       <SessionPayment session={session} covering={covering} bought={bought} />
     ),
@@ -56,12 +52,11 @@ function SessionPayment({
   covering: Package | undefined;
   bought: Package | undefined;
 }) {
-  const due = session.dueCents;
   const payables = sessionPayables(session, bought);
 
   return (
     <div className="flex flex-col gap-4">
-      {due === 0 && !session.payment && (
+      {session.feeCents === 0 && !session.paid && (
         <p className="text-sm">
           {covering ? (
             <>

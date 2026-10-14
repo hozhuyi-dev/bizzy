@@ -1,16 +1,15 @@
 package sessions
 
 import (
-	"fmt"
+	"context"
 	"time"
 
 	"bizzy-lambda/internal/platform/statemodel"
-	"bizzy-lambda/internal/shared/money"
 )
 
 // View is a session as the API returns it: what is stored, and what its
 // rules and guards make of it as of now. The app reads these instead of
-// re-deriving them, so a rule lives only in rules.go and guards.go.
+// re-deriving them, so a rule lives only in rules.go and the guard tables.
 type View struct {
 	Session
 	// State is the session on its axes (state.go).
@@ -23,53 +22,36 @@ type View struct {
 	// Fixes are the actions its to-do rules say resolve them (ResolvedBy):
 	// the app offers these as its to-do item's quick actions.
 	Fixes []string `json:"fixes"`
-	// Problem explains the first thing to fix, if any.
-	Problem string `json:"problem,omitempty"`
-	// DueCents is its own fee, when one applies. OwedCents is what is still
-	// to collect with it: that fee unless settled, plus BoughtOwedCents, the
-	// package bought in it unless paid.
-	DueCents        int64 `json:"dueCents"`
-	OwedCents       int64 `json:"owedCents"`
-	BoughtOwedCents int64 `json:"boughtOwedCents"`
-	// Delivered says it counts as having happened with a client, fee known
-	// or not; Paid that nothing more is owed on it.
-	Delivered bool `json:"delivered"`
-	Paid      bool `json:"paid"`
-	Can       Can  `json:"can"`
+	// OwedCents is what is still to collect with it: its fee unless
+	// received, plus the package bought in it unless paid.
+	OwedCents int64 `json:"owedCents"`
+	// Settled says nothing more is owed on it.
+	Settled bool `json:"settled"`
+	Can     Can  `json:"can"`
 }
 
-// Can is what each action on the session would say now (guards.go).
+// Can is what each action on the session would say now: Record and Attach
+// from its own guards, the rest from the book's (see book.Judge).
 type Can struct {
-	Settle      statemodel.Verdict `json:"settle"`
-	Pay         statemodel.Verdict `json:"pay"`
-	UndoPayment statemodel.Verdict `json:"undoPayment"`
-	Invoice     statemodel.Verdict `json:"invoice"`
-	Receipt     statemodel.Verdict `json:"receipt"`
 	Record      statemodel.Verdict `json:"record"`
 	Attach      statemodel.Verdict `json:"attach"`
+	Pay         statemodel.Verdict `json:"pay"`
+	UndoPayment statemodel.Verdict `json:"undoPayment"`
 	Delete      statemodel.Verdict `json:"delete"`
-	Restore     statemodel.Verdict `json:"restore"`
-	Discard     statemodel.Verdict `json:"discard"`
 }
 
-// View is the session as of now.
-func (s Session) View(now time.Time) View {
+// Judge says what the book's guards make of the actions on each session,
+// by id.
+type Judge func(ctx context.Context, all []Session) (map[string]Can, error)
+
+// View is the session as of now, with the book's verdicts on it.
+func (s Session) View(now time.Time, can Can) View {
 	st := s.State(now)
+	can.Record = statemodel.Check(s.CanRecord(now))
+	can.Attach = statemodel.Check(s.CanAttach(now))
 	v := View{
 		Session: s, State: st, Rules: []string{}, Todo: Rules.Reasons(st),
-		DueCents: s.DueCents(), Delivered: s.Status.Delivered(), Paid: s.Paid(),
-		Can: Can{
-			Settle:      statemodel.Check(s.CanSettle()),
-			Pay:         statemodel.Check(s.CanPay()),
-			UndoPayment: statemodel.Check(s.CanUndoPayment()),
-			Invoice:     statemodel.Check(s.CanInvoice()),
-			Receipt:     statemodel.Check(s.CanReceipt()),
-			Record:      statemodel.Check(s.CanRecord(now)),
-			Attach:      statemodel.Check(s.CanAttach(now)),
-			Delete:      statemodel.Check(s.CanDelete()),
-			Restore:     statemodel.Check(s.CanRestore()),
-			Discard:     statemodel.Check(s.CanDiscard()),
-		},
+		OwedCents: s.OwedCents() + s.BoughtOwedCents, Settled: s.Settled(), Can: can,
 	}
 	if v.Todo == nil {
 		v.Todo = []Reason{}
@@ -80,38 +62,22 @@ func (s Session) View(now time.Time) View {
 	for _, r := range Rules.Evaluate(st).Fired {
 		v.Rules = append(v.Rules, r.ID)
 	}
-	if feeOwed(st) {
-		v.OwedCents = v.DueCents
-	}
-	if boughtOwed(st) {
-		v.BoughtOwedCents = s.BoughtCents
-		v.OwedCents += s.BoughtCents
-	}
-	v.Problem = s.problem()
 	return v
 }
 
-// problem explains why the session needs fixing, in the order its rules
-// put it; "" when it doesn't.
-func (s Session) problem() string {
-	switch {
-	case s.Drift != "":
-		return s.Drift
-	case s.Payment.Outdated(s.DueCents()):
-		return fmt.Sprintf("The fee is now %s; %s was paid", money.Format(s.DueCents()), money.Format(s.Payment.AmountCents))
-	case s.Status == StatusParseError || s.Status == StatusUnmatched || s.Status == StatusMissingFee:
-		return s.Reason
-	case s.Status == StatusTentative && s.ClientID == "":
-		return s.Reason
+// Views are sessions as of now, judged by judge (nil: the book's verdicts
+// all no).
+func Views(ctx context.Context, all []Session, now time.Time, judge Judge) ([]View, error) {
+	var cans map[string]Can
+	if judge != nil {
+		var err error
+		if cans, err = judge(ctx, all); err != nil {
+			return nil, err
+		}
 	}
-	return ""
-}
-
-// Views are sessions as of now.
-func Views(all []Session, now time.Time) []View {
 	out := make([]View, len(all))
 	for i, s := range all {
-		out[i] = s.View(now)
+		out[i] = s.View(now, cans[s.ID])
 	}
-	return out
+	return out, nil
 }

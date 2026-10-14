@@ -2,18 +2,20 @@ package integrity
 
 import (
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
 
+	"bizzy-lambda/internal/features/book"
 	"bizzy-lambda/internal/features/clients"
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/expenses"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/platform/statemodel"
-	"bizzy-lambda/internal/shared/docref"
 )
 
 // Violation is one thing that must never happen, and does.
@@ -29,8 +31,8 @@ type Violation struct {
 func (v Violation) String() string { return v.Rule + ": " + v.Detail }
 
 // Check returns every violation in the world: of each entity's Impossible
-// rules, and of the Links between them, known gaps (Pending) included. Nil
-// means all is well.
+// rules, the book's invariants, and the Links, known gaps (Pending)
+// included. Nil means all is well.
 func Check(w World) []Violation {
 	var out []Violation
 	for _, id := range sortedKeys(w.Sessions) {
@@ -51,6 +53,15 @@ func Check(w World) []Violation {
 	for _, id := range sortedKeys(w.Expenses) {
 		out = append(out, entity("expense", id, expenses.Rules, w.Expenses[id].State())...)
 	}
+	for _, id := range sortedKeys(w.Conflicts) {
+		out = append(out, entity("conflict", id, conflicts.Rules, w.Conflicts[id].State())...)
+	}
+	b := w.Book()
+	for _, inv := range book.Invariants {
+		for _, detail := range inv.Broken(b) {
+			out = append(out, Violation{Rule: inv.ID, Detail: detail})
+		}
+	}
 	for _, r := range AllLinks() {
 		for _, detail := range r.Broken(w) {
 			out = append(out, Violation{Rule: r.ID, Detail: detail, Pending: r.Pending, Tolerated: r.Tolerated})
@@ -59,7 +70,7 @@ func Check(w World) []Violation {
 	return out
 }
 
-// AllLinks are the rules between entities: documents' and files'.
+// AllLinks are the rules between entities the books can't see.
 func AllLinks() []Rule {
 	return slices.Concat(Links, FileLinks, ExpenseLinks)
 }
@@ -76,44 +87,15 @@ func entity[S any](kind, id string, rules statemodel.Rules[S], s S) []Violation 
 // links, for checking each exists.
 func Actions() []string {
 	all := slices.Concat(sessions.Rules.Actions(), packages.Rules.Actions(), followups.Rules.Actions(),
-		documents.Rules.Actions(), clients.Rules.Actions(), expenses.Rules.Actions())
+		documents.Rules.Actions(), clients.Rules.Actions(), expenses.Rules.Actions(), conflicts.Rules.Actions())
 	for _, r := range AllLinks() {
 		all = append(all, r.GuardedBy...)
 	}
+	for _, g := range book.Guards {
+		all = append(all, g.Remedies...)
+	}
 	slices.Sort(all)
 	return slices.Compact(all)
-}
-
-// item is a session or package as a document source.
-type item struct {
-	src      documents.Source
-	clientID string
-	slots    map[docref.Slot]*docref.Ref
-}
-
-func (it item) ref(slot docref.Slot) *docref.Ref { return it.slots[slot] }
-
-func (w World) item(src documents.Source) (item, bool) {
-	if src.Kind == documents.SourcePackage {
-		p, ok := w.Packages[src.ID]
-		return item{src: src, clientID: p.ClientID, slots: map[docref.Slot]*docref.Ref{docref.SlotInvoice: p.Invoice, docref.SlotReceipt: p.Receipt}}, ok
-	}
-	s, ok := w.Sessions[src.ID]
-	return item{src: src, clientID: s.ClientID, slots: map[docref.Slot]*docref.Ref{docref.SlotInvoice: s.Invoice, docref.SlotReceipt: s.Receipt}}, ok
-}
-
-// items are every session and package, in a stable order.
-func (w World) items() []item {
-	var out []item
-	for _, id := range sortedKeys(w.Sessions) {
-		it, _ := w.item(documents.Source{Kind: documents.SourceSession, ID: id})
-		out = append(out, it)
-	}
-	for _, id := range sortedKeys(w.Packages) {
-		it, _ := w.item(documents.Source{Kind: documents.SourcePackage, ID: id})
-		out = append(out, it)
-	}
-	return out
 }
 
 func (w World) documents() []documents.Document {
@@ -126,4 +108,10 @@ func (w World) documents() []documents.Document {
 
 func sortedKeys[K cmp.Ordered, V any](m map[K]V) []K {
 	return slices.Sorted(maps.Keys(m))
+}
+
+func sameJSON(a, b any) bool {
+	x, errX := json.Marshal(a)
+	y, errY := json.Marshal(b)
+	return errX == nil && errY == nil && string(x) == string(y)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/shared/docref"
 )
@@ -27,105 +28,41 @@ type Rule struct {
 	Tolerated string
 }
 
-// Links are the rules between documents and what they cover: a document
-// covers any number of sessions and packages, each of which holds at most
-// one document per type, in its slot.
+// Links are the rules the books can't see: what each issued document keeps
+// and opens, and what each calendar event shows.
 var Links = []Rule{
 	{
-		ID:  "slot-points-at-a-live-document",
-		Why: "A session's or package's invoice or receipt slot holds a draft or issued document of that type which lists it",
+		ID:  "ref-says-the-document",
+		Why: "A session's or package's link to a document says its number and revision as last issued",
 		Broken: func(w World) []string {
 			var out []string
-			for _, it := range w.items() {
-				for _, slot := range docref.Slots {
-					ref := it.ref(slot)
-					if ref == nil {
-						continue
-					}
-					d, ok := w.Documents[ref.DocumentID]
-					switch {
-					case !ok:
-						out = append(out, fmt.Sprintf("%s %s holds document %s, which doesn't exist", it.src.Kind, it.src.ID, ref.DocumentID))
-					case d.Status == documents.StatusCancelled:
-						out = append(out, fmt.Sprintf("%s %s still holds cancelled %s %s", it.src.Kind, it.src.ID, d.Type, d.Number))
-					case documents.Types[d.Type].Slot != slot:
-						out = append(out, fmt.Sprintf("%s %s holds %s %s in its %s slot", it.src.Kind, it.src.ID, d.Type, d.ID, slot))
-					case !slices.Contains(d.Sources, it.src):
-						out = append(out, fmt.Sprintf("%s %s holds %s %s, which doesn't list it", it.src.Kind, it.src.ID, d.Type, d.ID))
-					}
+			check := func(kind, id string, slot docref.Slot, ref *docref.Ref) {
+				if ref == nil {
+					return
 				}
+				d, ok := w.Documents[ref.DocumentID]
+				switch {
+				case !ok:
+					out = append(out, fmt.Sprintf("%s %s holds document %s, which doesn't exist", kind, id, ref.DocumentID))
+				case documents.Types[d.Type].Slot != slot:
+					out = append(out, fmt.Sprintf("%s %s holds %s %s in its %s slot", kind, id, d.Type, d.ID, slot))
+				case *ref != d.Ref():
+					out = append(out, fmt.Sprintf("%s %s holds %+v, but %s %s is %+v", kind, id, *ref, d.Type, d.ID, d.Ref()))
+				}
+			}
+			for _, id := range sortedKeys(w.Sessions) {
+				s := w.Sessions[id]
+				check("session", id, docref.SlotInvoice, s.Invoice)
+				check("session", id, docref.SlotReceipt, s.Receipt)
+			}
+			for _, id := range sortedKeys(w.Packages) {
+				p := w.Packages[id]
+				check("package", id, docref.SlotInvoice, p.Invoice)
+				check("package", id, docref.SlotReceipt, p.Receipt)
 			}
 			return out
 		},
-		ByConstruction: "every document write links and unlinks its sources in the same transaction",
-	},
-	{
-		ID:  "document-sources-point-back",
-		Why: "Every session and package a live document lists holds it in its slot",
-		Broken: func(w World) []string {
-			var out []string
-			for _, d := range w.documents() {
-				if d.Status == documents.StatusCancelled {
-					continue
-				}
-				slot := documents.Types[d.Type].Slot
-				for _, src := range d.Sources {
-					it, ok := w.item(src)
-					if !ok {
-						out = append(out, fmt.Sprintf("%s %s covers %s %s, which doesn't exist", d.Type, d.ID, src.Kind, src.ID))
-						continue
-					}
-					if ref := it.ref(slot); ref == nil || ref.DocumentID != d.ID {
-						out = append(out, fmt.Sprintf("%s %s covers %s %s, whose %s slot doesn't hold it", d.Type, d.ID, src.Kind, src.ID, slot))
-					}
-				}
-			}
-			return out
-		},
-		GuardedBy:      []string{"sessions.discard", "sessions.delete", "packages.delete"},
-		ByConstruction: "an item with a document is never deleted (the repositories' conditions)",
-	},
-	{
-		ID:  "slot-matches-the-issued-revision",
-		Why: "A slot says the number, revision and client of the document as last issued, which drift is checked against",
-		Broken: func(w World) []string {
-			var out []string
-			for _, it := range w.items() {
-				for _, slot := range docref.Slots {
-					ref := it.ref(slot)
-					d, ok := w.Documents[refID(ref)]
-					if !ok {
-						continue
-					}
-					switch {
-					case ref.Issued() != (d.Number != ""):
-						out = append(out, fmt.Sprintf("%s %s: slot issued %v, %s %s issued %v", it.src.Kind, it.src.ID, ref.Issued(), d.Type, d.ID, d.Number != ""))
-					case ref.Issued() && (ref.Number != d.Number || ref.Revision != *d.Revision || ref.ClientID != d.ClientID):
-						out = append(out, fmt.Sprintf("%s %s: slot says %s rev %d for %s, document %s rev %d for %s", it.src.Kind, it.src.ID, ref.Number, ref.Revision, ref.ClientID, d.Number, *d.Revision, d.ClientID))
-					}
-				}
-			}
-			return out
-		},
-		ByConstruction: "issuing rewrites every source's slot in the same transaction",
-	},
-	{
-		ID:  "session-client-change-is-flagged",
-		Why: "When a session an issued document covers now belongs to another client, the session says so (drift)",
-		Broken: func(w World) []string {
-			return clientChanges(w, documents.SourceSession, func(id string) bool { return w.Sessions[id].Drift != "" })
-		},
-		GuardedBy:      []string{"documents.issue"},
-		ByConstruction: "the reconcile flags drift on a session against its issued documents",
-	},
-	{
-		ID:  "package-client-change-is-flagged",
-		Why: "When a package an issued document covers now belongs to another client, the package says so (drift)",
-		Broken: func(w World) []string {
-			return clientChanges(w, documents.SourcePackage, func(id string) bool { return w.Packages[id].Drift != "" })
-		},
-		GuardedBy:      []string{"documents.issue"},
-		ByConstruction: "the reconcile flags drift on a package against its issued documents",
+		ByConstruction: "the book copies every link from the documents on every write (book.Derive)",
 	},
 	{
 		ID:  "share-links-open-their-document",
@@ -156,39 +93,72 @@ var Links = []Rule{
 					continue
 				}
 				for rev := 0; rev <= *d.Revision; rev++ {
-					if !slices.ContainsFunc(w.Revisions, func(r documents.Revision) bool { return r.DocumentID == d.ID && r.Revision == rev }) {
+					i := slices.IndexFunc(w.Revisions, func(r documents.Revision) bool { return r.DocumentID == d.ID && r.Revision == rev })
+					switch {
+					case i < 0:
 						out = append(out, fmt.Sprintf("%s %s rev %d is missing", d.Type, d.Number, rev))
+					case rev == *d.Revision && d.Content != nil && !sameJSON(w.Revisions[i].Content, *d.Content):
+						out = append(out, fmt.Sprintf("%s %s says other than its rev %d", d.Type, d.Number, rev))
 					}
 				}
 			}
 			return out
 		},
-		ByConstruction: "issuing stores the revision in the same transaction",
+		ByConstruction: "issuing stores the revision in the same transaction, and nothing else changes issued content",
+	},
+	{
+		ID:  "events-show-their-item",
+		Why: "A session's or follow-up's event shows it and nothing else: what the calendar record shows says the same",
+		Broken: func(w World) []string {
+			var out []string
+			check := func(kind conflicts.ExternalKind, id, eventID string) {
+				if eventID == "" {
+					return
+				}
+				e, ok := w.Externals[conflicts.Key(conflicts.SurfaceCalendar, eventID)]
+				if !ok || e.Kind != kind || e.ID != id {
+					out = append(out, fmt.Sprintf("%s %s's event %s shows %+v", kind, id, eventID, e))
+				}
+			}
+			for _, id := range sortedKeys(w.Sessions) {
+				check(conflicts.ShowsSession, id, w.Sessions[id].Event.EventID)
+			}
+			for _, id := range sortedKeys(w.FollowUps) {
+				check(conflicts.ShowsFollowUp, id, w.FollowUps[id].Event.EventID)
+			}
+			for _, key := range sortedKeys(w.Externals) {
+				e := w.Externals[key]
+				if eventID, ok := w.eventOf(e.Kind, e.ID); e.Kind != conflicts.Ignored && (!ok || eventID != e.ExternalID) {
+					out = append(out, fmt.Sprintf("event %s shows %s %s, which shows another event or is gone", e.ExternalID, e.Kind, e.ID))
+				}
+			}
+			return out
+		},
+		ByConstruction: "an item's event is recorded with it, in the same transaction, and forgotten with it",
+	},
+	{
+		ID:  "conflicts-are-about-something",
+		Why: "A conflict over an event is about the session or follow-up it shows, which exists",
+		Broken: func(w World) []string {
+			var out []string
+			for _, key := range sortedKeys(w.Conflicts) {
+				c := w.Conflicts[key]
+				if _, ok := w.eventOf(conflicts.ExternalKind(c.TargetKind), c.TargetID); c.TargetID != "" && !ok {
+					out = append(out, fmt.Sprintf("conflict %s is about %s %s, which is gone", key, c.TargetKind, c.TargetID))
+				}
+			}
+			return out
+		},
+		ByConstruction: "deleting a session or follow-up drops any conflict over its event in the same transaction",
 	},
 }
 
-func refID(ref *docref.Ref) string {
-	if ref == nil {
-		return ""
+// eventOf is the event of a session or follow-up, if it exists.
+func (w World) eventOf(kind conflicts.ExternalKind, id string) (string, bool) {
+	if kind == conflicts.ShowsFollowUp {
+		f, ok := w.FollowUps[id]
+		return f.Event.EventID, ok
 	}
-	return ref.DocumentID
-}
-
-// clientChanges lists the sources of a kind that issued documents cover
-// for another client than they now belong to, unless flagged says so.
-func clientChanges(w World, kind documents.SourceKind, flagged func(id string) bool) []string {
-	var out []string
-	for _, d := range w.documents() {
-		if d.Status != documents.StatusIssued {
-			continue
-		}
-		for _, src := range d.Sources {
-			it, ok := w.item(src)
-			if src.Kind != kind || !ok || it.clientID == d.ClientID || flagged(src.ID) {
-				continue
-			}
-			out = append(out, fmt.Sprintf("%s %s is now %q's, but %s %s is for %q", src.Kind, src.ID, it.clientID, d.Type, d.Number, d.ClientID))
-		}
-	}
-	return out
+	s, ok := w.Sessions[id]
+	return s.Event.EventID, ok
 }

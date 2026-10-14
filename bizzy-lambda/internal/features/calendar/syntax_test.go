@@ -89,6 +89,21 @@ func TestParseTitle(t *testing.T) {
 			want:  Title{Name: "Dentist"},
 		},
 		{
+			name:  "a home visit",
+			input: "Jane Smith (V)",
+			want:  Title{Name: "Jane Smith", Place: PlaceVisit},
+		},
+		{
+			name:  "her place, lowercase, among the other tokens",
+			input: "? Jane Smith 95 (h) 10x85",
+			want:  Title{Tentative: true, Name: "Jane Smith", Place: PlaceHome, FeeCents: cents(9500), Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
+		},
+		{
+			name:  "brackets inside the name are part of the name",
+			input: "Jane (V) Smith",
+			want:  Title{Name: "Jane (V) Smith"},
+		},
+		{
 			name:  "number inside the name is part of the name",
 			input: "Pilates 2 Jane",
 			want:  Title{Name: "Pilates 2 Jane"},
@@ -118,6 +133,9 @@ func TestParseTitleErrors(t *testing.T) {
 		{name: "amount without name", input: "95"},
 		{name: "tentative without name", input: "?"},
 		{name: "empty title", input: "   "},
+		{name: "two places", input: "Jane (V) (H)"},
+		{name: "a place no letter means", input: "Jane (X)"},
+		{name: "place without name", input: "(V)"},
 	}
 
 	for _, tt := range tests {
@@ -134,9 +152,9 @@ func TestParseTitleErrors(t *testing.T) {
 func assertTitle(t *testing.T, got, want Title) {
 	t.Helper()
 
-	if got.Tentative != want.Tentative || got.Name != want.Name {
-		t.Errorf("got {Tentative:%v Name:%q}, want {Tentative:%v Name:%q}",
-			got.Tentative, got.Name, want.Tentative, want.Name)
+	if got.Tentative != want.Tentative || got.Name != want.Name || got.Place != want.Place {
+		t.Errorf("got {Tentative:%v Name:%q Place:%q}, want {Tentative:%v Name:%q Place:%q}",
+			got.Tentative, got.Name, got.Place, want.Tentative, want.Name, want.Place)
 	}
 
 	switch {
@@ -168,6 +186,7 @@ func TestFormatTitleRoundTrips(t *testing.T) {
 			Title{Name: "Jane Smith", Tentative: true, FeeCents: cents(9500), Package: &PackageSpec{Sessions: 3, PriceCents: 25001}},
 			"? Jane Smith 95 3@250.01",
 		},
+		{Title{Name: "Jane Smith", Place: PlaceVisit, FeeCents: cents(9500)}, "Jane Smith (V) 95"},
 	}
 	for _, tt := range tests {
 		got := FormatTitle(tt.title)

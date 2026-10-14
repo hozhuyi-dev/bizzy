@@ -3,6 +3,8 @@ package integrity
 import (
 	"fmt"
 	"strings"
+
+	"bizzy-lambda/internal/features/book"
 )
 
 // Table renders the link rules as Markdown, known gaps first, for review.
@@ -33,6 +35,11 @@ func Table() string {
 	}
 	if tolerated == 0 {
 		b.WriteString("None.\n")
+	}
+
+	b.WriteString("\n## Across sessions, packages and documents\n\nThe book's invariants (internal/features/book): checked before every commit, and here over everything stored.\n\n| rule | why |\n|---|---|\n")
+	for _, inv := range book.Invariants {
+		fmt.Fprintf(&b, "| %s | %s |\n", inv.ID, inv.Why)
 	}
 
 	b.WriteString("\n## Rules\n\n| rule | why | kept by |\n|---|---|---|\n")

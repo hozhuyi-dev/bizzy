@@ -17,9 +17,6 @@ type Settings struct {
 
 	// ServiceName describes a session on a receipt line.
 	ServiceName string `json:"serviceName" dynamodbav:"serviceName"`
-	// HomeVisitColorID is the Google Calendar event colour that marks a home
-	// visit ("1" Lavender … "11" Tomato).
-	HomeVisitColorID string `json:"homeVisitColorId" dynamodbav:"homeVisitColorId"`
 
 	// ConfirmAheadDays is how many days ahead an unconfirmed session goes
 	// on her to-do list, to confirm the time with the client.
@@ -36,7 +33,6 @@ type Settings struct {
 
 const (
 	DefaultServiceName       = "Physiotherapy session"
-	DefaultHomeVisitColorID  = "11" // Tomato
 	DefaultConfirmAheadDays  = 2
 	DefaultFollowUpAheadDays = 7
 	// MaxAheadDays bounds both: the to-do list reads that far ahead.
@@ -51,9 +47,6 @@ const (
 func (s Settings) WithDefaults() Settings {
 	if s.ServiceName == "" {
 		s.ServiceName = DefaultServiceName
-	}
-	if s.HomeVisitColorID == "" {
-		s.HomeVisitColorID = DefaultHomeVisitColorID
 	}
 	if s.PaymentMessage == "" {
 		s.PaymentMessage = DefaultPaymentMessage

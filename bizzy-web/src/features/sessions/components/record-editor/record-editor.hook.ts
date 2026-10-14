@@ -34,7 +34,7 @@ export function useRecordDraft(session: Session, savedNotes: string): RecordDraf
     latest.current = { summary, notes };
   });
   const { mutateAsync } = save;
-  const eventId = session.eventId;
+  const id = session.id;
 
   useEffect(() => {
     if (summary === saved.current.summary && notes === saved.current.notes) return undefined;
@@ -42,7 +42,7 @@ export function useRecordDraft(session: Session, savedNotes: string): RecordDraf
     const timer = setTimeout(() => {
       const sending = { summary, notes };
       setState("saving");
-      mutateAsync({ eventId, ...sending })
+      mutateAsync({ id, ...sending })
         .then(() => {
           saved.current = sending;
           const { summary: s, notes: n } = latest.current;
@@ -55,17 +55,17 @@ export function useRecordDraft(session: Session, savedNotes: string): RecordDraf
         });
     }, SAVE_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [summary, notes, eventId, mutateAsync]);
+  }, [summary, notes, id, mutateAsync]);
 
   // Leaving mid-pause still saves what she typed.
   useEffect(
     () => () => {
       const { summary: s, notes: n } = latest.current;
       if (s !== saved.current.summary || n !== saved.current.notes) {
-        void mutateAsync({ eventId, summary: s, notes: n }).catch(() => undefined);
+        void mutateAsync({ id, summary: s, notes: n }).catch(() => undefined);
       }
     },
-    [eventId, mutateAsync],
+    [id, mutateAsync],
   );
 
   return { summary, notes, setSummary, setNotes, state, error };

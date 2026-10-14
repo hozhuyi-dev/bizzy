@@ -4,10 +4,13 @@ import (
 	"slices"
 	"testing"
 
+	"bizzy-lambda/internal/features/book"
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/integrity"
+	"bizzy-lambda/internal/platform/command"
 	"bizzy-lambda/internal/platform/statemodel"
 	"bizzy-lambda/internal/router"
 )
@@ -40,9 +43,17 @@ func TestCatalogueCoversEveryMutation(t *testing.T) {
 		}
 	}
 	for _, it := range resolvable() {
-		for _, a := range it.resolvedBy {
+		for _, fix := range it.fixes {
+			if _, ok := resolvers[fix.Action]; !ok {
+				t.Errorf("rule %s is resolved by %s, which recovery.go can't try: add it to resolvers", it.rule, fix.Action)
+			}
+		}
+	}
+	// A conflict offers its guards' remedies.
+	for _, g := range book.Guards {
+		for _, a := range g.Remedies {
 			if _, ok := resolvers[a]; !ok {
-				t.Errorf("rule %s is resolved by %s, which recovery.go can't try: add it to resolvers", it.rule, a)
+				t.Errorf("guard %s offers %s, which recovery.go can't try: add it to resolvers", g.ID, a)
 			}
 		}
 	}
@@ -55,6 +66,7 @@ func resolvable() []todoItem {
 	add(ruleItems("session", sessions.Rules))
 	add(ruleItems("package", packages.Rules))
 	add(ruleItems("follow-up", followups.Rules))
+	add(ruleItems("conflict", conflicts.Rules))
 	return out
 }
 
@@ -62,7 +74,11 @@ func ruleItems[S any](kind string, rules statemodel.Rules[S]) []todoItem {
 	var out []todoItem
 	for _, r := range rules {
 		if r.Bucket != statemodel.Impossible {
-			out = append(out, todoItem{kind: kind, rule: r.ID, resolvedBy: r.ResolvedBy})
+			it := todoItem{kind: kind, rule: r.ID}
+			for _, a := range r.ResolvedBy {
+				it.fixes = append(it.fixes, command.Remedy{Action: a})
+			}
+			out = append(out, it)
 		}
 	}
 	return out

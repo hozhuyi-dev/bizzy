@@ -11,36 +11,23 @@ import (
 // rules.go). Every field is a small enum, so the tests can enumerate every
 // combination (testdata/states.md).
 type State struct {
-	Presence Presence `json:"presence"`
-	// Status is how the title reads, as the billing reconcile derived it.
-	Status  Status       `json:"status"`
-	Client  ClientMatch  `json:"client"`
-	Timing  Timing       `json:"timing"`
-	Record  Recording    `json:"record"`
-	Fee     Fee          `json:"fee"`
-	Payment PaymentState `json:"payment"`
-	// PaidFor says whether the payment settled the fee as it is now.
-	PaidFor PaidFor `json:"paidFor"`
+	Confirmed Confirmation `json:"confirmed"`
+	Timing    Timing       `json:"timing"`
+	Record    Recording    `json:"record"`
+	Cover     Cover        `json:"cover"`
+	Fee       Fee          `json:"fee"`
+	Invoice   DocSlot      `json:"invoice"`
+	Receipt   DocSlot      `json:"receipt"`
+	Payment   PaymentState `json:"payment"`
 	// Bought is the package bought in the session, collected with it.
-	Bought  Bought  `json:"bought"`
-	Invoice DocSlot `json:"invoice"`
-	Receipt DocSlot `json:"receipt"`
-	Drift   Drift   `json:"drift"`
+	Bought Bought `json:"bought"`
 }
 
-type Presence string
+type Confirmation string
 
 const (
-	InCalendar Presence = "in-calendar"
-	// Removed: gone from the calendar, kept for what was recorded on it.
-	Removed Presence = "removed"
-)
-
-type ClientMatch string
-
-const (
-	ClientMatched ClientMatch = "matched"
-	ClientNone    ClientMatch = "none"
+	Tentative Confirmation = "tentative"
+	Confirmed Confirmation = "confirmed"
 )
 
 type Timing string
@@ -60,37 +47,20 @@ const (
 	RecordSummary   Recording = "summary"
 )
 
+type Cover string
+
+const (
+	// CoverFee: its fee is charged on an invoice.
+	CoverFee    Cover = "fee"
+	CoverCredit Cover = "credit"
+)
+
 type Fee string
 
 const (
-	// FeeNothingDue: no fee of its own (a package credit, or a fee of 0).
+	// FeeNothingDue: no fee of its own (a credit, or a fee of 0).
 	FeeNothingDue Fee = "nothing-due"
-	FeeOwed       Fee = "owed"
-)
-
-type PaymentState string
-
-const (
-	PaymentNone   PaymentState = "none"
-	PaymentPaid   PaymentState = "paid"
-	PaymentWaived PaymentState = "waived"
-)
-
-type PaidFor string
-
-const (
-	PaidForCurrent PaidFor = "current"
-	// PaidForOutdated: the fee changed since it was paid, and the amount
-	// paid doesn't match it either.
-	PaidForOutdated PaidFor = "outdated"
-)
-
-type Bought string
-
-const (
-	BoughtNone    Bought = "none"
-	BoughtDue     Bought = "due"
-	BoughtSettled Bought = "settled"
+	FeeCharged    Fee = "charged"
 )
 
 type DocSlot string
@@ -101,42 +71,42 @@ const (
 	SlotIssued DocSlot = "issued"
 )
 
-type Drift string
+type PaymentState string
 
 const (
-	DriftNone Drift = "none"
-	// Drifted: the calendar now contradicts an issued document.
-	Drifted Drift = "drifted"
+	PaymentNone PaymentState = "none"
+	PaymentPaid PaymentState = "paid"
+)
+
+type Bought string
+
+const (
+	BoughtNone    Bought = "none"
+	BoughtDue     Bought = "due"
+	BoughtSettled Bought = "settled"
 )
 
 // Axes lists every value of every axis, in the order the table shows them.
 var Axes = statemodel.Axes[State]{
-	statemodel.NewAxis("presence", []Presence{InCalendar, Removed}, func(s *State, v Presence) { s.Presence = v }),
-	statemodel.NewAxis("status", []Status{StatusTentative, StatusParseError, StatusUnmatched, StatusMissingFee, StatusPriced, StatusPackage, StatusRemoved}, func(s *State, v Status) { s.Status = v }),
-	statemodel.NewAxis("client", []ClientMatch{ClientMatched, ClientNone}, func(s *State, v ClientMatch) { s.Client = v }),
+	statemodel.NewAxis("confirmed", []Confirmation{Tentative, Confirmed}, func(s *State, v Confirmation) { s.Confirmed = v }),
 	statemodel.NewAxis("timing", []Timing{Upcoming, Happened}, func(s *State, v Timing) { s.Timing = v }),
 	statemodel.NewAxis("record", []Recording{RecordNone, RecordNotesOnly, RecordSummary}, func(s *State, v Recording) { s.Record = v }),
-	statemodel.NewAxis("fee", []Fee{FeeNothingDue, FeeOwed}, func(s *State, v Fee) { s.Fee = v }),
-	statemodel.NewAxis("payment", []PaymentState{PaymentNone, PaymentPaid, PaymentWaived}, func(s *State, v PaymentState) { s.Payment = v }),
-	statemodel.NewAxis("paid for", []PaidFor{PaidForCurrent, PaidForOutdated}, func(s *State, v PaidFor) { s.PaidFor = v }),
-	statemodel.NewAxis("bought", []Bought{BoughtNone, BoughtDue, BoughtSettled}, func(s *State, v Bought) { s.Bought = v }),
+	statemodel.NewAxis("cover", []Cover{CoverFee, CoverCredit}, func(s *State, v Cover) { s.Cover = v }),
+	statemodel.NewAxis("fee", []Fee{FeeNothingDue, FeeCharged}, func(s *State, v Fee) { s.Fee = v }),
 	statemodel.NewAxis("invoice", []DocSlot{SlotEmpty, SlotDraft, SlotIssued}, func(s *State, v DocSlot) { s.Invoice = v }),
 	statemodel.NewAxis("receipt", []DocSlot{SlotEmpty, SlotDraft, SlotIssued}, func(s *State, v DocSlot) { s.Receipt = v }),
-	statemodel.NewAxis("drift", []Drift{DriftNone, Drifted}, func(s *State, v Drift) { s.Drift = v }),
+	statemodel.NewAxis("payment", []PaymentState{PaymentNone, PaymentPaid}, func(s *State, v PaymentState) { s.Payment = v }),
+	statemodel.NewAxis("bought", []Bought{BoughtNone, BoughtDue, BoughtSettled}, func(s *State, v Bought) { s.Bought = v }),
 }
 
 // State reduces the session to its axes as of now.
 func (s Session) State(now time.Time) State {
 	st := State{
-		Presence: InCalendar, Status: s.Status, Client: ClientMatched, Timing: Happened,
-		Record: RecordNone, Fee: FeeNothingDue, Payment: PaymentNone, PaidFor: PaidForCurrent, Bought: BoughtNone,
-		Invoice: slotOf(s.Invoice), Receipt: slotOf(s.Receipt), Drift: DriftNone,
+		Confirmed: Confirmed, Timing: Happened, Record: RecordNone, Cover: CoverFee, Fee: FeeNothingDue,
+		Invoice: SlotOf(s.Invoice), Receipt: SlotOf(s.Receipt), Payment: PaymentNone, Bought: BoughtNone,
 	}
-	if s.RemovedAt != nil {
-		st.Presence = Removed
-	}
-	if s.ClientID == "" {
-		st.Client = ClientNone
+	if s.Tentative {
+		st.Confirmed = Tentative
 	}
 	if s.End.After(now) {
 		st.Timing = Upcoming
@@ -147,31 +117,26 @@ func (s Session) State(now time.Time) State {
 	case s.Record != nil:
 		st.Record = RecordNotesOnly
 	}
-	if s.DueCents() > 0 {
-		st.Fee = FeeOwed
+	if s.OnCredit() {
+		st.Cover = CoverCredit
 	}
-	switch {
-	case s.Payment.IsPaid():
+	if s.FeeCents > 0 {
+		st.Fee = FeeCharged
+	}
+	if s.Paid != nil {
 		st.Payment = PaymentPaid
-	case s.Payment != nil:
-		st.Payment = PaymentWaived
 	}
 	switch {
-	case s.BoughtCents > 0 && s.BoughtSettled:
-		st.Bought = BoughtSettled
-	case s.BoughtCents > 0:
+	case s.BoughtPackageID != "" && s.BoughtOwedCents > 0:
 		st.Bought = BoughtDue
-	}
-	if s.Payment.Outdated(s.DueCents()) {
-		st.PaidFor = PaidForOutdated
-	}
-	if s.Drift != "" {
-		st.Drift = Drifted
+	case s.BoughtPackageID != "":
+		st.Bought = BoughtSettled
 	}
 	return st
 }
 
-func slotOf(ref *docref.Ref) DocSlot {
+// SlotOf is how far the document in a slot has gone.
+func SlotOf(ref *docref.Ref) DocSlot {
 	switch {
 	case ref.Issued():
 		return SlotIssued

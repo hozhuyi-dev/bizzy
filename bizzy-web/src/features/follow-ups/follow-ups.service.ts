@@ -7,10 +7,10 @@ export const FollowUpsService = {
   listByClient: (clientId: string, cursor?: string) =>
     invoke<Page<FollowUp>>("followUps.listByClient", { clientId, cursor }),
   listBySession: (sessionId: string) => invoke<Array<FollowUp>>("followUps.listBySession", { sessionId }),
-  // Each writes the calendar first.
+  // Each is saved in bizzy, then written to its event.
   create: (draft: FollowUpDraft) => invoke<FollowUp>("followUps.create", draft),
-  update: (eventId: string, draft: FollowUpDraft) => invoke<FollowUp>("followUps.update", { eventId, ...draft }),
-  delete: (eventId: string) => invoke<null>("followUps.delete", { eventId }),
+  update: (id: string, draft: FollowUpDraft) => invoke<FollowUp>("followUps.update", { id, ...draft }),
+  delete: (id: string) => invoke<null>("followUps.delete", { id }),
   // Hers, kept only here.
-  setDone: (eventId: string, done: boolean) => invoke<FollowUp>("followUps.setDone", { eventId, done }),
+  setDone: (id: string, done: boolean) => invoke<FollowUp>("followUps.setDone", { id, done }),
 };

@@ -4,10 +4,7 @@ export const MODULES: ReadonlyArray<Module> = [
   { label: "Home", pages: [{ to: "/", label: "Home" }] },
   {
     label: "Sessions",
-    pages: [
-      { to: "/sessions", label: "All sessions" },
-      { to: "/sessions/deleted", label: "Deleted" },
-    ],
+    pages: [{ to: "/sessions", label: "All sessions" }],
   },
   {
     label: "Follow-ups",

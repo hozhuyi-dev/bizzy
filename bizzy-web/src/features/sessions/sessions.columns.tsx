@@ -1,7 +1,7 @@
-import { BanknoteIcon, CheckIcon, HomeIcon, LinkIcon } from "lucide-react";
-import { allSessionDocuments, isUnmatched, sessionAmount, stageBadges } from "./session-stage.util";
+import { CheckIcon, HomeIcon } from "lucide-react";
+import { allSessionDocuments, sessionAmount, stageBadges } from "./session-stage.util";
 import type { ReactNode } from "react";
-import type { Session, SessionReturnTo  } from "./sessions.types";
+import type { Session, SessionReturnTo } from "./sessions.types";
 import type { Client } from "~/features/clients/clients.types";
 import type { Package } from "~/features/packages/packages.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
@@ -18,10 +18,7 @@ export interface SessionHandlers {
   /** Where the table is, for the session page to go back to. */
   from?: SessionReturnTo | undefined;
   clientsById: ReadonlyMap<string, Client>;
-  /** Packages by ID; one bought in a session's title has the session's ID. */
   packagesById: ReadonlyMap<string, Package>;
-  onLink: (session: Session) => void;
-  onEditClient: (client: Client) => void;
   onConfirm: (session: Session) => void;
 }
 
@@ -32,15 +29,10 @@ export function SessionWho({ session, handlers }: { session: Session; handlers: 
   const client = clientOf(handlers.clientsById, session.clientId);
   return (
     <div className="flex flex-col items-start">
-      <TextLink
-        to="/sessions/$id"
-        params={{ id: session.eventId }}
-        search={{ from: handlers.from }}
-        className={client ? undefined : "text-muted-foreground italic"}
-      >
-        {client?.name ?? (session.name || session.title)}
+      <TextLink to="/sessions/$id" params={{ id: session.id }} search={{ from: handlers.from }}>
+        {client?.name ?? "Unknown client"}
       </TextLink>
-      <span className="text-xs text-muted-foreground">{session.record?.summary ?? session.title}</span>
+      {session.record?.summary && <span className="text-xs text-muted-foreground">{session.record.summary}</span>}
     </div>
   );
 }
@@ -63,7 +55,7 @@ export function SessionAmount({ session }: { session: Session }) {
   return (
     <span className="inline-flex items-center gap-1">
       {amount === undefined ? "—" : formatCents(amount)}
-      {session.location === "home" && <HomeIcon className="size-3.5 text-muted-foreground" aria-label="Home visit" />}
+      {session.location === "visit" && <HomeIcon className="size-3.5 text-muted-foreground" aria-label="Home visit" />}
     </span>
   );
 }
@@ -79,7 +71,7 @@ export function SessionDocuments({
   /** Shown when there are none. */
   empty?: ReactNode;
 }) {
-  const docs = allSessionDocuments(session, handlers.packagesById.get(session.eventId));
+  const docs = allSessionDocuments(session, boughtOf(session, handlers));
   if (docs.length === 0) return empty;
 
   return (
@@ -93,19 +85,15 @@ export function SessionDocuments({
   );
 }
 
+function boughtOf(session: Session, handlers: SessionHandlers): Package | undefined {
+  return session.boughtPackageId ? handlers.packagesById.get(session.boughtPackageId) : undefined;
+}
+
 /** The quick fixes a list can make; everything else is on the session's page. */
 export function sessionActions(session: Session, handlers: SessionHandlers): Array<RowAction> {
-  const client = clientOf(handlers.clientsById, session.clientId);
   const actions: Array<RowAction> = [];
-
-  if (session.todo.includes("confirm") && session.fixes.includes("sessions.update") && client) {
+  if (session.todo.includes("confirm") && session.fixes.includes("sessions.update")) {
     actions.push({ label: "Confirm", icon: CheckIcon, onClick: () => handlers.onConfirm(session) });
-  }
-  if (isUnmatched(session)) {
-    actions.push({ label: "Link client", icon: LinkIcon, onClick: () => handlers.onLink(session) });
-  }
-  if (client && session.status === "missing_fee") {
-    actions.push({ label: "Set fee", icon: BanknoteIcon, onClick: () => handlers.onEditClient(client) });
   }
   return actions;
 }
@@ -124,7 +112,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
       meta: {
         search: (session: Session) => {
           const client = clientOf(handlers.clientsById, session.clientId);
-          return [client?.name, session.name, session.title, session.record?.summary];
+          return [client?.name, session.record?.summary];
         },
       },
       cell: ({ row }) => <SessionWho session={row.original} handlers={handlers} />,
@@ -141,7 +129,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
       meta: {
         search: (session: Session) => {
           const amount = sessionAmount(session);
-          return [amount === undefined ? undefined : formatCents(amount), session.location === "home" ? "Home visit" : undefined];
+          return [amount === undefined ? undefined : formatCents(amount), session.location === "visit" ? "Home visit" : undefined];
         },
       },
       cell: ({ row }) => <SessionAmount session={row.original} />,
@@ -151,7 +139,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
       header: "Documents",
       meta: {
         search: (session: Session) =>
-          allSessionDocuments(session, handlers.packagesById.get(session.eventId)).map(({ ref }) =>
+          allSessionDocuments(session, boughtOf(session, handlers)).map(({ ref }) =>
             documentLabel(ref.number, ref.revision),
           ),
       },

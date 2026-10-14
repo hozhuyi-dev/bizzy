@@ -16,7 +16,7 @@ func TestNumbering(t *testing.T) {
 		t.Errorf("Label = %q", got)
 	}
 	issued := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
-	if got := counterKey(TypeInvoice, issued); got != "invoice#2027" {
-		t.Errorf("counterKey = %q", got)
+	if got := CounterKey(TypeInvoice, issued); got != "invoice#2027" {
+		t.Errorf("CounterKey = %q", got)
 	}
 }

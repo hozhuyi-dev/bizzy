@@ -49,19 +49,15 @@ func TestSimulation(t *testing.T) {
 			actions[a.Name] = func(t *rapid.T) {
 				before := w.ruleStates()
 				var held map[string][]string
-				var stale map[string]bool
 				exact := w.InSync && !w.unhealed
-				if (a.Actor == ActorUser || a.Actor == ActorScenario) && !a.Reveals {
-					held, stale = w.settled(t)
+				if (a.Actor == ActorUser || a.Actor == ActorScenario) && !a.Reveals && exact {
+					held = w.contradictions()
 				}
-				w.allowed = nil
 				a.Run(t, w)
 				observed.record(a.Name, before, w.ruleStates())
-				if held != nil {
-					after, _ := w.settled(t)
-					noNewContradictions(t, a.Name, held, after, w.allowed, exact, stale)
+				if held != nil && !w.unhealed {
+					noNewContradictions(t, a.Name, held, w.contradictions())
 				}
-				w.allowed = nil
 			}
 		}
 		t.Repeat(actions)

@@ -20,8 +20,8 @@ export function followUpsStep(
     id: "follow-ups",
     title: "Follow-ups",
     state: "optional",
-    meta: <FollowUpsMeta sessionId={session.eventId} />,
-    actions: client && !session.removedAt && (
+    meta: <FollowUpsMeta sessionId={session.id} />,
+    actions: client && (
       <>
         <Button variant="outline" size="sm" onClick={() => onNextVisit(draft)}>
           <CalendarPlusIcon /> Next visit
@@ -29,13 +29,13 @@ export function followUpsStep(
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onFollowUp({ mode: "new", clientId: client.id, sessionId: session.eventId })}
+          onClick={() => onFollowUp({ mode: "new", clientId: client.id, sessionId: session.id })}
         >
           <PlusIcon /> Follow-up
         </Button>
       </>
     ),
-    content: <FollowUpsStep sessionId={session.eventId} onEdit={(f) => onFollowUp({ mode: "edit", followUp: f })} />,
+    content: <FollowUpsStep sessionId={session.id} onEdit={(f) => onFollowUp({ mode: "edit", followUp: f })} />,
   };
 }
 
@@ -60,7 +60,7 @@ function FollowUpsStep({ sessionId, onEdit }: { sessionId: string; onEdit: (foll
   return (
     <ul className="flex flex-col divide-y">
       {followUps.data.map((f) => (
-        <li key={f.eventId} className="py-3 first:pt-0 last:pb-0">
+        <li key={f.id} className="py-3 first:pt-0 last:pb-0">
           <FollowUpRow followUp={f} onEdit={onEdit} hideClient showSession={false} />
         </li>
       ))}

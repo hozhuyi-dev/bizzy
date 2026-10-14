@@ -11,9 +11,13 @@ export const ClientKeys = {
 export const SessionKeys = {
   all: ["sessions"] as const,
   range: (from: string, to: string) => [...SessionKeys.all, "range", from, to] as const,
-  detail: (eventId: string) => [...SessionKeys.all, "detail", eventId] as const,
+  detail: (id: string) => [...SessionKeys.all, "detail", id] as const,
   client: (clientId: string) => [...SessionKeys.all, "client", clientId] as const,
-  removed: () => [...SessionKeys.all, "removed"] as const,
+};
+
+export const ConflictKeys = {
+  all: ["conflicts"] as const,
+  target: (targetId: string) => [...ConflictKeys.all, "target", targetId] as const,
 };
 
 export const FollowUpKeys = {
@@ -87,6 +91,7 @@ export const ContactKeys = {
 export const BILLING_KEYS = [
   TodoKeys.all,
   SessionKeys.all,
+  ConflictKeys.all,
   FollowUpKeys.all,
   PackageKeys.all,
   BillingKeys.all,

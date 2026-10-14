@@ -1,4 +1,4 @@
-import { BanknoteIcon, FileTextIcon, PackageCheckIcon, PencilIcon, ReceiptIcon, Trash2Icon } from "lucide-react";
+import { BanknoteIcon, PackageCheckIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { clientName, paymentText } from "./packages.util";
 import type { ReactNode } from "react";
 import type { Package } from "./packages.types";
@@ -19,7 +19,6 @@ export interface PackageHandlers {
   onDelete: (pkg: Package) => void;
   onMakeStandalone: (pkg: Package) => void;
   onPay: (pkg: Package) => void;
-  onDocument: (type: DocumentType, pkg: Package) => void;
 }
 
 const DOCUMENT_TYPES_ORDER: ReadonlyArray<DocumentType> = ["invoice", "receipt"];
@@ -53,7 +52,7 @@ export function PackagePrice({ pkg }: { pkg: Package }) {
 export function PackageSource({ pkg }: { pkg: Package }) {
   return (
     <span className="flex flex-wrap items-center gap-1">
-      <Badge variant="neutral">{pkg.source === "calendar" ? "Calendar" : "Added here"}</Badge>
+      <Badge variant="neutral">{pkg.boughtIn ? "In a session" : "On its own"}</Badge>
       {pkg.note && <span className="text-xs text-muted-foreground">{pkg.note}</span>}
     </span>
   );
@@ -85,22 +84,15 @@ export function PackageDocuments({
 }
 
 /**
- * Calendar packages are changed in the calendar; only app ones are editable
- * here. One the calendar no longer buys is kept as its own, or deleted. A
- * receipt needs payment.
+ * What can be done to a package, as the API's guards say: one bought in a
+ * session can be kept as its own, so the session no longer buys it.
  */
 export function packageActions(pkg: Package, handlers: PackageHandlers): Array<RowAction> {
   const actions: Array<RowAction> = [];
   if (pkg.owedCents > 0 && pkg.can.pay.ok) {
     actions.push({ label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
-  if (pkg.can.invoice.ok) {
-    actions.push({ label: "New invoice", icon: FileTextIcon, onClick: () => handlers.onDocument("invoice", pkg) });
-  }
-  if (pkg.can.receipt.ok) {
-    actions.push({ label: "New receipt", icon: ReceiptIcon, onClick: () => handlers.onDocument("receipt", pkg) });
-  }
-  if (pkg.payment && pkg.can.pay.ok) {
+  if (pkg.paid) {
     actions.push({ label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
   if (pkg.can.makeStandalone.ok) {
@@ -150,7 +142,7 @@ export function createPackageColumns(handlers: PackageHandlers) {
     helper.display({
       id: "source",
       header: "From",
-      meta: { search: (pkg: Package) => [pkg.source === "calendar" ? "Calendar" : "Added here", pkg.note] },
+      meta: { search: (pkg: Package) => [pkg.boughtIn ? "In a session" : "On its own", pkg.note] },
       cell: ({ row }) => <PackageSource pkg={row.original} />,
     }),
     helper.display({

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
@@ -29,8 +30,8 @@ const (
 	removed = "(deleted)"
 )
 
-// ruleStates are the rules that hold for each session, package and
-// follow-up, keyed "<kind> <id>"; "quiet" when none does.
+// ruleStates are the rules that hold for each session, package, follow-up
+// and conflict, keyed "<kind> <id>"; "quiet" when none does.
 func (w *World) ruleStates() map[string]string {
 	out := map[string]string{}
 	for id, s := range w.Store.SessionMap {
@@ -41,6 +42,9 @@ func (w *World) ruleStates() map[string]string {
 	}
 	for id, f := range w.Store.FollowUpMap {
 		out["follow-up "+id] = fired(followups.Rules, f.State())
+	}
+	for key, c := range w.Store.ConflictMap {
+		out["conflict "+key] = fired(conflicts.Rules, c.State())
 	}
 	return out
 }

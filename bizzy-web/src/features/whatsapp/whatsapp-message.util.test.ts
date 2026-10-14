@@ -14,7 +14,6 @@ const settings: Settings = {
   accountName: "Physio Co",
   accountNo: "1234 5678",
   serviceName: "Physiotherapy session",
-  homeVisitColorId: "11",
   confirmAheadDays: 2,
   followUpAheadDays: 7,
   paymentMessage: "Hi {firstName}, {date}: {amount}.\n{bank}",

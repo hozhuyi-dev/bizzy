@@ -1,8 +1,5 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
-import { toast } from "sonner";
-import { LinkClientDialog } from "../link-client-dialog/link-client-dialog.component";
 import {
   SessionAmount,
   SessionDocuments,
@@ -14,7 +11,7 @@ import {
 import { useConfirmBooking } from "../../sessions-booking.hook";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
-import type { Session, SessionReturnTo  } from "../../sessions.types";
+import type { Session, SessionReturnTo } from "../../sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
@@ -33,13 +30,10 @@ interface SessionsTableProps {
 }
 
 /**
- * Sessions with the quick fixes she can make to them: confirm, link a
- * client, or set a fee. Each links to its page, where everything else is.
+ * Sessions with the quick fix she can make to them: confirm. Each links to
+ * its page, where everything else is.
  */
 export function SessionsTable({ sessions, empty, query, from }: SessionsTableProps) {
-  const [linking, setLinking] = useState<Session | null>(null);
-  const navigate = useNavigate();
-
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   const booking = useConfirmBooking();
@@ -55,12 +49,9 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
       from,
       clientsById,
       packagesById,
-      onLink: setLinking,
-      onEditClient: (client) =>
-        void navigate({ to: "/clients/$id", params: { id: client.id }, hash: "profile" }),
-      onConfirm: (session) => confirm(session.eventId),
+      onConfirm: (session) => confirm(session.id),
     }),
-    [from, clientsById, packagesById, confirm, navigate],
+    [from, clientsById, packagesById, confirm],
   );
 
   const columns = useMemo(() => createSessionColumns(handlers), [handlers]);
@@ -69,7 +60,7 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
     features: dataTableFeatures,
     columns,
     data: sessions,
-    getRowId: (session) => session.eventId,
+    getRowId: (session) => session.id,
     initialState: { sorting: [{ id: "start", desc: false }] },
   });
 
@@ -98,9 +89,6 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
           </Card>
         )}
       />
-
-      <LinkClientDialog session={linking} onClose={() => setLinking(null)} />
-      {booking.dialog}
     </>
   );
 }

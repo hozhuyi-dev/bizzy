@@ -1,16 +1,9 @@
 import type { DocumentRef, DocumentSource, DocumentType } from "~/features/documents/documents.types";
-import type { Payment } from "~/features/payments/payments.types";
+import type { Paid } from "~/features/payments/payments.types";
 import type { Verdict } from "~/core/lambda/lambda.types";
+import type { EventLink } from "~/features/calendar/calendar.types";
 
 // Mirrors bizzy-lambda/internal/features/sessions/model.go and view.go.
-export type SessionStatus =
-  | "tentative"
-  | "parse_error"
-  | "unmatched"
-  | "missing_fee"
-  | "priced"
-  | "package"
-  | "removed";
 
 /** What she keeps after a session: the summary; the notes and files are apart. */
 export interface SessionRecord {
@@ -21,112 +14,82 @@ export interface SessionRecord {
   updatedAt: string;
 }
 
+export type SessionLocation = "own" | "visit";
+
 export interface Session {
-  eventId: string;
-  title: string;
+  id: string;
+  clientId: string;
   start: string;
   end: string;
-  colorId?: string;
-  /** Deleted from the calendar, kept for what she recorded on it. */
-  removedAt?: string;
-
-  status: SessionStatus;
-  /** The name as written in the title. */
-  name?: string;
-  clientId?: string;
-  /** A near-miss match: "did you mean …". */
-  suggestedClientId?: string;
-  feeCents?: number;
-  feeSource?: "title" | "default" | "package";
-  packageId?: string;
-  valueCents?: number;
-  /** The price of the package bought in this session, collected with it. */
-  boughtCents?: number;
-  /** Whether that package is paid (or waived); it is paid on the package. */
-  boughtSettled?: boolean;
-  location?: "clinic" | "home";
-  locationSource?: "colour" | "client";
-  reason?: string;
-  drift?: string;
-  /** Still ahead at the last sync. */
-  upcoming?: boolean;
+  tentative?: boolean;
   confirmedAt?: string;
+  /** Her own place, or a home visit at the client's: `(H)` and `(V)` in a title. */
+  location: SessionLocation;
+  /** The package whose credit covers it; otherwise its fee is on an invoice. */
+  packageId?: string;
+  /** The fee was entered for it (its title shows it), not the client's usual fee. */
+  feeTyped?: boolean;
+  /** The package bought in this session, collected with it. */
+  boughtPackageId?: string;
 
-  record?: SessionRecord;
-  /** Settles the session's own fee; the package bought in it is paid on the package. */
-  payment?: Payment;
+  // Copied from its documents by the API: never set here.
+  /** What its invoice charges; 0 on a credit. */
+  feeCents: number;
   invoice?: DocumentRef;
   receipt?: DocumentRef;
+  paid?: Paid;
+  /** What is still owed for the package bought in it. */
+  boughtOwedCents?: number;
 
+  record?: SessionRecord;
+  event: EventLink;
+  createdAt: string;
   version: number;
 
-  // What the API's rules (sessions/rules.go) and guards (guards.go) make of
+  // What the API's rules (sessions/rules.go) and the book's guards make of
   // it as of the request. Read these; never re-derive them here.
   state: SessionState;
   /** The rules that hold, in priority order; empty when there is nothing to it. */
   rules: Array<string>;
   /** What is left to do on it now. */
   todo: Array<TodoReason>;
-  /**
-   * The actions its to-do rules say resolve them, e.g. "sessions.update" or
-   * "payments.set": what its to-do item offers.
-   */
+  /** The actions its to-do rules say resolve them: what its to-do item offers. */
   fixes: Array<string>;
-  /** The first thing to fix, explained. */
-  problem?: string;
-  /** Its own fee, when one applies. */
-  dueCents: number;
-  /** Still to collect with it: the fee unless settled, plus the package bought in it unless paid. */
+  /** Still to collect with it: its fee unless received, plus the package bought in it unless paid. */
   owedCents: number;
-  /** The part of owedCents that is the package bought in it. */
-  boughtOwedCents: number;
-  /** Counts as having happened with a client, fee known or not. */
-  delivered: boolean;
   /** Nothing more is owed on it. */
-  paid: boolean;
+  settled: boolean;
   can: SessionCan;
 }
 
 /** A session on its axes; mirrors sessions.State. */
 export interface SessionState {
-  presence: "in-calendar" | "removed";
-  status: SessionStatus;
-  client: "matched" | "none";
+  confirmed: "tentative" | "confirmed";
   timing: "upcoming" | "happened";
   record: "none" | "notes-only" | "summary";
-  fee: "nothing-due" | "owed";
-  payment: "none" | "paid" | "waived";
-  paidFor: "current" | "outdated";
-  bought: "none" | "due" | "settled";
+  cover: "fee" | "credit";
+  fee: "nothing-due" | "charged";
   invoice: "empty" | "draft" | "issued";
   receipt: "empty" | "draft" | "issued";
-  drift: "none" | "drifted";
+  payment: "none" | "paid";
+  bought: "none" | "due" | "settled";
 }
 
 /** What each action on a session would say now; mirrors sessions.Can. */
 export interface SessionCan {
-  /** Money is settled on it at all: in the calendar, confirmed and read. */
-  settle: Verdict;
-  pay: Verdict;
-  undoPayment: Verdict;
-  invoice: Verdict;
-  receipt: Verdict;
   record: Verdict;
   /** Files can be attached or removed. */
   attach: Verdict;
-  /** It can be deleted, with what is recorded on it: not while paid or on a document. */
+  pay: Verdict;
+  undoPayment: Verdict;
+  /** It can be deleted, its package kept: not while paid or on an issued document. */
   delete: Verdict;
-  restore: Verdict;
-  discard: Verdict;
 }
 
 /** Why a session is on her to-do list; mirrors sessions.Reason. */
-export type TodoReason = "deleted" | "fix" | "confirm" | "record" | "collect";
+export type TodoReason = "confirm" | "record" | "collect";
 
-/**
- * A session as she fills it in; mirrors googlesync.Draft. The API writes the
- * calendar title from it, so it always parses and matches the client.
- */
+/** A session as she fills it in; mirrors book.Draft. */
 export interface SessionDraft {
   clientId: string;
   start: string;
@@ -139,18 +102,7 @@ export interface SessionDraft {
   tentative: boolean;
 }
 
-/** What happens to the package a deleted session bought; mirrors googlesync.KeepPackage / DeletePackage. */
-export type PackageChoice = "keep" | "delete";
-
-/** What saving a booking also does, once she has seen its preview. */
-export interface BookingOptions {
-  /** She confirmed what the preview said saving brings on. */
-  confirm?: boolean;
-  /** Move what was paid for it, and for the package it buys, to the new amounts. */
-  updatePayment?: boolean;
-}
-
-/** A stored session with the draft to edit it from, and its notes; mirrors googlesync.Stored. */
+/** A stored session with the draft to edit it from, and its notes; mirrors book.Stored. */
 export interface StoredSession {
   session: Session;
   draft: SessionDraft;
@@ -172,17 +124,14 @@ export interface StageBadge {
   tone: StageTone;
 }
 
-/** Something a session's document can cover: its fee, or the package its title bought. */
+/** Something a session's documents cover: its fee, or the package bought in it. */
 export interface DocumentItem {
   source: DocumentSource;
   label: string;
   amountCents: number;
-  /** Why it can't go on a new document of the type now; unset when it can. */
-  unavailable?: string | undefined;
 }
 
 export interface SessionDocument {
   type: DocumentType;
   ref: DocumentRef;
 }
-

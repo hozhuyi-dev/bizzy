@@ -6,7 +6,6 @@ describe("modules", () => {
   test.each([
     ["/", "Home", "/"],
     ["/sessions", "Sessions", "/sessions"],
-    ["/sessions/deleted", "Sessions", "/sessions/deleted"],
     ["/sessions/abc123", "Sessions", "/sessions"],
     ["/clients/reconnect", "Clients", "/clients/reconnect"],
     ["/clients/jane", "Clients", "/clients"],

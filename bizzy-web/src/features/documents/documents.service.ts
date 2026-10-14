@@ -2,7 +2,6 @@ import type {
   BizDocument,
   DocumentContent,
   DocumentDetail,
-  DocumentSource,
   DocumentSummary,
   DocumentType,
   SharedDocument,
@@ -19,15 +18,19 @@ export const DocumentsService = {
   listByClient: (clientId: string) =>
     invoke<Array<DocumentSummary>>("documents.listByClient", { clientId }),
   get: (id: string) => invoke<DocumentDetail>("documents.get", { id }),
-  createDraft: (type: DocumentType, sources: Array<DocumentSource>) =>
-    invoke<BizDocument>("documents.createDraft", { type, sources }),
   saveDraft: (doc: Versioned, content: DocumentContent) =>
     invoke<BizDocument>("documents.saveDraft", { id: doc.id, version: doc.version, content }),
   issue: (doc: Versioned) =>
     invoke<BizDocument>("documents.issue", { id: doc.id, version: doc.version }),
   revise: (doc: Versioned) =>
     invoke<BizDocument>("documents.revise", { id: doc.id, version: doc.version }),
-  /** Null when a never-issued draft is deleted outright. */
+  /**
+   * Moves lines to another draft of the client's (to = undefined: a new
+   * one): to put several sessions on one invoice, or one on its own.
+   */
+  moveLines: (from: string, to: string | undefined, lineIds: Array<string>) =>
+    invoke<null>("documents.moveLines", { from, to, lineIds }),
+  /** Null when a never-issued draft goes: a receipt, with its payment. */
   discardDraft: (doc: Versioned) =>
     invoke<BizDocument | null>("documents.discardDraft", { id: doc.id, version: doc.version }),
   cancel: (doc: Versioned, reason: string) =>

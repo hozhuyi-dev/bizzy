@@ -6,7 +6,6 @@ export const TODO_FILTERS: ReadonlyArray<{ value: TodoFilter; label: string }> =
   { value: "collect", label: "Collect" },
   { value: "followUp", label: "Follow up" },
   { value: "fix", label: "Fix" },
-  { value: "deleted", label: "Deleted" },
 ];
 
 export const TODO_GROUPS: ReadonlyArray<{ value: TodoGroup; label: string }> = [

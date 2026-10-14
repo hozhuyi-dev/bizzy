@@ -29,6 +29,10 @@ type Response struct {
 type ErrorBody struct {
 	Code    apperr.Code `json:"code"`
 	Message string      `json:"message"`
+	// Guard and Remedies are set when a guard refused the action: the app
+	// offers each remedy as a button.
+	Guard    string          `json:"guard,omitempty"`
+	Remedies []apperr.Remedy `json:"remedies,omitempty"`
 }
 
 type Handler func(ctx context.Context, payload json.RawMessage) (any, error)
@@ -152,5 +156,5 @@ func Typed[In any](fn func(ctx context.Context, in In) (any, error)) Handler {
 }
 
 func errorResponse(err *apperr.Error) Response {
-	return Response{Error: &ErrorBody{Code: err.Code, Message: err.Message}}
+	return Response{Error: &ErrorBody{Code: err.Code, Message: err.Message, Guard: err.Guard, Remedies: err.Remedies}}
 }

@@ -1,20 +1,30 @@
-// Package documents issues business documents (invoices and receipts) with
-// a generic lifecycle:
+// Package documents holds her business documents (invoices and receipts),
+// which are where bizzy keeps money: a session's or package's fee is what
+// its invoice line charges, and what was received is what its receipt line
+// says. The items carry copies (see book.Derive), never their own figures.
+//
+// Every document has the same lifecycle:
 //
 //	draft ──issue──▶ issued rev 0 ──revise──▶ (draft on top) ──issue──▶ rev 1 …
-//	  │                    │
-//	discard             cancel (the number stays used)
+//	                       │
+//	                    cancel (the number stays used; its lines go back to a draft)
 //
-// A draft is free text she can edit before anything is final, prefilled from
-// the session or package it covers. The number is only taken on the first
-// issue, so discarded drafts leave no gaps. Every issued revision is kept as
-// it was, and the PDF is rendered in the browser from that content.
+// A draft is made with what it covers: a session's invoice when it is
+// booked, a receipt when a payment is recorded. Before it is issued
+// anything on it can change, and changing a line's amount changes the fee.
+// Issuing takes the next number and freezes it. Once issued, a revision
+// may only correct what is printed without legal weight (see Legal); what
+// it charges, to whom and when it was issued never change. The number is
+// only taken on the first issue, so drafts leave no gaps. Every issued
+// revision is kept as it was, and the PDF is rendered in the browser from
+// that content.
 package documents
 
 import (
 	"time"
 
 	"bizzy-lambda/internal/shared/docref"
+	"bizzy-lambda/internal/shared/money"
 )
 
 type Status string
@@ -42,11 +52,28 @@ type TypeSpec struct {
 	// Code starts every number of the type (see Number).
 	Code string
 	Slot docref.Slot
+	// Effect is what its lines do to the items they cover.
+	Effect Effect
 }
 
+// Effect is what a document's lines do to what they cover.
+type Effect string
+
+const (
+	// Charge: the line is what the item costs (an invoice).
+	Charge Effect = "charge"
+	// Receive: the line is money received for it (a receipt).
+	Receive Effect = "receive"
+	// Not built yet, until a case needs one: a credit note (lowers what an
+	// issued invoice charged, as when a fee is waived after it was sent), a
+	// debit note (raises it) and a refund note (money paid back). Each will
+	// reference the issued document it adjusts, and the book will sum its
+	// lines with the invoice's or the receipt's.
+)
+
 var Types = map[Type]TypeSpec{
-	TypeInvoice: {Title: "Invoice", Code: "INV", Slot: docref.SlotInvoice},
-	TypeReceipt: {Title: "Receipt", Code: "RCP", Slot: docref.SlotReceipt},
+	TypeInvoice: {Title: "Invoice", Code: "INV", Slot: docref.SlotInvoice, Effect: Charge},
+	TypeReceipt: {Title: "Receipt", Code: "RCP", Slot: docref.SlotReceipt, Effect: Receive},
 }
 
 // SourceKind is what a document line was created from.
@@ -72,12 +99,12 @@ type Document struct {
 	Number   string `json:"number,omitempty" dynamodbav:"number,omitempty"`
 	Revision *int   `json:"revision,omitempty" dynamodbav:"revision,omitempty"`
 	ClientID string `json:"clientId,omitempty" dynamodbav:"clientId,omitempty"`
-	// Date and TotalCents mirror the current content (the draft until it is
-	// first issued) for lists.
+	// Date and TotalCents mirror the content that counts (the draft until it
+	// is first issued, with no date yet) for lists.
 	Date       string `json:"date" dynamodbav:"date"`
 	TotalCents int64  `json:"totalCents" dynamodbav:"totalCents"`
-	// Sources are the sessions and packages the issued content covers; each
-	// carries a link back here.
+	// Sources are the sessions and packages its lines cover; each carries a
+	// link back here.
 	Sources []Source `json:"sources" dynamodbav:"sources"`
 
 	Content *Content `json:"content,omitempty" dynamodbav:"content,omitempty"`
@@ -131,12 +158,17 @@ func (d Document) Summary() Summary {
 // Content is everything printed on the document. Once issued it never
 // changes, so the PDF can be rebuilt exactly years later.
 type Content struct {
-	// Date is the document date, YYYY-MM-DD.
-	Date      string    `json:"date" dynamodbav:"date"`
+	// Date is the document date, YYYY-MM-DD; a draft has none until she
+	// sets one, and takes the day it is issued.
+	Date string `json:"date" dynamodbav:"date"`
+	// Issuer and Recipient are filled from Settings and the client when a
+	// draft is read or issued, unless she edited them (see Fill).
 	Issuer    Issuer    `json:"issuer" dynamodbav:"issuer"`
 	Recipient Recipient `json:"recipient" dynamodbav:"recipient"`
 	Lines     []Line    `json:"lines" dynamodbav:"lines"`
-	// PaidBy says how it was paid (cash, bank transfer, DuitNow …).
+	// Payment is how and when what a receipt covers was paid.
+	Payment *Payment `json:"payment,omitempty" dynamodbav:"payment,omitempty"`
+	// PaidBy is the payment as printed ("Cash").
 	PaidBy     string `json:"paidBy,omitempty" dynamodbav:"paidBy,omitempty"`
 	Notes      string `json:"notes,omitempty" dynamodbav:"notes,omitempty"`
 	TotalCents int64  `json:"totalCents" dynamodbav:"totalCents"`
@@ -162,12 +194,56 @@ type Recipient struct {
 	Address string `json:"address,omitempty" dynamodbav:"address,omitempty"`
 }
 
+// Payment is how a receipt's items were paid, and the day.
+type Payment struct {
+	Method money.Method `json:"method" dynamodbav:"method"`
+	PaidOn string       `json:"paidOn" dynamodbav:"paidOn"`
+}
+
 type Line struct {
+	// ID keeps a line itself as it moves between drafts and revisions.
+	ID          string `json:"id" dynamodbav:"id"`
 	Description string `json:"description" dynamodbav:"description"`
 	// Date is the service date, YYYY-MM-DD, if any.
 	Date        string  `json:"date,omitempty" dynamodbav:"date,omitempty"`
 	AmountCents int64   `json:"amountCents" dynamodbav:"amountCents"`
 	Source      *Source `json:"source,omitempty" dynamodbav:"source,omitempty"`
+}
+
+// Current is the content that counts: the draft of one never issued, the
+// issued content otherwise (a revision being drafted counts once issued);
+// nil for a cancelled one.
+func (d Document) Current() *Content {
+	switch d.Status {
+	case StatusCancelled:
+		return nil
+	case StatusDraft:
+		return d.Draft
+	default:
+		return d.Content
+	}
+}
+
+// Live reports whether the document still counts: a draft, or issued.
+func (d Document) Live() bool {
+	return d.Status != StatusCancelled
+}
+
+// Ref is the link an item it covers keeps to it.
+func (d Document) Ref() docref.Ref {
+	ref := docref.Ref{DocumentID: d.ID, Number: d.Number}
+	if d.Revision != nil {
+		ref.Revision = *d.Revision
+	}
+	return ref
+}
+
+// Lines are the lines of the content that counts.
+func (d Document) Lines() []Line {
+	if c := d.Current(); c != nil {
+		return c.Lines
+	}
+	return nil
 }
 
 // Revision is one issued version, kept forever.

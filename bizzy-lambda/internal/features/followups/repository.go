@@ -16,7 +16,7 @@ type record struct {
 }
 
 func toRecord(f FollowUp) record {
-	return record{Keys: schema.FollowUpKeys(f.EventID, f.Due, f.ClientID, f.DoneAt != nil, f.SessionID), FollowUp: f}
+	return record{Keys: schema.FollowUpKeys(f.ID, f.Due, f.ClientID, f.DoneAt != nil, f.SessionID), FollowUp: f}
 }
 
 type Repository struct {
@@ -27,9 +27,9 @@ func NewRepository(store *dynamo.Store) Repository {
 	return Repository{store: store}
 }
 
-func (r Repository) Get(ctx context.Context, eventID string) (FollowUp, bool, error) {
+func (r Repository) Get(ctx context.Context, id string) (FollowUp, bool, error) {
 	var rec record
-	found, err := r.store.Get(ctx, schema.FollowUp, eventID, &rec)
+	found, err := r.store.Get(ctx, schema.FollowUp, id, &rec)
 	return rec.FollowUp, found, err
 }
 
@@ -42,13 +42,6 @@ func (r Repository) ListByTime(ctx context.Context, from, to time.Time) ([]Follo
 // oldest first: her to-do list.
 func (r Repository) ListOpen(ctx context.Context, until time.Time) ([]FollowUp, error) {
 	return r.query(ctx, dynamo.Query{Index: dynamo.IndexOpen, To: dynamo.TimeKey(until)})
-}
-
-// ListWithoutClient returns the follow-ups no client matched, done or
-// not, for when a client gains an alias: they are keyed under no client in
-// the client index (see schema.FollowUpKeys).
-func (r Repository) ListWithoutClient(ctx context.Context) ([]FollowUp, error) {
-	return r.ListByClient(ctx, "")
 }
 
 // ListByClient returns all of a client's follow-ups.
@@ -102,9 +95,27 @@ func unwrap(records []record) []FollowUp {
 	return all
 }
 
+// ListPending returns the follow-ups whose event is still to be written.
+// They are few, so the whole partition is read rather than kept in an
+// index of their own.
+func (r Repository) ListPending(ctx context.Context) ([]FollowUp, error) {
+	all, err := r.query(ctx, dynamo.Query{Index: dynamo.IndexTime})
+	if err != nil {
+		return nil, err
+	}
+	var out []FollowUp
+	for _, f := range all {
+		if f.Event.Pending {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
 // Save writes the whole follow-up if it is still at the version read (0
 // for a new one) and returns it at its new version; dynamo.ErrConflict
-// otherwise.
+// otherwise. Only what a follow-up's event says it shows is saved this way
+// (see googlesync); everything else changes through the book.
 func (r Repository) Save(ctx context.Context, f FollowUp) (FollowUp, error) {
 	previous := f.Version
 	f.Version++
@@ -114,8 +125,14 @@ func (r Repository) Save(ctx context.Context, f FollowUp) (FollowUp, error) {
 	return f, nil
 }
 
-// Delete removes a follow-up whatever its version: its event is gone.
-func (r Repository) Delete(ctx context.Context, eventID string) error {
-	_, err := r.store.Delete(ctx, schema.FollowUp, eventID, nil)
-	return err
+// PutItem is Save as one write in a transaction with other items.
+func PutItem(f FollowUp) dynamo.TransactItem {
+	previous := f.Version
+	f.Version++
+	return dynamo.TransactItem{Put: toRecord(f), When: dynamo.VersionIs(previous)}
+}
+
+// DeleteItem deletes a follow-up at the version read.
+func DeleteItem(f FollowUp) dynamo.TransactItem {
+	return dynamo.TransactItem{Delete: &[2]string{schema.FollowUp, f.ID}, When: dynamo.VersionIs(f.Version)}
 }

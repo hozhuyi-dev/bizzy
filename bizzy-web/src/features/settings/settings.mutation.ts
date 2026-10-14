@@ -5,7 +5,7 @@ import { SettingsKeys } from "~/core/constants/query-keys.constant";
 import { invalidateBilling } from "~/core/utils/query.util";
 
 export const SettingsMutation = {
-  /** A new home-visit colour relocates every session. */
+  /** A new session description reaches new invoice lines. */
   useSave: () => {
     const queryClient = useQueryClient();
     return useMutation({

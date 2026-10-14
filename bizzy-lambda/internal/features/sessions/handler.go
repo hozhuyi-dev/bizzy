@@ -2,7 +2,6 @@ package sessions
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -17,24 +16,29 @@ type HandlerStore interface {
 	Store
 	ListByTime(ctx context.Context, from, to time.Time) ([]Session, error)
 	PageByClient(ctx context.Context, clientID, cursor string, limit int) (dynamo.Page[Session], error)
-	ListByStatus(ctx context.Context, status Status) ([]Session, error)
-	Notes(ctx context.Context, eventID string) (Notes, error)
+	Notes(ctx context.Context, id string) (Notes, error)
 	SaveNotes(ctx context.Context, n Notes) error
 }
 
 type handler struct {
-	repo HandlerStore
-	now  func() time.Time
+	repo  HandlerStore
+	judge Judge
+	after After
+	now   func() time.Time
 }
 
+// After runs once what she recorded on a session changed: an edit waiting
+// in the calendar may be refused for it.
+type After func(ctx context.Context, sessionID string) error
+
 // Register serves sessions to the app, and the notes she records. Adding,
-// editing and deleting the booking goes through the calendar (see
-// googlesync.RegisterEditor); payments go through the payments feature.
-func Register(r *router.Router, repo HandlerStore, now func() time.Time) {
-	h := handler{repo: repo, now: now}
+// editing and deleting the booking, and its payment, are the book's
+// commands (see internal/features/book); judge is the book's verdict on
+// them, for the views.
+func Register(r *router.Router, repo HandlerStore, judge Judge, after After, now func() time.Time) {
+	h := handler{repo: repo, judge: judge, after: after, now: now}
 	r.Query("sessions.list", router.Typed(h.list))
 	r.Query("sessions.listByClient", router.Typed(h.listByClient))
-	r.Query("sessions.listRemoved", h.listRemoved)
 	r.Mutation("sessions.saveRecord", router.Typed(h.saveRecord))
 }
 
@@ -52,7 +56,10 @@ func (h handler) list(ctx context.Context, in listInput) (any, error) {
 		return nil, apperr.Invalid("ask for at most a year at a time")
 	}
 	all, err := h.repo.ListByTime(ctx, in.From, in.To.Add(-time.Second))
-	return Views(all, h.now()), err
+	if err != nil {
+		return nil, err
+	}
+	return Views(ctx, all, h.now(), h.judge)
 }
 
 // TimelinePage is how many sessions a client's timeline loads at a time.
@@ -69,14 +76,11 @@ func (h handler) listByClient(ctx context.Context, in listByClientInput) (any, e
 		return nil, apperr.Invalid("choose a client")
 	}
 	page, err := h.repo.PageByClient(ctx, in.ClientID, in.Cursor, TimelinePage)
-	return dynamo.Page[View]{Items: Views(page.Items, h.now()), Next: page.Next}, err
-}
-
-// listRemoved returns the sessions deleted from the calendar but kept for
-// her data on them.
-func (h handler) listRemoved(ctx context.Context, _ json.RawMessage) (any, error) {
-	all, err := h.repo.ListByStatus(ctx, StatusRemoved)
-	return Views(all, h.now()), err
+	if err != nil {
+		return nil, err
+	}
+	views, err := Views(ctx, page.Items, h.now(), h.judge)
+	return dynamo.Page[View]{Items: views, Next: page.Next}, err
 }
 
 // Limits on what she types, well inside DynamoDB's 400 KB per item.
@@ -86,7 +90,7 @@ const (
 )
 
 type saveRecordInput struct {
-	EventID string `json:"eventId"`
+	ID      string `json:"id"`
 	Summary string `json:"summary"`
 	// Notes nil keeps the notes as they are: the to-do list writes only the
 	// summary.
@@ -109,7 +113,7 @@ func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error
 	}
 
 	now := h.now().UTC()
-	current, found, err := h.repo.Get(ctx, in.EventID)
+	current, found, err := h.repo.Get(ctx, in.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -121,11 +125,11 @@ func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error
 	}
 
 	if in.Notes != nil {
-		if err := h.repo.SaveNotes(ctx, Notes{EventID: in.EventID, Text: notes, UpdatedAt: now}); err != nil {
+		if err := h.repo.SaveNotes(ctx, Notes{SessionID: in.ID, Text: notes, UpdatedAt: now}); err != nil {
 			return nil, err
 		}
 	}
-	saved, err := Update(ctx, h.repo, in.EventID, func(s *Session) error {
+	saved, err := Update(ctx, h.repo, in.ID, func(s *Session) error {
 		hasNotes := notes != ""
 		if in.Notes == nil {
 			hasNotes = s.Record != nil && s.Record.HasNotes
@@ -136,5 +140,14 @@ func (h handler) saveRecord(ctx context.Context, in saveRecordInput) (any, error
 	if err != nil {
 		return nil, err
 	}
-	return saved.View(now), nil
+	if h.after != nil {
+		if err := h.after(ctx, saved.ID); err != nil {
+			return nil, err
+		}
+	}
+	views, err := Views(ctx, []Session{saved}, now, h.judge)
+	if err != nil {
+		return nil, err
+	}
+	return views[0], nil
 }

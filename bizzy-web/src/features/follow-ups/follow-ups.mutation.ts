@@ -19,12 +19,8 @@ function useFollowUpMutation<TInput, TResult>(fn: (input: TInput) => Promise<TRe
 export const FollowUpsMutation = {
   useCreate: () => useFollowUpMutation((draft: FollowUpDraft) => FollowUpsService.create(draft)),
   useUpdate: () =>
-    useFollowUpMutation(({ eventId, draft }: { eventId: string; draft: FollowUpDraft }) =>
-      FollowUpsService.update(eventId, draft),
-    ),
-  useDelete: () => useFollowUpMutation((eventId: string) => FollowUpsService.delete(eventId)),
+    useFollowUpMutation(({ id, draft }: { id: string; draft: FollowUpDraft }) => FollowUpsService.update(id, draft)),
+  useDelete: () => useFollowUpMutation((id: string) => FollowUpsService.delete(id)),
   useSetDone: () =>
-    useFollowUpMutation(({ eventId, done }: { eventId: string; done: boolean }) =>
-      FollowUpsService.setDone(eventId, done),
-    ),
+    useFollowUpMutation(({ id, done }: { id: string; done: boolean }) => FollowUpsService.setDone(id, done)),
 };
