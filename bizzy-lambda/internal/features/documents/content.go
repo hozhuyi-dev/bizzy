@@ -9,12 +9,11 @@ import (
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
-	"bizzy-lambda/internal/shared/money"
 )
 
 // Fill completes a draft as it would be issued now: the business from
-// Settings and the client from their contact, where she hasn't written her
-// own. Issued content is never filled again.
+// Settings and the client from their contact, where the user hasn't
+// written their own. Issued content is never filled again.
 func Fill(c Content, cfg settings.Settings, client clients.Client) Content {
 	if c.Issuer == (Issuer{}) {
 		c.Issuer = issuerFrom(cfg)
@@ -23,7 +22,7 @@ func Fill(c Content, cfg settings.Settings, client clients.Client) Content {
 		c.Recipient = recipientFrom(client)
 	}
 	if c.Payment != nil {
-		c.PaidBy = money.MethodLabels[c.Payment.Method]
+		c.PaidBy = MethodLabels[c.Payment.Method]
 	}
 	return c
 }
@@ -54,16 +53,7 @@ func recipientFrom(c clients.Client) Recipient {
 	return r
 }
 
-// Total adds up the lines.
-func (c Content) Total() int64 {
-	var total int64
-	for _, l := range c.Lines {
-		total += l.AmountCents
-	}
-	return total
-}
-
-// Normalize trims what she typed, checks it and computes the total. A
+// Normalize trims what the user typed, checks it and computes the total. A
 // draft may have no date yet (it takes the day it is issued). Lines keep
 // their ids and sources: editing the text never changes what a line covers.
 func Normalize(in Content) (Content, error) {

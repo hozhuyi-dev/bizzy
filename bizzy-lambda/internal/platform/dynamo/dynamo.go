@@ -1,97 +1,205 @@
-// Package dynamo wraps the single bizzy table.
-//
-// One user means tiny data, so each entity type lives in one partition
-// (PK = "CLIENT", "SESSION", ...) and SK identifies the item. Other orders
-// come from five generic local secondary indexes whose sort keys each entity
-// fills in as it needs (see the Index constants). LSIs can only be created
-// with the table, so all five exist from the start; an entity that needs a
-// new order writes the attribute, and anything cross-partition can still get
-// a GSI later without recreating the table.
+// Package dynamo is the bizzy table in DynamoDB: the production Table (see
+// platform/table for the layout). Every read is consistent, and a commit is
+// one transaction.
 package dynamo
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
-	"reflect"
-	"time"
+	"strconv"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	"bizzy-lambda/internal/platform/table"
 )
 
-// Local secondary indexes. Every one projects all attributes and is sparse:
-// an item without the sort key attribute is not in the index.
-const (
-	// IndexTime orders an entity by its main date: "<time>".
-	IndexTime = "LSI1"
-	// IndexClient groups an entity by client: "<clientId>#<time>".
-	IndexClient = "LSI2"
-	// IndexOpen holds only items that need her attention: "<time>".
-	IndexOpen = "LSI3"
-	// IndexCategory groups by a kind or status: "<category>#<time>".
-	IndexCategory = "LSI4"
-	// IndexRelation groups by a related item: "<id>#<time>".
-	IndexRelation = "LSI5"
-)
-
-// Keys are the key attributes every item carries. Entities embed it in their
-// DynamoDB record alongside their own fields.
-type Keys struct {
-	PK     string `dynamodbav:"PK"`
-	SK     string `dynamodbav:"SK"`
-	LSI1SK string `dynamodbav:"LSI1SK,omitempty"`
-	LSI2SK string `dynamodbav:"LSI2SK,omitempty"`
-	LSI3SK string `dynamodbav:"LSI3SK,omitempty"`
-	LSI4SK string `dynamodbav:"LSI4SK,omitempty"`
-	LSI5SK string `dynamodbav:"LSI5SK,omitempty"`
-}
-
-// IndexAttributes are the LSI sort keys, which whoever writes an entity's
-// derived fields also owns.
-var IndexAttributes = []string{"LSI1SK", "LSI2SK", "LSI3SK", "LSI4SK", "LSI5SK"}
-
-type Store struct {
+type Table struct {
 	Client *dynamodb.Client
-	Table  string
+	Name   string
 }
 
-// New builds a store from the Lambda environment.
-func New(ctx context.Context) (*Store, error) {
-	table := os.Getenv("TABLE_NAME")
-	if table == "" {
+// New opens the table named by TABLE_NAME.
+func New(ctx context.Context) (*Table, error) {
+	name := os.Getenv("TABLE_NAME")
+	if name == "" {
 		return nil, errors.New("TABLE_NAME is not set")
 	}
-
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	return &Store{Client: dynamodb.NewFromConfig(cfg), Table: table}, nil
+	return &Table{Client: dynamodb.NewFromConfig(cfg), Name: name}, nil
 }
 
-// NewID returns a random 16-character hex id. The simulation replaces it
-// with a counter, so a failing run replays exactly.
-var NewID = func() string {
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+// The attributes an item is stored as.
+const (
+	attrData    = "data"
+	attrCounter = "n"
+)
+
+var indexes = []table.Index{table.ByTime, table.ByClient, table.ByOpen, table.ByTag, table.ByRef}
+
+// sortKey is the attribute holding an index's sort key.
+func sortKey(i table.Index) string {
+	if i == table.ByID {
+		return "SK"
+	}
+	return string(i) + "SK"
 }
 
-// TimeKey formats a time for a sort key. Always UTC: Google returns local
-// offsets, and "…+08:00" strings do not sort in time order against "…Z".
-func TimeKey(t time.Time) string {
-	return t.UTC().Format(time.RFC3339)
+func (t *Table) Get(ctx context.Context, key table.Key) (table.Item, bool, error) {
+	out, err := t.Client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(t.Name), Key: keyOf(key), ConsistentRead: aws.Bool(true),
+	})
+	if err != nil || out.Item == nil {
+		return table.Item{}, false, err
+	}
+	it, err := itemOf(out.Item)
+	return it, err == nil, err
 }
 
-// Same compares two items the way DynamoDB stores them, so time zones and
-// nil-vs-empty differences that do not survive a round trip are ignored.
-func Same(a, b any) bool {
-	am, errA := attributevalue.MarshalMap(a)
-	bm, errB := attributevalue.MarshalMap(b)
-	return errA == nil && errB == nil && reflect.DeepEqual(am, bm)
+func (t *Table) Query(ctx context.Context, q table.Query) ([]table.Item, error) {
+	sk := sortKey(q.Index)
+	cond := "PK = :pk"
+	values := map[string]types.AttributeValue{":pk": s(q.PK)}
+	switch {
+	case q.Equals != "":
+		cond += " AND " + sk + " = :v"
+		values[":v"] = s(q.Equals)
+	case q.Prefix != "":
+		cond += " AND begins_with(" + sk + ", :v)"
+		values[":v"] = s(q.Prefix)
+	case q.From != "" && q.To != "":
+		cond += " AND " + sk + " BETWEEN :from AND :to"
+		values[":from"], values[":to"] = s(q.From), s(q.To)
+	case q.From != "":
+		cond += " AND " + sk + " >= :from"
+		values[":from"] = s(q.From)
+	case q.To != "":
+		cond += " AND " + sk + " <= :to"
+		values[":to"] = s(q.To)
+	}
+	in := &dynamodb.QueryInput{
+		TableName: aws.String(t.Name), KeyConditionExpression: aws.String(cond),
+		ExpressionAttributeValues: values, ConsistentRead: aws.Bool(true),
+	}
+	if q.Index != table.ByID {
+		in.IndexName = aws.String(string(q.Index))
+	}
+	out := []table.Item{}
+	pages := dynamodb.NewQueryPaginator(t.Client, in)
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, raw := range page.Items {
+			it, err := itemOf(raw)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, it)
+		}
+	}
+	return out, nil
+}
+
+func (t *Table) Counter(ctx context.Context, key table.Key) (int64, error) {
+	out, err := t.Client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(t.Name), Key: keyOf(key), ConsistentRead: aws.Bool(true),
+	})
+	if err != nil || out.Item == nil {
+		return 0, err
+	}
+	n, ok := out.Item[attrCounter].(*types.AttributeValueMemberN)
+	if !ok {
+		return 0, fmt.Errorf("dynamo: counter %v has no %s", key, attrCounter)
+	}
+	return strconv.ParseInt(n.Value, 10, 64)
+}
+
+func (t *Table) Commit(ctx context.Context, counter table.Key, from int64, writes []table.Write) error {
+	if len(writes) > table.MaxWrites {
+		return table.ErrTooBig
+	}
+	bump := &types.Update{
+		TableName: aws.String(t.Name), Key: keyOf(counter),
+		UpdateExpression:          aws.String("SET #n = :next"),
+		ExpressionAttributeNames:  map[string]string{"#n": attrCounter},
+		ExpressionAttributeValues: map[string]types.AttributeValue{":next": n(from + 1)},
+	}
+	if from == 0 {
+		bump.ConditionExpression = aws.String("attribute_not_exists(#n)")
+	} else {
+		bump.ConditionExpression = aws.String("#n = :from")
+		bump.ExpressionAttributeValues[":from"] = n(from)
+	}
+	items := []types.TransactWriteItem{{Update: bump}}
+	for _, w := range writes {
+		switch {
+		case w.Put != nil:
+			items = append(items, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(t.Name), Item: attributesOf(*w.Put)}})
+		case w.Delete != nil:
+			items = append(items, types.TransactWriteItem{Delete: &types.Delete{TableName: aws.String(t.Name), Key: keyOf(*w.Delete)}})
+		}
+	}
+	_, err := t.Client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+	var canceled *types.TransactionCanceledException
+	if errors.As(err, &canceled) {
+		for _, r := range canceled.CancellationReasons {
+			if code := aws.ToString(r.Code); code == "ConditionalCheckFailed" || code == "TransactionConflict" {
+				return table.ErrConflict
+			}
+		}
+	}
+	return err
+}
+
+func attributesOf(it table.Item) map[string]types.AttributeValue {
+	av := keyOf(it.Key)
+	for _, i := range indexes {
+		if v := it.Indexes.Of(i); v != "" {
+			av[sortKey(i)] = s(v)
+		}
+	}
+	if len(it.Data) > 0 {
+		av[attrData] = s(string(it.Data))
+	}
+	return av
+}
+
+func itemOf(av map[string]types.AttributeValue) (table.Item, error) {
+	str := func(name string) string {
+		v, _ := av[name].(*types.AttributeValueMemberS)
+		if v == nil {
+			return ""
+		}
+		return v.Value
+	}
+	it := table.Item{
+		Key: table.Key{PK: str("PK"), SK: str("SK")},
+		Indexes: table.Indexes{
+			Time: str(sortKey(table.ByTime)), Client: str(sortKey(table.ByClient)), Open: str(sortKey(table.ByOpen)),
+			Tag: str(sortKey(table.ByTag)), Ref: str(sortKey(table.ByRef)),
+		},
+		Data: []byte(str(attrData)),
+	}
+	if len(it.Data) == 0 {
+		return it, fmt.Errorf("dynamo: item %v has no %s", it.Key, attrData)
+	}
+	return it, nil
+}
+
+func keyOf(k table.Key) map[string]types.AttributeValue {
+	return map[string]types.AttributeValue{"PK": s(k.PK), "SK": s(k.SK)}
+}
+
+func s(v string) types.AttributeValue { return &types.AttributeValueMemberS{Value: v} }
+func n(v int64) types.AttributeValue {
+	return &types.AttributeValueMemberN{Value: strconv.FormatInt(v, 10)}
 }

@@ -2,43 +2,29 @@ package simulation
 
 import (
 	"flag"
-	"fmt"
 	"os"
+	"slices"
 	"testing"
 
 	"pgregory.net/rapid"
+
+	"bizzy-lambda/internal/testutil/testapp"
 )
-
-// defaultSteps is how many actions a run averages unless -rapid.steps says
-// otherwise: rapid's 30 rarely reaches a receipt being cancelled after a
-// calendar edit.
-const defaultSteps = "100"
-
-var report = flag.String("sim.report", "", "write the transitions the simulation observed to this Markdown file")
-
-// observed collects the transitions of every run, for -sim.report.
-var observed Transitions
 
 func TestMain(m *testing.M) {
 	flag.Parse()
+	// rapid's default of 30 steps rarely gets far enough to swap two
+	// sessions in the calendar after a client is renamed.
 	set := false
 	flag.Visit(func(f *flag.Flag) { set = set || f.Name == "rapid.steps" })
 	if !set {
-		_ = flag.Set("rapid.steps", defaultSteps)
+		_ = flag.Set("rapid.steps", "100")
 	}
-	code := m.Run()
-	if *report != "" {
-		if err := os.WriteFile(*report, []byte(observed.Markdown()+recoveries.Markdown()), 0o644); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			code = 1
-		}
-	}
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 // TestSimulation runs random sequences of actions from every actor and
-// checks the world after each one (see checks.go), then that the user can
-// empty the to-do list from wherever the run left it (see recovery.go).
+// checks the world after each one (see checks.go).
 func TestSimulation(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		w := newWorld(t)
@@ -47,30 +33,38 @@ func TestSimulation(t *testing.T) {
 		}
 		for _, a := range Catalogue() {
 			actions[a.Name] = func(t *rapid.T) {
-				before := w.ruleStates()
-				var held map[string][]string
-				exact := w.InSync && !w.unhealed
-				if (a.Actor == ActorUser || a.Actor == ActorScenario) && !a.Reveals && exact {
-					held = w.contradictions()
+				appOnly := a.Actor == ActorUser && !a.Syncs
+				var before map[string]bool
+				if appOnly {
+					before = conflictIDs(t, w)
 				}
 				a.Run(t, w)
-				observed.record(a.Name, before, w.ruleStates())
-				if held != nil && !w.unhealed {
-					noNewContradictions(t, a.Name, held, w.contradictions())
+				if appOnly {
+					noNewConflicts(t, a.Name, before, conflictIDs(t, w))
 				}
 			}
 		}
 		t.Repeat(actions)
-		everyToDoCanBeCleared(t, w)
 	})
-	if *coverage {
-		for _, missing := range recoveries.unreached(resolvable()) {
-			t.Errorf("no run cleared %s: run longer, or make the generators reach it", missing)
+}
+
+// TestCatalogueCoversEveryMutation fails when a mutation is added to the
+// router without an action here: each feature has to say how the
+// simulation exercises it.
+func TestCatalogueCoversEveryMutation(t *testing.T) {
+	mutations := testapp.New().Router.Actions("mutation")
+	var users []string
+	for _, a := range Catalogue() {
+		if a.Actor == ActorUser {
+			users = append(users, a.Name)
+			if !slices.Contains(mutations, a.Name) {
+				t.Errorf("user action %s is no router mutation", a.Name)
+			}
 		}
-		for _, missing := range recoveries.uncovered(resolvable()) {
-			t.Logf("no run cleared %s (rare pairs are only listed)", missing)
+	}
+	for _, m := range mutations {
+		if !slices.Contains(users, m) {
+			t.Errorf("mutation %s has no action in the simulation: add one to actions_user.go", m)
 		}
 	}
 }
-
-var coverage = flag.Bool("sim.coverage", false, "fail unless every to-do rule was cleared in some run, and list fixes never seen clearing theirs (use with many -rapid.checks)")

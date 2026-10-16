@@ -1,133 +1,80 @@
 package simulation
 
 import (
-	"cmp"
-	"context"
-	"fmt"
-	"maps"
-	"slices"
 	"time"
 
 	"pgregory.net/rapid"
 
-	"bizzy-lambda/internal/features/calendar"
+	"bizzy-lambda/internal/calendar"
 )
 
-// calendarActions are edits made in Google Calendar itself, which the app
-// only learns about at the next sync: the source of every contradiction.
+// titles are what the user types on a timed event: clients' names, with a
+// fee, a package or a place, near misses, names of no client, follow-ups,
+// and what the syntax can't read.
+var titles = []string{
+	"Jane Smith", "? Jane Smith", "jane smith 95", "Bob Lee 120", "? Bob Lee (V)", "Amy Tan", "Amy Tan (H) 5x100",
+	"Zed Ong", "Kim Lee", "Jane S", "95", "! Jane Smith: call back",
+}
+
+// allDayTitles are what the user types on an all-day event.
+var allDayTitles = []string{"! Jane Smith: call back", "! Bob Lee", "! Zed Ong", "Holiday"}
+
+// calendarActions are the user editing the calendar directly.
 var calendarActions = []Action{
 	{Name: "calendar.add", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		start := when(t, w)
-		in := calendar.EventInput{Title: sessionTitle(t), Start: start, End: start.Add(time.Hour)}
-		if rapid.IntRange(0, 3).Draw(t, "follow-up?") == 0 {
-			in.Title = followUpTitle(t)
-			if rapid.Bool().Draw(t, "all day?") {
-				in.Date, in.Start, in.End = start.In(kl).Format(time.DateOnly), time.Time{}, time.Time{}
-			}
-		}
-		e, err := w.Calendar.Insert(context.Background(), in)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("calendar: added %s %q at %s", e.ID, e.Title, cmp.Or(e.Date, e.Start.Format(time.RFC3339)))
-		outsideChange(w)
+		start := startTime(t, w)
+		w.Calendar.UserAdd(rapid.SampledFrom(titles).Draw(t, "title"), start, start.Add(time.Hour))
+		w.InSync = false
 	}},
-	{Name: "calendar.retitle", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		e := &w.Calendar.Live[pickEvent(t, w, nil)]
-		followUp := calendar.IsFollowUp(e.Title) || e.AllDay
-		if rapid.IntRange(0, 9).Draw(t, "the other kind?") == 0 {
-			// A session's event retitled as a follow-up, or the other way.
-			followUp = !followUp
-		}
-		if followUp {
-			e.Title = followUpTitle(t)
-		} else {
-			e.Title = sessionTitle(t)
-		}
-		t.Logf("calendar: retitled %s %q", e.ID, e.Title)
-		touched(e)
-		outsideChange(w)
+	{Name: "calendar.addAllDay", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		day := startTime(t, w).In(time.FixedZone("MYT", 8*3600)).Format(time.DateOnly)
+		w.Calendar.UserAddAllDay(rapid.SampledFrom(allDayTitles).Draw(t, "title"), day)
+		w.InSync = false
 	}},
 	{Name: "calendar.move", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		e := &w.Calendar.Live[pickEvent(t, w, func(e calendar.Event) bool { return !e.AllDay })]
-		shift := time.Duration(rapid.SampledFrom([]int{-48, -2, 3, 24, 72}).Draw(t, "hours moved")) * time.Hour
-		e.Start, e.End = e.Start.Add(shift), e.End.Add(shift)
-		t.Logf("calendar: moved %s %q to %s", e.ID, e.Title, e.Start.Format(time.RFC3339))
-		touched(e)
-		outsideChange(w)
+		e := pickEvent(t, w)
+		start := startTime(t, w)
+		w.Calendar.UserEdit(e.ID, func(e *calendar.Event) {
+			if e.AllDay {
+				e.Date = start.Format(time.DateOnly)
+				return
+			}
+			e.Start, e.End = start, start.Add(e.End.Sub(e.Start))
+		})
+		w.InSync = false
+	}},
+	{Name: "calendar.retitle", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		e := pickEvent(t, w)
+		title := rapid.SampledFrom(titles).Draw(t, "title")
+		w.Calendar.UserEdit(e.ID, func(e *calendar.Event) { e.Title = title })
+		w.InSync = false
 	}},
 	{Name: "calendar.renote", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		e := &w.Calendar.Live[pickEvent(t, w, nil)]
-		e.Description = rapid.SampledFrom([]string{"", "Bring the scan", "Parking at the back"}).Draw(t, "description")
-		t.Logf("calendar: described %s %q as %q", e.ID, e.Title, e.Description)
-		touched(e)
-		outsideChange(w)
-	}},
-	{Name: "calendar.duplicate", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		// Google's Duplicate copies everything, bizzy's private properties
-		// too; she usually moves the copy.
-		e := w.Calendar.Live[pickEvent(t, w, nil)]
-		e.ID, e.ETag = fmt.Sprintf("copy%d", len(w.Calendar.Live)+len(w.Calendar.Trash)), "1"
-		for w.Calendar.Find(e.ID) >= 0 || slices.ContainsFunc(w.Calendar.Trash, func(x calendar.Event) bool { return x.ID == e.ID }) {
-			e.ID += "+"
-		}
-		e.Private = maps.Clone(e.Private)
-		if !e.AllDay {
-			shift := time.Duration(rapid.SampledFrom([]int{0, 2, 24, 168}).Draw(t, "hours later")) * time.Hour
-			e.Start, e.End = e.Start.Add(shift), e.End.Add(shift)
-		}
-		w.Calendar.Live = append(w.Calendar.Live, e)
-		t.Logf("calendar: duplicated as %s %q at %s", e.ID, e.Title, cmp.Or(e.Date, e.Start.Format(time.RFC3339)))
-		outsideChange(w)
-	}},
-	{Name: "calendar.swap", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		// Two bookings dragged into each other's times.
-		timed := func(e calendar.Event) bool { return !e.AllDay && !calendar.IsFollowUp(e.Title) }
-		i, j := pickEvent(t, w, timed), pickEvent(t, w, timed)
-		if i == j {
-			t.Skip("one event")
-		}
-		a, b := &w.Calendar.Live[i], &w.Calendar.Live[j]
-		a.Start, a.End, b.Start, b.End = b.Start, b.Start.Add(a.End.Sub(a.Start)), a.Start, a.Start.Add(b.End.Sub(b.Start))
-		t.Logf("calendar: swapped %s %q and %s %q", a.ID, a.Title, b.ID, b.Title)
-		touched(a)
-		touched(b)
-		outsideChange(w)
-	}},
-	{Name: "calendar.recolor", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		// Colours are hers: bizzy reads nothing from them.
-		e := &w.Calendar.Live[pickEvent(t, w, nil)]
-		e.ColorID = rapid.SampledFrom([]string{"", "1", "5", "11"}).Draw(t, "colour")
-		t.Logf("calendar: coloured %s %q %q", e.ID, e.Title, e.ColorID)
-		touched(e)
-		outsideChange(w)
+		e := pickEvent(t, w)
+		w.Calendar.UserEdit(e.ID, func(e *calendar.Event) { e.Description = "Edited on the phone" })
+		w.InSync = false
 	}},
 	{Name: "calendar.delete", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		i := pickEvent(t, w, nil)
-		t.Logf("calendar: deleted %s %q", w.Calendar.Live[i].ID, w.Calendar.Live[i].Title)
-		w.Calendar.Trash = append(w.Calendar.Trash, w.Calendar.Live[i])
-		w.Calendar.Live = slices.Delete(w.Calendar.Live, i, i+1)
-		outsideChange(w)
+		w.Calendar.UserDelete(pickEvent(t, w).ID)
+		w.InSync = false
 	}},
-	{Name: "calendar.emptyTrash", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		// Google keeps deleted events about 30 days.
-		if len(w.Calendar.Trash) == 0 {
-			t.Skip("nothing deleted")
-		}
-		t.Logf("calendar: emptied the trash")
-		w.Calendar.Trash = nil
-	}},
-	{Name: "calendar.restore", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
-		if len(w.Calendar.Trash) == 0 {
-			t.Skip("nothing deleted")
-		}
-		i := rapid.IntRange(0, len(w.Calendar.Trash)-1).Draw(t, "trashed event")
-		t.Logf("calendar: restored %s %q", w.Calendar.Trash[i].ID, w.Calendar.Trash[i].Title)
-		w.Calendar.Live = append(w.Calendar.Live, w.Calendar.Trash[i])
-		w.Calendar.Trash = slices.Delete(w.Calendar.Trash, i, i+1)
-		outsideChange(w)
+	{Name: "calendar.duplicate", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		w.Calendar.UserCopy(pickEvent(t, w).ID)
+		w.InSync = false
 	}},
 }
 
-// touched bumps an event's etag, as any edit in Google does.
-func touched(e *calendar.Event) { e.ETag += "+" }
+func pickEvent(t *rapid.T, w *World) calendar.Event {
+	if len(w.Calendar.Live) == 0 {
+		t.Skip("no events")
+	}
+	return rapid.SampledFrom(w.Calendar.Live).Draw(t, "event")
+}
+
+// clockActions are time passing.
+var clockActions = []Action{
+	{Name: "clock.advance", Actor: ActorClock, Run: func(t *rapid.T, w *World) {
+		w.Now = w.Now.Add(time.Duration(rapid.IntRange(1, 36).Draw(t, "hours")) * time.Hour)
+		w.InSync = false
+	}},
+}

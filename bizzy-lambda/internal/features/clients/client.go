@@ -1,0 +1,180 @@
+// Package clients is the practice's clients: who they are, the names a
+// calendar title can call them by, their usual fee and place, and the
+// Google contact their details live in.
+package clients
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/txn"
+)
+
+type Client struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Aliases are other names the user's calendar titles call the client
+	// by, e.g. "jane s".
+	Aliases []string `json:"aliases,omitempty"`
+	// FeeRates are the client's fees over time, oldest first, charged
+	// when nothing else pays for a session (see FeeOn). A new fee from a
+	// date leaves the sessions before it alone.
+	FeeRates []FeeRate `json:"feeRates,omitempty"`
+	// HomeVisits makes the client's sessions home visits unless a title
+	// says (H).
+	HomeVisits bool `json:"homeVisits,omitempty"`
+	// Contact is the linked Google contact, where the client's details
+	// live, with a copy of them.
+	Contact *Contact `json:"contact,omitempty"`
+	// LastContactedAt is when the user last got back to the client, which
+	// keeps them off the lapsed list for a while.
+	LastContactedAt *time.Time `json:"lastContactedAt,omitempty"`
+}
+
+var Clients = txn.Kind[Client]{
+	Name: "CLIENT", Gone: "This client was deleted.",
+	Doc:  txn.Doc{What: "A client: name, calendar names, usual fees and place, and a copy of their Google contact."},
+	Meta: func(c *Client) txn.Meta { return txn.Meta{ID: c.ID} },
+}
+
+// FeeRate is one fee and the day it starts.
+type FeeRate struct {
+	// From is the first local day (YYYY-MM-DD) it applies; empty for the
+	// first rate, which also covers every session before the next one.
+	From  string `json:"from,omitempty"`
+	Cents int64  `json:"cents"`
+}
+
+// FeeOn is the fee for a session on a local day (YYYY-MM-DD): the last
+// rate starting on or before it. Nil when no fee is set.
+func (c Client) FeeOn(day string) *int64 {
+	var fee *int64
+	for _, r := range c.FeeRates {
+		if r.From > day {
+			break
+		}
+		fee = &r.Cents
+	}
+	return fee
+}
+
+// Contact is the linked Google contact with a read-only copy of the
+// details bizzy uses. Google is the truth: edits in the app go straight to
+// Google (see contacts), and every sync refreshes the copy.
+type Contact struct {
+	// ResourceName is the contact's id in the People API ("people/c123").
+	ResourceName string `json:"resourceName"`
+	// ETag is the contact's version when copied.
+	ETag        string `json:"etag,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+	Email       string `json:"email,omitempty"`
+	Phone       string `json:"phone,omitempty"`
+	// Address is printed on receipts; Postcode is kept apart so clients
+	// can be grouped by area.
+	Address  string `json:"address,omitempty"`
+	Postcode string `json:"postcode,omitempty"`
+	// Missing is set when the sync no longer finds the contact in Google:
+	// the copy is kept, so it can be recreated from it.
+	Missing  bool      `json:"missing,omitempty"`
+	SyncedAt time.Time `json:"syncedAt"`
+}
+
+// SameDetails reports whether two copies say the same, whenever taken.
+func (c Contact) SameDetails(other Contact) bool {
+	c.SyncedAt, other.SyncedAt = time.Time{}, time.Time{}
+	return c == other
+}
+
+// Names are every name a calendar title can call the client by,
+// normalized: their name first.
+func (c Client) Names() []string {
+	names := []string{Normalize(c.Name)}
+	for _, a := range c.Aliases {
+		if n := Normalize(a); n != "" && !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
+// Normalize is a name as titles are matched: case and spacing don't count.
+func Normalize(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// Match is the client a calendar title names, or the refusal to show:
+// for a name that nearly matches one, adding it as that client's calendar
+// name is offered first.
+func Match(tx *txn.Tx, name string) (*Client, error) {
+	all, err := Clients.All(tx)
+	if err != nil {
+		return nil, err
+	}
+	m := MatchName(name, AliasesOf(all))
+	if m.Kind == MatchExact {
+		return Clients.Get(tx, m.ClientID)
+	}
+	message := fmt.Sprintf("No client is called %q.", name)
+	var remedies []apperr.Remedy
+	if m.Kind == MatchNearMiss {
+		c, err := Clients.Get(tx, m.ClientID)
+		if err != nil {
+			return nil, err
+		}
+		message = fmt.Sprintf("No client is called %q. Did you mean %s?", name, c.Name)
+		remedies = append(remedies, apperr.Remedy{
+			Action: "clients.update", Target: c.ID,
+			Request: map[string]any{"aliases": append(slices.Clone(c.Aliases), name)},
+			Label:   fmt.Sprintf("Add %q as %s's calendar name", name, c.Name),
+		})
+	}
+	remedies = append(remedies, apperr.Remedy{Action: "clients.create", Request: map[string]any{"name": name}, Label: fmt.Sprintf("Add %s as a client", name)})
+	return nil, apperr.Refused(message, remedies...)
+}
+
+// namesTaken is the refusal when another client already answers to one of
+// c's names, so a title naming it would be ambiguous.
+func namesTaken(tx *txn.Tx, c *Client) error {
+	all, err := Clients.All(tx)
+	if err != nil {
+		return err
+	}
+	for _, other := range all {
+		if other.ID == c.ID {
+			continue
+		}
+		for _, n := range c.Names() {
+			if slices.Contains(other.Names(), n) {
+				return apperr.Refused(fmt.Sprintf("%s is already called %q.", other.Name, n),
+					apperr.Remedy{Action: "clients.update", Target: other.ID, Label: "Change " + other.Name + "'s names"})
+			}
+		}
+	}
+	return nil
+}
+
+// checkFeeRates is the refusal for fee rates out of order: the first
+// applies from the start, every later one from a day of its own.
+func checkFeeRates(rates []FeeRate) error {
+	for i, r := range rates {
+		switch {
+		case r.Cents < 0:
+			return apperr.Invalid("A fee can't be negative.")
+		case i == 0 && r.From != "":
+			return apperr.Invalid("The first fee applies from the start, so it has no date.")
+		case i == 0:
+		case r.From == "":
+			return apperr.Invalid("Only the first fee applies from the start; give the others a date.")
+		case r.From <= rates[i-1].From:
+			return apperr.Invalid("Each fee starts on a day of its own, after the one before.")
+		default:
+			if _, err := time.Parse(time.DateOnly, r.From); err != nil {
+				return apperr.Invalid("%q is not a date.", r.From)
+			}
+		}
+	}
+	return nil
+}

@@ -1,13 +1,12 @@
 // Command job-quarterly is the Lambda EventBridge runs every quarter: the
-// upkeep that is rare enough not to need doing more often. Each task is
+// upkeep rare enough not to need doing more often. Each task is
 // independent; one failing doesn't stop the rest, and the run fails if any
 // did. A job on another schedule is its own command (job-<interval>).
 //
 // Tasks:
 //   - sweep: deletes the attachment files no attachment links to, which a
-//     request that died between writing a file and its item left behind
-//     (see attachments.Service.Sweep). Such files are rare, and only take
-//     space meanwhile.
+//     request that died between writing an item and deleting its file
+//     left behind (see attachments.Sweep).
 package main
 
 import (
@@ -24,6 +23,7 @@ import (
 	"bizzy-lambda/internal/features/attachments"
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/dynamo"
+	"bizzy-lambda/internal/platform/txn"
 )
 
 // task is one piece of upkeep.
@@ -38,7 +38,7 @@ const grace = 7 * 24 * time.Hour
 
 func main() {
 	ctx := context.Background()
-	store, err := dynamo.New(ctx)
+	tb, err := dynamo.New(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,11 +50,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	files := attachments.Service{Repo: attachments.NewRepository(store), Blobs: blobs, Now: time.Now}
+	run := &txn.Runner{Table: tb, Location: time.UTC, Now: time.Now, NewID: func() string { return "" }}
 
 	tasks := []task{
 		{name: "sweep", run: func(ctx context.Context) error {
-			deleted, err := files.Sweep(ctx, time.Now().Add(-grace))
+			deleted, err := attachments.Sweep(ctx, run, blobs, time.Now().Add(-grace))
 			if err == nil {
 				slog.InfoContext(ctx, "swept attachment files no attachment links to", "deleted", deleted)
 			}

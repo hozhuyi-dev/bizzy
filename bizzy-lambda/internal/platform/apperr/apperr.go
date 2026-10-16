@@ -1,45 +1,54 @@
-// Package apperr holds errors that are safe to show in the app. Anything
-// else that reaches the router is logged and reported as internal.
+// Package apperr holds the errors that are safe to show in the app. Any
+// other error that reaches the router is logged and reported as internal.
 package apperr
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type Code string
 
 const (
 	CodeInvalid  Code = "invalid"
 	CodeNotFound Code = "not_found"
+	// CodeRefused is a rule saying no: the change would leave the business
+	// in a state it must never be in. It carries the remedies that would let
+	// it through.
+	CodeRefused Code = "refused"
+	// CodeConflict is something else changing at the same moment; trying
+	// again usually works.
 	CodeConflict Code = "conflict"
 	// CodeDisconnected means Google access is missing or was revoked; the
-	// app sends her to Settings to connect again.
+	// app sends the user to Settings to connect again.
 	CodeDisconnected Code = "disconnected"
 )
 
 type Error struct {
-	Code    Code
-	Message string
-	// Guard names the guard that refused the action (see platform/command),
-	// and Remedies are the actions that would let it through; both empty
-	// for an error no guard raised.
-	Guard    string
+	Code     Code
+	Message  string
 	Remedies []Remedy
 }
 
 // Remedy is an action the user can take to clear a refusal, offered as a
 // button beside the message.
 type Remedy struct {
-	// Action is the router action to call, e.g. "documents.cancel".
+	// Action is the router action to call, e.g. "clients.create".
 	Action string `json:"action"`
-	// Target is what to call it on, e.g. a document's id.
+	// Target is the id it acts on, if any.
 	Target string `json:"target,omitempty"`
-	Label  string `json:"label"`
+	// Request is the action's request, as far as the remedy knows it, e.g.
+	// {"name": "Jane"}: the app sends it, or opens the action's form with
+	// it filled in.
+	Request map[string]any `json:"request,omitempty"`
+	Label   string         `json:"label"`
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("%s: %s", e.Code, e.Message) }
 
-// Refused is an action a guard turned down, with the remedies it offers.
-func Refused(guard, message string, remedies []Remedy) *Error {
-	return &Error{Code: CodeConflict, Message: message, Guard: guard, Remedies: remedies}
+// Refused is a change a rule turned down, with what would let it through.
+func Refused(message string, remedies ...Remedy) *Error {
+	return &Error{Code: CodeRefused, Message: message, Remedies: remedies}
 }
 
 func Invalid(format string, args ...any) *Error {
@@ -56,4 +65,27 @@ func Conflict(format string, args ...any) *Error {
 
 func Disconnected(format string, args ...any) *Error {
 	return &Error{Code: CodeDisconnected, Message: fmt.Sprintf(format, args...)}
+}
+
+// Verdict is what an action would say now: allowed, or why not and what
+// would let it through. A view carries one per action it offers (its
+// `can`), from the action's own precondition, so the app shows only what
+// the API would take.
+type Verdict struct {
+	OK       bool     `json:"ok"`
+	Why      string   `json:"why,omitempty"`
+	Remedies []Remedy `json:"remedies,omitempty"`
+}
+
+// VerdictOf is a precondition's answer as a verdict. An error that isn't
+// one to show is returned as it is: the view fails, rather than say no.
+func VerdictOf(err error) (Verdict, error) {
+	var shown *Error
+	switch {
+	case err == nil:
+		return Verdict{OK: true}, nil
+	case errors.As(err, &shown):
+		return Verdict{Why: shown.Message, Remedies: shown.Remedies}, nil
+	}
+	return Verdict{}, err
 }

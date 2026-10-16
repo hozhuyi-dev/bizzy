@@ -20,19 +20,19 @@ const (
 	personFields = "names,nicknames,emailAddresses,phoneNumbers,addresses,metadata"
 	editedFields = "emailAddresses,phoneNumbers,addresses"
 	// LabelName is the Google Contacts label linked clients are added to, so
-	// she can find them on her phone.
+	// the user can find them on their phone.
 	LabelName = "Clients"
 )
 
 var errChanged = apperr.Conflict("This contact was changed in Google meanwhile. Check the latest details and save again.")
 
-// Google reads and writes her contacts through the People API.
+// Google reads and writes the user's contacts through the People API.
 type Google struct {
 	client func(ctx context.Context) (*http.Client, error)
 }
 
-// NewGoogle takes how to get an HTTP client that acts as her (see
-// googleauth), asked for on every call since she can reconnect any time.
+// NewGoogle takes how to get an HTTP client that acts as the user (see
+// googleauth), asked for on every call since the user can reconnect any time.
 func NewGoogle(client func(ctx context.Context) (*http.Client, error)) *Google {
 	return &Google{client: client}
 }
@@ -45,7 +45,7 @@ func (g *Google) service(ctx context.Context) (*people.Service, error) {
 	return people.NewService(ctx, option.WithHTTPClient(client))
 }
 
-// List returns all her contacts, by name.
+// List returns all the user's contacts, by name.
 func (g *Google) List(ctx context.Context) ([]Person, error) {
 	svc, err := g.service(ctx)
 	if err != nil {
@@ -102,8 +102,8 @@ func (g *Google) Create(ctx context.Context, d Details) (Person, error) {
 	return toPerson(created), nil
 }
 
-// Update writes her edits to the contact's primary email, phone and
-// address, keeping its other entries. etag is the version she edited; if
+// Update writes the user's edits to the contact's primary email, phone and
+// address, keeping its other entries. etag is the version the user edited; if
 // the contact changed since, the edit is refused rather than overwriting.
 func (g *Google) Update(ctx context.Context, resourceName, etag string, d Details) (Person, error) {
 	svc, err := g.service(ctx)

@@ -1,2 +1,0 @@
-# rapid saves each failing run here to replay it; reproduce locally, fix, delete.
-testdata/rapid/

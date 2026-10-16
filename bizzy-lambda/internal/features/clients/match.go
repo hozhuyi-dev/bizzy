@@ -5,13 +5,13 @@ type MatchKind int
 
 const (
 	MatchNone MatchKind = iota
-	// MatchNearMiss is a likely typo of an alias. It is surfaced to her rather
+	// MatchNearMiss is a likely typo of an alias. It is surfaced to the user rather
 	// than silently skipped, so a misspelt session never goes missing.
 	MatchNearMiss
 	MatchExact
 )
 
-type Match struct {
+type NameMatch struct {
 	Kind     MatchKind
 	ClientID string
 	// Alias is the alias that was matched, or the closest one on a near miss.
@@ -21,29 +21,29 @@ type Match struct {
 // Aliases maps a normalised alias to the client that owns it.
 type Aliases map[string]string
 
-// AliasesOf indexes every client's aliases for matching.
-func AliasesOf(all []Client) Aliases {
+// AliasesOf indexes every name of every client for matching.
+func AliasesOf(all []*Client) Aliases {
 	aliases := make(Aliases)
 	for _, client := range all {
-		for _, alias := range client.Aliases {
-			aliases[NormalizeAlias(alias)] = client.ID
+		for _, name := range client.Names() {
+			aliases[name] = client.ID
 		}
 	}
 	return aliases
 }
 
 // MatchName finds the client an event name refers to.
-func MatchName(name string, aliases Aliases) Match {
-	normalized := NormalizeAlias(name)
+func MatchName(name string, aliases Aliases) NameMatch {
+	normalized := Normalize(name)
 	if normalized == "" {
-		return Match{Kind: MatchNone}
+		return NameMatch{Kind: MatchNone}
 	}
 
 	if clientID, ok := aliases[normalized]; ok {
-		return Match{Kind: MatchExact, ClientID: clientID, Alias: normalized}
+		return NameMatch{Kind: MatchExact, ClientID: clientID, Alias: normalized}
 	}
 
-	best := Match{Kind: MatchNone}
+	best := NameMatch{Kind: MatchNone}
 	bestDistance := maxTypoDistance(normalized) + 1
 	for alias, clientID := range aliases {
 		d := levenshtein(normalized, alias)
@@ -51,7 +51,7 @@ func MatchName(name string, aliases Aliases) Match {
 		// on map iteration order.
 		if d < bestDistance || (d == bestDistance && best.Kind == MatchNearMiss && alias < best.Alias) {
 			bestDistance = d
-			best = Match{Kind: MatchNearMiss, ClientID: clientID, Alias: alias}
+			best = NameMatch{Kind: MatchNearMiss, ClientID: clientID, Alias: alias}
 		}
 	}
 

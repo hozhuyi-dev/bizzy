@@ -1,23 +1,36 @@
 package documents
 
 // Sharing: every issued document gets a share token, and /d/<token> in the
-// app shows its issued content to whoever has the link, without signing in.
-// The token is the only permission, so it is long and random; links don't
-// expire (clients come back to old receipts for claims), but she can reset a
-// token to kill links already sent.
+// app shows its issued content to whoever has the link, without signing
+// in (cmd/public). The token is the only permission, so it is long and
+// random; links don't expire (clients come back to old receipts for
+// claims), but the user can reset a token to kill links already sent.
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"regexp"
-	"time"
 
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/txn"
 )
 
-// NewShareToken returns 128 random bits, URL-safe (22 characters).
-func NewShareToken() string {
+// Share is what a share token opens.
+type Share struct {
+	Token      string `json:"token"`
+	DocumentID string `json:"documentId"`
+}
+
+// Shares are found by token alone: the public link reads one item, then
+// its document, and nothing else.
+var Shares = txn.Kind[Share]{
+	Name: "DOCSHARE", Gone: "This link doesn't work any more; ask for a new one.",
+	Doc:  txn.Doc{What: "A share token, and the issued document it opens.", Ref: "the document"},
+	Meta: func(s *Share) txn.Meta { return txn.Meta{ID: s.Token, Ref: s.DocumentID} },
+}
+
+// newShareToken is 128 random bits, URL-safe (22 characters).
+func newShareToken() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
@@ -25,95 +38,63 @@ func NewShareToken() string {
 
 var shareTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
 
-// Share returns the share token of each issued document, by id, giving one
-// to any issued before documents had them.
-func (svc Service) Share(ctx context.Context, ids []string) (map[string]string, error) {
+// share gives a document a new token, retiring its old one.
+func share(tx *txn.Tx, d *Document) error {
+	if d.ShareToken != "" {
+		if err := Shares.Delete(tx, d.ShareToken); err != nil {
+			return err
+		}
+	}
+	d.ShareToken = newShareToken()
+	return Shares.Add(tx, &Share{Token: d.ShareToken, DocumentID: d.ID})
+}
+
+// ShareAll is the share token of each issued document, by id.
+func ShareAll(tx *txn.Tx, ids []string) (map[string]string, error) {
 	tokens := make(map[string]string, len(ids))
 	for _, id := range ids {
-		doc, err := svc.load(ctx, id, 0)
+		d, err := Documents.Get(tx, id)
 		if err != nil {
 			return nil, err
 		}
-		if doc.Status != StatusIssued {
-			return nil, apperr.Conflict("only issued documents can be shared")
+		if d.Status != StatusIssued {
+			return nil, apperr.Refused("Only issued documents can be shared.")
 		}
-		if doc.ShareToken == "" {
-			if doc, err = svc.newShareToken(ctx, doc); err != nil {
-				return nil, err
-			}
-		}
-		tokens[id] = doc.ShareToken
+		tokens[id] = d.ShareToken
 	}
 	return tokens, nil
 }
 
-// ResetShare gives a document a new share token; links with the old one
+// ResetShare gives a document a new share token: links with the old one
 // stop working.
-func (svc Service) ResetShare(ctx context.Context, id string, version int) (Document, error) {
-	doc, err := svc.load(ctx, id, version)
+func ResetShare(tx *txn.Tx, id string) (*Document, error) {
+	d, err := Documents.Get(tx, id)
 	if err != nil {
-		return Document{}, err
+		return nil, err
 	}
-	if doc.Content == nil {
-		return Document{}, apperr.Conflict("only an issued document has a link")
+	if d.Content == nil {
+		return nil, apperr.Refused("Only an issued document has a link.")
 	}
-	return svc.newShareToken(ctx, doc)
+	return d, share(tx, d)
 }
 
-func (svc Service) newShareToken(ctx context.Context, doc Document) (Document, error) {
-	updated := doc
-	updated.ShareToken = NewShareToken()
-	if err := conflictErr(svc.Repo.SetShare(ctx, updated, ShareChange{New: updated.ShareToken, Old: doc.ShareToken})); err != nil {
-		return doc, err
-	}
-	updated.Version++
-	return updated, nil
-}
-
-// Shared is what a share link shows: the issued content, never a draft or a
-// revision in progress.
-type Shared struct {
-	Type        Type       `json:"type"`
-	Status      Status     `json:"status"`
-	Number      string     `json:"number"`
-	Revision    *int       `json:"revision,omitempty"`
-	Content     Content    `json:"content"`
-	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
-}
-
-// SharedStore is all the public link reads.
-type SharedStore interface {
-	SharedID(ctx context.Context, token string) (string, bool, error)
-	Get(ctx context.Context, id string) (Document, bool, error)
-}
-
-// ReadShared returns the document a share token opens. A cancelled one is
-// still shown, marked cancelled, so a link already sent doesn't just die.
-func ReadShared(ctx context.Context, repo SharedStore, token string) (Shared, error) {
-	notFound := apperr.NotFound("this link doesn't work any more; ask for a new one")
+// Open is the document a share token opens: its issued content, a
+// cancelled one included (marked so), so a link already sent doesn't just
+// die.
+func Open(tx *txn.Tx, token string) (*Document, error) {
+	gone := apperr.NotFound("%s", Shares.Gone)
 	if !shareTokenPattern.MatchString(token) {
-		return Shared{}, notFound
+		return nil, gone
 	}
-	id, found, err := repo.SharedID(ctx, token)
-	if err != nil || !found {
-		return Shared{}, firstErr(err, notFound)
+	s, ok, err := Shares.Find(tx, token)
+	if err != nil || !ok {
+		return nil, firstErr(err, gone)
 	}
-	doc, found, err := repo.Get(ctx, id)
-	if err != nil || !found {
-		return Shared{}, firstErr(err, notFound)
+	d, ok, err := Documents.Find(tx, s.DocumentID)
+	if err != nil || !ok || d.ShareToken != token || d.Content == nil {
+		return nil, firstErr(err, gone)
 	}
-	// The token must still be the document's own: a reset retires the old.
-	if doc.ShareToken != token || doc.Content == nil {
-		return Shared{}, notFound
-	}
-	return Shared{
-		Type:        doc.Type,
-		Status:      doc.Status,
-		Number:      doc.Number,
-		Revision:    doc.Revision,
-		Content:     *doc.Content,
-		CancelledAt: doc.CancelledAt,
-	}, nil
+	return d, nil
 }
 
 func firstErr(err, fallback error) error {
