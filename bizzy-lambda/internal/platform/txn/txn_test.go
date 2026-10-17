@@ -159,6 +159,72 @@ func TestAnotherCommitFirstRerunsTheAction(t *testing.T) {
 	}
 }
 
+// theirs commits a note as someone else would, mid-way through a run.
+func theirs(ctx context.Context, r *txn.Runner, id string) error {
+	_, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+		return nil, notes.Add(tx, &note{ID: id, At: day})
+	})
+	return err
+}
+
+func TestARefusalAfterAnotherCommitRerunsTheAction(t *testing.T) {
+	r, _ := newRunner()
+	ctx := context.Background()
+	runs := 0
+	_, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+		runs++
+		if runs == 1 {
+			// What it read may be half of what was committed meanwhile.
+			return nil, errors.Join(theirs(ctx, r, "theirs"), apperr.Refused("no"))
+		}
+		return nil, nil
+	})
+	if err != nil || runs != 2 {
+		t.Errorf("runs = %d, err %v; want a rerun that isn't refused", runs, err)
+	}
+
+	runs = 0
+	refused := apperr.Refused("no")
+	_, err = txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+		runs++
+		return nil, refused
+	})
+	if !errors.Is(err, refused) || runs != 1 {
+		t.Errorf("runs = %d, err %v; want a refusal on what nothing else changed, run once", runs, err)
+	}
+}
+
+func TestAReadAfterAnotherCommitRunsAgain(t *testing.T) {
+	r, _ := newRunner()
+	ctx := context.Background()
+	runs := 0
+	got, err := txn.Read(ctx, r, func(tx *txn.Tx) (int, error) {
+		runs++
+		all, err := notes.All(tx)
+		if runs == 1 {
+			err = errors.Join(err, theirs(ctx, r, "theirs"))
+		}
+		return len(all), err
+	})
+	if err != nil || runs != 2 || got != 1 {
+		t.Errorf("runs = %d, saw %d notes, err %v; want a rerun that sees theirs", runs, got, err)
+	}
+}
+
+func TestReadsKeptBusyGiveUp(t *testing.T) {
+	r, _ := newRunner()
+	ctx := context.Background()
+	runs := 0
+	_, err := txn.Read(ctx, r, func(tx *txn.Tx) (any, error) {
+		runs++
+		return nil, theirs(ctx, r, fmt.Sprintf("theirs%d", runs))
+	})
+	var shown *apperr.Error
+	if !errors.As(err, &shown) || shown.Code != apperr.CodeConflict || runs != 5 {
+		t.Errorf("runs = %d, err %v; want a conflict after 5", runs, err)
+	}
+}
+
 func TestReadsMustNotChange(t *testing.T) {
 	r, _ := newRunner()
 	_, err := txn.Read(context.Background(), r, func(tx *txn.Tx) (any, error) {

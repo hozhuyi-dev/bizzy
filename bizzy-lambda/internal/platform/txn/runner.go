@@ -17,6 +17,12 @@
 // nearly does. So an action needs no thought about concurrency: what it
 // read is still true when its changes are written.
 //
+// The reads of one run aren't a snapshot: one that comes after another
+// commit sees it, and an earlier one didn't. A run that commits nothing
+// (an error, no changes, or a Read) is only trusted if the counter is
+// still where it began; otherwise it may have seen half of that commit,
+// and it runs again too.
+//
 // After a commit, the Runner's After hook does what follows outside the
 // table (writing the calendar). It runs once per commit; if it fails, the
 // next sync finishes it.
@@ -86,54 +92,96 @@ func Run[T any](ctx context.Context, r *Runner, action func(tx *Tx) (T, error)) 
 		if err != nil {
 			return zero, err
 		}
-		out, err := action(tx)
-		if err != nil {
-			return zero, err
+		out, changes, writes, err := prepare(tx, r, action)
+		if err == nil && len(changes) > 0 {
+			err = r.Table.Commit(ctx, commits, tx.counter, writes)
+		} else {
+			err = r.settle(tx, err)
 		}
-		for _, check := range tx.later {
-			if err := check(); err != nil {
-				return zero, &LateError{Err: err}
-			}
-		}
-		changes, writes, err := tx.changes()
-		if err != nil || len(changes) == 0 {
-			return out, err
-		}
-		if err := r.check(tx, changes); err != nil {
-			return zero, err
-		}
-		err = r.Table.Commit(ctx, commits, tx.counter, writes)
+		var broken *brokenError
 		switch {
 		case errors.Is(err, table.ErrConflict) && attempt < maxAttempts:
 			continue
 		case errors.Is(err, table.ErrConflict):
-			return zero, apperr.Conflict("Something else changed at the same moment. Try again.")
+			return zero, errBusy
+		case errors.As(err, &broken):
+			slog.ErrorContext(ctx, "an action broke an invariant", "broken", broken.broken)
+			return zero, err
 		case err != nil:
 			return zero, err
 		}
-		if r.After != nil {
+		if len(changes) > 0 && r.After != nil {
 			r.After(ctx, changes)
 		}
 		return out, nil
 	}
 }
 
+// prepare runs steps 2 and 3: the action, its Later checks, and the
+// invariants on what it changed.
+func prepare[T any](tx *Tx, r *Runner, action func(tx *Tx) (T, error)) (T, []Change, []table.Write, error) {
+	var zero T
+	out, err := action(tx)
+	if err != nil {
+		return zero, nil, nil, err
+	}
+	for _, check := range tx.later {
+		if err := check(); err != nil {
+			return zero, nil, nil, &LateError{Err: err}
+		}
+	}
+	changes, writes, err := tx.changes()
+	if err == nil && len(changes) > 0 {
+		err = r.check(tx, changes)
+	}
+	if err != nil {
+		return zero, nil, nil, err
+	}
+	return out, changes, writes, nil
+}
+
 // Read runs a function that only reads. Changing anything is a bug.
 func Read[T any](ctx context.Context, r *Runner, read func(tx *Tx) (T, error)) (T, error) {
 	var zero T
-	tx, err := r.begin(ctx)
-	if err != nil {
-		return zero, err
+	for attempt := 1; ; attempt++ {
+		tx, err := r.begin(ctx)
+		if err != nil {
+			return zero, err
+		}
+		tx.readOnly = true
+		out, err := read(tx)
+		if err == nil {
+			if changes, _, cerr := tx.changes(); cerr != nil || len(changes) > 0 {
+				err = errors.Join(errReadOnly, cerr)
+			}
+		}
+		switch err := r.settle(tx, err); {
+		case errors.Is(err, table.ErrConflict) && attempt < maxAttempts:
+			continue
+		case errors.Is(err, table.ErrConflict):
+			return zero, errBusy
+		case err != nil:
+			return zero, err
+		}
+		return out, nil
 	}
-	tx.readOnly = true
-	out, err := read(tx)
-	if err != nil {
-		return zero, err
+}
+
+// errBusy is what the app shows when other commits kept going first.
+var errBusy = apperr.Conflict("Something else changed at the same moment. Try again.")
+
+// settle is how a run that committed nothing ends, with err or none: as
+// it is if the counter hasn't moved since it began, and as ErrConflict if
+// it has, since then its reads may straddle another commit.
+func (r *Runner) settle(tx *Tx, err error) error {
+	counter, cerr := r.Table.Counter(tx.ctx, commits)
+	switch {
+	case cerr != nil:
+		return errors.Join(err, cerr)
+	case counter != tx.counter:
+		return table.ErrConflict
 	}
-	if changes, _, err := tx.changes(); err != nil || len(changes) > 0 {
-		return zero, errors.Join(errReadOnly, err)
-	}
-	return out, nil
+	return err
 }
 
 func (r *Runner) begin(ctx context.Context) (*Tx, error) {
@@ -167,11 +215,17 @@ func (r *Runner) check(tx *Tx, changes []Change) error {
 		}
 	}
 	if len(broken) > 0 {
-		slog.ErrorContext(tx.ctx, "an action broke an invariant", "broken", broken)
-		return fmt.Errorf("txn: would break %s", strings.Join(broken, "; "))
+		return &brokenError{broken}
 	}
 	return nil
 }
+
+// brokenError is a commit refused for breaking invariants. Run logs it,
+// once it knows the action read one state, so it is a bug, not a run
+// that straddled another commit.
+type brokenError struct{ broken []string }
+
+func (e *brokenError) Error() string { return "txn: would break " + strings.Join(e.broken, "; ") }
 
 // AnyKind is a Kind of any item type.
 type AnyKind interface {
