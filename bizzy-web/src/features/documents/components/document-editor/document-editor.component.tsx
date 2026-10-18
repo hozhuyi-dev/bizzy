@@ -1,7 +1,7 @@
 import { EyeIcon, PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { DOCUMENT_TYPES } from "../../documents.constant";
 import type { DocumentEditorState } from "./document-editor.hook";
-import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
@@ -14,39 +14,44 @@ import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 const PAID_BY_SUGGESTIONS = PAYMENT_METHODS.map((method) => method.label);
 
 /** Issue: what the page is for, so it stays in view on a phone. */
-export function DocumentIssueButton({ editor }: { editor: DocumentEditorState }) {
+export function documentIssueAction(editor: DocumentEditorState): Action {
   const { doc, nextRevision, invalid, busy } = editor;
-  return (
-    <Button disabled={busy || invalid !== undefined} onClick={() => void editor.issue()}>
-      {editor.issuing
-        ? "Issuing…"
-        : nextRevision
-          ? `Issue Rev ${String(nextRevision).padStart(2, "0")}`
-          : `Issue ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`}
-    </Button>
-  );
+  return {
+    type: "button",
+    label: editor.issuing
+      ? "Issuing…"
+      : nextRevision
+        ? `Issue Rev ${String(nextRevision).padStart(2, "0")}`
+        : `Issue ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
+    style: "primary",
+    disabled: busy || invalid !== undefined,
+    onClick: () => void editor.issue(),
+  };
 }
 
 /** The editor's other actions: beside Issue on wider screens, behind ⋯ on a phone. */
-export function documentEditorActions(editor: DocumentEditorState): Array<RowAction> {
+export function documentEditorActions(editor: DocumentEditorState): Array<Action> {
   const { doc, invalid, busy } = editor;
   return [
     {
+      type: "button",
       label: "Preview PDF",
       icon: EyeIcon,
       disabled: invalid !== undefined,
       onClick: () => void editor.preview(),
     },
     {
+      type: "button",
       label: editor.saving && !editor.issuing ? "Saving…" : "Save draft",
       icon: SaveIcon,
       disabled: busy || invalid !== undefined,
       onClick: () => void editor.save(),
     },
     {
+      type: "button",
       label: doc.number ? "Discard revision" : "Discard draft",
       icon: Trash2Icon,
-      destructive: true,
+      style: "destructive",
       disabled: busy,
       onClick: editor.discard,
     },

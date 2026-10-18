@@ -8,7 +8,6 @@ import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/foll
 import { FollowUpsQuery } from "~/features/follow-ups/follow-ups.query";
 import { formatDue } from "~/features/follow-ups/follow-ups.util";
 import { Loading } from "~/components/shared/quip/quip.component";
-import { Button } from "~/components/ui/button";
 
 export function followUpsStep(
   session: SessionView,
@@ -21,20 +20,15 @@ export function followUpsStep(
     title: "Follow-ups",
     state: "optional",
     meta: <FollowUpsMeta sessionId={session.id} />,
-    actions: client && (
-      <>
-        <Button variant="outline" size="sm" onClick={() => onNextVisit(draftOf(session))}>
-          <CalendarPlusIcon /> Next visit
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onFollowUp({ mode: "new", clientId: client.id, sessionId: session.id })}
-        >
-          <PlusIcon /> Follow-up
-        </Button>
-      </>
-    ),
+    actions: client && [
+      { type: "button", label: "Next visit", icon: CalendarPlusIcon, onClick: () => onNextVisit(draftOf(session)) },
+      {
+        type: "button",
+        label: "Follow-up",
+        icon: PlusIcon,
+        onClick: () => onFollowUp({ mode: "new", clientId: client.id, sessionId: session.id }),
+      },
+    ],
     content: <FollowUpsStep sessionId={session.id} onEdit={(f) => onFollowUp({ mode: "edit", followUp: f })} />,
   };
 }

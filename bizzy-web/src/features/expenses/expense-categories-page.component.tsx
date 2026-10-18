@@ -57,22 +57,22 @@ function CategoriesEditor({ initial }: { initial: Array<ExpenseCategory> }) {
     <>
       <PageHeader
         title="Categories"
-        actions={
-          <Button
-            disabled={save.isPending}
-            onClick={() =>
+        actions={[
+          {
+            type: "button",
+            label: save.isPending ? "Saving…" : "Save",
+            style: "primary",
+            disabled: save.isPending,
+            onClick: () =>
               save.mutate(categories, {
                 onSuccess: (saved) => {
                   setCategories(saved);
                   toast.success("Categories saved");
                 },
                 onError: (error) => toast.error(error.message),
-              })
-            }
-          >
-            {save.isPending ? "Saving…" : "Save"}
-          </Button>
-        }
+              }),
+          },
+        ]}
       />
       <div className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">

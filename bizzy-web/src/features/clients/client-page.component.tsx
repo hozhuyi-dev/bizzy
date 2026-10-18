@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, MessageCircleIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { totals } from "./client-activity.util";
@@ -113,6 +113,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
     },
   });
 
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
   const whatsapp = useWhatsApp();
   const phone = client?.contact?.phone;
   const problem = client && contactProblem(client);
@@ -305,19 +306,29 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
       <PageHeader
         parent={parent}
         title={client?.name ?? "New client"}
-        actions={
-          <form.Subscribe selector={(state) => state.isSubmitting}>
-            {(isSubmitting) => (
-              <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-                {isSubmitting ? "Saving…" : client ? "Save" : "Add client"}
-              </Button>
-            )}
-          </form.Subscribe>
-        }
+        actions={[
+          {
+            type: "submit",
+            form: FORM_ID,
+            label: isSubmitting ? "Saving…" : client ? "Save" : "Add client",
+            style: "primary",
+            disabled: isSubmitting,
+          },
+        ]}
         moreActions={
           whatsapp.canMessage(phone)
-            ? [{ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) }]
+            ? [{ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) }]
             : undefined
+        }
+        banners={
+          (problem || save.error) && (
+            <>
+              {problem && <Banner tone="attention" icon={CircleAlertIcon} title={`${problem}.`} />}
+              {save.error && (
+                <Banner tone="attention" icon={CircleAlertIcon} title={save.error.message} role="alert" />
+              )}
+            </>
+          )
         }
       />
       {/* Inputs join this form through their form attribute, so Enter saves. */}
@@ -329,19 +340,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
           void form.handleSubmit();
         }}
       />
-      <SectionLayout
-        banner={
-          (problem || save.error) && (
-            <>
-              {problem && <Banner tone="attention" icon={CircleAlertIcon} title={`${problem}.`} />}
-              {save.error && (
-                <Banner tone="attention" icon={CircleAlertIcon} title={save.error.message} role="alert" />
-              )}
-            </>
-          )
-        }
-        sections={sections}
-      />
+      <SectionLayout sections={sections} />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { ArrowRightIcon, CalendarX2Icon, CircleAlertIcon, LockIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { useBookingSave } from "./sessions-booking.hook";
@@ -20,7 +20,7 @@ import { SessionsQuery } from "./sessions.query";
 import type { PipelineStep } from "./components/pipeline-layout/pipeline-layout.component";
 import type { SessionDraft, SessionFullView, SessionReturnTo } from "./sessions.types";
 import type { DocumentLink } from "~/features/documents/documents.types";
-import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
@@ -36,7 +36,6 @@ import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { formatSessionTime } from "~/core/utils/date.util";
 import { clientOf } from "~/features/clients/clients.util";
@@ -72,12 +71,11 @@ function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
 
   return (
     <>
-      <PageHeader parent={parentOf(returnTo)} title="New session" />
-      {error && (
-        <div className="-mx-4 -mt-4 mb-4">
-          <Banner tone="attention" icon={CircleAlertIcon} title={error} role="alert" />
-        </div>
-      )}
+      <PageHeader
+        parent={parentOf(returnTo)}
+        title="New session"
+        banners={error && <Banner tone="attention" icon={CircleAlertIcon} title={error} role="alert" />}
+      />
       <Card className="max-w-3xl">
         <CardContent>
           <BookingForm
@@ -148,12 +146,13 @@ function SessionPipeline({ session, returnTo }: { session: SessionFullView; retu
   const waiting = conflicts.data ?? [];
 
   const messages = useSessionMessageActions(session, client, documents);
-  const more: Array<RowAction> = [
+  const more: Array<Action> = [
     ...messages,
     {
+      type: "button",
       label: "Delete",
       icon: Trash2Icon,
-      destructive: true,
+      style: "destructive",
       disabled: !session.can.delete.ok,
       onClick: () => setDeleting(true),
     },
@@ -173,21 +172,21 @@ function SessionPipeline({ session, returnTo }: { session: SessionFullView; retu
         parent={parent}
         title={client?.name ?? session.clientName}
         actions={
-          next && (
-            <Button
-              variant="outline"
-              size="sm"
-              render={<Link to="/sessions/$id" params={{ id: next }} search={{ from: returnTo ?? "home" }} />}
-              nativeButton={false}
-            >
-              <span className="hidden sm:inline">Next to-do</span> <ArrowRightIcon />
-            </Button>
-          )
+          next
+            ? [
+                {
+                  type: "link",
+                  label: "Next to-do",
+                  icon: ArrowRightIcon,
+                  iconAfter: true,
+                  iconOnlyOnPhone: true,
+                  link: { to: "/sessions/$id", params: { id: next }, search: { from: returnTo ?? "home" } },
+                },
+              ]
+            : undefined
         }
         moreActions={more}
-      />
-      <PipelineLayout
-        banner={
+        banners={
           (waiting.length > 0 || issued.length > 0) && (
             <>
               {waiting.map((conflict) => (
@@ -202,8 +201,8 @@ function SessionPipeline({ session, returnTo }: { session: SessionFullView; retu
             </>
           )
         }
-        steps={steps}
       />
+      <PipelineLayout steps={steps} />
       <DeleteSessionDialog
         session={deleting ? session : null}
         clientName={client?.name ?? session.clientName}

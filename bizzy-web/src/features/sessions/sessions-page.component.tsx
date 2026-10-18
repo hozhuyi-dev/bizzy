@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NewSessionButton } from "./components/new-session-button/new-session-button.component";
+import { NEW_SESSION_ACTION } from "./sessions.action";
 import { SessionsTable } from "./components/sessions-table/sessions-table.component";
 import { SessionsQuery } from "./sessions.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
@@ -26,7 +26,8 @@ export function SessionsPage({ month, onMonthChange }: SessionsPageProps) {
     <>
       <PageHeader
         title="All sessions"
-        actions={<NewSessionButton />}
+        actions={[NEW_SESSION_ACTION]}
+        banners={<GoogleNotice />}
         toolbar={
           <>
             <MonthPicker value={month} onChange={onMonthChange} />
@@ -34,8 +35,6 @@ export function SessionsPage({ month, onMonthChange }: SessionsPageProps) {
           </>
         }
       />
-
-      <GoogleNotice />
 
       {queryMatch(sessions, {
         pending: () => <Loading />,

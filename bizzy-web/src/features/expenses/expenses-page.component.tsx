@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { useTable } from "@tanstack/react-table";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { ExpenseLink, ExpenseReceipt, createExpenseColumns } from "./expenses.columns";
@@ -49,11 +48,9 @@ export function ExpensesPage({ year, onYearChange }: ExpensesPageProps) {
     <>
       <PageHeader
         title="Expenses"
-        actions={
-          <Button render={<Link to="/expenses/new" />} nativeButton={false}>
-            <PlusIcon /> New expense
-          </Button>
-        }
+        actions={[
+          { type: "link", label: "New expense", icon: PlusIcon, style: "primary", link: { to: "/expenses/new" } },
+        ]}
         toolbar={
           <>
             <div className="flex items-center gap-1">

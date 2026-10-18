@@ -2,7 +2,7 @@ import { MessageCircleIcon, SendIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { SessionView } from "./sessions.types";
 import type { DocumentLink } from "~/features/documents/documents.types";
-import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { ClientView } from "~/features/clients/clients.types";
 import { DocumentsQuery } from "~/features/documents/documents.query";
 import { SettingsQuery } from "~/features/settings/settings.query";
@@ -18,7 +18,7 @@ export function useSessionMessageActions(
   session: SessionView,
   client: ClientView | undefined,
   documents: ReadonlyArray<DocumentLink>,
-): Array<RowAction> {
+): Array<Action> {
   const settings = SettingsQuery.useGet();
   const issuedIds = documents.filter((doc) => doc.issued).map(({ ref }) => ref.id);
   const docs = DocumentsQuery.useByClient(client?.id ?? "", issuedIds.length > 0);
@@ -27,12 +27,13 @@ export function useSessionMessageActions(
 
   if (!client) return [];
   const to = { name: client.name, phone: client.contact?.phone };
-  const actions: Array<RowAction> = [];
+  const actions: Array<Action> = [];
 
   const due = session.owedCents;
   if (due > 0 && settings.data) {
     const text = paymentMessage(settings.data, { clientName: client.name, start: session.start, amountCents: due });
     actions.push({
+      type: "button",
       label: "Ask to pay",
       icon: MessageCircleIcon,
       onClick: () => {
@@ -44,6 +45,7 @@ export function useSessionMessageActions(
   const issued = (docs.data ?? []).filter((doc) => doc.status === "issued" && issuedIds.includes(doc.id));
   if (issued.length > 0) {
     actions.push({
+      type: "button",
       label: `Send ${documentsTitle(issued)}`,
       icon: SendIcon,
       disabled: busy,

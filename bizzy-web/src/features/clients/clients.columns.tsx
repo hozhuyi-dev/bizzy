@@ -1,7 +1,7 @@
 import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
 import { contactProblem, extraAliases } from "./clients.util";
 import type { ClientRow, ClientView } from "./clients.types";
-import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import { whatsappNumber } from "~/features/whatsapp/whatsapp.util";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
@@ -37,13 +37,13 @@ interface ClientActions {
 }
 
 /** The client's name links to their page, so editing needs no action here. */
-export function clientActions(client: ClientView, { onWhatsApp, onContacted, onRemind }: ClientActions): Array<RowAction> {
-  const actions: Array<RowAction> = [];
+export function clientActions(client: ClientView, { onWhatsApp, onContacted, onRemind }: ClientActions): Array<Action> {
+  const actions: Array<Action> = [];
   if (onWhatsApp && whatsappNumber(client.contact?.phone)) {
-    actions.push({ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => onWhatsApp(client) });
+    actions.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => onWhatsApp(client) });
   }
-  if (onContacted) actions.push({ label: "Contacted", icon: CheckIcon, onClick: () => onContacted(client) });
-  if (onRemind) actions.push({ label: "Remind me", icon: BellIcon, onClick: () => onRemind(client) });
+  if (onContacted) actions.push({ type: "button", label: "Contacted", icon: CheckIcon, onClick: () => onContacted(client) });
+  if (onRemind) actions.push({ type: "button", label: "Remind me", icon: BellIcon, onClick: () => onRemind(client) });
   return actions;
 }
 

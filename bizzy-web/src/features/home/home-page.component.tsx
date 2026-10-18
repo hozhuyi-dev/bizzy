@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { HomeIcon } from "lucide-react";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
-import { NewSessionButton } from "~/features/sessions/components/new-session-button/new-session-button.component";
+import { NEW_SESSION_ACTION } from "~/features/sessions/sessions.action";
 import { stageBadges } from "~/features/sessions/session-stage.util";
 import { SessionsQuery } from "~/features/sessions/sessions.query";
 import { TodoList } from "~/features/todo/components/todo-list/todo-list.component";
@@ -26,8 +26,7 @@ export function HomePage() {
 
   return (
     <>
-      <PageHeader title="Home" actions={<NewSessionButton />} />
-      <GoogleNotice />
+      <PageHeader title="Home" actions={[NEW_SESSION_ACTION]} banners={<GoogleNotice />} />
       <SectionLayout
         sections={[
           { id: "today", title: "Today", content: <Today /> },

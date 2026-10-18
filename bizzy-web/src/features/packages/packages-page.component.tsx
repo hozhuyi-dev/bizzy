@@ -19,7 +19,6 @@ import { PageHeader } from "~/components/shared/page-header/page-header.componen
 import { SearchInput } from "~/components/shared/search-input/search-input.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
-import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -79,11 +78,15 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
     <>
       <PageHeader
         title="Packages"
-        actions={
-          <Button onClick={() => setEditing({ mode: "new" })}>
-            <PlusIcon /> New package
-          </Button>
-        }
+        actions={[
+          {
+            type: "button",
+            label: "New package",
+            icon: PlusIcon,
+            style: "primary",
+            onClick: () => setEditing({ mode: "new" }),
+          },
+        ]}
         toolbar={
           <>
             <Tabs value={view} onValueChange={(value) => onViewChange(value as PackagesFilter)}>

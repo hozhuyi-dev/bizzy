@@ -166,9 +166,15 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* The sticky nav's height (h-12): everything that sticks below it reads this. */
+/*
+ * The sticky nav's height (h-12): everything that sticks below it reads this.
+ * --banners-height is set by PageHeader while its banners show; --sticky-top
+ * is where content sticks, under the nav, the page header (h-14) and banners.
+ */
 :root {
   --nav-height: 3rem;
+  --banners-height: 0px;
+  --sticky-top: calc(var(--nav-height) + 3.5rem + var(--banners-height));
 }
 
 @layer base {

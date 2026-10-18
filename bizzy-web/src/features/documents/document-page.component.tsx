@@ -11,9 +11,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  DocumentIssueButton,
   documentEditorActions,
   documentEditorSections,
+  documentIssueAction,
 } from "./components/document-editor/document-editor.component";
 import { useDocumentEditor } from "./components/document-editor/document-editor.hook";
 import { DocumentSheet } from "./components/document-sheet/document-sheet.component";
@@ -24,7 +24,7 @@ import { documentLabel, shareUrl  } from "./documents.util";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { useDocumentPdf } from "./documents.hook";
 import type { DocumentContent, DocumentPdfProps, DocumentRevision, DocumentType, DocumentView } from "./documents.types";
-import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -101,8 +101,11 @@ function DraftDocument({ doc, draft, revisions }: DraftDocumentProps) {
         parent={parent}
         title={documentLabel(doc.number, doc.revision)}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
-        actions={<DocumentIssueButton editor={editor} />}
+        actions={[documentIssueAction(editor)]}
         moreActions={documentEditorActions(editor)}
+        banners={
+          editor.invalid && <Banner tone="attention" icon={CircleAlertIcon} title={editor.invalid} role="alert" />
+        }
       />
       <form
         onSubmit={(event) => {
@@ -110,14 +113,7 @@ function DraftDocument({ doc, draft, revisions }: DraftDocumentProps) {
           void editor.save();
         }}
       >
-        <SectionLayout
-          banner={
-            editor.invalid && (
-              <Banner tone="attention" icon={CircleAlertIcon} title={editor.invalid} role="alert" />
-            )
-          }
-          sections={[...documentEditorSections(editor), ...(history ? [history] : [])]}
-        />
+        <SectionLayout sections={[...documentEditorSections(editor), ...(history ? [history] : [])]} />
       </form>
     </>
   );
@@ -160,22 +156,22 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
                 ...shareActions,
                 ...pdfActions,
                 {
+                  type: "button",
                   label: "Revise",
                   icon: PencilIcon,
                   disabled: revise.isPending,
                   onClick: () => revise.mutate(doc.id, { onError: (error) => toast.error(error.message) }),
                 },
                 {
+                  type: "button",
                   label: `Cancel ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
                   icon: BanIcon,
-                  destructive: true,
+                  style: "destructive",
                   onClick: () => setCancelling(true),
                 },
               ]
         }
-      />
-      <SectionLayout
-        banner={
+        banners={
           cancelled && (
             <Banner
               tone="neutral"
@@ -186,6 +182,8 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
             </Banner>
           )
         }
+      />
+      <SectionLayout
         sections={[
           {
             id: "document",
@@ -216,20 +214,21 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
  * on her computer), Copy link, and Reset link for one sent to the wrong person. A cancelled document's
  * link still opens (marked cancelled), so it can be reset but not sent.
  */
-function useShareActions(doc: DocumentView, content: DocumentContent, onReset: () => void): Array<RowAction> {
+function useShareActions(doc: DocumentView, content: DocumentContent, onReset: () => void): Array<Action> {
   const clientsById = ClientsQuery.useById();
   const { send, busy } = useSendDocuments();
   const client = clientOf(clientsById, doc.clientId);
   const to = { name: client?.name ?? content.recipient.name, phone: client?.contact?.phone ?? content.recipient.phone };
   const token = doc.shareToken;
 
-  const actions: Array<RowAction> = [];
+  const actions: Array<Action> = [];
   if (doc.status === "issued") {
-    actions.push({ label: "WhatsApp", icon: MessageCircleIcon, disabled: busy, onClick: () => send(to, [doc]) });
+    actions.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, disabled: busy, onClick: () => send(to, [doc]) });
   }
   if (token) {
     actions.push(
       {
+        type: "button",
         label: "Copy link",
         icon: LinkIcon,
         onClick: () =>
@@ -238,7 +237,7 @@ function useShareActions(doc: DocumentView, content: DocumentContent, onReset: (
             .then(() => toast.success("Link copied"))
             .catch(() => toast.error("Couldn't copy the link")),
       },
-      { label: "Reset link", icon: RefreshCwIcon, onClick: onReset },
+      { type: "button", label: "Reset link", icon: RefreshCwIcon, onClick: onReset },
     );
   }
   return actions;
@@ -306,11 +305,11 @@ function revisionsSection(doc: DocumentView, revisions: Array<DocumentRevision>)
 }
 
 /** View opens the real PDF in a new tab; Download saves it with a proper name. */
-function usePdfActions(pdf: DocumentPdfProps): Array<RowAction> {
+function usePdfActions(pdf: DocumentPdfProps): Array<Action> {
   const { busy, open, download } = useDocumentPdf();
   return [
-    { label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => open(pdf) },
-    { label: "Download", icon: DownloadIcon, disabled: busy, onClick: () => download(pdf) },
+    { type: "button", label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => open(pdf) },
+    { type: "button", label: "Download", icon: DownloadIcon, disabled: busy, onClick: () => download(pdf) },
   ];
 }
 

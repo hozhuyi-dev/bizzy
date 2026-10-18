@@ -7,19 +7,22 @@ import { PAGE_HEADER } from "./scroll-spy.constant";
  * own look while the fiddly measuring lives in one place.
  */
 
-/** The nav and the page header, in px: what sticks above every page. */
+/**
+ * The nav, the page header and its banners, in px: what sticks above every
+ * page. The CSS twin is --sticky-top (app.css).
+ */
 export function headersHeight(): number {
   const root = getComputedStyle(document.documentElement);
   const rem = parseFloat(root.fontSize) || 16;
-  return parseFloat(root.getPropertyValue("--nav-height")) * rem + PAGE_HEADER;
+  const banners = parseFloat(root.getPropertyValue("--banners-height")) || 0;
+  return parseFloat(root.getPropertyValue("--nav-height")) * rem + PAGE_HEADER + banners;
 }
 
-/**
- * Where content sticks under the headers and a page banner of this height,
- * as a CSS length, for --sticky-top.
- */
-export function stickyTop(bannerHeight: number): string {
-  return `calc(var(--nav-height) + ${PAGE_HEADER + bannerHeight}px)`;
+/** Publishes the page banners' height as --banners-height, for --sticky-top. */
+export function setBannersHeight(height: number | undefined) {
+  const root = document.documentElement.style;
+  if (height === undefined) root.removeProperty("--banners-height");
+  else root.setProperty("--banners-height", `${height}px`);
 }
 
 /** Scrolls a section's heading to just under the sticky bars. */

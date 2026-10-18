@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { SessionReturnTo, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { PackageView } from "~/features/packages/packages.types";
-import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import { Badge } from "~/components/ui/badge";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
@@ -90,10 +90,10 @@ function boughtOf(session: SessionView, handlers: SessionHandlers): PackageView 
 }
 
 /** The quick fixes a list can make; everything else is on the session's page. */
-export function sessionActions(session: SessionView, handlers: SessionHandlers): Array<RowAction> {
-  const actions: Array<RowAction> = [];
+export function sessionActions(session: SessionView, handlers: SessionHandlers): Array<Action> {
+  const actions: Array<Action> = [];
   if (session.todo.includes("confirm")) {
-    actions.push({ label: "Confirm", icon: CheckIcon, onClick: () => handlers.onConfirm(session) });
+    actions.push({ type: "button", label: "Confirm", icon: CheckIcon, onClick: () => handlers.onConfirm(session) });
   }
   return actions;
 }

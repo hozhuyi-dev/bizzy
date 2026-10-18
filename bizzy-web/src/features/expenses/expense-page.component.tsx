@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -100,6 +100,8 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
       }
     },
   });
+
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
 
   const sections: Array<PageSection> = [
     {
@@ -313,17 +315,22 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
       <PageHeader
         parent={parent}
         title={expense ? (expense.vendor ?? "Expense") : "New expense"}
-        actions={
-          <form.Subscribe selector={(state) => state.isSubmitting}>
-            {(isSubmitting) => (
-              <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-                {isSubmitting ? "Saving…" : "Save"}
-              </Button>
-            )}
-          </form.Subscribe>
-        }
+        actions={[
+          {
+            type: "submit",
+            form: FORM_ID,
+            label: isSubmitting ? "Saving…" : "Save",
+            style: "primary",
+            disabled: isSubmitting,
+          },
+        ]}
         moreActions={
-          expense ? [{ label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => setDeleting(true) }] : undefined
+          expense
+            ? [{ type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", onClick: () => setDeleting(true) }]
+            : undefined
+        }
+        banners={
+          save.error && <Banner tone="attention" icon={CircleAlertIcon} title={save.error.message} role="alert" />
         }
       />
       {/* Inputs join this form through their form attribute, so Enter saves. */}
@@ -335,12 +342,7 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
           void form.handleSubmit();
         }}
       />
-      <SectionLayout
-        banner={
-          save.error && <Banner tone="attention" icon={CircleAlertIcon} title={save.error.message} role="alert" />
-        }
-        sections={sections}
-      />
+      <SectionLayout sections={sections} />
 
       <AlertDialog open={deleting} onOpenChange={setDeleting}>
         <AlertDialogContent>

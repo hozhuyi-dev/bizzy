@@ -3,7 +3,7 @@ import { clientName, paymentText } from "./packages.util";
 import type { ReactNode } from "react";
 import type { PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import { Badge } from "~/components/ui/badge";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
@@ -83,20 +83,20 @@ export function PackageDocuments({
  * edit or delete it. The API refuses what its rules don't allow, with what
  * would let it through.
  */
-export function packageActions(pkg: PackageView, handlers: PackageHandlers): Array<RowAction> {
-  const actions: Array<RowAction> = [];
+export function packageActions(pkg: PackageView, handlers: PackageHandlers): Array<Action> {
+  const actions: Array<Action> = [];
   if (pkg.owedCents > 0) {
-    actions.push({ label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
+    actions.push({ type: "button", label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
   if (pkg.paid) {
-    actions.push({ label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
+    actions.push({ type: "button", label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
   if (pkg.boughtIn) {
-    actions.push({ label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
+    actions.push({ type: "button", label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
   }
   actions.push(
-    { label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) },
-    { label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => handlers.onDelete(pkg) },
+    { type: "button", label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) },
+    { type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", onClick: () => handlers.onDelete(pkg) },
   );
   return actions;
 }

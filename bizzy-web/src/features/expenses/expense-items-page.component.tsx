@@ -67,7 +67,7 @@ export function ExpenseItemsPage() {
         helper.display({
           id: "actions",
           cell: ({ row }) => (
-            <RowActionButtons actions={[{ label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]} />
+            <RowActionButtons actions={[{ type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]} />
           ),
         }),
       ]),
@@ -103,7 +103,7 @@ export function ExpenseItemsPage() {
                   <span className="font-medium">{row.original.name}</span>
                   <span className="text-xs text-muted-foreground">{categoryName(row.original)}</span>
                 </span>
-                <RowActionMenu actions={[{ label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]} />
+                <RowActionMenu actions={[{ type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]} />
               </CardContent>
             </Card>
           )}

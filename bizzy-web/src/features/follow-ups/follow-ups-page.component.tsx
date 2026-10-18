@@ -7,7 +7,6 @@ import type { FollowUpList, FollowUpTarget } from "./follow-ups.types";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -24,13 +23,18 @@ export function FollowUpsPage({ view }: { view: FollowUpList }) {
     <>
       <PageHeader
         title={view === "upcoming" ? "Upcoming" : "Done"}
-        actions={
-          <Button size="sm" onClick={() => setTarget({ mode: "new" })}>
-            <PlusIcon /> <span className="hidden sm:inline">New follow-up</span>
-          </Button>
-        }
+        actions={[
+          {
+            type: "button",
+            label: "New follow-up",
+            icon: PlusIcon,
+            style: "primary",
+            iconOnlyOnPhone: true,
+            onClick: () => setTarget({ mode: "new" }),
+          },
+        ]}
+        banners={<GoogleNotice />}
       />
-      <GoogleNotice />
 
       {list.isPending ? (
         <Loading />

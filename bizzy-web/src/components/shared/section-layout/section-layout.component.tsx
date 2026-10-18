@@ -1,8 +1,9 @@
 import { cn } from "cn";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import { ActionBar } from "~/components/shared/action-bar/action-bar.component";
 import { Card, CardContent } from "~/components/ui/card";
-import { useActiveSection, useHeight } from "~/core/scroll-spy/scroll-spy.hook";
-import { scrollToSection, stickyTop } from "~/core/scroll-spy/scroll-spy.util";
+import { useActiveSection, useCenteredCurrent } from "~/core/scroll-spy/scroll-spy.hook";
 
 export interface PageSection {
   /** Used for the anchor; unique on the page. */
@@ -14,7 +15,7 @@ export interface PageSection {
   title: string;
   description?: ReactNode;
   /** Beside the title, e.g. a section's own Save. */
-  actions?: ReactNode;
+  actions?: ReadonlyArray<Action> | undefined;
   content: ReactNode;
   /** Content that brings its own surface (a receipt's paper) skips the card. */
   bare?: boolean;
@@ -22,11 +23,6 @@ export interface PageSection {
 
 interface SectionLayoutProps {
   sections: ReadonlyArray<PageSection>;
-  /**
-   * Notices about the whole page (one or more Banners), kept in view under
-   * the page header; the contents list sticks below them.
-   */
-  banner?: ReactNode;
   /** Where the contents list sits on wider screens. */
   side?: "left" | "right";
 }
@@ -34,48 +30,38 @@ interface SectionLayoutProps {
 /**
  * A long page split into sections, with a contents list to jump between them:
  * a sticky column beside the sections on wider screens, a sticky row of links
- * under the header on phones. The list marks the section being read. An
- * optional banner sticks under the page header, and everything sticky here
- * sits below it. One section needs no contents, so it renders on its own.
+ * under the header on phones. The list marks the section being read. Page
+ * banners (PageHeader's) stick above, and everything sticky here sits below
+ * them, through --sticky-top. One section needs no contents, so it renders on
+ * its own.
  */
-export function SectionLayout({ sections, banner, side = "left" }: SectionLayoutProps) {
-  const [bannerRef, bannerHeight] = useHeight<HTMLDivElement>();
-  const bannerSpace = banner ? bannerHeight : 0;
-  const active = useActiveSection(sections.map((section) => section.id), bannerSpace);
-  // Read by the sticky and scroll-margin classes below.
-  const style = { "--sticky-top": stickyTop(bannerSpace) } as CSSProperties;
+export function SectionLayout({ sections, side = "left" }: SectionLayoutProps) {
+  const [active, jumpTo] = useActiveSection(sections.map((section) => section.id));
   const withContents = sections.length > 1;
 
   return (
-    <div style={style}>
-      {banner && (
-        // Its own background, so the translucent dark-mode border isn't see-through.
-        <div ref={bannerRef} className="sticky top-[calc(var(--nav-height)+3.5rem)] z-20 -mx-4 -mt-4 mb-4 flex flex-col border-b bg-background">
-          {banner}
-        </div>
+    <div
+      className={cn(
+        "flex flex-col gap-4",
+        withContents && "md:grid md:items-start md:gap-10",
+        withContents &&
+          (side === "left" ? "md:grid-cols-[10rem_minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)_10rem]"),
       )}
+    >
+      {withContents && <Contents sections={sections} active={active} onJump={jumpTo} side={side} />}
       <div
         className={cn(
-          "flex flex-col gap-4",
-          withContents && "md:grid md:items-start md:gap-10",
+          "flex min-w-0 flex-col gap-10",
+          // The last section is at least a screen tall (less the sticky bars),
+          // so jumping to it brings its heading to the top like the others. Less
+          // the main's pb-6 too, so scrolled to the bottom it sits there exactly.
           withContents &&
-            (side === "left" ? "md:grid-cols-[10rem_minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)_10rem]"),
+            "*:last:min-h-[calc(100dvh-var(--sticky-top)-5.25rem)] md:*:last:min-h-[calc(100dvh-var(--sticky-top)-2.5rem)]",
         )}
       >
-        {withContents && <Contents sections={sections} active={active} side={side} />}
-        <div
-          className={cn(
-            "flex min-w-0 flex-col gap-10",
-            // The last section is at least a screen tall (less the sticky bars),
-            // so jumping to it brings its heading to the top like the others.
-            withContents &&
-              "*:last:min-h-[calc(100dvh-var(--sticky-top)-3.75rem)] md:*:last:min-h-[calc(100dvh-var(--sticky-top)-1.5rem)]",
-          )}
-        >
-          {sections.map((section) => (
-            <SectionBlock key={section.id} section={section} />
-          ))}
-        </div>
+        {sections.map((section) => (
+          <SectionBlock key={section.id} section={section} />
+        ))}
       </div>
     </div>
   );
@@ -84,20 +70,24 @@ export function SectionLayout({ sections, banner, side = "left" }: SectionLayout
 function Contents({
   sections,
   active,
+  onJump,
   side,
 }: {
   sections: ReadonlyArray<PageSection>;
   active: string | undefined;
+  onJump: (id: string) => void;
   side: "left" | "right";
 }) {
+  const ref = useCenteredCurrent<HTMLElement>(active);
   return (
     <nav
+      ref={ref}
       aria-label="On this page"
       className={cn(
         // Phones: a sticky, sideways-scrolling row under the headers.
         "sticky top-(--sticky-top) z-10 -mx-4 -mt-4 flex h-11 items-center gap-1 overflow-x-auto border-b bg-background px-4 scrollbar-none",
         // Wider: a sticky column beside the sections.
-        "md:top-[calc(var(--sticky-top)+1.5rem)] md:mx-0 md:mt-0 md:h-auto md:flex-col md:items-stretch md:gap-0 md:overflow-visible md:border-b-0 md:border-l md:bg-transparent md:px-0",
+        "md:top-[calc(var(--sticky-top)+1rem)] md:mx-0 md:mt-0 md:h-auto md:flex-col md:items-stretch md:gap-0 md:overflow-visible md:border-b-0 md:border-l md:bg-transparent md:px-0",
         side === "right" && "md:order-last",
       )}
     >
@@ -108,7 +98,7 @@ function Contents({
           aria-current={active === section.id ? "location" : undefined}
           onClick={(event) => {
             event.preventDefault();
-            scrollToSection(section.id);
+            onJump(section.id);
           }}
           className={cn(
             "grid shrink-0 grid-cols-[minmax(0,1fr)] rounded-md px-2.5 py-1 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -129,23 +119,27 @@ function Contents({
   );
 }
 
-/** One section: heading and description, then its content on a card. */
+/**
+ * One section: heading and description, then its content on a card. The
+ * heading's row is the title's height, so its top is the section's top
+ * whatever actions sit beside it, and every title lands in the same place.
+ */
 function SectionBlock({ section }: { section: PageSection }) {
   const { id, title, description, actions, content, bare } = section;
   return (
     <section
       id={id}
       aria-labelledby={`${id}-title`}
-      className="flex scroll-mt-[calc(var(--sticky-top)+3.75rem)] flex-col gap-3 md:scroll-mt-[calc(var(--sticky-top)+1.5rem)]"
+      className="flex scroll-mt-[calc(var(--sticky-top)+3.75rem)] flex-col gap-3 md:scroll-mt-[calc(var(--sticky-top)+1rem)]"
     >
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div className="flex flex-col gap-0.5">
-          <h2 id={`${id}-title`} className="text-base font-semibold">
+      <div className="flex flex-col gap-0.5">
+        <div className="flex h-6 items-center justify-between gap-2">
+          <h2 id={`${id}-title`} className="truncate text-base font-semibold">
             {title}
           </h2>
-          {description && <p className="max-w-prose text-sm text-muted-foreground">{description}</p>}
+          <ActionBar actions={actions} size="sm" />
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {description && <p className="max-w-prose text-sm text-muted-foreground">{description}</p>}
       </div>
       {bare ? (
         content

@@ -1,9 +1,10 @@
 import { cn } from "cn";
 import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CircleIcon } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import { ActionBar } from "~/components/shared/action-bar/action-bar.component";
 import { Card, CardContent } from "~/components/ui/card";
-import { useActiveSection, useHeight } from "~/core/scroll-spy/scroll-spy.hook";
-import { scrollToSection, stickyTop } from "~/core/scroll-spy/scroll-spy.util";
+import { useActiveSection, useCenteredCurrent } from "~/core/scroll-spy/scroll-spy.hook";
 
 /** Where a step stands: done, the one to do now, still ahead, or optional and untouched. */
 export type StepState = "done" | "current" | "todo" | "optional";
@@ -20,14 +21,12 @@ export interface PipelineStep {
    */
   meta?: ReactNode;
   /** Beside the section heading. */
-  actions?: ReactNode;
+  actions?: ReadonlyArray<Action> | undefined;
   content: ReactNode;
 }
 
 interface PipelineLayoutProps {
   steps: ReadonlyArray<PipelineStep>;
-  /** Notices about the whole session, kept in view under the page header. */
-  banner?: ReactNode;
 }
 
 const ICONS: Record<StepState, typeof CircleIcon> = {
@@ -54,30 +53,18 @@ const STATE_LABELS: Record<StepState, string> = {
  * Kept apart from SectionLayout (whose contents list is plain links) so the
  * two can grow on their own; they share only the scroll measuring.
  */
-export function PipelineLayout({ steps, banner }: PipelineLayoutProps) {
-  const [bannerRef, bannerHeight] = useHeight<HTMLDivElement>();
-  const bannerSpace = banner ? bannerHeight : 0;
-  const active = useActiveSection(
-    steps.map((step) => step.id),
-    bannerSpace,
-  );
-  const style = { "--sticky-top": stickyTop(bannerSpace) } as CSSProperties;
+export function PipelineLayout({ steps }: PipelineLayoutProps) {
+  const [active, jumpTo] = useActiveSection(steps.map((step) => step.id));
 
   return (
-    <div style={style}>
-      {banner && (
-        // Its own background, so the translucent dark-mode border isn't see-through.
-        <div ref={bannerRef} className="sticky top-[calc(var(--nav-height)+3.5rem)] z-20 -mx-4 -mt-4 mb-4 flex flex-col border-b bg-background">
-          {banner}
-        </div>
-      )}
-      <div className="flex flex-col gap-4 md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-10">
-        <Rail steps={steps} active={active} />
-        <div className="flex min-w-0 flex-col gap-10 *:last:min-h-[calc(100dvh-var(--sticky-top)-3.75rem)] md:*:last:min-h-[calc(100dvh-var(--sticky-top)-1.5rem)]">
-          {steps.map((step) => (
-            <StepSection key={step.id} step={step} />
-          ))}
-        </div>
+    <div className="flex flex-col gap-4 md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-10">
+      <Rail steps={steps} active={active} onJump={jumpTo} />
+      {/* The last step is at least a screen tall, less the sticky bars and the
+          main's pb-6, so its heading reaches the top like the others. */}
+      <div className="flex min-w-0 flex-col gap-10 *:last:min-h-[calc(100dvh-var(--sticky-top)-5.25rem)] md:*:last:min-h-[calc(100dvh-var(--sticky-top)-2.5rem)]">
+        {steps.map((step) => (
+          <StepSection key={step.id} step={step} />
+        ))}
       </div>
     </div>
   );
@@ -99,15 +86,23 @@ function StepIcon({ state, className }: { state: StepState; className?: string }
   );
 }
 
-function Rail({ steps, active }: { steps: ReadonlyArray<PipelineStep>; active: string | undefined }) {
+interface RailProps {
+  steps: ReadonlyArray<PipelineStep>;
+  active: string | undefined;
+  onJump: (id: string) => void;
+}
+
+function Rail({ steps, active, onJump }: RailProps) {
+  const ref = useCenteredCurrent<HTMLElement>(active);
   return (
     <nav
+      ref={ref}
       aria-label="Steps"
       className={cn(
         // Phones: a sticky, sideways-scrolling row of step chips.
         "sticky top-(--sticky-top) z-10 -mx-4 -mt-4 flex h-11 items-center gap-1 overflow-x-auto border-b bg-background px-4 scrollbar-none",
         // Wider: a sticky column of steps with their details.
-        "md:top-[calc(var(--sticky-top)+1.5rem)] md:mx-0 md:mt-0 md:h-auto md:flex-col md:items-stretch md:gap-0 md:overflow-visible md:border-b-0 md:bg-transparent md:px-0",
+        "md:top-[calc(var(--sticky-top)+1rem)] md:mx-0 md:mt-0 md:h-auto md:flex-col md:items-stretch md:gap-0 md:overflow-visible md:border-b-0 md:bg-transparent md:px-0",
       )}
     >
       {steps.map((step, i) => (
@@ -117,7 +112,7 @@ function Rail({ steps, active }: { steps: ReadonlyArray<PipelineStep>; active: s
           aria-current={active === step.id ? "location" : undefined}
           onClick={(event) => {
             event.preventDefault();
-            scrollToSection(step.id);
+            onJump(step.id);
           }}
           className={cn(
             "group relative flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -155,17 +150,18 @@ function StepSection({ step }: { step: PipelineStep }) {
     <section
       id={id}
       aria-labelledby={`${id}-title`}
-      className="flex scroll-mt-[calc(var(--sticky-top)+3.75rem)] flex-col gap-3 md:scroll-mt-[calc(var(--sticky-top)+1.5rem)]"
+      className="flex scroll-mt-[calc(var(--sticky-top)+3.75rem)] flex-col gap-3 md:scroll-mt-[calc(var(--sticky-top)+1rem)]"
     >
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div className="flex flex-col gap-0.5">
-          <h2 id={`${id}-title`} className="flex items-center gap-2 text-base font-semibold">
+      {/* The heading's row is the title's height, whatever actions sit beside it. */}
+      <div className="flex flex-col gap-0.5">
+        <div className="flex h-6 items-center justify-between gap-2">
+          <h2 id={`${id}-title`} className="flex min-w-0 items-center gap-2 text-base font-semibold">
             <StepIcon state={step.state} className="md:hidden" />
-            {title}
+            <span className="truncate">{title}</span>
           </h2>
-          {meta && <p className="text-sm text-muted-foreground md:hidden">{meta}</p>}
+          <ActionBar actions={actions} size="sm" />
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {meta && <p className="text-sm text-muted-foreground md:hidden">{meta}</p>}
       </div>
       <Card>
         <CardContent className="flex flex-col gap-4">{content}</CardContent>

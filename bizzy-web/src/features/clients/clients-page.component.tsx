@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -17,7 +16,6 @@ import { dataTableFeatures } from "~/components/shared/data-table/data-table.con
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { SearchInput } from "~/components/shared/search-input/search-input.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { Button } from "~/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
@@ -51,11 +49,7 @@ export function ClientsPage({ view, lapse, onLapseChange }: ClientsPageProps) {
     <>
       <PageHeader
         title={view === "all" ? "All clients" : "Reconnect"}
-        actions={
-          <Button render={<Link to="/clients/new" />} nativeButton={false}>
-            <PlusIcon /> New client
-          </Button>
-        }
+        actions={[{ type: "link", label: "New client", icon: PlusIcon, style: "primary", link: { to: "/clients/new" } }]}
         toolbar={
           <>
           <div className="flex flex-wrap items-center gap-2">

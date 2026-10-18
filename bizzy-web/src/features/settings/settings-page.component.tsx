@@ -1,4 +1,4 @@
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { SettingsMutation } from "./settings.mutation";
 import { SettingsQuery } from "./settings.query";
@@ -10,7 +10,6 @@ import { AppearanceSettings } from "~/features/theme/components/appearance-setti
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
 import { Loading } from "~/components/shared/quip/quip.component";
-import { Button } from "~/components/ui/button";
 import {
   Field,
   FieldDescription,
@@ -101,6 +100,8 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
     },
   });
 
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+
   const textField = ({
     name,
     label,
@@ -142,15 +143,15 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
     <>
       <PageHeader
         title="Settings"
-        actions={
-          <form.Subscribe selector={(state) => state.isSubmitting}>
-            {(isSubmitting) => (
-              <Button type="submit" form={FORM_ID} disabled={isSubmitting}>
-                {isSubmitting ? "Saving…" : "Save settings"}
-              </Button>
-            )}
-          </form.Subscribe>
-        }
+        actions={[
+          {
+            type: "submit",
+            form: FORM_ID,
+            label: isSubmitting ? "Saving…" : "Save settings",
+            style: "primary",
+            disabled: isSubmitting,
+          },
+        ]}
       />
       {/* Inputs join this form through their form attribute, so Enter saves. */}
       <form

@@ -1,10 +1,13 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { ArrowLeftIcon, ChevronRightIcon } from "lucide-react";
+import { useEffect } from "react";
 import type { ReactNode } from "react";
 import type { LinkProps } from "@tanstack/react-router";
-import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
-import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import { ActionBar } from "~/components/shared/action-bar/action-bar.component";
 import { Button } from "~/components/ui/button";
+import { useHeight } from "~/core/scroll-spy/scroll-spy.hook";
+import { setBannersHeight } from "~/core/scroll-spy/scroll-spy.util";
 import { moduleOf } from "~/features/nav-bar/nav-bar.util";
 
 interface PageHeaderProps {
@@ -15,11 +18,17 @@ interface PageHeaderProps {
   badges?: ReactNode;
   /**
    * The page's main job (New client, Issue, Save), always in view. Keep it to
-   * one button so it fits beside the title on a phone.
+   * one button, styled primary, so it fits beside the title on a phone.
    */
-  actions?: ReactNode;
+  actions?: ReadonlyArray<Action> | undefined;
   /** Everything else: buttons on wider screens, behind ⋯ on a phone. */
-  moreActions?: Array<RowAction> | undefined;
+  moreActions?: ReadonlyArray<Action> | undefined;
+  /**
+   * Notices about the whole page (Banners), stacked and kept in view under
+   * the header; whatever sticks below (a contents list) sits under them. A
+   * banner that renders nothing takes no room.
+   */
+  banners?: ReactNode;
   /** View tabs and filters, on their own row under the header. */
   toolbar?: ReactNode;
 }
@@ -31,10 +40,10 @@ interface PageHeaderProps {
  * client, a receipt), or its module for one of a module's several pages
  * ("Documents › Receipts"). Nothing in it wraps: long titles truncate, and extra actions
  * fold into a menu on phones. It sticks under the nav bar (--nav-height) so
- * actions stay in reach on long tables; the toolbar scrolls with the page.
+ * actions stay in reach on long tables, with the banners under it; the
+ * toolbar scrolls with the page.
  */
-export function PageHeader({ title, parent, badges, actions, moreActions, toolbar }: PageHeaderProps) {
-  const more = moreActions ?? [];
+export function PageHeader({ title, parent, badges, actions, moreActions, banners, toolbar }: PageHeaderProps) {
   const { pathname } = useLocation();
   const module = parent ? undefined : moduleOf(pathname);
 
@@ -47,22 +56,9 @@ export function PageHeader({ title, parent, badges, actions, moreActions, toolba
           <h1 className="truncate text-lg font-semibold">{title}</h1>
           {badges && <div className="flex shrink-0 items-center gap-1">{badges}</div>}
         </div>
-        {(actions || more.length > 0) && (
-          <div className="flex shrink-0 items-center gap-2">
-            {more.length > 0 && (
-              <div className="hidden items-center gap-2 md:flex">
-                {more.map((action) => (
-                  <HeaderButton key={action.label} action={action} />
-                ))}
-              </div>
-            )}
-            {actions}
-            <div className="md:hidden">
-              <RowActionMenu actions={more} />
-            </div>
-          </div>
-        )}
+        <ActionBar actions={actions} more={moreActions} />
       </header>
+      {banners && <Banners>{banners}</Banners>}
       {toolbar && <div className="mb-4 flex flex-wrap items-center justify-between gap-2">{toolbar}</div>}
     </>
   );
@@ -103,18 +99,24 @@ function ModuleCrumb({ label }: { label: string }) {
   );
 }
 
-function HeaderButton({ action }: { action: RowAction }) {
-  const { label, icon: Icon, href, onClick, destructive, disabled } = action;
+/**
+ * The page's banners, stuck under the header, their height published as
+ * --banners-height for what sticks below. Hidden while every banner in it
+ * renders nothing. Its own background, so the translucent dark-mode border
+ * isn't see-through.
+ */
+function Banners({ children }: { children: ReactNode }) {
+  const [ref, height] = useHeight<HTMLDivElement>();
+  useEffect(() => {
+    setBannersHeight(height);
+    return () => setBannersHeight(undefined);
+  }, [height]);
   return (
-    <Button
-      variant={destructive ? "ghost" : "outline"}
-      className={destructive ? "text-destructive hover:text-destructive" : undefined}
-      disabled={disabled}
-      {...(href
-        ? { render: <a href={href} target="_blank" rel="noreferrer" />, nativeButton: false }
-        : { type: "button" as const, onClick })}
+    <div
+      ref={ref}
+      className="sticky top-[calc(var(--nav-height)+3.5rem)] z-20 -mx-4 -mt-4 mb-4 flex flex-col divide-y border-b bg-background empty:hidden"
     >
-      <Icon /> {label}
-    </Button>
+      {children}
+    </div>
   );
 }
