@@ -27,9 +27,11 @@ type item struct {
 // on an invoice, a package bought) writes the items it shows in. A
 // failure is logged and left for the next run.
 func (s *Sync) AfterCommit(ctx context.Context, changes []txn.Change) {
-	cal, err := s.Calendar(ctx)
+	cal, err := s.current(ctx)
 	if err != nil {
-		return // Not connected: nothing to write to.
+		// Not connected, or not synced with the calendar chosen yet,
+		// whose first run writes everything.
+		return
 	}
 	todo, err := txn.Read(ctx, s.Runner, func(tx *txn.Tx) (pushes, error) {
 		items, gone, err := affected(tx, changes)
@@ -140,11 +142,11 @@ func affected(tx *txn.Tx, changes []txn.Change) (items []item, gone []string, er
 	return items, gone, nil
 }
 
-// writeAll writes every item in the window whose event doesn't show it,
-// and deletes the events still to delete: what the last commits' writes
-// left undone.
-func (s *Sync) writeAll(ctx context.Context, cal calendar.Calendar, now time.Time) error {
-	from, to := now.Add(-Window), now.Add(Window)
+// writeAll writes every item between two times whose event doesn't show
+// it, and deletes the events there still to delete: what the last
+// commits' writes left undone, or a new calendar's every item. It returns
+// how many items and events it went over.
+func (s *Sync) writeAll(ctx context.Context, cal calendar.Calendar, from, to time.Time) (int, error) {
 	todo, err := txn.Read(ctx, s.Runner, func(tx *txn.Tx) (pushes, error) {
 		var p pushes
 		ss, err := sessions.Sessions.Between(tx, from, to)
@@ -172,24 +174,24 @@ func (s *Sync) writeAll(ctx context.Context, cal calendar.Calendar, now time.Tim
 		return p, err
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for _, it := range todo.items {
 		if err := s.write(ctx, cal, it.kind, it.id); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	for _, id := range todo.gone {
 		if err := s.removeEvent(ctx, cal, id); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return nil
+	return len(todo.items) + len(todo.gone), nil
 }
 
-// write makes an item's event show it, unless it already does, or the
-// user edited the event and the sync hasn't read the edit yet: it reads
-// it first, and the edit may stand. An edit bizzy refused (a conflict) is
+// write makes an item's event show it and carry its id (Link.Marked),
+// unless it already does, or the user edited the event and the sync
+// hasn't read the edit yet: it reads it first, and the edit may stand. An edit bizzy refused (a conflict) is
 // written over: what bizzy changed since settles it.
 func (s *Sync) write(ctx context.Context, cal calendar.Calendar, kind ItemKind, id string) error {
 	type plan struct {
@@ -221,17 +223,17 @@ func (s *Sync) write(ctx context.Context, cal calendar.Calendar, kind ItemKind, 
 	switch {
 	case err != nil:
 		return err
-	case !p.found, p.link != nil && p.want.Same(p.link.Seen):
+	case !p.found, p.link != nil && p.link.Marked && p.want.Same(p.link.Seen):
 		return nil
 	}
 
 	var written calendar.Event
+	in := p.want.Input()
+	in.Private = map[string]string{calendar.PropSession: id}
+	if kind == KindFollowUp {
+		in.Private = map[string]string{calendar.PropFollowUp: id}
+	}
 	if p.link == nil {
-		in := p.want.Input()
-		in.Private = map[string]string{calendar.PropSession: id}
-		if kind == KindFollowUp {
-			in.Private = map[string]string{calendar.PropFollowUp: id}
-		}
 		if written, err = cal.Insert(ctx, in); err != nil {
 			return err
 		}
@@ -245,7 +247,7 @@ func (s *Sync) write(ctx context.Context, cal calendar.Calendar, kind ItemKind, 
 		case !shows(kind, e).Same(p.link.Seen) && !p.waiting:
 			return nil // An edit not read yet.
 		}
-		written, err = cal.Update(ctx, e.ID, e.ETag, p.want.Input())
+		written, err = cal.Update(ctx, e.ID, e.ETag, in)
 		if errors.Is(err, calendar.ErrChanged) {
 			return nil // Edited this instant: the sync reads it.
 		}
@@ -263,13 +265,13 @@ func (s *Sync) write(ctx context.Context, cal calendar.Calendar, kind ItemKind, 
 			return false, err
 		}
 		if ok {
-			l.Seen = now
+			l.Seen, l.Marked = now, true
 			return false, conflicts.Conflicts.Delete(tx, written.ID)
 		}
 		if other, err := LinkOf(tx, kind, id); err != nil || other != nil {
 			return other != nil, err // Another request wrote its event first.
 		}
-		return false, Links.Add(tx, &Link{EventID: written.ID, Kind: kind, ItemID: id, Seen: now})
+		return false, Links.Add(tx, &Link{EventID: written.ID, Kind: kind, ItemID: id, Seen: now, Marked: true})
 	})
 	if err != nil {
 		return err
@@ -278,15 +280,6 @@ func (s *Sync) write(ctx context.Context, cal calendar.Calendar, kind ItemKind, 
 		return cal.Delete(ctx, written.ID, written.ETag)
 	}
 	return nil
-}
-
-// writeItem writes one item's event, opening the calendar.
-func (s *Sync) writeItem(ctx context.Context, kind ItemKind, id string) error {
-	cal, err := s.Calendar(ctx)
-	if err != nil {
-		return err
-	}
-	return s.write(ctx, cal, kind, id)
 }
 
 // removeEvent deletes an event that shows nothing any more, then its

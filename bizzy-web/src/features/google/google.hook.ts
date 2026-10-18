@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { GoogleMutation } from "./google.mutation";
 import { GoogleOAuthService } from "./google-oauth.service";
 import type { GoogleCallbackSearch } from "./google.types";
-import { SyncMutation } from "~/features/sync/sync.mutation";
+import { useSyncCalendar } from "~/features/sync/sync.hook";
 
 /** Sends her to Google's consent screen; she comes back to /google-callback. */
 export function useGoogleConsent(): () => void {
@@ -13,14 +13,15 @@ export function useGoogleConsent(): () => void {
 
 /**
  * Finishes connecting on /google-callback: checks the state, trades the code,
- * syncs the calendar, then goes back to Settings.
+ * then goes back to Settings. Reconnecting syncs the calendar chosen; a new
+ * account has none yet, chosen in Settings.
  */
 export function useFinishGoogleConsent({ code, state, error }: GoogleCallbackSearch): void {
   const navigate = useNavigate();
   // Async throughout: plain mutate() callbacks are dropped if the page
   // unmounts first, and the sync outlives it.
   const { mutateAsync: connect } = GoogleMutation.useConnect();
-  const { mutateAsync: sync } = SyncMutation.useRun();
+  const sync = useSyncCalendar();
   // The code works once; StrictMode runs effects twice in development.
   const started = useRef(false);
 
@@ -44,6 +45,10 @@ export function useFinishGoogleConsent({ code, state, error }: GoogleCallbackSea
 
     connect({ code, redirectUri: GoogleOAuthService.redirectUri() })
       .then((connection) => {
+        if (!connection.calendarId) {
+          toast.success(`Connected ${connection.email}`, { description: "Now choose the calendar you book sessions in." });
+          return;
+        }
         toast.success(`Connected ${connection.email}`, { description: `Syncing ${connection.calendarName}…` });
         sync().catch((syncError: Error) => toast.error(syncError.message));
       })

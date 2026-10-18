@@ -49,8 +49,10 @@ func FromCalendar(tx *txn.Tx, e calendar.Event) error {
 }
 
 // linkFor is the event's link. An event bizzy wrote for an item that has
-// no link yet (the request died before recording it) is linked to it now,
-// as showing what bizzy wrote.
+// no link yet (the request died before recording it, or it is in a
+// calendar chosen again) is linked to it now, as showing what it shows:
+// bizzy's version, if it differs, is then written over it, so an old
+// calendar's event never takes an item back to what it was.
 func linkFor(tx *txn.Tx, e calendar.Event) (*Link, error) {
 	l, ok, err := Links.Find(tx, e.ID)
 	if err != nil || ok {
@@ -69,11 +71,7 @@ func linkFor(tx *txn.Tx, e calendar.Event) (*Link, error) {
 	if other, err := LinkOf(tx, kind, id); err != nil || other != nil {
 		return nil, err // A copy of its event: a new one.
 	}
-	wrote, err := EventOf(tx, kind, id, nil)
-	if err != nil {
-		return nil, err
-	}
-	l = &Link{EventID: e.ID, Kind: kind, ItemID: id, Seen: wrote}
+	l = &Link{EventID: e.ID, Kind: kind, ItemID: id, Seen: shows(kind, e), Marked: true}
 	return l, Links.Add(tx, l)
 }
 

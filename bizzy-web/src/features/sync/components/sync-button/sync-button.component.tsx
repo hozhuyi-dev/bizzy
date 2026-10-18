@@ -1,8 +1,9 @@
 import { RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
+import { useSyncCalendar } from "../../sync.hook";
 import { SyncMutation } from "../../sync.mutation";
 import { SyncQuery } from "../../sync.query";
-import { describeSync, lastRunText } from "../../sync.util";
+import { backText, describeSync, lastRunText } from "../../sync.util";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -16,26 +17,28 @@ import { GoogleQuery } from "~/features/google/google.query";
 /**
  * Sits in the nav bar, so a failed sync shows on every page. The app
  * already syncs on load; the menu syncs again, to pick up changes made in
- * the calendar since. Each sync reads what changed since the last one.
- * Hidden until Google is connected, since there's nothing to sync.
+ * the calendar since. Each sync reads what changed since the last one,
+ * then goes on reading older events while there are some. Hidden until
+ * Google is connected, since there's nothing to sync.
  */
 export function SyncButton() {
   const google = GoogleQuery.useStatus();
   const status = SyncQuery.useStatus();
-  const run = SyncMutation.useRun();
+  const syncCalendar = useSyncCalendar();
   // Includes the sync on load, which runs outside this button.
   const running = SyncMutation.useIsRunning();
+  const backfilling = SyncMutation.useIsBackfilling();
 
   if (google.data === null) return null;
 
   const sync = () =>
-    run.mutate(undefined, {
-      onSuccess: (result) => toast.success("Calendar synced", { description: describeSync(result) }),
-      onError: (error) => toast.error(error.message),
-    });
+    syncCalendar()
+      .then((result) => toast.success("Calendar synced", { description: describeSync(result) }))
+      .catch((error: Error) => toast.error(error.message));
 
   const failed = !running && Boolean(status.data?.error);
-  const label = lastRunText(status.data, running);
+  const label = lastRunText(status.data, running, backfilling);
+  const back = failed ? "" : backText(status.data);
 
   return (
     <DropdownMenu>
@@ -49,7 +52,7 @@ export function SyncButton() {
           />
         }
       >
-        <RefreshCwIcon className={running ? "animate-spin" : undefined} />
+        <RefreshCwIcon className={running || backfilling ? "animate-spin" : undefined} />
         <span className={failed ? "hidden text-destructive lg:inline" : "hidden text-muted-foreground lg:inline"}>
           {label}
         </span>
@@ -59,6 +62,7 @@ export function SyncButton() {
         <div className="px-1.5 py-1 text-xs">
           <p className={failed ? "font-medium text-destructive" : "text-muted-foreground"}>{label}</p>
           {failed && <p className="mt-0.5 text-muted-foreground">{status.data?.error}</p>}
+          {back && <p className="mt-0.5 text-muted-foreground">{back}</p>}
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={running} onClick={sync}>

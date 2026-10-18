@@ -19,9 +19,16 @@ var (
 
 // Calendar is the calendar the user chose in Settings.
 type Calendar interface {
-	// Changed lists the events changed at or after since (zero: every
-	// event) that end after from. Deleted ones come back Cancelled.
-	Changed(ctx context.Context, since, from time.Time) ([]Event, error)
+	// ID names the calendar.
+	ID() string
+	// Changed lists the events that end after from and start before to
+	// (either zero: no bound). With since, only those changed at or after
+	// it, deleted ones coming back Cancelled; without, every event still
+	// there.
+	Changed(ctx context.Context, since, from, to time.Time) ([]Event, error)
+	// Earliest is when the earliest event starting before a time starts;
+	// false when there is none.
+	Earliest(ctx context.Context, before time.Time) (time.Time, bool, error)
 	// Get reads one event; a deleted one comes back Cancelled.
 	Get(ctx context.Context, id string) (Event, error)
 	Insert(ctx context.Context, in EventInput) (Event, error)
@@ -51,6 +58,15 @@ type Event struct {
 	// ETag is the version read; Updated when it last changed.
 	ETag    string
 	Updated time.Time
+}
+
+// At is when an event starts: its start, or its day.
+func (e Event) At() time.Time {
+	if e.AllDay {
+		day, _ := time.Parse(time.DateOnly, e.Date)
+		return day
+	}
+	return e.Start
 }
 
 // PropSession is on every event bizzy writes for a session: the session

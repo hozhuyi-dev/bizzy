@@ -126,7 +126,7 @@ func calendarShowsBizzy(t *rapid.T, w *World) {
 	}
 	for _, id := range slices.Sorted(maps.Keys(live)) {
 		e := live[id]
-		if !in(eventAt(e)) || waiting[id] {
+		if !in(e.At()) || waiting[id] {
 			continue
 		}
 		l := read(t, w, func(tx *txn.Tx) (*googlesync.Link, error) {
@@ -147,14 +147,6 @@ func shownAs(kind googlesync.ItemKind, e calendar.Event) calendar.Snapshot {
 		return calendar.NotedSnapshotOf(e)
 	}
 	return calendar.SnapshotOf(e)
-}
-
-func eventAt(e calendar.Event) time.Time {
-	if e.AllDay {
-		day, _ := time.Parse(time.DateOnly, e.Date)
-		return day
-	}
-	return e.Start
 }
 
 // noNewConflicts: the app refuses what isn't allowed before anything is

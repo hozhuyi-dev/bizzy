@@ -57,14 +57,18 @@ func Calendars(ctx context.Context, client *http.Client) ([]List, error) {
 	return all, googleauth.Wrap("list calendars", err)
 }
 
-func (g *Google) Changed(ctx context.Context, since, from time.Time) ([]Event, error) {
-	call := g.service.Events.List(g.calendarID).
-		SingleEvents(true).
-		ShowDeleted(true).
-		TimeMin(from.Format(time.RFC3339)).
-		MaxResults(2500)
+func (g *Google) ID() string { return g.calendarID }
+
+func (g *Google) Changed(ctx context.Context, since, from, to time.Time) ([]Event, error) {
+	call := g.service.Events.List(g.calendarID).SingleEvents(true).MaxResults(2500)
+	if !from.IsZero() {
+		call = call.TimeMin(from.Format(time.RFC3339))
+	}
+	if !to.IsZero() {
+		call = call.TimeMax(to.Format(time.RFC3339))
+	}
 	if !since.IsZero() {
-		call = call.UpdatedMin(since.Format(time.RFC3339))
+		call = call.UpdatedMin(since.Format(time.RFC3339)).ShowDeleted(true)
 	}
 	var events []Event
 	err := call.Pages(ctx, func(page *gcal.Events) error {
@@ -78,6 +82,29 @@ func (g *Google) Changed(ctx context.Context, since, from time.Time) ([]Event, e
 		return nil
 	})
 	return events, googleauth.Wrap("list events", err)
+}
+
+func (g *Google) Earliest(ctx context.Context, before time.Time) (time.Time, bool, error) {
+	call := g.service.Events.List(g.calendarID).
+		SingleEvents(true).
+		OrderBy("startTime").
+		TimeMax(before.Format(time.RFC3339)).
+		MaxResults(1)
+	// A page may come back empty with more to follow.
+	for {
+		page, err := call.Context(ctx).Do()
+		if err != nil {
+			return time.Time{}, false, googleauth.Wrap("list events", err)
+		}
+		if len(page.Items) > 0 {
+			e, err := toEvent(page.Items[0])
+			return e.At(), err == nil, err
+		}
+		if page.NextPageToken == "" {
+			return time.Time{}, false, nil
+		}
+		call.PageToken(page.NextPageToken)
+	}
 }
 
 func (g *Google) Get(ctx context.Context, id string) (Event, error) {

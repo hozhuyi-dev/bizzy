@@ -365,6 +365,7 @@ Which calendar event shows which session or follow-up, and what it said when the
 | kind | `googlesync.ItemKind` |
 | itemId | `string` |
 | seen | `calendar.Snapshot` |
+| marked | `bool` |
 
 | Index | For it |
 |---|---|
@@ -382,7 +383,10 @@ What the sync remembers between runs: one item, CALENDAR.
 | Field | Type |
 |---|---|
 | id | `string` |
+| calendarId | `string` |
 | readAt | `time.Time` |
+| back | `time.Time` |
+| floor | `time.Time` |
 | last | `*googlesync.Run` |
 
 ### GOOGLE

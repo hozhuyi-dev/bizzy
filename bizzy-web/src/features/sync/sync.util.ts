@@ -1,5 +1,5 @@
 import type { SyncView } from "./sync.types";
-import { formatRelative } from "~/core/utils/date.util";
+import { formatDate, formatRelative } from "~/core/utils/date.util";
 
 /** "3 changes read · 1 to settle", for the toast after a sync. */
 export function describeSync(run: SyncView): string {
@@ -8,11 +8,17 @@ export function describeSync(run: SyncView): string {
   return run.refused > 0 ? `${read} · ${run.refused} to settle on your to-do list` : read;
 }
 
-/** What the button says: syncing, never synced, failed or when it last ran. */
-export function lastRunText(run: SyncView | null | undefined, running: boolean): string {
+/** What the button says: syncing, reading older events, never synced, failed or when it last ran. */
+export function lastRunText(run: SyncView | null | undefined, running: boolean, backfilling = false): string {
   if (running) return "Syncing…";
+  if (backfilling) return "Reading older events…";
   if (run === undefined) return "";
   if (run === null) return "Never synced";
   if (run.error) return `Sync failed ${formatRelative(run.at)}`;
   return `Synced ${formatRelative(run.at)}`;
+}
+
+/** "Read back to 5 Oct 2025; older events come in next", while the calendar isn't all read. */
+export function backText(run: SyncView | null | undefined): string {
+  return run?.back ? `Read back to ${formatDate(run.back)}; older events come in next.` : "";
 }

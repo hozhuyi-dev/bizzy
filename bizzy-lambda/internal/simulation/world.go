@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"slices"
 	"time"
 
 	"pgregory.net/rapid"
@@ -31,11 +30,15 @@ import (
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
+	"bizzy-lambda/internal/testutil/fakecal"
 	"bizzy-lambda/internal/testutil/testapp"
 )
 
 type World struct {
 	*testapp.App
+	// Other is the calendar not chosen, which the user may choose instead
+	// (calendar.switch).
+	Other *fakecal.Calendar
 	// InSync is true while nothing changed outside the app since the last
 	// sync: the calendar must then show bizzy as it is.
 	InSync bool
@@ -55,10 +58,13 @@ var seedEvents = []struct {
 	title string
 }{
 	{-30, "Jane Smith"}, {-3, "Amy Tan 95"}, {2, "? Bob Lee 120"}, {26, "jane smith 10x85"}, {28, "Zed Ong"},
+	// Older than the first read, for the backfill.
+	{-90 * 24, "Jane Smith"}, {-400 * 24, "Bob Lee 120"},
 }
 
 func newWorld(t *rapid.T) *World {
 	w := &World{App: testapp.New()}
+	w.Other = &fakecal.Calendar{Name: "clinic", Now: func() time.Time { return w.Now }}
 	for _, c := range seedClients {
 		fields := map[string]any{"homeVisits": c.visits}
 		if c.cents > 0 {
@@ -94,7 +100,7 @@ func (w *World) callRefreshing(t *rapid.T, action string, payload any) (json.Raw
 
 func (w *World) send(t *rapid.T, action string, payload any, refreshes bool) (json.RawMessage, *router.ErrorBody) {
 	t.Helper()
-	before := w.dump()
+	before := w.dump(t)
 	data, refused, err := w.Call(action, payload)
 	body, _ := json.Marshal(payload)
 	if err != nil {
@@ -102,7 +108,7 @@ func (w *World) send(t *rapid.T, action string, payload any, refreshes bool) (js
 	}
 	if refused != nil {
 		t.Logf("%s %s → refused (%s): %s", action, body, refused.Code, refused.Message)
-		if after := w.dump(); !refreshes && !bytes.Equal(before, after) {
+		if after := w.dump(t); !refreshes && !bytes.Equal(before, after) {
 			t.Fatalf("%s was refused but changed something:\n%s", action, firstDiff(before, after))
 		}
 		return nil, refused
@@ -124,12 +130,19 @@ func (w *World) callAsViewed(t *rapid.T, action string, payload any, viewed appe
 	}
 }
 
-// dump is everything stored, in the calendar and in the file store.
-func (w *World) dump() []byte {
-	cal, _ := json.Marshal(w.Calendar)
-	files, _ := json.Marshal(w.Blobs.Blobs)
-	people, _ := json.Marshal(w.Contacts.People)
-	return slices.Concat(w.Table.Dump(), cal, files, people)
+// dump is everything stored: the table, both calendars, the file store
+// and the contacts.
+func (w *World) dump(t *rapid.T) []byte {
+	t.Helper()
+	out := w.Table.Dump()
+	for _, v := range []any{w.Calendar, w.Other, w.Blobs.Blobs, w.Contacts.People} {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("dump: %v", err)
+		}
+		out = append(out, b...)
+	}
+	return out
 }
 
 // read reads the world as the app would.

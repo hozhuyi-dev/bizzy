@@ -11,11 +11,13 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
+import { useBackfill } from "~/features/sync/sync.hook";
 
-/** Wipes the environment's data, keeping the Google connection, and syncs the whole calendar back in. */
+/** Wipes the environment's data, keeping the Google connection, and syncs the whole calendar back in: the sync, then the backfill. */
 export function ResetData() {
   const [confirming, setConfirming] = useState(false);
   const reset = ResetMutation.useReset();
+  const backfill = useBackfill();
 
   return (
     <>
@@ -32,8 +34,8 @@ export function ResetData() {
             <AlertDialogDescription>
               Deletes every session, client, package, payment, invoice, receipt and setting here.
               Google stays connected and nothing in your calendar or contacts changes: the whole
-              calendar is synced back in straight after, with every session unmatched until you add
-              its client again. This can't be undone.
+              calendar is synced back in straight after, older events a month at a time, with every
+              session unmatched until you add its client again. This can't be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -47,6 +49,7 @@ export function ResetData() {
                     if (syncError) toast.error(`Reset: ${deleted} items deleted, but the sync failed. ${syncError}`);
                     else toast.success(`Reset: ${deleted} items deleted, ${synced?.read ?? 0} calendar changes synced back`);
                     setConfirming(false);
+                    backfill(synced?.back);
                   },
                   onError: (error) => toast.error(error.message),
                 })

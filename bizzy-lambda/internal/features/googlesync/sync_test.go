@@ -1,6 +1,7 @@
 package googlesync_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/platform/txn"
+	"bizzy-lambda/internal/testutil/fakecal"
 	"bizzy-lambda/internal/testutil/testapp"
 )
 
@@ -216,5 +218,164 @@ func TestACalendarDeleteKeepsTheNotes(t *testing.T) {
 	again := eventOf(t, a, googlesync.KindSession, s.ID)
 	if again == "" || again == ev || title(t, a, again) != "Jane Smith" || len(waiting(t, a)) != 0 {
 		t.Errorf("after revert: event %q, waiting %v", again, waiting(t, a))
+	}
+}
+
+func day(n int) time.Time { return at(24 * n) }
+
+// allSessions are every session, however long ago, by time.
+func allSessions(t *testing.T, a *testapp.App) []*sessions.Session {
+	t.Helper()
+	out, err := txn.Read(t.Context(), a.Runner, func(tx *txn.Tx) ([]*sessions.Session, error) {
+		return sessions.Sessions.Between(tx, time.Time{}, day(400))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// backfill reads the calendar back as far as it goes, as the app does
+// after a sync.
+func backfill(t *testing.T, a *testapp.App) {
+	t.Helper()
+	for range 100 {
+		var v googlesync.View
+		if err := a.Must("sync.backfill", nil, &v); err != nil {
+			t.Fatal(err)
+		}
+		if v.Back == "" {
+			return
+		}
+	}
+	t.Fatal("the backfill never ends")
+}
+
+// choose makes a new calendar the one chosen, as Settings does.
+func choose(a *testapp.App, name string) *fakecal.Calendar {
+	c := &fakecal.Calendar{Name: name, Now: func() time.Time { return a.Now }}
+	a.Calendar = c
+	return c
+}
+
+func TestTheFirstSyncReadsBackAWindowAndTheBackfillTheRest(t *testing.T) {
+	a, _ := setup(t, "Jane Smith")
+	a.Calendar.UserAdd("Jane Smith", day(-10), day(-10).Add(time.Hour))
+	old := a.Calendar.UserAdd("Jane Smith", day(-90), day(-90).Add(time.Hour))
+	a.Calendar.UserAdd("Jane Smith", day(-400), day(-400).Add(time.Hour))
+
+	var v googlesync.View
+	if err := a.Must("sync.run", nil, &v); err != nil {
+		t.Fatal(err)
+	}
+	if got := allSessions(t, a); len(got) != 1 || v.Back == "" {
+		t.Fatalf("after the first sync: %d sessions, back %q; want the one in the window, and more to read", len(got), v.Back)
+	}
+	backfill(t, a)
+	if got := allSessions(t, a); len(got) != 3 {
+		t.Fatalf("after the backfill: %d sessions, want 3", len(got))
+	}
+
+	// An edit to an old event is read like any.
+	a.Calendar.UserEdit(old, func(e *calendar.Event) { e.Title = "Jane Smith 95" })
+	sync(t, a)
+	if got := allSessions(t, a); len(got) != 3 || len(waiting(t, a)) != 0 {
+		t.Fatalf("after the edit: %d sessions, waiting %+v", len(got), waiting(t, a))
+	}
+	var s []sessions.View
+	if err := a.Must("sessions.list", map[string]any{"from": day(-91), "to": day(-89)}, &s); err != nil {
+		t.Fatal(err)
+	}
+	if len(s) != 1 || s[0].FeeCents != 9500 {
+		t.Errorf("the old session is %+v, want its fee typed in the calendar", s)
+	}
+}
+
+func TestANewCalendarShowsEverySession(t *testing.T) {
+	a, _ := setup(t, "Jane Smith", "Bob Lee")
+	first := a.Calendar
+	first.UserAdd("Jane Smith", day(-90), day(-90).Add(time.Hour))
+	first.UserAdd("Jane Smith", day(-10), day(-10).Add(time.Hour))
+	first.UserAdd("Bob Lee", day(5), day(5).Add(time.Hour))
+	first.UserAddAllDay("! Bob Lee: send exercises", "2026-10-20")
+	sync(t, a)
+	backfill(t, a)
+
+	clinic := choose(a, "clinic")
+	sync(t, a)
+	backfill(t, a)
+	if got := allSessions(t, a); len(got) != 3 || len(clinic.Live) != 4 || len(waiting(t, a)) != 0 {
+		t.Fatalf("%d sessions, %d events in the new calendar, waiting %+v; want 3, 4, none", len(got), len(clinic.Live), waiting(t, a))
+	}
+	for _, s := range allSessions(t, a) {
+		if ev := eventOf(t, a, googlesync.KindSession, s.ID); !strings.HasPrefix(ev, "clinic-") {
+			t.Errorf("session at %v shows in %q, not the new calendar", s.Start, ev)
+		}
+	}
+	// The calendar left is left as it was.
+	if len(first.Live) != 4 || len(first.Trash) != 0 {
+		t.Errorf("the calendar left has %d events, %d deleted", len(first.Live), len(first.Trash))
+	}
+}
+
+func TestACopyInTheNewCalendarWaits(t *testing.T) {
+	a, _ := setup(t, "Jane Smith")
+	a.Calendar.UserAdd("Jane Smith", at(2), at(3))
+	sync(t, a)
+
+	// The new calendar has the session already, typed in by hand.
+	clinic := choose(a, "clinic")
+	copied := clinic.UserAdd("Jane Smith", at(2), at(3))
+	sync(t, a)
+	w := waiting(t, a)
+	if got := allSessions(t, a); len(got) != 1 || len(w) != 1 || w[0].EventID != copied || len(clinic.Live) != 2 {
+		t.Fatalf("%d sessions, waiting %+v, %d events; want the copy waiting beside bizzy's own", len(got), w, len(clinic.Live))
+	}
+}
+
+func TestChoosingACalendarAgainKeepsBizzysVersion(t *testing.T) {
+	a, _ := setup(t, "Jane Smith")
+	first := a.Calendar
+	ev := first.UserAdd("Jane Smith", at(2), at(3))
+	sync(t, a)
+
+	clinic := choose(a, "clinic")
+	sync(t, a)
+	moved := eventOf(t, a, googlesync.KindSession, allSessions(t, a)[0].ID)
+	clinic.UserEdit(moved, func(e *calendar.Event) { e.Start, e.End = at(5), at(6) })
+	sync(t, a)
+
+	// Back to the first, whose event still says 2 o'clock.
+	a.Calendar = first
+	sync(t, a)
+	got := allSessions(t, a)
+	if len(got) != 1 || !got[0].Start.Equal(at(5)) || len(waiting(t, a)) != 0 {
+		t.Fatalf("sessions %+v, waiting %+v; want the session where it was moved to", got, waiting(t, a))
+	}
+	if e, _ := first.Get(t.Context(), ev); !e.Start.Equal(at(5)) || eventOf(t, a, googlesync.KindSession, got[0].ID) != ev {
+		t.Errorf("the old event says %v, want it written over and shown again", e.Start)
+	}
+}
+
+func TestAWaitingEditWaitsForTheNewCalendarsSync(t *testing.T) {
+	a, _ := setup(t, "Jane Smith")
+	ev := a.Calendar.UserAdd("Jane Smith", at(2), at(3))
+	sync(t, a)
+	a.Calendar.UserEdit(ev, func(e *calendar.Event) { e.Title = "Zed" })
+	sync(t, a)
+	if len(waiting(t, a)) != 1 {
+		t.Fatal("want the edit waiting")
+	}
+
+	// Its event isn't in the calendar chosen now, but it isn't deleted.
+	choose(a, "clinic")
+	for _, action := range []string{"conflicts.apply", "calendar.revert"} {
+		if _, refused, err := a.Call(action, map[string]any{"id": ev}); err != nil || refused == nil {
+			t.Errorf("%s: %v, %v; want it refused until the sync", action, refused, err)
+		}
+	}
+	sync(t, a)
+	if got := allSessions(t, a); len(got) != 1 || len(waiting(t, a)) != 0 {
+		t.Errorf("%d sessions, waiting %+v; want the session, and the old calendar's edit forgotten", len(got), waiting(t, a))
 	}
 }

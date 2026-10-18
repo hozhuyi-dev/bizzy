@@ -35,6 +35,10 @@ type Link struct {
 	Kind    ItemKind          `json:"kind,omitempty"`
 	ItemID  string            `json:"itemId,omitempty"`
 	Seen    calendar.Snapshot `json:"seen"`
+	// Marked says the event carries the item's id (calendar.PropSession),
+	// so a sync that forgot the link, on a calendar chosen again, finds it
+	// (see linkFor). An event the user made isn't, until bizzy writes it.
+	Marked bool `json:"marked,omitempty"`
 }
 
 var Links = txn.Kind[Link]{

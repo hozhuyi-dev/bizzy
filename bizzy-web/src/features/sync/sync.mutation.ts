@@ -14,6 +14,18 @@ export const SyncMutation = {
     });
   },
 
+  useBackfill: () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationKey: SyncKeys.backfill(),
+      mutationFn: () => SyncService.backfill(),
+      onSettled: () => invalidateBilling(queryClient),
+    });
+  },
+
   /** Whether any sync is running, including the one on load. */
   useIsRunning: () => useIsMutating({ mutationKey: SyncKeys.run() }) > 0,
+
+  /** Whether older events are being read. */
+  useIsBackfilling: () => useIsMutating({ mutationKey: SyncKeys.backfill() }) > 0,
 };

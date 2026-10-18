@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GoogleService } from "./google.service";
+import type { SetCalendarRequest } from "./google.types";
 import { ContactKeys, GoogleKeys } from "~/core/constants/query-keys.constant";
 
 /** A new account means new contacts, so both are refreshed. */
@@ -33,7 +34,7 @@ export const GoogleMutation = {
   useSetCalendar: () => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: (id: string) => GoogleService.setCalendar(id),
+      mutationFn: (request: SetCalendarRequest) => GoogleService.setCalendar(request),
       onSuccess: () => queryClient.invalidateQueries({ queryKey: GoogleKeys.status() }),
     });
   },

@@ -37,6 +37,9 @@ type connectRequest struct {
 
 type setCalendarRequest struct {
 	ID string `json:"id"`
+	// Confirm is the calendar's name, typed out: choosing one writes every
+	// session to it and reads every event in it as bizzy's.
+	Confirm string `json:"confirm"`
 }
 
 // Routes registers the connection's actions.
@@ -82,15 +85,10 @@ func Routes(r *router.Router, run *txn.Runner, auth Auth) {
 		if err := auth.Store(ctx, grant.RefreshToken); err != nil {
 			return nil, err
 		}
-		cals, err := calendars(ctx)
-		if err != nil {
-			return nil, err
-		}
 		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) {
-			conn := &Connection{Email: grant.Email, ConnectedAt: tx.Now().UTC(), CalendarID: "primary", CalendarName: grant.Email}
-			if i := slices.IndexFunc(cals, func(c calendar.List) bool { return c.Primary }); i >= 0 {
-				conn.CalendarID, conn.CalendarName = cals[i].ID, cals[i].Name
-			}
+			// The calendar is chosen next, in Settings: reading it writes
+			// every session there.
+			conn := &Connection{Email: grant.Email, ConnectedAt: tx.Now().UTC()}
 			was, ok, err := Connections.Find(tx, connectionID)
 			switch {
 			case err != nil:
@@ -125,6 +123,9 @@ func Routes(r *router.Router, run *txn.Runner, auth Auth) {
 		i := slices.IndexFunc(cals, func(c calendar.List) bool { return c.ID == in.ID })
 		if i < 0 {
 			return nil, apperr.NotFound("That calendar isn't in the connected account.")
+		}
+		if !strings.EqualFold(strings.TrimSpace(in.Confirm), strings.TrimSpace(cals[i].Name)) {
+			return nil, apperr.Invalid("Type the calendar's name, %q, to choose it.", cals[i].Name)
 		}
 		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) {
 			conn, err := Connections.Get(tx, connectionID)

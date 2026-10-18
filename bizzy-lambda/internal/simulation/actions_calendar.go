@@ -62,6 +62,13 @@ var calendarActions = []Action{
 		w.Calendar.UserCopy(pickEvent(t, w).ID)
 		w.InSync = false
 	}},
+	// The user choosing the other calendar in Settings: the next sync
+	// writes bizzy to it, and reads what is in it. The one left keeps what
+	// it showed, for choosing it again.
+	{Name: "calendar.switch", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
+		w.Calendar, w.Other = w.Other, w.Calendar
+		w.InSync = false
+	}},
 }
 
 func pickEvent(t *rapid.T, w *World) calendar.Event {

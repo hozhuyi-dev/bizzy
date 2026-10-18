@@ -1,4 +1,4 @@
-import type { GoogleCalendar, GoogleConnectionView } from "./google.types";
+import type { GoogleCalendar, GoogleConnectionView, SetCalendarRequest } from "./google.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const GoogleService = {
@@ -8,5 +8,5 @@ export const GoogleService = {
     invoke<GoogleConnectionView>("google.connect", { code, redirectUri }),
   disconnect: () => invoke<null>("google.disconnect"),
   calendars: () => invoke<Array<GoogleCalendar>>("google.calendars"),
-  setCalendar: (id: string) => invoke<GoogleConnectionView>("google.setCalendar", { id }),
+  setCalendar: (request: SetCalendarRequest) => invoke<GoogleConnectionView>("google.setCalendar", request),
 };

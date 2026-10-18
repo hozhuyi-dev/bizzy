@@ -398,6 +398,10 @@ var syncActions = []Action{
 		w.call(t, "sync.run", nil)
 		w.InSync = true
 	}},
+	{Name: "sync.backfill", Actor: ActorUser, Syncs: true, Run: func(t *rapid.T, w *World) {
+		// Older events only: the calendar shows bizzy as before.
+		w.call(t, "sync.backfill", nil)
+	}},
 	{Name: "data.reset", Actor: ActorUser, Syncs: true, Run: func(t *rapid.T, w *World) {
 		// Everything goes but the calendar, which is read back in: its
 		// events now name clients that are gone, and wait as conflicts.

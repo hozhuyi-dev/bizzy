@@ -8,4 +8,6 @@ export interface SyncView {
   refused: number;
   /** Why the run failed, e.g. Google was disconnected. */
   error?: string;
+  /** How far back the calendar is read, while older events are still to read (sync.backfill). */
+  back?: string;
 }

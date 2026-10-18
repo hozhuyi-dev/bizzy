@@ -71,6 +71,7 @@ export const SyncKeys = {
   all: ["sync"] as const,
   status: () => [...SyncKeys.all, "status"] as const,
   run: () => [...SyncKeys.all, "run"] as const,
+  backfill: () => [...SyncKeys.all, "backfill"] as const,
 };
 
 export const GoogleKeys = {

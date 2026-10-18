@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/calendar"
+	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/googleauth"
 	"bizzy-lambda/internal/platform/txn"
 )
 
-// Connection is the connected account and the calendar the user chose.
+// Connection is the connected account and the calendar the user chose;
+// CalendarID is "" until they choose one.
 type Connection struct {
 	Email        string    `json:"email"`
 	CalendarID   string    `json:"calendarId"`
@@ -38,12 +40,19 @@ type Auth interface {
 	Client(ctx context.Context) (*http.Client, error)
 }
 
+// errNoCalendar is the sync before a calendar is chosen. The app sends the
+// user to Settings for it, as for a lost connection.
+var errNoCalendar = apperr.Disconnected("Choose the calendar you book sessions in, in Settings.")
+
 // Calendar opens the calendar the user chose, acting as the user.
 func Calendar(run *txn.Runner, auth Auth) func(ctx context.Context) (calendar.Calendar, error) {
 	return func(ctx context.Context) (calendar.Calendar, error) {
 		conn, err := txn.Read(ctx, run, func(tx *txn.Tx) (*Connection, error) { return Connections.Get(tx, connectionID) })
 		if err != nil {
 			return nil, err
+		}
+		if conn.CalendarID == "" {
+			return nil, errNoCalendar
 		}
 		client, err := auth.Client(ctx)
 		if err != nil {

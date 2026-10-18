@@ -8,6 +8,7 @@
 package fakecal
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -19,26 +20,46 @@ import (
 )
 
 type Calendar struct {
+	// Name is its id, and prefixes its events' ids so two calendars'
+	// never meet; "" is "primary", with bare ids.
+	Name string
 	// Live are the events in the calendar; Trash the deleted ones.
 	Live  []calendar.Event
 	Trash []calendar.Event
 	// Now is the calendar's clock, which stamps Updated.
-	Now func() time.Time
+	Now func() time.Time `json:"-"`
 	// BeforeWrite, when set, runs before each of bizzy's writes.
-	BeforeWrite func(op string)
+	BeforeWrite func(op string) `json:"-"`
 	ids         int
 }
 
 var _ calendar.Calendar = (*Calendar)(nil)
 
-func (f *Calendar) Changed(_ context.Context, since, from time.Time) ([]calendar.Event, error) {
+func (f *Calendar) ID() string { return cmp.Or(f.Name, "primary") }
+
+func (f *Calendar) Changed(_ context.Context, since, from, to time.Time) ([]calendar.Event, error) {
+	events := f.Live
+	if !since.IsZero() {
+		events = slices.Concat(f.Live, f.Trash)
+	}
 	var out []calendar.Event
-	for _, e := range slices.Concat(f.Live, f.Trash) {
-		if (since.IsZero() || !e.Updated.Before(since)) && end(e).After(from) {
+	for _, e := range events {
+		if (since.IsZero() || !e.Updated.Before(since)) && (from.IsZero() || end(e).After(from)) && (to.IsZero() || e.At().Before(to)) {
 			out = append(out, clone(e))
 		}
 	}
 	return out, nil
+}
+
+func (f *Calendar) Earliest(_ context.Context, before time.Time) (time.Time, bool, error) {
+	var first time.Time
+	found := false
+	for _, e := range f.Live {
+		if at := e.At(); at.Before(before) && (!found || at.Before(first)) {
+			first, found = at, true
+		}
+	}
+	return first, found, nil
 }
 
 func (f *Calendar) Get(_ context.Context, id string) (calendar.Event, error) {
@@ -53,8 +74,7 @@ func (f *Calendar) Get(_ context.Context, id string) (calendar.Event, error) {
 
 func (f *Calendar) Insert(_ context.Context, in calendar.EventInput) (calendar.Event, error) {
 	f.beforeWrite("calendar.insert")
-	f.ids++
-	e := calendar.Event{ID: fmt.Sprintf("ev%d", f.ids)}
+	e := calendar.Event{ID: f.newID()}
 	write(&e, in)
 	f.touch(&e)
 	f.Live = append(f.Live, e)
@@ -90,8 +110,7 @@ func (f *Calendar) Delete(_ context.Context, id, etag string) error {
 
 // UserAdd is the user adding an event; it returns its id.
 func (f *Calendar) UserAdd(title string, start, end time.Time) string {
-	f.ids++
-	e := calendar.Event{ID: fmt.Sprintf("ev%d", f.ids), Title: title, Start: start.UTC(), End: end.UTC()}
+	e := calendar.Event{ID: f.newID(), Title: title, Start: start.UTC(), End: end.UTC()}
 	f.touch(&e)
 	f.Live = append(f.Live, e)
 	return e.ID
@@ -99,8 +118,7 @@ func (f *Calendar) UserAdd(title string, start, end time.Time) string {
 
 // UserAddAllDay is the user adding an all-day event; it returns its id.
 func (f *Calendar) UserAddAllDay(title, date string) string {
-	f.ids++
-	e := calendar.Event{ID: fmt.Sprintf("ev%d", f.ids), Title: title, Date: date, AllDay: true}
+	e := calendar.Event{ID: f.newID(), Title: title, Date: date, AllDay: true}
 	f.touch(&e)
 	f.Live = append(f.Live, e)
 	return e.ID
@@ -128,13 +146,20 @@ func (f *Calendar) UserCopy(id string) string {
 	if i < 0 {
 		return ""
 	}
-	f.ids++
 	e := clone(f.Live[i])
-	e.ID = fmt.Sprintf("ev%d", f.ids)
+	e.ID = f.newID()
 	e.ETag = ""
 	f.touch(&e)
 	f.Live = append(f.Live, e)
 	return e.ID
+}
+
+func (f *Calendar) newID() string {
+	f.ids++
+	if f.Name == "" {
+		return fmt.Sprintf("ev%d", f.ids)
+	}
+	return fmt.Sprintf("%s-ev%d", f.Name, f.ids)
 }
 
 func (f *Calendar) trash(i int) {
