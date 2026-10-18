@@ -213,9 +213,11 @@ function useLeaving(items: ReadonlyArray<TodoView>): ReadonlyArray<TodoView> {
   return leaving;
 }
 
-/** What was cleared today, as a bar filling with honey; shown once there is some. */
+/**
+ * What was cleared today, as a bar filling with honey. Shown empty from the
+ * start, so the first one cleared fills it instead of pushing the list down.
+ */
 function Progress({ cleared, left }: { cleared: number; left: number }) {
-  if (cleared === 0) return null;
   const total = cleared + left;
   return (
     <div className="flex items-center gap-3">
@@ -229,11 +231,11 @@ function Progress({ cleared, left }: { cleared: number; left: number }) {
       >
         <div
           className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out motion-reduce:transition-none"
-          style={{ width: `${(cleared / total) * 100}%` }}
+          style={{ width: `${total === 0 ? 0 : (cleared / total) * 100}%` }}
         />
       </div>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        {cleared} cleared · {left} to go
+        {cleared > 0 ? `${cleared} cleared · ${left} to go` : `${left} to go`}
       </span>
     </div>
   );
