@@ -9,6 +9,6 @@ export const Route = createFileRoute("/sessions/$id")({
 
 function SessionRoute() {
   const { id } = Route.useParams();
-  const { from } = Route.useSearch();
-  return <SessionPage key={id} mode="edit" id={id} returnTo={from} />;
+  const { from, settle } = Route.useSearch();
+  return <SessionPage key={id} mode="edit" id={id} returnTo={from} settle={settle} />;
 }

@@ -2,6 +2,9 @@ import { toast } from "sonner";
 import { toSessionFields } from "./sessions.form";
 import { SessionsMutation } from "./sessions.mutation";
 import type { SessionDraft, SessionView } from "./sessions.types";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 /**
  * Saves a booking from its form: a new session, or what changed on one
@@ -33,15 +36,21 @@ export function useBookingSave(
 
 /**
  * Confirms a tentative booking in one tap (the to-do list, the sessions
- * table): it removes the question mark, keeping the rest. Rejects with the
- * refusal, for the caller to show with its remedies.
+ * table): it removes the question mark, keeping the rest, with an Undo in
+ * the toast. Rejects with the refusal, for the caller to show with its
+ * remedies.
  */
 export function useConfirmBooking() {
   const update = SessionsMutation.useUpdate();
 
   const confirm = async (id: string) => {
     await update.mutateAsync({ id, fields: { tentative: false } });
-    toast.success("Confirmed");
+    toastWithQuip("Confirmed", QUIPS.todoDone, {
+      action: {
+        label: "Undo",
+        onClick: () => update.mutate({ id, fields: { tentative: true } }, { onError: toastRefusal }),
+      },
+    });
   };
 
   return { confirm, pending: update.isPending };

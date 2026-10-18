@@ -87,9 +87,6 @@ export interface ClientRow {
 /** Everyone, or the lapsed clients worth getting back in touch with. */
 export type ClientsFilter = "all" | "reconnect";
 
-/** Where a new client was started from, to go back there once saved. */
-export type ClientReturnTo = "home";
-
 /** A contact chosen for the client, with whatever details are known. */
 export interface ChosenContact extends ContactSummaryValue {
   postcode?: string | undefined;

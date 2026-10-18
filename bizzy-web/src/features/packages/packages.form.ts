@@ -18,9 +18,9 @@ export interface PackageFormValues {
 }
 
 /** A package to edit, or a new one of 10 bought today. */
-export function toPackageValues(pkg: PackageView | undefined): PackageFormValues {
+export function toPackageValues(pkg: PackageView | undefined, clientId?: string): PackageFormValues {
   return {
-    clientId: pkg?.clientId ?? "",
+    clientId: pkg?.clientId ?? clientId ?? "",
     sessions: pkg ? String(pkg.sessions) : "10",
     price: centsToInput(pkg?.priceCents),
     purchasedOn: pkg ? toISODate(new Date(pkg.purchasedAt)) : todayISO(),

@@ -6,6 +6,8 @@ import type { ContactView } from "../../contacts.types";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { isApiError } from "~/core/utils/api-error.util";
 import { queryMatch } from "~/core/utils/query.util";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 interface ContactDetailsEditorProps {
   resourceName: string;
@@ -45,7 +47,7 @@ export function ContactDetailsEditor({ resourceName, onDone, onSaved }: ContactD
           onSubmit={async (details) => {
             try {
               const saved = await update.mutateAsync({ contact, details });
-              toast.success("Contact updated");
+              toastWithQuip("Contact updated", QUIPS.saved);
               onSaved?.(saved);
               onDone();
             } catch (error) {

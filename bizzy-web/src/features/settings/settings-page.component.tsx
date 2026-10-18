@@ -22,6 +22,8 @@ import { Textarea } from "~/components/ui/textarea";
 import { queryMatch } from "~/core/utils/query.util";
 import { DOCUMENT_PLACEHOLDERS, PAYMENT_PLACEHOLDERS } from "~/features/whatsapp/whatsapp.constant";
 import { ComputerWhatsAppSettings } from "~/features/whatsapp/components/computer-whatsapp-settings/computer-whatsapp-settings.component";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 export function SettingsPage() {
   const settings = SettingsQuery.useGet();
@@ -88,7 +90,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
       try {
         await save.mutateAsync(value);
         formApi.reset(value);
-        toast.success("Settings saved");
+        toastWithQuip("Settings saved", QUIPS.saved);
       } catch (error) {
         toast.error((error as Error).message);
       }

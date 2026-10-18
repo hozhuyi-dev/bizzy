@@ -19,20 +19,25 @@ import { formatCents, parseCents } from "~/core/utils/money.util";
 interface PackageFormProps {
   /** Omitted when adding a package. */
   pkg?: PackageView | undefined;
-  onDone: () => void;
+  /** The client a new one is for, to start with. */
+  clientId?: string | undefined;
+  /** Once saved, with what the toast says. */
+  onDone: (done: string) => void;
+  /** Leaves the toast to onDone. */
+  quiet?: boolean;
 }
 
 /**
  * A package's client, sessions, price and day. One bought in a session
  * stays that session's client's and day: change the session for those.
  */
-export function PackageForm({ pkg, onDone }: PackageFormProps) {
+export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) {
   const clients = ClientsQuery.useList();
-  const save = usePackageSave(pkg, onDone);
+  const save = usePackageSave(pkg, onDone, quiet);
   const [error, setError] = useState<string | null>(null);
 
   const form = useForm({
-    defaultValues: toPackageValues(pkg),
+    defaultValues: toPackageValues(pkg, clientId),
     onSubmit: async ({ value }) => {
       setError(null);
       try {

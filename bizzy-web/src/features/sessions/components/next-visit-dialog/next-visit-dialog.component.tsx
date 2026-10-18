@@ -17,6 +17,8 @@ import {
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { addDays, formatSessionTime, toISODate, toTimeInput } from "~/core/utils/date.util";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 interface NextVisitDialogProps {
   /** The session to book after, as its draft; null closes the dialog. */
@@ -41,7 +43,7 @@ export function NextVisitDialog({ from, clientName, onClose }: NextVisitDialogPr
 function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clientName: string; onClose: () => void }) {
   const navigate = useNavigate();
   const save = useBookingSave(undefined, undefined, (draft, id) => {
-    toast.success(`Booked ${clientName} for ${formatSessionTime(draft.start)}`, {
+    toastWithQuip(`Booked ${clientName} for ${formatSessionTime(draft.start)}`, QUIPS.booked, {
       action: {
         label: "Open",
         onClick: () => void navigate({ to: "/sessions/$id", params: { id } }),

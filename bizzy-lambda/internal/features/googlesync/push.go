@@ -51,6 +51,25 @@ func (s *Sync) AfterCommit(ctx context.Context, changes []txn.Change) {
 			slog.ErrorContext(ctx, "removing an event", "event", eventID, "error", err)
 		}
 	}
+	if !isReading(ctx) && unblocks(changes) {
+		if err := s.retryWaiting(reading(ctx), cal); err != nil {
+			slog.ErrorContext(ctx, "trying the waiting edits again", "error", err)
+		}
+	}
+}
+
+// unblocks reports whether a commit changed what a waiting edit may have
+// been refused for: a client (a name to match, a fee), a session (one in
+// the way), a package or a document (an invoice issued, a payment).
+func unblocks(changes []txn.Change) bool {
+	for _, c := range changes {
+		switch c.Kind {
+		case clients.Clients.Name, sessions.Sessions.Name, followups.FollowUps.Name,
+			packages.Packages.Name, documents.Documents.Name:
+			return true
+		}
+	}
+	return false
 }
 
 // pushes are items to write, and events to delete.

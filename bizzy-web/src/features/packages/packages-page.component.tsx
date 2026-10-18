@@ -11,6 +11,7 @@ import { PackagesQuery } from "./packages.query";
 import type { PackageHandlers } from "./packages.columns";
 import type { PackageView, PackagesFilter } from "./packages.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
@@ -27,7 +28,7 @@ import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
-type Editing = { mode: "new" } | { mode: "edit"; pkg: PackageView } | null;
+type Editing = { mode: "new"; clientId?: string | undefined } | { mode: "edit"; pkg: PackageView } | null;
 
 // Stable fallback: a fresh [] each render would rebuild the row models.
 const NO_PACKAGES: Array<PackageView> = [];
@@ -35,11 +36,16 @@ const NO_PACKAGES: Array<PackageView> = [];
 interface PackagesPageProps {
   view: PackagesFilter;
   onViewChange: (view: PackagesFilter) => void;
+  /** Opens a new package for this client. */
+  newFor?: string | undefined;
+  /** The calendar edit it was opened to settle: once the package is added, back to the to-do list. */
+  settle?: string | undefined;
 }
 
 /** Prepaid packages with the credits each has left, and whether each is paid. */
-export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
-  const [editing, setEditing] = useState<Editing>(null);
+export function PackagesPage({ view, onViewChange, newFor, settle }: PackagesPageProps) {
+  const [editing, setEditing] = useState<Editing>(newFor || settle ? { mode: "new", clientId: newFor } : null);
+  const settled = useSettleReturn(settle);
   const [deleting, setDeleting] = useState<PackageView | null>(null);
   const [payingId, setPayingId] = useState<string>();
   const [search, setSearch] = useState("");
@@ -153,7 +159,12 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
             <PackageForm
               key={editing.mode === "edit" ? editing.pkg.id : "new"}
               pkg={editing.mode === "edit" ? editing.pkg : undefined}
-              onDone={() => setEditing(null)}
+              clientId={editing.mode === "new" ? editing.clientId : undefined}
+              quiet={editing.mode === "new" && Boolean(settled)}
+              onDone={(done) => {
+                setEditing(null);
+                if (editing.mode === "new") settled?.(done);
+              }}
             />
           )}
         </DialogContent>

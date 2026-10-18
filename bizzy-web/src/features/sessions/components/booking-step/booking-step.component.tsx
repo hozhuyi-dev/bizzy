@@ -11,6 +11,8 @@ import { toastRefusal } from "~/features/remedies/components/remedy-buttons/reme
 import { Button } from "~/components/ui/button";
 import { formatDate, formatSessionTime } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 function Lines({ children }: { children: Array<string | false | undefined> }) {
   return (
@@ -24,7 +26,11 @@ function Lines({ children }: { children: Array<string | false | undefined> }) {
   );
 }
 
-export function bookingStep(session: SessionView, onCancel: () => void): PipelineStep {
+/**
+ * `settled`, when the page was opened to settle a calendar edit by changing
+ * this booking: it starts open, and once saved goes back to the to-do list.
+ */
+export function bookingStep(session: SessionView, onCancel: () => void, settled?: (done: string) => void): PipelineStep {
   const happened = hasHappened(session);
   return {
     id: "booking",
@@ -38,17 +44,25 @@ export function bookingStep(session: SessionView, onCancel: () => void): Pipelin
         ]}
       </Lines>
     ),
-    content: <BookingStep session={session} onCancel={onCancel} />,
+    content: <BookingStep session={session} onCancel={onCancel} settled={settled} />,
   };
 }
 
-function BookingStep({ session, onCancel }: { session: SessionView; onCancel: () => void }) {
+interface BookingStepProps {
+  session: SessionView;
+  onCancel: () => void;
+  settled?: ((done: string) => void) | undefined;
+}
+
+function BookingStep({ session, onCancel, settled }: BookingStepProps) {
   const confirm = useConfirmBooking();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(Boolean(settled));
   const draft = draftOf(session);
   const save = useBookingSave(session, draft, (next) => {
-    toast.success(new Date(next.start) > new Date() ? `Booked for ${formatSessionTime(next.start)}` : "Booking saved");
+    const done = new Date(next.start) > new Date() ? `Booked for ${formatSessionTime(next.start)}` : "Booking saved";
     setEditing(false);
+    if (settled) settled(done);
+    else toastWithQuip(done, QUIPS.booked);
   });
 
   return (

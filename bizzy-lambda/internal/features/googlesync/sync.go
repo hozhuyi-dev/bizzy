@@ -9,7 +9,8 @@
 // after the others (one may have made room), and events refused only for
 // where they'd end up among other sessions are tried together in one
 // commit (two sessions swapped each land on the other's time). What is
-// still refused waits as a conflict, tried again on every run.
+// still refused waits as a conflict, tried again on every run, and after
+// every change in the app that may settle it (see AfterCommit).
 //
 // A calendar is first read from Window back; Backfill then reads it
 // further back a month at a time, writing bizzy's items of each month
@@ -165,7 +166,7 @@ func (s *Sync) current(ctx context.Context) (calendar.Calendar, error) {
 // and records how it went.
 func (s *Sync) Run(ctx context.Context) (Run, error) {
 	now := s.Runner.Now()
-	run, pass, err := s.run(ctx, now)
+	run, pass, err := s.run(reading(ctx), now)
 	run.At = now.UTC()
 	if err != nil {
 		run.Error = "The sync failed. Please try again."
@@ -348,6 +349,7 @@ func (s *Sync) floor(ctx context.Context, cal calendar.Calendar, before time.Tim
 // read, and on through any months with nothing in them. Called until its
 // Back is zero, it reads the whole calendar.
 func (s *Sync) Backfill(ctx context.Context) (Run, error) {
+	ctx = reading(ctx)
 	run := Run{At: s.Runner.Now().UTC()}
 	cal, err := s.current(ctx)
 	if err != nil {
@@ -468,6 +470,31 @@ func (s *Sync) withWaiting(ctx context.Context, cal calendar.Calendar, events []
 		events = append(events, e)
 	}
 	return events, nil
+}
+
+// retryWaiting reads the edits waiting as conflicts again, as a run does:
+// what the app just changed (a client added, a session moved, an invoice
+// cancelled) may let them through. Those still refused wait on, with why
+// as it is now.
+func (s *Sync) retryWaiting(ctx context.Context, cal calendar.Calendar) error {
+	events, err := s.withWaiting(ctx, cal, nil)
+	if err != nil || len(events) == 0 {
+		return err
+	}
+	_, err = s.applyAll(ctx, events)
+	return err
+}
+
+// readingKey marks a context the sync reads events in (a run, a backfill,
+// a retry): what its commits change is what it read, so they leave the
+// waiting edits to that read rather than trying them again each time.
+type readingKey struct{}
+
+func reading(ctx context.Context) context.Context { return context.WithValue(ctx, readingKey{}, true) }
+
+func isReading(ctx context.Context) bool {
+	marked, _ := ctx.Value(readingKey{}).(bool)
+	return marked
 }
 
 // read reads one event as the sync does: one gone is cancelled.

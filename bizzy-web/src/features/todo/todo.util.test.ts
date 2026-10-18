@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { groupOf, matchesFilter, nextTodoSession } from "./todo.util";
+import { groupOf, matchesFilter, nextTodoSession, progressOf, withSession } from "./todo.util";
 import type { TodoView } from "./todo.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
@@ -24,7 +24,8 @@ const followUp: TodoView = {
 describe("to-do list", () => {
   const now = new Date("2026-10-12T09:00:00");
 
-  test("groups by day in the user's time zone", () => {
+  test("groups calendar edits first, the rest by day in the user's time zone", () => {
+    expect(groupOf(conflict, now)).toBe("calendar");
     expect(groupOf(sessionItem("a", "2026-10-11T23:00:00", ["record"]), now)).toBe("overdue");
     expect(groupOf(followUp, now)).toBe("today");
     expect(groupOf(sessionItem("b", "2026-10-13T08:00:00", ["confirm"]), now)).toBe("upcoming");
@@ -36,8 +37,8 @@ describe("to-do list", () => {
     expect(matchesFilter(item, "followUp")).toBe(false);
     expect(matchesFilter(followUp, "followUp")).toBe(true);
     expect(matchesFilter(followUp, undefined)).toBe(true);
-    expect(matchesFilter(followUp, "fix")).toBe(false);
-    expect(matchesFilter(conflict, "fix")).toBe(true);
+    expect(matchesFilter(followUp, "calendar")).toBe(false);
+    expect(matchesFilter(conflict, "calendar")).toBe(true);
     expect(matchesFilter(conflict, "record")).toBe(false);
   });
 
@@ -47,5 +48,29 @@ describe("to-do list", () => {
     expect(nextTodoSession(items, "b")).toBe("a");
     expect(nextTodoSession(items, "gone")).toBe("a");
     expect(nextTodoSession([sessionItem("a", "", ["record"])], "a")).toBeUndefined();
+  });
+});
+
+describe("progress", () => {
+  test("counts what left the list today, and starts again the next day", () => {
+    const a = sessionItem("a", "", ["record"]);
+    const b = sessionItem("b", "", ["collect"]);
+    expect(progressOf([a, b], "2026-10-12")).toEqual({ cleared: 0, left: 2 });
+    expect(progressOf([b], "2026-10-12")).toEqual({ cleared: 1, left: 1 });
+    // Back on the list (an undo): not cleared after all.
+    expect(progressOf([a, b], "2026-10-12")).toEqual({ cleared: 0, left: 2 });
+    expect(progressOf([], "2026-10-12")).toEqual({ cleared: 2, left: 0 });
+    expect(progressOf([b], "2026-10-13")).toEqual({ cleared: 0, left: 1 });
+  });
+});
+
+describe("a session just changed", () => {
+  test("updates its row, or drops it once nothing is left to do", () => {
+    const a = sessionItem("a", "", ["record", "collect"]);
+    const items = [a, followUp];
+    const recorded = { id: "a", todo: ["collect"] } as SessionView;
+    expect(withSession(items, recorded)).toEqual([{ ...a, session: recorded }, followUp]);
+    expect(withSession(items, { id: "a", todo: [] } as unknown as SessionView)).toEqual([followUp]);
+    expect(withSession(items, { id: "other", todo: ["record"] } as SessionView)).toEqual(items);
   });
 });

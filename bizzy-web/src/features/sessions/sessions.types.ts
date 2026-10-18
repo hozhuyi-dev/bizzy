@@ -123,6 +123,8 @@ export type SessionReturnTo = "home";
 export interface SessionSearch {
   /** Where to go back to once saved. */
   from?: SessionReturnTo | undefined;
+  /** The calendar edit it was opened to settle: once its booking is saved, back to the to-do list. */
+  settle?: string | undefined;
 }
 
 export type StageTone = "neutral" | "done" | "info" | "waiting" | "attention";

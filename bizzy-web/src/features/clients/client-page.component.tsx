@@ -12,9 +12,10 @@ import { ClientDocuments } from "./components/client-documents/client-documents.
 import { ClientFollowUps } from "./components/client-follow-ups/client-follow-ups.component";
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
 import { contactProblem, toClientRow } from "./clients.util";
-import type { ChosenContact, ClientReturnTo, ClientView } from "./clients.types";
+import type { ChosenContact, ClientView } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
+import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
@@ -36,13 +37,14 @@ const FORM_ID = "client-form";
 
 const parent = { to: "/clients", label: "Clients" } as const;
 
+/** `settle`: the calendar edit it was opened to settle; once saved, back to the to-do list. */
 export type ClientPageProps =
-  | { mode: "edit"; id: string }
+  | { mode: "edit"; id: string; settle?: string | undefined }
   | {
       mode: "new";
       /** Prefills, e.g. from an unmatched calendar name. */
       initialName?: string | undefined;
-      returnTo?: ClientReturnTo | undefined;
+      settle?: string | undefined;
     };
 
 /**
@@ -55,10 +57,7 @@ export function ClientPage(props: ClientPageProps) {
 
   if (props.mode === "new") {
     return (
-      <ClientEditor
-        initialName={props.initialName}
-        returnTo={props.returnTo}
-      />
+      <ClientEditor initialName={props.initialName} settle={props.settle} />
     );
   }
 
@@ -82,28 +81,26 @@ export function ClientPage(props: ClientPageProps) {
     );
   }
   // Keyed so a different client starts the form afresh.
-  return <ClientEditor key={client.id} client={client} />;
+  return <ClientEditor key={client.id} client={client} settle={props.settle} />;
 }
 
 interface ClientEditorProps {
   client?: ClientView | undefined;
   initialName?: string | undefined;
-  returnTo?: ClientReturnTo | undefined;
+  settle?: string | undefined;
 }
 
-function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
+function ClientEditor({ client, initialName, settle }: ClientEditorProps) {
   const navigate = useNavigate();
   const [contact, setContact] = useState<ChosenContact | null>(client?.contact ?? null);
   const [contactRequired, setContactRequired] = useState(false);
-  const save = useSaveClient(client, (saved) => {
-    if (!client) {
-      void navigate(
-        returnTo === "home"
-          ? { to: "/", ignoreBlocker: true }
-          : { to: "/clients/$id", params: { id: saved.id }, replace: true, ignoreBlocker: true },
-      );
+  const settled = useSettleReturn(settle);
+  const save = useSaveClient(client, (saved, done) => {
+    if (settled) settled(done);
+    else if (!client) {
+      void navigate({ to: "/clients/$id", params: { id: saved.id }, replace: true, ignoreBlocker: true });
     }
-  });
+  }, { quiet: Boolean(settled) });
 
   const form = useForm({
     defaultValues: toClientValues(client, initialName),

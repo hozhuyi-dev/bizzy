@@ -1,6 +1,8 @@
 import { toast } from "sonner";
 import { FollowUpsMutation } from "./follow-ups.mutation";
 import type { FollowUpView } from "./follow-ups.types";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 /** Marks a follow-up done with an Undo in the toast. */
 export function useMarkDone() {
@@ -11,7 +13,7 @@ export function useMarkDone() {
       {
         onSuccess: () => {
           if (!done) return;
-          toast.success("Follow-up done", {
+          toastWithQuip("Follow-up done", QUIPS.todoDone, {
             action: { label: "Undo", onClick: () => mutate({ id: followUp.id, done: false }) },
           });
         },

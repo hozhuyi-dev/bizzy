@@ -22,6 +22,7 @@ import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialo
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
 
 const LAPSE_OPTIONS = LAPSE_MONTHS.map((months) => ({
   value: months,
@@ -112,7 +113,7 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
         { id: client.id, contacted: true },
         {
           onSuccess: () =>
-            toast.success(`Marked ${client.name} as contacted`, {
+            toastWithQuip(`Marked ${client.name} as contacted`, QUIPS.todoDone, {
               action: {
                 label: "Undo",
                 onClick: () => mark({ id: client.id, contacted: false }),

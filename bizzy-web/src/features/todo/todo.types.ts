@@ -16,7 +16,8 @@ export type TodoView =
   | { kind: "followUp"; at: string; followUp: FollowUpView }
   | { kind: "conflict"; at: string; conflict: ConflictView };
 
-/** The filter chips: a session reason, follow-ups, or what to fix. */
-export type TodoFilter = SessionReason | "followUp" | "fix";
+/** The filter chips: a session reason, follow-ups, or calendar edits to settle. */
+export type TodoFilter = SessionReason | "followUp" | "calendar";
 
-export type TodoGroup = "overdue" | "today" | "upcoming";
+/** Calendar edits first, as they keep the calendar out of step; then the rest by day. */
+export type TodoGroup = "calendar" | "overdue" | "today" | "upcoming";

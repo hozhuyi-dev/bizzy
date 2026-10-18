@@ -20,6 +20,39 @@ export const QUIPS = {
     "The to-do list has left the building.",
     "Time for a honey break.",
   ],
+  // Under the toast for a to-do done right there: never for money, or
+  // for cancelling and deleting.
+  todoDone: [
+    "One less buzz.",
+    "Another cell filled.",
+    "The hive approves.",
+    "Neatly done.",
+    "Wings a little lighter.",
+    "Busy bee.",
+  ],
+  // Under the toast for something saved: a client, a contact, a
+  // follow-up, settings, a file on a session.
+  saved: [
+    "Tucked into the hive.",
+    "Filed in the comb.",
+    "Safe in the hive.",
+    "Noted. The bees never forget.",
+    "All in order.",
+  ],
+  // Under the toast for a session booked or moved.
+  booked: [
+    "Another date in the diary.",
+    "The hive's getting busy.",
+    "Pencilled in. Well, inked.",
+    "One more flower to visit.",
+  ],
+  // The last to-do of a visit cleared.
+  todoCleared: [
+    "Every cell sealed. Off you buzz.",
+    "Cleared the lot. Take a honey break.",
+    "Not a single loose end. Well flown.",
+    "The hive is spotless. All your doing.",
+  ],
   sessionsHistory: [
     "A quiet month in the hive.",
     "Not much buzz this month.",

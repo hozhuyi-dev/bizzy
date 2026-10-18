@@ -17,6 +17,8 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 interface AttachmentListProps {
   owner: AttachmentOwner;
@@ -53,7 +55,10 @@ export function AttachmentList({ owner, can, addLabel = "Attach photos or PDFs" 
     }
     setProgress(null);
     const attached = list.length - failed;
-    if (attached > 0) toast.success(attached === 1 ? "File attached" : `${attached} files attached`);
+    const message = attached === 1 ? "File attached" : `${attached} files attached`;
+    // An expense's receipt is money: no quip there.
+    if (attached > 0 && owner.ownerKind === "session") toastWithQuip(message, QUIPS.saved);
+    else if (attached > 0) toast.success(message);
   };
 
   const items = files.data ?? [];

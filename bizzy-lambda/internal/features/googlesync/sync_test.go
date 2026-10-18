@@ -130,25 +130,39 @@ func TestTheCalendarDoesWhatTheAppDoes(t *testing.T) {
 
 func TestAFixInTheAppLetsAWaitingEditThrough(t *testing.T) {
 	a, _ := setup(t)
-	ev := a.Calendar.UserAdd("Zed Ong 80", at(2), at(3))
+	a.Calendar.UserAdd("Zed Ong 80", at(2), at(3))
+	a.Calendar.UserAdd("Zed Ong 80", at(26), at(27))
 	sync(t, a)
 	w := waiting(t, a)
-	if len(w) != 1 || w[0].Remedies[0].Action != "clients.create" {
+	if len(w) != 2 || w[0].Remedies[0].Action != "clients.create" {
 		t.Fatalf("waiting = %+v, want adding Zed as a client", w)
 	}
 
-	// The remedy, as the app sends it once the user picks the contact,
-	// then applying the edit.
+	// The remedy, as the app sends it once the user picks the contact: it
+	// lets every edit waiting on Zed through, with nothing to apply.
 	req := w[0].Remedies[0].Request
 	req["contact"] = map[string]any{"resourceName": a.Contact("Zed Ong")}
 	if err := a.Must("clients.create", req, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Must("conflicts.apply", map[string]any{"id": ev}, nil); err != nil {
+	if got := listSessions(t, a); len(got) != 2 || got[0].FeeCents != 8000 || len(waiting(t, a)) != 0 {
+		t.Errorf("sessions %+v, waiting %+v", got, waiting(t, a))
+	}
+}
+
+func TestAWaitingEditStillRefusedSaysWhyAsItIsNow(t *testing.T) {
+	a, _ := setup(t, "Jane Smith")
+	ev := a.Calendar.UserAdd("Zed Ong", at(2), at(3))
+	sync(t, a)
+
+	// Zed is added with no usual fee: the edit is tried again, and now
+	// waits for the fee instead of the client.
+	if _, err := a.Client("Zed Ong", nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := listSessions(t, a); len(got) != 1 || got[0].FeeCents != 8000 || len(waiting(t, a)) != 0 {
-		t.Errorf("sessions %+v, waiting %+v", got, waiting(t, a))
+	w := waiting(t, a)
+	if len(w) != 1 || w[0].EventID != ev || !strings.Contains(w[0].Message, "fee") {
+		t.Fatalf("waiting = %+v, want one waiting for Zed's fee", w)
 	}
 }
 

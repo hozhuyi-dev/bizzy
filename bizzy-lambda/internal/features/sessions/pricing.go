@@ -67,7 +67,7 @@ func price(tx *txn.Tx, s *Session, fee *int64) error {
 		return err
 	}
 	return apperr.Refused(fmt.Sprintf("Enter the fee: %s has no usual fee, and no package credit covers this session.", client.Name),
-		apperr.Remedy{Action: "clients.update", Target: client.ID, Label: fmt.Sprintf("Set %s's usual fee", client.Name)},
+		apperr.Remedy{Action: "clients.update", Target: client.ID, Ask: "fee", Label: fmt.Sprintf("Set %s's usual fee", client.Name)},
 		apperr.Remedy{Action: "packages.create", Request: map[string]any{"clientId": client.ID}, Label: fmt.Sprintf("Add a package for %s", client.Name)})
 }
 

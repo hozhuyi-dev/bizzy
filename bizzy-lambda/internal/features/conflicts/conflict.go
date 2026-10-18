@@ -1,9 +1,10 @@
 // Package conflicts is the user's edits in the calendar that bizzy refused:
 // each waits on the to-do list, with why and the remedies that would let it
 // through, until the user fixes it (in the app or the calendar) and it is
-// applied (the next sync, or conflicts.apply), or bizzy's version is put
-// back (calendar.revert): for an event that shows nothing of bizzy's,
-// that deletes it, as every event in the calendar is bizzy's.
+// applied (once the app changes what refused it, the next sync, or
+// conflicts.apply), or bizzy's version is put back (calendar.revert): for
+// an event that shows nothing of bizzy's, that deletes it, as every event
+// in the calendar is bizzy's.
 //
 // The app can't make one: it refuses a change before anything is written.
 // Only the calendar, edited directly, can ask for what isn't allowed.

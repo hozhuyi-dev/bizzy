@@ -41,7 +41,10 @@ type Remedy struct {
 	// {"name": "Jane"}: the app sends it, or opens the action's form with
 	// it filled in.
 	Request map[string]any `json:"request,omitempty"`
-	Label   string         `json:"label"`
+	// Ask is what the user fills in before Request is sent, the app's
+	// word for it ("fee"): taken right there once it is.
+	Ask   string `json:"ask,omitempty"`
+	Label string `json:"label"`
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("%s: %s", e.Code, e.Message) }

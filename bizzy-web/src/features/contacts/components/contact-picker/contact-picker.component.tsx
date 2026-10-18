@@ -12,6 +12,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { isApiError } from "~/core/utils/api-error.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
 
 const SHOWN = 6;
 
@@ -127,7 +128,7 @@ function NewContact({
         onSubmit={async (details) => {
           try {
             const contact = await create.mutateAsync(details);
-            toast.success(`${contact.displayName ?? "Contact"} added to your contacts`);
+            toastWithQuip(`${contact.displayName ?? "Contact"} added to your contacts`, QUIPS.saved);
             onCreated(contact);
           } catch {
             // Shown through create.error.

@@ -25,6 +25,8 @@ export interface Remedy {
   target?: string;
   /** The action's request as far as the remedy knows it, e.g. {"name": "Jane"}. */
   request?: Record<string, unknown>;
+  /** What the user fills in before the request is sent ("fee"): taken right there once it is. */
+  ask?: string;
   label: string;
 }
 

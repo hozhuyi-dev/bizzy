@@ -26,6 +26,7 @@ import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ConflictActions } from "~/features/conflicts/components/conflict-actions/conflict-actions.component";
 import { ConflictsQuery } from "~/features/conflicts/conflicts.query";
+import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { conflictKind } from "~/features/conflicts/conflicts.util";
 import { documentRoute, refLabel } from "~/features/documents/documents.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
@@ -39,10 +40,13 @@ import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { Card, CardContent } from "~/components/ui/card";
 import { formatSessionTime } from "~/core/utils/date.util";
 import { clientOf } from "~/features/clients/clients.util";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 export type SessionPageProps = { returnTo?: SessionReturnTo | undefined } & (
   | { mode: "new" }
-  | { mode: "edit"; id: string }
+  /** `settle`: the calendar edit it was opened to settle, by changing its booking. */
+  | { mode: "edit"; id: string; settle?: string | undefined }
 );
 
 function parentOf(returnTo: SessionReturnTo | undefined) {
@@ -56,7 +60,7 @@ function parentOf(returnTo: SessionReturnTo | undefined) {
  */
 export function SessionPage(props: SessionPageProps) {
   if (props.mode === "new") return <NewSession returnTo={props.returnTo} />;
-  return <ExistingSession id={props.id} returnTo={props.returnTo} />;
+  return <ExistingSession id={props.id} returnTo={props.returnTo} settle={props.settle} />;
 }
 
 function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
@@ -64,7 +68,7 @@ function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
   const [error, setError] = useState<string | null>(null);
   const save = useBookingSave(undefined, undefined, (draft, id) => {
     const booked = new Date(draft.start) > new Date();
-    toast.success(booked ? `Booked for ${formatSessionTime(draft.start)}` : "Session added");
+    toastWithQuip(booked ? `Booked for ${formatSessionTime(draft.start)}` : "Session added", QUIPS.booked);
     // Straight to its notes and payment.
     void navigate({ to: "/sessions/$id", params: { id }, search: { from: returnTo }, replace: true, ignoreBlocker: true });
   });
@@ -97,7 +101,13 @@ function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
   );
 }
 
-function ExistingSession({ id, returnTo }: { id: string; returnTo: SessionReturnTo | undefined }) {
+interface ExistingSessionProps {
+  id: string;
+  returnTo: SessionReturnTo | undefined;
+  settle: string | undefined;
+}
+
+function ExistingSession({ id, returnTo, settle }: ExistingSessionProps) {
   const detail = SessionsQuery.useDetail(id);
   const parent = parentOf(returnTo);
 
@@ -119,10 +129,16 @@ function ExistingSession({ id, returnTo }: { id: string; returnTo: SessionReturn
       </>
     );
   }
-  return <SessionPipeline session={detail.data} returnTo={returnTo} />;
+  return <SessionPipeline session={detail.data} returnTo={returnTo} settle={settle} />;
 }
 
-function SessionPipeline({ session, returnTo }: { session: SessionFullView; returnTo: SessionReturnTo | undefined }) {
+interface SessionPipelineProps {
+  session: SessionFullView;
+  returnTo: SessionReturnTo | undefined;
+  settle: string | undefined;
+}
+
+function SessionPipeline({ session, returnTo, settle }: SessionPipelineProps) {
   const navigate = useNavigate();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
@@ -132,6 +148,7 @@ function SessionPipeline({ session, returnTo }: { session: SessionFullView; retu
   const [deleting, setDeleting] = useState(false);
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
   const [nextVisit, setNextVisit] = useState<SessionDraft | null>(null);
+  const settled = useSettleReturn(settle);
 
   const parent = parentOf(returnTo);
   const client = clientOf(clientsById, session.clientId);
@@ -161,7 +178,7 @@ function SessionPipeline({ session, returnTo }: { session: SessionFullView; retu
   ];
 
   const steps: Array<PipelineStep> = [
-    bookingStep(session, () => setDeleting(true)),
+    bookingStep(session, () => setDeleting(true), settled),
     recordStep(session, record),
     paymentStep(session, covering, bought),
     documentsStep(session, bought),
@@ -228,7 +245,9 @@ function ConflictBanner({ conflict }: { conflict: ConflictView }) {
       <span className="flex flex-col gap-2">
         {!conflict.gone && <span>It says “{conflict.title}”.</span>}
         <span>{conflict.message}</span>
-        <ConflictActions conflict={conflict} size="xs" />
+        <span className="flex flex-wrap items-center gap-1.5">
+          <ConflictActions conflict={conflict} size="xs" />
+        </span>
       </span>
     </Banner>
   );

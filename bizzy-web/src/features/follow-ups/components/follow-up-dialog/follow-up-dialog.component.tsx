@@ -20,6 +20,8 @@ import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
+import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 interface FollowUpDialogProps {
   target: FollowUpTarget | null;
@@ -29,17 +31,24 @@ interface FollowUpDialogProps {
 /**
  * Adds or edits a follow-up. It is written to the calendar as
  * `! Name: summary` with the notes as the event's description, so it shows
- * on the user's phone too.
+ * on the user's phone too. Roomy on a wide screen; on a phone, a sheet
+ * from the bottom, so the notes keep their room above the keyboard.
  */
 export function FollowUpDialog({ target, onClose }: FollowUpDialogProps) {
   return (
     <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+      <DialogContent className={SHEET}>
         {target && <FollowUpForm key={target.mode === "edit" ? target.followUp.id : "new"} target={target} onClose={onClose} />}
       </DialogContent>
     </Dialog>
   );
 }
+
+const SHEET = [
+  "max-h-[90dvh] overflow-y-auto sm:max-w-lg",
+  "max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0",
+  "max-sm:rounded-b-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:data-open:slide-in-from-bottom-8",
+].join(" ");
 
 /** Quick picks, counted from today. */
 const IN = [
@@ -71,7 +80,7 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
   const save = () => {
     const done = {
       onSuccess: () => {
-        toast.success(editing ? "Follow-up updated" : "Follow-up added to your calendar");
+        toastWithQuip(editing ? "Follow-up updated" : "Follow-up added to your calendar", QUIPS.saved);
         onClose();
       },
       onError: (error: Error) => toast.error(error.message),
