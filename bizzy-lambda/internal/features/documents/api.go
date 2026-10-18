@@ -22,7 +22,7 @@ type Summary struct {
 	Number     string `json:"number,omitempty"`
 	Revision   *int   `json:"revision,omitempty"`
 	ClientID   string `json:"clientId"`
-	Date       string `json:"date"`
+	Date       string `json:"date,omitempty"`
 	TotalCents int64  `json:"totalCents"`
 	// RecipientName is who the current content is for.
 	RecipientName string `json:"recipientName"`

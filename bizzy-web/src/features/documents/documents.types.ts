@@ -70,7 +70,8 @@ export interface DocumentSummary {
   number?: string;
   revision?: number;
   clientId: string;
-  date: string;
+  /** YYYY-MM-DD; a draft has none until set, and takes the day it is issued. */
+  date?: string;
   totalCents: number;
   /** Who the current content (issued, or the new draft) is for. */
   recipientName: string;

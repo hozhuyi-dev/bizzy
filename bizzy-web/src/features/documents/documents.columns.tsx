@@ -35,11 +35,12 @@ export const documentColumns = helper.columns([
     meta: { search: (doc: DocumentSummary) => documentLabel(doc.number, doc.revision) },
     cell: ({ row }) => <DocumentLink doc={row.original} />,
   }),
-  helper.accessor("date", {
+  helper.accessor((doc) => doc.date ?? "", {
+    id: "date",
     header: "Date",
     sortFn: "alphanumeric",
-    meta: { search: (doc: DocumentSummary) => formatDate(doc.date) },
-    cell: ({ getValue }) => formatDate(getValue()),
+    meta: { search: (doc: DocumentSummary) => (doc.date ? formatDate(doc.date) : undefined) },
+    cell: ({ getValue }) => (getValue() ? formatDate(getValue()) : "—"),
   }),
   helper.accessor("recipientName", {
     header: "For",
@@ -69,7 +70,8 @@ export function DocumentCard({ doc }: { doc: DocumentSummary }) {
         <div className="flex flex-col gap-1">
           <DocumentLink doc={doc} />
           <span className="text-sm text-muted-foreground">
-            {doc.recipientName} · {formatDate(doc.date)}
+            {doc.recipientName}
+            {doc.date && ` · ${formatDate(doc.date)}`}
           </span>
         </div>
         <div className="flex flex-col items-end gap-1">

@@ -113,7 +113,7 @@ function DocumentRow({ doc, selectable, checked, onCheckedChange }: DocumentRowP
           <TextLink to={documentRoute(doc.type)} params={{ id: doc.id }}>
             {documentLabel(doc.number, doc.revision)}
           </TextLink>
-          <span className="text-muted-foreground"> · {formatDate(doc.date)}</span>
+          {doc.date && <span className="text-muted-foreground"> · {formatDate(doc.date)}</span>}
         </span>
         {doc.status !== "issued" && <DocumentStatusBadge status={doc.status} />}
       </span>

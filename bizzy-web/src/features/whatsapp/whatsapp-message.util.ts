@@ -54,7 +54,8 @@ export function documentsTitle(docs: ReadonlyArray<Pick<DocumentSummary, "type">
 /** "Receipt RCP-0001 · 5 Oct 2026 · RM 95.00" and its link on the next line. */
 function documentLine(doc: SentDocument): string {
   const label = `${DOCUMENT_TYPES[doc.type].title} ${documentLabel(doc.number, doc.revision)}`;
-  return `${label} · ${formatDate(doc.date)} · ${formatCents(doc.totalCents)}\n${shareUrl(doc.shareToken)}`;
+  const date = doc.date ? ` · ${formatDate(doc.date)}` : "";
+  return `${label}${date} · ${formatCents(doc.totalCents)}\n${shareUrl(doc.shareToken)}`;
 }
 
 /** Sends links to one or more issued documents, of any types. */
