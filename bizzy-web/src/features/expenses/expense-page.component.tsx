@@ -14,6 +14,7 @@ import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
+import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -75,8 +76,8 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
   // The form starts from the expense once: attaching a file refetches it,
-  // which must not undo what the user is typing.
-  const [defaultValues] = useState(() => toExpenseValues(expense));
+  // which must not undo what the user is typing. A save moves it on.
+  const [defaultValues, setDefaultValues] = useState(() => toExpenseValues(expense));
   const thisYear = ExpensesQuery.useYear(new Date().getFullYear());
   const vendors = vendorsOf(thisYear.data ?? []);
   const items = catalogue.items.filter((item) => !item.archived);
@@ -84,16 +85,18 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
 
   const form = useForm({
     defaultValues,
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value, formApi }) => {
       try {
         const fields = toExpenseFields(value);
         if (expense) {
           await update.mutateAsync({ id: expense.id, fields });
+          formApi.reset(value);
+          setDefaultValues(value);
           toast.success("Expense updated");
         } else {
           const saved = await create.mutateAsync(fields);
           toast.success("Expense saved. Attach the receipt below.");
-          void navigate({ to: "/expenses/$id", params: { id: saved.id }, replace: true });
+          void navigate({ to: "/expenses/$id", params: { id: saved.id }, replace: true, ignoreBlocker: true });
         }
       } catch {
         // Shown through save.error.
@@ -102,6 +105,7 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
   });
 
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
 
   const sections: Array<PageSection> = [
     {
@@ -343,6 +347,7 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
         }}
       />
       <SectionLayout sections={sections} />
+      <UnsavedChangesPrompt when={hasChanges} />
 
       <AlertDialog open={deleting} onOpenChange={setDeleting}>
         <AlertDialogContent>
@@ -363,7 +368,7 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
                 remove.mutate(expense.id, {
                   onSuccess: () => {
                     toast.success("Expense deleted");
-                    void navigate({ to: "/expenses" });
+                    void navigate({ to: "/expenses", ignoreBlocker: true });
                   },
                   onError: (error) => toast.error(error.message),
                   onSettled: () => setDeleting(false),

@@ -23,6 +23,7 @@ import { PageHeader } from "~/components/shared/page-header/page-header.componen
 import { Loading } from "~/components/shared/quip/quip.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
@@ -96,24 +97,31 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
   const [contactRequired, setContactRequired] = useState(false);
   const save = useSaveClient(client, (saved) => {
     if (!client) {
-      void navigate(returnTo === "home" ? { to: "/" } : { to: "/clients/$id", params: { id: saved.id }, replace: true });
+      void navigate(
+        returnTo === "home"
+          ? { to: "/", ignoreBlocker: true }
+          : { to: "/clients/$id", params: { id: saved.id }, replace: true, ignoreBlocker: true },
+      );
     }
   });
 
   const form = useForm({
     defaultValues: toClientValues(client, initialName),
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value, formApi }) => {
       // A new client needs a contact; an existing one may be unlinked.
       if (!contact && !client) {
         setContactRequired(true);
         document.getElementById("contact")?.scrollIntoView({ block: "start" });
         return;
       }
-      await save.submit(toClientFields(value, client, contact?.resourceName));
+      if (await save.submit(toClientFields(value, client, contact?.resourceName))) formApi.reset(value);
     },
   });
 
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const hasChanges =
+    useStore(form.store, (state) => !state.isDefaultValue) ||
+    contact?.resourceName !== client?.contact?.resourceName;
   const whatsapp = useWhatsApp();
   const phone = client?.contact?.phone;
   const problem = client && contactProblem(client);
@@ -341,6 +349,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
         }}
       />
       <SectionLayout sections={sections} />
+      <UnsavedChangesPrompt when={hasChanges} />
     </>
   );
 }

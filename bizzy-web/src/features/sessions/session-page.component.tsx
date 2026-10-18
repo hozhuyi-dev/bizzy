@@ -66,7 +66,7 @@ function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
     const booked = new Date(draft.start) > new Date();
     toast.success(booked ? `Booked for ${formatSessionTime(draft.start)}` : "Session added");
     // Straight to its notes and payment.
-    void navigate({ to: "/sessions/$id", params: { id }, search: { from: returnTo }, replace: true });
+    void navigate({ to: "/sessions/$id", params: { id }, search: { from: returnTo }, replace: true, ignoreBlocker: true });
   });
 
   return (
@@ -142,7 +142,9 @@ function SessionPipeline({ session, returnTo }: { session: SessionFullView; retu
   // refused, with cancelling it as the remedy.
   const issued = documents.filter((doc) => doc.issued);
   const next = nextTodoSession(todo.data, session.id);
-  const leave = () => void navigate(returnTo === "home" ? { to: "/" } : { to: "/sessions" });
+  // Only after deleting it, so an open booking edit is moot.
+  const leave = () =>
+    void navigate(returnTo === "home" ? { to: "/", ignoreBlocker: true } : { to: "/sessions", ignoreBlocker: true });
   const waiting = conflicts.data ?? [];
 
   const messages = useSessionMessageActions(session, client, documents);

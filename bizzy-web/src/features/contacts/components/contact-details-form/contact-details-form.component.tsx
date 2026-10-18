@@ -1,8 +1,9 @@
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { toContactDetails, toContactValues } from "../../contacts.form";
 import type { ComponentProps } from "react";
 import type { ContactValues } from "../../contacts.form";
 import type { ContactDetails } from "../../contacts.types";
+import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
@@ -28,7 +29,9 @@ export function ContactDetailsForm({ mode, initial, submitLabel, onSubmit, onCan
     onSubmit: ({ value }) => onSubmit(toContactDetails(value, mode)),
   });
 
-  const text = (name: Exclude<keyof ContactValues, "street">, label: string, props: ComponentProps<typeof Input> = {}) => (
+  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
+
+  const text =(name: Exclude<keyof ContactValues, "street">, label: string, props: ComponentProps<typeof Input> = {}) => (
     <form.Field name={name}>
       {(field) => (
         <Field>
@@ -102,6 +105,7 @@ export function ContactDetailsForm({ mode, initial, submitLabel, onSubmit, onCan
           )}
         </form.Subscribe>
       </div>
+      <UnsavedChangesPrompt when={hasChanges} />
     </FieldGroup>
   );
 }

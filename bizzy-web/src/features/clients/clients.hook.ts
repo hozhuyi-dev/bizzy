@@ -7,7 +7,8 @@ import type { ClientFields, ClientView } from "./clients.types";
  * Saves a client: a new one, or what changed on `client`. New fees reach
  * the sessions not invoiced or paid yet; those already invoiced or paid
  * keep the fee they were charged. A new calendar name can let an edit
- * waiting in the calendar apply.
+ * waiting in the calendar apply. Resolves to the saved client, or undefined
+ * when refused.
  */
 export function useSaveClient(client: ClientView | undefined, onSaved: (saved: ClientView) => void) {
   const create = ClientsMutation.useCreate();
@@ -22,8 +23,10 @@ export function useSaveClient(client: ClientView | undefined, onSaved: (saved: C
         `${client ? "Client updated" : "Client added"}${repriced ? " · new fees apply to sessions not invoiced or paid yet" : ""}`,
       );
       onSaved(saved);
+      return saved;
     } catch {
       // Shown through error.
+      return undefined;
     }
   };
 

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { toPackageFields, toPackageValues } from "../../packages.form";
 import { usePackageSave } from "../../packages-save.hook";
 import type { PackageView } from "../../packages.types";
 import { fieldErrors } from "~/core/utils/form.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
+import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { Button } from "~/components/ui/button";
@@ -43,6 +44,8 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
       }
     },
   });
+
+  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
 
   const items = (clients.data ?? [])
     .map((client) => ({ value: client.id, label: client.name }))
@@ -232,6 +235,7 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
           )}
         </form.Subscribe>
       </DialogFooter>
+      <UnsavedChangesPrompt when={hasChanges} />
     </form>
   );
 }

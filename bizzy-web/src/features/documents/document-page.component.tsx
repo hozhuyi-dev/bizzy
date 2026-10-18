@@ -30,6 +30,7 @@ import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
+import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import {
   AlertDialog,
@@ -115,6 +116,7 @@ function DraftDocument({ doc, draft, revisions }: DraftDocumentProps) {
       >
         <SectionLayout sections={[...documentEditorSections(editor), ...(history ? [history] : [])]} />
       </form>
+      <UnsavedChangesPrompt when={editor.hasChanges} />
     </>
   );
 }

@@ -22,6 +22,8 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
 
   const form = useForm({ defaultValues: toFormValues(draft) });
   const values = useStore(form.store, (state) => state.values);
+  // A save refetches the document, which starts the editor afresh.
+  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
   const content = toContent(values);
   const invalid = validateContent(values);
 
@@ -31,6 +33,7 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
     doc,
     form,
     values,
+    hasChanges,
     invalid,
     nextRevision,
     saving: save.isPending,
@@ -66,7 +69,7 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
           }
           // A draft never issued is deleted, so its page is gone too.
           toast.success("Draft discarded");
-          void navigate({ to: DOCUMENT_TYPES[doc.type].path });
+          void navigate({ to: DOCUMENT_TYPES[doc.type].path, ignoreBlocker: true });
         },
         onError: (error) => toast.error(error.message),
       }),

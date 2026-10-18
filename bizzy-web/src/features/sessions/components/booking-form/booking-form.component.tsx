@@ -7,6 +7,7 @@ import type { CoverView, PreviewSessionRequest, SessionDraft, SessionView } from
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
@@ -60,6 +61,8 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
       }
     },
   });
+
+  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
 
   const items = (clients.data ?? [])
     .map((client) => ({ value: client.id, label: client.name }))
@@ -373,6 +376,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
         </form.Subscribe>
         {extraActions}
       </div>
+      <UnsavedChangesPrompt when={hasChanges} />
     </form>
   );
 }

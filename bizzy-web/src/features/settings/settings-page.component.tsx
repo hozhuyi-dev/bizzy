@@ -9,6 +9,7 @@ import { GoogleConnectionSettings } from "~/features/google/components/google-co
 import { AppearanceSettings } from "~/features/theme/components/appearance-settings/appearance-settings.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
+import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import {
   Field,
@@ -17,13 +18,6 @@ import {
   FieldLabel,
 } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
 import { queryMatch } from "~/core/utils/query.util";
 import { DOCUMENT_PLACEHOLDERS, PAYMENT_PLACEHOLDERS } from "~/features/whatsapp/whatsapp.constant";
@@ -90,9 +84,10 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
       accountName: saved.accountName ?? "",
       accountNo: saved.accountNo ?? "",
     },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value, formApi }) => {
       try {
         await save.mutateAsync(value);
+        formApi.reset(value);
         toast.success("Settings saved");
       } catch (error) {
         toast.error((error as Error).message);
@@ -101,6 +96,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
   });
 
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
 
   const textField = ({
     name,
@@ -299,6 +295,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
             : []),
         ]}
       />
+      <UnsavedChangesPrompt when={hasChanges} />
     </>
   );
 }
