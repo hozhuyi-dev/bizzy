@@ -5,11 +5,11 @@ import { toast } from "sonner";
 import { DeletePackageDialog } from "./components/delete-package-dialog/delete-package-dialog.component";
 import { PackageForm } from "./components/package-form/package-form.component";
 import { PackageCredits, PackageDocuments, PackagePayment, PackagePrice, PackageSource, createPackageColumns, packageActions } from "./packages.columns";
-import { clientName } from "./packages.util";
+import { clientName, packagePayables } from "./packages.util";
 import { PackagesMutation } from "./packages.mutation";
 import { PackagesQuery } from "./packages.query";
 import type { PackageHandlers } from "./packages.columns";
-import type { Package, PackagesView } from "./packages.types";
+import type { PackageView, PackagesFilter } from "./packages.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
@@ -28,20 +28,20 @@ import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
-type Editing = { mode: "new" } | { mode: "edit"; pkg: Package } | null;
+type Editing = { mode: "new" } | { mode: "edit"; pkg: PackageView } | null;
 
 // Stable fallback: a fresh [] each render would rebuild the row models.
-const NO_PACKAGES: Array<Package> = [];
+const NO_PACKAGES: Array<PackageView> = [];
 
 interface PackagesPageProps {
-  view: PackagesView;
-  onViewChange: (view: PackagesView) => void;
+  view: PackagesFilter;
+  onViewChange: (view: PackagesFilter) => void;
 }
 
 /** Prepaid packages with the credits each has left, and whether each is paid. */
 export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
   const [editing, setEditing] = useState<Editing>(null);
-  const [deleting, setDeleting] = useState<Package | null>(null);
+  const [deleting, setDeleting] = useState<PackageView | null>(null);
   const [payingId, setPayingId] = useState<string>();
   const [search, setSearch] = useState("");
   const packages = PackagesQuery.useList(view === "all");
@@ -86,7 +86,7 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
         }
         toolbar={
           <>
-            <Tabs value={view} onValueChange={(value) => onViewChange(value as PackagesView)}>
+            <Tabs value={view} onValueChange={(value) => onViewChange(value as PackagesFilter)}>
               <TabsList>
                 <TabsTrigger value="open">Open</TabsTrigger>
                 <TabsTrigger value="all">All</TabsTrigger>
@@ -167,17 +167,7 @@ export function PackagesPage({ view, onViewChange }: PackagesPageProps) {
             )}
           </DialogHeader>
           {paying && (
-            <PaymentPanel
-              payables={[
-                {
-                  item: { kind: "package", id: paying.id },
-                  label: `Package of ${paying.sessions}`,
-                  dueCents: paying.priceCents,
-                  paid: paying.paid,
-                  receipt: paying.receipt,
-                },
-              ]}
-            />
+            <PaymentPanel payables={packagePayables(paying)} />
           )}
         </DialogContent>
       </Dialog>

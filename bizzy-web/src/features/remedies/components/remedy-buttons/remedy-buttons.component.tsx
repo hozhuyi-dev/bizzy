@@ -6,17 +6,15 @@ import { Button } from "~/components/ui/button";
 
 interface RemedyButtonsProps {
   remedies: ReadonlyArray<Remedy>;
-  /** The name a new client starts with, for "Add … as a client". */
-  name?: string | undefined;
   /** After one is taken. */
   onDone?: () => void;
-  /** The conflict they are offered for: its edit is applied once one lets it through. */
+  /** The event of the conflict they are offered for: its edit is applied once one lets it through. */
   applyAfter?: string;
   size?: "xs" | "sm";
 }
 
 /** A refusal's remedies, each a button that takes it: what would let the action through. */
-export function RemedyButtons({ remedies, name, onDone, applyAfter, size = "sm" }: RemedyButtonsProps) {
+export function RemedyButtons({ remedies, onDone, applyAfter, size = "sm" }: RemedyButtonsProps) {
   const remedy = useRemedy();
   const known = remedies.filter((r) => remedyStep(r) !== undefined);
   if (known.length === 0) return null;
@@ -31,7 +29,7 @@ export function RemedyButtons({ remedies, name, onDone, applyAfter, size = "sm" 
           disabled={remedy.pending}
           onClick={() =>
             void remedy
-              .run(r, name, applyAfter)
+              .run(r, applyAfter)
               .then(onDone)
               .catch((error: Error) => toastRefusal(error))
           }

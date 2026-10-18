@@ -1,8 +1,9 @@
 import { CalendarPlusIcon, PlusIcon } from "lucide-react";
+import { draftOf } from "../../sessions.form";
 import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
-import type { Session, SessionDraft } from "../../sessions.types";
-import type { Client } from "~/features/clients/clients.types";
-import type { FollowUp, FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
+import type { SessionDraft, SessionView } from "../../sessions.types";
+import type { ClientView } from "~/features/clients/clients.types";
+import type { FollowUpTarget, FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { FollowUpsQuery } from "~/features/follow-ups/follow-ups.query";
 import { formatDue } from "~/features/follow-ups/follow-ups.util";
@@ -10,9 +11,8 @@ import { Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
 
 export function followUpsStep(
-  session: Session,
-  client: Client | undefined,
-  draft: SessionDraft,
+  session: SessionView,
+  client: ClientView | undefined,
   onFollowUp: (target: FollowUpTarget) => void,
   onNextVisit: (draft: SessionDraft) => void,
 ): PipelineStep {
@@ -23,7 +23,7 @@ export function followUpsStep(
     meta: <FollowUpsMeta sessionId={session.id} />,
     actions: client && (
       <>
-        <Button variant="outline" size="sm" onClick={() => onNextVisit(draft)}>
+        <Button variant="outline" size="sm" onClick={() => onNextVisit(draftOf(session))}>
           <CalendarPlusIcon /> Next visit
         </Button>
         <Button
@@ -47,7 +47,7 @@ function FollowUpsMeta({ sessionId }: { sessionId: string }) {
   return <>{open.length === 1 ? `Due ${formatDue(first)}` : `${open.length}, next ${formatDue(first)}`}</>;
 }
 
-function FollowUpsStep({ sessionId, onEdit }: { sessionId: string; onEdit: (followUp: FollowUp) => void }) {
+function FollowUpsStep({ sessionId, onEdit }: { sessionId: string; onEdit: (followUp: FollowUpView) => void }) {
   const followUps = FollowUpsQuery.useBySession(sessionId);
   if (followUps.isPending) return <Loading />;
   if (!followUps.data?.length) {

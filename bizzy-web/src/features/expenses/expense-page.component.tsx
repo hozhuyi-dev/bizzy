@@ -3,11 +3,11 @@ import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { EMPTY_LINE, amountError, toExpenseInput, toExpenseValues, totalOf, withName } from "./expenses.form";
+import { EMPTY_LINE, amountError, toExpenseFields, toExpenseValues, totalOf, withName } from "./expenses.form";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
 import { vendorsOf } from "./expenses.util";
-import type { Catalogue, Expense } from "./expenses.types";
+import type { CatalogueView, ExpenseView } from "./expenses.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { AttachmentList } from "~/features/attachments/components/attachment-list/attachment-list.component";
 import { Banner } from "~/components/shared/banner/banner.component";
@@ -63,17 +63,19 @@ export function ExpensePage(props: ExpensePageProps) {
 }
 
 interface ExpenseEditorProps {
-  expense: Expense | undefined;
-  catalogue: Catalogue;
+  expense: ExpenseView | undefined;
+  catalogue: CatalogueView;
 }
 
 function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
-  const save = ExpensesMutation.useSave();
+  const create = ExpensesMutation.useCreate();
+  const update = ExpensesMutation.useUpdate();
   const remove = ExpensesMutation.useDelete();
+  const save = expense ? update : create;
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
   // The form starts from the expense once: attaching a file refetches it,
-  // which must not undo what she is typing. The version saved is the latest.
+  // which must not undo what the user is typing.
   const [defaultValues] = useState(() => toExpenseValues(expense));
   const thisYear = ExpensesQuery.useYear(new Date().getFullYear());
   const vendors = vendorsOf(thisYear.data ?? []);
@@ -84,10 +86,12 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
     defaultValues,
     onSubmit: async ({ value }) => {
       try {
-        const saved = await save.mutateAsync(toExpenseInput(value, expense));
+        const fields = toExpenseFields(value);
         if (expense) {
+          await update.mutateAsync({ id: expense.id, fields });
           toast.success("Expense updated");
         } else {
+          const saved = await create.mutateAsync(fields);
           toast.success("Expense saved. Attach the receipt below.");
           void navigate({ to: "/expenses/$id", params: { id: saved.id }, replace: true });
         }
@@ -354,7 +358,7 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
               disabled={remove.isPending}
               onClick={() =>
                 expense &&
-                remove.mutate(expense, {
+                remove.mutate(expense.id, {
                   onSuccess: () => {
                     toast.success("Expense deleted");
                     void navigate({ to: "/expenses" });

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
-import type { SessionDraft } from "./sessions.types";
+import type { SessionFields } from "./sessions.types";
 import { SessionKeys } from "~/core/constants/query-keys.constant";
 import { isStaleEdit } from "~/core/utils/api-error.util";
 import { invalidateBilling } from "~/core/utils/query.util";
@@ -8,7 +8,8 @@ import { invalidateBilling } from "~/core/utils/query.util";
 /**
  * Refreshes billing after a write. The session's own page is left alone
  * unless asked (`refresh`): its forms restart on a refetch, which would lose
- * what she is typing. A stale edit refreshes everything, that page included.
+ * what the user is typing. A stale edit refreshes everything, that page
+ * included.
  */
 function useSessionMutation<TInput, TResult>(
   mutationFn: (input: TInput) => Promise<TResult>,
@@ -29,12 +30,12 @@ function useSessionMutation<TInput, TResult>(
 }
 
 export const SessionsMutation = {
-  useCreate: () => useSessionMutation((draft: SessionDraft) => SessionsService.create(draft)),
+  useCreate: () => useSessionMutation((fields: SessionFields) => SessionsService.create(fields)),
 
+  /** A patch: only what is set changes. */
   useUpdate: () =>
     useSessionMutation(
-      ({ id, draft, updatePayment }: { id: string; draft: SessionDraft; updatePayment?: boolean }) =>
-        SessionsService.update(id, draft, updatePayment),
+      ({ id, fields }: { id: string; fields: SessionFields }) => SessionsService.update(id, fields),
       ({ id }) => id,
       true,
     ),
@@ -46,7 +47,7 @@ export const SessionsMutation = {
       ({ id }) => id,
     ),
 
-  /** Saves the summary and notes; the page keeps what she is typing. */
+  /** Saves the summary and notes; the page keeps what the user is typing. */
   useSaveRecord: () =>
     useSessionMutation(
       ({ id, summary, notes }: { id: string; summary: string; notes: string }) =>

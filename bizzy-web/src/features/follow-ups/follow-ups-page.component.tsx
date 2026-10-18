@@ -3,9 +3,8 @@ import { PlusIcon } from "lucide-react";
 import { FollowUpDialog } from "./components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpRow } from "./components/follow-up-row/follow-up-row.component";
 import { FollowUpsQuery } from "./follow-ups.query";
-import type { FollowUpTarget, FollowUpView } from "./follow-ups.types";
+import type { FollowUpList, FollowUpTarget } from "./follow-ups.types";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
-import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
@@ -16,10 +15,10 @@ import { QUIPS } from "~/core/constants/quips.constant";
  * Every follow-up: those still to do, soonest first (Home shows only the
  * next few days), or those done, latest first.
  */
-export function FollowUpsPage({ view }: { view: FollowUpView }) {
+export function FollowUpsPage({ view }: { view: FollowUpList }) {
   const list = FollowUpsQuery.useList(view);
   const [target, setTarget] = useState<FollowUpTarget | null>(null);
-  const items = list.data?.pages.flatMap((page) => page.items) ?? [];
+  const items = list.data ?? [];
 
   return (
     <>
@@ -50,20 +49,17 @@ export function FollowUpsPage({ view }: { view: FollowUpView }) {
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <Card>
-            <CardContent>
-              <ul className="flex flex-col divide-y">
-                {items.map((followUp) => (
-                  <li key={followUp.id} className="py-3 first:pt-0 last:pb-0">
-                    <FollowUpRow followUp={followUp} onEdit={(f) => setTarget({ mode: "edit", followUp: f })} />
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-          <LoadMore hasMore={list.hasNextPage} loading={list.isFetchingNextPage} onLoad={() => void list.fetchNextPage()} />
-        </div>
+        <Card>
+          <CardContent>
+            <ul className="flex flex-col divide-y">
+              {items.map((followUp) => (
+                <li key={followUp.id} className="py-3 first:pt-0 last:pb-0">
+                  <FollowUpRow followUp={followUp} onEdit={(f) => setTarget({ mode: "edit", followUp: f })} />
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       <FollowUpDialog target={target} onClose={() => setTarget(null)} />

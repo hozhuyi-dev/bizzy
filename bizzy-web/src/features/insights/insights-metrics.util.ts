@@ -1,5 +1,5 @@
 import type { Basis, ClientShare, MonthPoint, MonthTotal, PeriodSummary, YearPoint } from "./insights.types";
-import type { Client } from "~/features/clients/clients.types";
+import type { ActivityView } from "~/features/activity/activity.types";
 import { addMonths } from "~/core/utils/date.util";
 
 /**
@@ -9,11 +9,11 @@ import { addMonths } from "~/core/utils/date.util";
  */
 
 /** Sums every client by month, once, for all the charts. */
-export function monthTotals(clients: ReadonlyArray<Client>): Map<string, MonthTotal> {
+export function monthTotals(activities: ReadonlyArray<ActivityView>): Map<string, MonthTotal> {
   const totals = new Map<string, MonthTotal>();
-  for (const client of clients) {
-    const first = firstMonth(client);
-    for (const [month, a] of Object.entries(client.activity ?? {})) {
+  for (const activity of activities) {
+    const first = firstMonth(activity);
+    for (const [month, a] of Object.entries(activity.months)) {
       const t = totals.get(month) ?? { received: 0, earned: 0, sessions: 0, homeSessions: 0, homeEarned: 0, active: 0, new: 0 };
       t.received += a.receivedCents;
       t.earned += a.earnedCents;
@@ -29,8 +29,8 @@ export function monthTotals(clients: ReadonlyArray<Client>): Map<string, MonthTo
 }
 
 /** The first month a client had a session. */
-export function firstMonth(client: Client): string | undefined {
-  return Object.entries(client.activity ?? {})
+export function firstMonth(activity: ActivityView): string | undefined {
+  return Object.entries(activity.months)
     .filter(([, a]) => a.sessions > 0)
     .map(([month]) => month)
     .sort()[0];
@@ -91,18 +91,19 @@ export function summarize(totals: Map<string, MonthTotal>, basis: Basis, from: s
 
 /** The clients who brought in the most in [from, to]. */
 export function topClients(
-  clients: ReadonlyArray<Client>,
+  activities: ReadonlyArray<ActivityView>,
+  names: ReadonlyMap<string, { name: string }>,
   basis: Basis,
   from: string,
   to: string,
   limit = 8,
 ): Array<ClientShare> {
-  const rows = clients.map((client) => {
+  const rows = activities.map((activity) => {
     let cents = 0;
-    for (const [month, a] of Object.entries(client.activity ?? {})) {
+    for (const [month, a] of Object.entries(activity.months)) {
       if (month >= from && month <= to) cents += basis === "received" ? a.receivedCents : a.earnedCents;
     }
-    return { id: client.id, name: client.name, cents };
+    return { id: activity.clientId, name: names.get(activity.clientId)?.name ?? "Unknown client", cents };
   });
   const total = rows.reduce((sum, r) => sum + r.cents, 0);
   return rows

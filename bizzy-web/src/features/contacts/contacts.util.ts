@@ -1,4 +1,4 @@
-import type { Contact } from "./contacts.types";
+import type { ContactView } from "./contacts.types";
 
 /** Opens the contact in Google Contacts. */
 export function contactUrl(resourceName: string): string {
@@ -6,7 +6,7 @@ export function contactUrl(resourceName: string): string {
 }
 
 /** Contacts whose name, nickname, email or phone matches what she typed. */
-export function searchContacts(contacts: ReadonlyArray<Contact>, query: string): Array<Contact> {
+export function searchContacts(contacts: ReadonlyArray<ContactView>, query: string): Array<ContactView> {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [...contacts];
 
@@ -22,6 +22,6 @@ export function searchContacts(contacts: ReadonlyArray<Contact>, query: string):
 
   // Names starting with what she typed first.
   const first = words[0] ?? "";
-  const starts = (contact: Contact) => (contact.displayName ?? "").toLowerCase().startsWith(first);
+  const starts = (contact: ContactView) => (contact.displayName ?? "").toLowerCase().startsWith(first);
   return matches.sort((a, b) => Number(starts(b)) - Number(starts(a)));
 }

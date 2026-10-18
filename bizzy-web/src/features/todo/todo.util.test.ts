@@ -1,31 +1,30 @@
 import { describe, expect, test } from "vitest";
 import { groupOf, matchesFilter, nextTodoSession } from "./todo.util";
-import type { TodoItem } from "./todo.types";
-import type { Conflict } from "~/features/conflicts/conflicts.types";
-import type { Session, TodoReason } from "~/features/sessions/sessions.types";
+import type { TodoView } from "./todo.types";
+import type { ConflictView } from "~/features/conflicts/conflicts.types";
+import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
+import type { SessionReason, SessionView } from "~/features/sessions/sessions.types";
 
-function sessionItem(id: string, at: string, reasons: Array<TodoReason>): TodoItem {
-  return { kind: "session", at, reasons, session: { id } as Session };
+function sessionItem(id: string, at: string, todo: Array<SessionReason>): TodoView {
+  return { kind: "session", at, session: { id, todo } as SessionView };
 }
 
-const conflict: TodoItem = {
+const conflict: TodoView = {
   kind: "conflict",
   at: "2026-10-12T08:00:00",
-  reasons: ["fix"],
-  conflict: { key: "calendar#e1" } as Conflict,
+  conflict: { eventId: "e1" } as ConflictView,
 };
 
-const followUp: TodoItem = {
+const followUp: TodoView = {
   kind: "followUp",
   at: "2026-10-12T10:00:00",
-  reasons: ["followUp"],
-  followUp: { id: "f1", clientId: "jane", due: "2026-10-12T10:00:00", event: {}, createdAt: "2026-10-01T00:00:00Z", version: 1 },
+  followUp: { id: "f1", clientId: "jane", due: "2026-10-12T10:00:00", todo: ["followUp"] } as FollowUpView,
 };
 
 describe("to-do list", () => {
   const now = new Date("2026-10-12T09:00:00");
 
-  test("groups by day in her time zone", () => {
+  test("groups by day in the user's time zone", () => {
     expect(groupOf(sessionItem("a", "2026-10-11T23:00:00", ["record"]), now)).toBe("overdue");
     expect(groupOf(followUp, now)).toBe("today");
     expect(groupOf(sessionItem("b", "2026-10-13T08:00:00", ["confirm"]), now)).toBe("upcoming");

@@ -1,12 +1,21 @@
 import { DOCUMENT_STATUS } from "./documents.constant";
 import { documentLabel, documentRoute } from "./documents.util";
-import { DocumentStatusBadge } from "./components/document-status-badge/document-status-badge.component";
-import type { DocumentSummary } from "./documents.types";
+import type { DocumentStatus, DocumentSummary } from "./documents.types";
+import { Badge } from "~/components/ui/badge";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { Card, CardContent } from "~/components/ui/card";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
+
+export function DocumentStatusBadge({ status, revising }: { status: DocumentStatus; revising?: boolean | undefined }) {
+  return (
+    <span className="flex flex-wrap gap-1">
+      <Badge variant={DOCUMENT_STATUS[status].variant}>{DOCUMENT_STATUS[status].label}</Badge>
+      {revising && <Badge variant="waiting">Revising</Badge>}
+    </span>
+  );
+}
 
 export function DocumentLink({ doc }: { doc: DocumentSummary }) {
   return (

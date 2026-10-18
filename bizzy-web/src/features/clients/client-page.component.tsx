@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, MessageCircleIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { totals } from "./client-activity.util";
 import { LastSeen } from "./clients.columns";
-import { feeAmountError, feeStartError, toClientInput, toClientValues } from "./clients.form";
+import { feeAmountError, feeStartError, toClientFields, toClientValues } from "./clients.form";
 import { useSaveClient } from "./clients.hook";
 import { ClientsQuery } from "./clients.query";
 import { ClientContact } from "./components/client-contact/client-contact.component";
@@ -12,11 +12,12 @@ import { ClientDocuments } from "./components/client-documents/client-documents.
 import { ClientFollowUps } from "./components/client-follow-ups/client-follow-ups.component";
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
 import { contactProblem, toClientRow } from "./clients.util";
-import type { ChosenContact, Client, ClientReturnTo } from "./clients.types";
+import type { ChosenContact, ClientReturnTo, ClientView } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
+import { ActivityQuery } from "~/features/activity/activity.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { documentLabel, documentRoute } from "~/features/documents/documents.util";
+import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
@@ -84,7 +85,7 @@ export function ClientPage(props: ClientPageProps) {
 }
 
 interface ClientEditorProps {
-  client?: Client | undefined;
+  client?: ClientView | undefined;
   initialName?: string | undefined;
   returnTo?: ClientReturnTo | undefined;
 }
@@ -108,7 +109,7 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
         document.getElementById("contact")?.scrollIntoView({ block: "start" });
         return;
       }
-      await save.submit(toClientInput(value, client?.id, contact?.resourceName));
+      await save.submit(toClientFields(value, client, contact?.resourceName));
     },
   });
 
@@ -345,8 +346,9 @@ function ClientEditor({ client, initialName, returnTo }: ClientEditorProps) {
   );
 }
 
-function Activity({ client }: { client: Client }) {
-  const row = toClientRow(client);
+function Activity({ client }: { client: ClientView }) {
+  const activity = ActivityQuery.useByClient().get(client.id);
+  const row = toClientRow(client, activity);
   return (
     <dl className="grid gap-4 text-sm sm:grid-cols-3">
       <div className="flex flex-col gap-0.5 sm:col-span-3">
@@ -366,7 +368,7 @@ function Activity({ client }: { client: Client }) {
         <dt className="text-xs text-muted-foreground">Lifetime</dt>
         <dd>
           {formatCents(row.lifetimeCents)}
-          <span className="text-muted-foreground"> · {totals(client).sessions} sessions</span>
+          <span className="text-muted-foreground"> · {totals(activity).sessions} sessions</span>
         </dd>
       </div>
       <div className="flex flex-col gap-0.5">
@@ -396,17 +398,12 @@ function ClientPackages({ clientId }: { clientId: string }) {
             <span className={pkg.creditsLeft > 0 ? undefined : "text-muted-foreground"}>
               {pkg.creditsLeft} of {pkg.sessions} left
             </span>
-            {pkg.invoice || pkg.receipt ? (
-              (["invoice", "receipt"] as const).map((type) => {
-                const ref = pkg[type];
-                return (
-                  ref && (
-                    <TextLink key={type} to={documentRoute(type)} params={{ id: ref.documentId }}>
-                      {documentLabel(ref.number, ref.revision)}
-                    </TextLink>
-                  )
-                );
-              })
+            {coveringDocuments(pkg).length > 0 ? (
+              coveringDocuments(pkg).map(({ type, ref, issued }) => (
+                <TextLink key={type} to={documentRoute(type)} params={{ id: ref.id }}>
+                  {refLabel(type, ref, issued)}
+                </TextLink>
+              ))
             ) : (
               <span className="text-muted-foreground">—</span>
             )}

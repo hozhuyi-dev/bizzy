@@ -2,9 +2,9 @@ import { describe, expect, test } from "vitest";
 import { documentsMessage, documentsTitle, fillMessage, paymentMessage } from "./whatsapp-message.util";
 import type { SentDocument } from "./whatsapp.types";
 import type { DocumentType } from "~/features/documents/documents.types";
-import type { Settings } from "~/features/settings/settings.types";
+import type { SettingsView } from "~/features/settings/settings.types";
 
-const settings: Settings = {
+const settings: SettingsView = {
   businessName: "Physio Co",
   registrationNo: "",
   address: "",

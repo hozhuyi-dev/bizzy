@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { SessionsMutation } from "../../sessions.mutation";
-import type { Session } from "../../sessions.types";
+import type { SessionView } from "../../sessions.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import {
   AlertDialog,
@@ -23,7 +23,7 @@ const PACKAGE_CHOICES = [
 ] as const;
 
 interface DeleteSessionDialogProps {
-  session: Session | null;
+  session: SessionView | null;
   clientName: string;
   onClose: () => void;
   onDeleted: () => void;
@@ -31,8 +31,8 @@ interface DeleteSessionDialogProps {
 
 /**
  * Deletes a session that didn't happen (or a booking the client cancelled),
- * from her calendar too, with what was recorded on it. A package bought in
- * it is kept or deleted, as she chooses here. What can't go (money received,
+ * from the calendar too, with what was recorded on it. A package bought in
+ * it is kept or deleted, as the user chooses here. What can't go (money received,
  * an issued invoice, credits other sessions use) is refused with what to do
  * first.
  */
@@ -48,7 +48,7 @@ export function DeleteSessionDialog({ session, clientName, onClose, onDeleted }:
   );
 }
 
-function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omit<DeleteSessionDialogProps, "session">> & { session: Session }) {
+function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omit<DeleteSessionDialogProps, "session">> & { session: SessionView }) {
   const remove = SessionsMutation.useDelete();
   const [pkg, setPkg] = useState<"keep" | "delete">("keep");
 
@@ -58,10 +58,13 @@ function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omi
         <AlertDialogTitle>Delete {clientName}'s session?</AlertDialogTitle>
         <AlertDialogDescription>
           {formatSessionTime(session.start)}. The event is deleted from your calendar too
-          {session.record ? ", with the notes and files recorded here" : ""}.
+          {session.record.summary || session.record.hasNotes || session.record.files > 0
+            ? ", with the notes and files recorded here"
+            : ""}
+          .
         </AlertDialogDescription>
       </AlertDialogHeader>
-      {session.boughtPackageId && (
+      {session.bought && (
         <Field>
           <FieldLabel>The package bought in it</FieldLabel>
           <Select items={PACKAGE_CHOICES} value={pkg} onValueChange={(value) => value && setPkg(value)}>

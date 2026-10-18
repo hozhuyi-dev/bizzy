@@ -1,5 +1,5 @@
-// Mirrors bizzy-lambda/internal/features/settings/model.go.
-export interface Settings {
+// Mirrors bizzy-lambda/internal/features/settings/api.go.
+export interface SettingsView {
   businessName: string;
   registrationNo: string;
   address: string;

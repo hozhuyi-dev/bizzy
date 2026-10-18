@@ -1,4 +1,4 @@
-import type { FollowUpDraft, FollowUpTarget } from "./follow-ups.types";
+import type { CreateFollowUpRequest, FollowUpFields, FollowUpTarget, FollowUpView, FollowUpWhen } from "./follow-ups.types";
 import { addDays, toISODate, toTimeInput } from "~/core/utils/date.util";
 
 export interface FollowUpValues {
@@ -25,20 +25,38 @@ export function toFollowUpValues(target: FollowUpTarget): FollowUpValues {
   return {
     clientId: followUp.clientId,
     date: toISODate(due),
-    allDay: Boolean(followUp.allDay),
+    allDay: followUp.allDay,
     time: toTimeInput(due),
-    summary: followUp.summary ?? "",
-    notes: followUp.notes ?? "",
+    summary: followUp.summary,
+    notes: followUp.notes,
   };
 }
 
-export function toFollowUpDraft(values: FollowUpValues, sessionId: string | undefined): FollowUpDraft {
+/** When it is due: the day for an all-day one, else the time, read as the user's local time. */
+function whenOf(values: FollowUpValues): FollowUpWhen {
+  return values.allDay ? { date: values.date } : { start: new Date(`${values.date}T${values.time}`).toISOString() };
+}
+
+/** A new follow-up, from a session (`sessionId`) or not. */
+export function toCreateFollowUp(values: FollowUpValues, sessionId: string | undefined): CreateFollowUpRequest {
   return {
     clientId: values.clientId,
-    ...(sessionId ? { sessionId } : {}),
-    // Read as her local time.
-    ...(values.allDay ? { date: values.date } : { start: new Date(`${values.date}T${values.time}`).toISOString() }),
+    when: whenOf(values),
     summary: values.summary,
     notes: values.notes,
+    ...(sessionId ? { sessionId } : {}),
   };
+}
+
+/** What changed on a follow-up: an update is a patch. */
+export function toFollowUpFields(values: FollowUpValues, was: FollowUpView): FollowUpFields {
+  const before = toFollowUpValues({ mode: "edit", followUp: was });
+  const fields: FollowUpFields = {};
+  if (values.clientId !== before.clientId) fields.clientId = values.clientId;
+  if (values.allDay !== before.allDay || values.date !== before.date || (!values.allDay && values.time !== before.time)) {
+    fields.when = whenOf(values);
+  }
+  if (values.summary !== before.summary) fields.summary = values.summary;
+  if (values.notes !== before.notes) fields.notes = values.notes;
+  return fields;
 }

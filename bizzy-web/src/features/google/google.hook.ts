@@ -13,7 +13,7 @@ export function useGoogleConsent(): () => void {
 
 /**
  * Finishes connecting on /google-callback: checks the state, trades the code,
- * syncs the whole calendar, then goes back to Settings.
+ * syncs the calendar, then goes back to Settings.
  */
 export function useFinishGoogleConsent({ code, state, error }: GoogleCallbackSearch): void {
   const navigate = useNavigate();
@@ -45,7 +45,7 @@ export function useFinishGoogleConsent({ code, state, error }: GoogleCallbackSea
     connect({ code, redirectUri: GoogleOAuthService.redirectUri() })
       .then((connection) => {
         toast.success(`Connected ${connection.email}`, { description: `Syncing ${connection.calendarName}…` });
-        sync({ all: true }).catch((syncError: Error) => toast.error(syncError.message));
+        sync().catch((syncError: Error) => toast.error(syncError.message));
       })
       .catch((connectError: Error) => toast.error(connectError.message))
       .finally(done);

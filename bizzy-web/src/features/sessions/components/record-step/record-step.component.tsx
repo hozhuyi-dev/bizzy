@@ -1,15 +1,15 @@
 import { RecordEditor } from "../record-editor/record-editor.component";
 import type { PipelineStep, StepState } from "../pipeline-layout/pipeline-layout.component";
 import type { RecordDraft } from "../record-editor/record-editor.hook";
-import type { Session } from "../../sessions.types";
+import type { SessionView } from "../../sessions.types";
 import { AttachmentList } from "~/features/attachments/components/attachment-list/attachment-list.component";
 
-export function recordStep(session: Session, record: RecordDraft): PipelineStep {
+export function recordStep(session: SessionView, record: RecordDraft): PipelineStep {
   const { can } = session;
   // Notes wait until the booking is confirmed.
   const blocked = session.todo.includes("confirm");
   const summary = record.summary.trim();
-  const files = session.record?.files ?? 0;
+  const { files } = session.record;
   let state: StepState = "todo";
   if (summary) state = "done";
   else if (can.record.ok && !blocked) state = "current";
@@ -26,7 +26,8 @@ export function recordStep(session: Session, record: RecordDraft): PipelineStep 
     content: (
       <>
         <RecordEditor draft={record} disabled={can.record.ok ? undefined : can.record.why} />
-        <AttachmentList owner={{ ownerKind: "session", ownerId: session.id }} can={can.attach} />
+        {/* Files are attached under the same rule as notes. */}
+        <AttachmentList owner={{ ownerKind: "session", ownerId: session.id }} can={can.record} />
       </>
     ),
   };

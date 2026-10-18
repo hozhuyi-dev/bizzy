@@ -45,7 +45,7 @@ export function ResetData() {
                 reset.mutate(undefined, {
                   onSuccess: ({ deleted, synced, syncError }) => {
                     if (syncError) toast.error(`Reset: ${deleted} items deleted, but the sync failed. ${syncError}`);
-                    else toast.success(`Reset: ${deleted} items deleted, ${synced?.sessions ?? 0} sessions synced back`);
+                    else toast.success(`Reset: ${deleted} items deleted, ${synced?.read ?? 0} calendar changes synced back`);
                     setConfirming(false);
                   },
                   onError: (error) => toast.error(error.message),

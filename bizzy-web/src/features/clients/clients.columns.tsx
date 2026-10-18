@@ -1,6 +1,6 @@
 import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
 import { contactProblem, extraAliases } from "./clients.util";
-import type { Client, ClientRow } from "./clients.types";
+import type { ClientRow, ClientView } from "./clients.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { whatsappNumber } from "~/features/whatsapp/whatsapp.util";
 import { Badge } from "~/components/ui/badge";
@@ -21,8 +21,8 @@ export function LastSeen({ row }: { row: ClientRow }) {
       {row.monthsSince !== undefined && row.monthsSince > 0 && (
         <span className="text-muted-foreground">· {row.monthsSince} mo ago</span>
       )}
-      {row.client.nextBookedAt && (
-        <Badge variant="info">Booked {formatDate(row.client.nextBookedAt)}</Badge>
+      {row.activity?.nextBookedAt && (
+        <Badge variant="info">Booked {formatDate(row.activity.nextBookedAt)}</Badge>
       )}
     </span>
   );
@@ -30,14 +30,14 @@ export function LastSeen({ row }: { row: ClientRow }) {
 
 interface ClientActions {
   /** Opens the client's chat; offered when their phone can take one. */
-  onWhatsApp?: (client: Client) => void;
-  onContacted?: (client: Client) => void;
+  onWhatsApp?: (client: ClientView) => void;
+  onContacted?: (client: ClientView) => void;
   /** Makes a follow-up to get back to them on a day. */
-  onRemind?: (client: Client) => void;
+  onRemind?: (client: ClientView) => void;
 }
 
 /** The client's name links to their page, so editing needs no action here. */
-export function clientActions(client: Client, { onWhatsApp, onContacted, onRemind }: ClientActions): Array<RowAction> {
+export function clientActions(client: ClientView, { onWhatsApp, onContacted, onRemind }: ClientActions): Array<RowAction> {
   const actions: Array<RowAction> = [];
   if (onWhatsApp && whatsappNumber(client.contact?.phone)) {
     actions.push({ label: "WhatsApp", icon: MessageCircleIcon, onClick: () => onWhatsApp(client) });
@@ -48,7 +48,7 @@ export function clientActions(client: Client, { onWhatsApp, onContacted, onRemin
 }
 
 /** The name with her other calendar names under it. */
-export function ClientName({ client }: { client: Client }) {
+export function ClientName({ client }: { client: ClientView }) {
   const aliases = extraAliases(client);
   const problem = contactProblem(client);
   return (
@@ -129,7 +129,7 @@ export function createClientColumns(handlers: ClientActions) {
       meta: {
         search: (row: ClientRow) => [
           row.lastSessionAt && formatDate(row.lastSessionAt),
-          row.client.nextBookedAt && `Booked ${formatDate(row.client.nextBookedAt)}`,
+          row.activity?.nextBookedAt && `Booked ${formatDate(row.activity.nextBookedAt)}`,
         ],
       },
       sortUndefined: "last",

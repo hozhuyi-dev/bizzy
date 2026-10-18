@@ -26,7 +26,7 @@ Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets identity-pool credentia
 
 ```
 bizzy-infra/    bin/bizzy-infra.ts → lib/{auth,data,api,web}-stack.ts, constructs in lib/common/
-bizzy-lambda/   cmd/api/main.go, internal/… (old code in bizzy-lambda-old/ during the rebuild)
+bizzy-lambda/   cmd/{api,public,job-quarterly}/main.go, internal/{app,features,platform,calendar,simulation,testutil}/
 bizzy-web/      src/main.tsx, src/routes/ (file routes), src/features/<feature>/
 scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs
 ```
@@ -42,21 +42,9 @@ Entry point: [bin/bizzy-infra.ts](bizzy-infra/bin/bizzy-infra.ts). It reads `.en
 
 ### bizzy-lambda
 
-**Rebuilt** around one change path (below); every feature is back. The old code is in `bizzy-lambda-old/` for reference. Items are stored differently from before, so after deploying, run **Settings → Reset** once: it deletes everything the new code can't read, the old Google connection included, so connect Google again afterwards.
+[cmd/api](bizzy-lambda/cmd/api/main.go) builds [internal/app](bizzy-lambda/internal/app/app.go), which wires one `txn.Runner`, the calendar sync and every feature's routes. The router dispatches `{action, payload}` to a `Query` or a `Mutation`.
 
-The web app still calls the old API. What changed, for updating it:
-
-- `clients.save`, `packages.save` and `expenses.save` are each `create` and `update`. Edits are patches: what isn't sent stays as it is.
-- `sessions.create` / `update` take `{clientId, time: {start, end}, tentative, location, fee: {cents}, package: {bought: {sessions, priceCents}}, updatePayment}`; `fee: {}` returns to a credit or the usual fee, `package: {}` drops the package bought in it. `sessions.get` returns the view and its notes. `billing.preview` is `sessions.preview`.
-- `payments.set` on a session pays everything it owes: its fee and the package bought in it.
-- Documents have no `version`; `documents.get` returns the view with its revisions.
-- `followUps.create` / `update` take `when: {date}` or `when: {start, minutes}`.
-- Conflicts are keyed by event id (`calendar.revert` and `conflicts.apply` take `{id}`); `calendar.ignore` is gone (`calendar.revert` deletes an event bizzy doesn't show). `sync.run` takes nothing: it reads what changed since the last run.
-- A client's activity is `activity.list`, not part of the client. A rule's refusal has code `refused` (not `conflict`), no `guard`, and its remedies' `input` is `request`.
-
-Entry point: [cmd/api](bizzy-lambda/cmd/api/main.go) builds [internal/app](bizzy-lambda/internal/app/app.go), which wires one `txn.Runner`, the sync and every feature's routes. The router dispatches `{action, payload}` to a `Query` or a `Mutation`.
-
-**How a change happens.** Every change is an action run by `txn.Run`:
+**Every change is an action run by `txn.Run`**, whether it comes from the app or the calendar:
 
 ```mermaid
 flowchart TD
@@ -74,36 +62,34 @@ flowchart TD
   err -- "from the calendar" --> conflict["conflict on the to-do list"]
 ```
 
-- **An action** is a plain function of a `txn.Tx`, e.g. `sessions.Update(tx, id, fields)`. It reads and changes items through the `Tx`, and nothing is written until it returns. `Fields` is a patch: only what was set changes. Each field has a small step in a fixed order (`reassign`, `reschedule`, …) that checks its own rules and refuses with `apperr.Refused(message, remedies…)`. Rules about how a change sits among other items (overlap) use `tx.Later`, so changes made together are judged together.
-- **Invariants** (`<feature>/invariants.go`) hold for every stored item. The Runner checks them on every item a commit changes, and the simulation on every item after every step. One that breaks is a bug in an action, reported as an internal error, and nothing is written.
-- **Commits happen one at a time.** Every commit moves one counter. If another commit went first, the action reruns on fresh data. Actions need no thought about concurrency.
-- **The calendar** is an adapter: sessions know nothing of it. `googlesync` keeps a `Link` per event (which session it shows, and what it said when bizzy and the calendar last agreed). Each changed event goes to `googlesync.FromCalendar`, which checks only the title syntax and calls the same `sessions.Create`/`Update`/`Delete` with what the user changed (compared with `Link.Seen`). One event is one commit. A refused event is retried after the others, events refused only for where they'd land are tried together (a swap), and the rest wait as conflicts with the action's remedies plus "put bizzy's version back". After every commit, changed sessions are written to their events. A link whose session was deleted marks an event still to delete. The next sync finishes any write that failed.
+- **Actions** are plain functions of a `txn.Tx` (`sessions.Update(tx, id, fields)`); nothing is written until they return. `Fields` is a patch, applied in fixed steps that each check their own rules and refuse with `apperr.Refused(message, remedies…)`. Rules about other items (overlap) use `tx.Later`, so changes made together are judged together.
+- **Invariants** (`<feature>/invariants.go`) are checked on every item a commit changes. One that breaks is a bug: an internal error, nothing written.
+- **Commits are serial**: each moves one counter, and an action that lost the race reruns on fresh data.
+- **The calendar is an adapter.** `googlesync` keeps a `Link` per event (the session it shows, and what it said when both last agreed). A changed event becomes the same `sessions.Create`/`Update`/`Delete` with only what the user changed, one commit per event. Refused events are retried after the others (together, for a swap); the rest wait as conflicts, with the remedies plus "put bizzy's version back". Changed sessions are written to their events after each commit, and the next sync finishes any failed write.
 
-**Names.** Every feature uses the same names for the same roles. The package names the entity, so outside it you read `sessions.View` and `clients.View`. The web prefixes them instead: `SessionView`, `ClientView`.
+**Names** are the same in every feature. Outside a package you read `sessions.View`; the web writes `SessionView`.
 
 | Role | Name | ASP.NET Core equivalent |
 | --- | --- | --- |
-| Stored entity | `Session`, `Client` | Entity |
-| Its storage | `Sessions`, `Clients` (a `txn.Kind`) | `DbSet<T>` / repository |
+| Stored entity | `Session` | Entity |
+| Its storage | `Sessions` (a `txn.Kind`) | `DbSet<T>` / repository |
 | What an action changes | `Fields` (a patch) | Command model |
 | Actions | `Create`, `Update`, `Delete`, … | Application service / handler |
-| Route input | `createRequest`, `updateRequest`, `idRequest` (private to `api.go`) | `XxxRequest` |
-| Route output | `View` | Response DTO / view model |
+| Route input | `createRequest`, `idRequest`, … (private to `api.go`) | `XxxRequest` |
+| Route output | `View` (never the stored entity) | Response DTO / view model |
 | Routes | `Routes(r, run)` | Controller |
 | Rules that always hold | `Invariants` | Domain invariants |
 | Wiring | `app.New` | DI container / `Program.cs` |
 
-A route never returns a stored entity: stored fields can change without changing the API.
-
 **Layout:**
 
-- `internal/features/<feature>/`: every feature has its routes, views and requests in `api.go`. The other files are its entity (if it has one: model, its `txn.Kind`, its to-do), `actions.go` and `invariants.go`, plus a file named for anything else it does (`translate.go`, `push.go`). A feature imports the features it builds on, never the reverse. When the reverse is needed, `app` passes it in (e.g. `clients.Owner`). [app/dependencies_test.go](bizzy-lambda/internal/app/dependencies_test.go) lists what each feature may import and fails on any other import: `platform` imports no feature, `calendar` none either.
-- `internal/platform/`: `router`, `apperr`, `txn` (Tx, Kind, Runner, Invariant), `table` (the storage interface, its in-memory version and the contract both must meet), `dynamo` (the DynamoDB table), `blobstore` (S3), `googleauth`, `ssm`.
-- `internal/calendar`: Google Calendar (events, title syntax, client) with no knowledge of features.
-- `internal/testutil`: `testapp` (the whole app on the memory table and fakes of Google Calendar, Google Contacts and S3), `fakecal`, `fakecontacts`, `memblob`.
-- `internal/simulation`: a rapid state machine over `testapp`. It has one action per router mutation (a test enforces this), plus calendar edits and clock moves. After each step it checks every invariant, that a refused call changed nothing, that a view's `can` is what the API does, that the app never creates a conflict, that every attached file is there, and that once synced the calendar shows bizzy.
-- **Storage**: one partition per kind (`PK` = `SESSION`, …, `SK` = id), the item's JSON in `data`, and five LSIs with one meaning each (time, client, open, tag, ref) that a kind fills through its `txn.Meta`. [SCHEMA.md](bizzy-lambda/SCHEMA.md) is every kind, its fields, its indexes and the invariants on it, generated from the code (a test fails when it is out of date).
-- A new feature adds `<entity>.go`, `actions.go`, `invariants.go` and `api.go`, three lines in `app/app.go` (routes, invariants, kinds), its row in `app/dependencies_test.go`, a `Doc` on each kind (then `-update` SCHEMA.md), and a simulation action per mutation.
+- `internal/features/<feature>/`: `api.go` (routes, views, requests), the entity file (model, `txn.Kind`, to-do), `actions.go`, `invariants.go`, and a file per other job (`translate.go`, `push.go`). Features import only what they build on; `app` passes in the reverse (`clients.Owner`). [app/dependencies_test.go](bizzy-lambda/internal/app/dependencies_test.go) enforces it.
+- `internal/platform/`: `router`, `apperr`, `txn`, `table` (storage interface, in-memory version, shared contract), `dynamo`, `blobstore` (S3), `googleauth`, `ssm`. Imports no feature.
+- `internal/calendar`: Google Calendar events, title syntax and client, with no knowledge of features.
+- `internal/testutil`: `testapp` (the whole app on the memory table, with fakes of Google Calendar, Contacts and S3).
+- `internal/simulation`: a rapid state machine over `testapp`, with one action per mutation (enforced) plus calendar edits and clock moves. After each step it checks every invariant, that a refusal changed nothing, that each view's `can` matches the API, and that once synced the calendar shows bizzy.
+- **Storage**: one partition per kind (`PK` = `SESSION`, `SK` = id), the item's JSON in `data`, and five LSIs (time, client, open, tag, ref) filled through `txn.Meta`. [SCHEMA.md](bizzy-lambda/SCHEMA.md) is generated from the code; a test fails when it is stale.
+- **A new feature** adds those four files, three lines in `app/app.go` (routes, invariants, kinds), a row in `dependencies_test.go`, a `Doc` per kind (then `-update` SCHEMA.md), and a simulation action per mutation.
 
 ### bizzy-web
 
@@ -112,6 +98,7 @@ Entry point: [src/main.tsx](bizzy-web/src/main.tsx) → `router.tsx` → `src/ro
 - `src/features/<feature>/` files are `<kebab-name>.<layer>.ts(x)`, with exactly one dot before the layer. Layers in dependency order: `types`, `constant`, `util`, `form`, `service`, `query` / `mutation`, `hook`, `columns`, `component`.
 - Pages are `x-page.component.tsx` at the feature root. Other components live in `components/<name>/`.
 - Components reach data only through `query`, `mutation` and `hook`, never a `service`.
+- A feature's `types` mirror its `api.go`: a route's output is `<Entity>View` (`SessionView`), what a create or update sets is `<Entity>Fields` (sent as a patch on update: only what changed), and any other input is `<Action><Entity>Request`. The service calls each action by its API name.
 - `core/` holds shared infrastructure, `components/shared/` the app's shared components, and `components/ui/` the generated shadcn components (left untouched).
 - Tests mirror the file they test: `x.util.ts` → `x.util.test.ts`.
 

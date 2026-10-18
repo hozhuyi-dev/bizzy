@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArrowLeftRightIcon, PencilIcon, RotateCcwIcon, Undo2Icon, UnlinkIcon } from "lucide-react";
 import { chosenFromContact, recreateFrom } from "../../clients.util";
 import type { ChosenContact } from "../../clients.types";
-import type { Contact } from "~/features/contacts/contacts.types";
+import type { ContactView } from "~/features/contacts/contacts.types";
 import { ContactsQuery } from "~/features/contacts/contacts.query";
 import { ContactDetailsEditor } from "~/features/contacts/components/contact-details-editor/contact-details-editor.component";
 import { ContactPicker } from "~/features/contacts/components/contact-picker/contact-picker.component";
@@ -31,7 +31,7 @@ export function ClientContact({ contact, linked, searchFor, clientName, onChange
   const contacts = ContactsQuery.useList();
   const [mode, setMode] = useState<Mode>("view");
 
-  const pick = (picked: Contact) => {
+  const pick = (picked: ContactView) => {
     onChange(chosenFromContact(picked));
     setMode("view");
   };

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Trash2Icon } from "lucide-react";
-import { daysFromToday, toFollowUpDraft, toFollowUpValues } from "../../follow-ups.form";
+import { daysFromToday, toCreateFollowUp, toFollowUpFields, toFollowUpValues } from "../../follow-ups.form";
 import { FollowUpsMutation } from "../../follow-ups.mutation";
 import type { FollowUpValues } from "../../follow-ups.form";
 import type { FollowUpTarget } from "../../follow-ups.types";
@@ -27,9 +27,9 @@ interface FollowUpDialogProps {
 }
 
 /**
- * Adds or edits a follow-up. It is written to her calendar as
- * `! Name: summary` with the notes as the event's description, so she sees
- * it on her phone too.
+ * Adds or edits a follow-up. It is written to the calendar as
+ * `! Name: summary` with the notes as the event's description, so it shows
+ * on the user's phone too.
  */
 export function FollowUpDialog({ target, onClose }: FollowUpDialogProps) {
   return (
@@ -69,7 +69,6 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
   const valid = values.clientId !== "" && values.date !== "" && (values.allDay || values.time !== "");
 
   const save = () => {
-    const draft = toFollowUpDraft(values, sessionId);
     const done = {
       onSuccess: () => {
         toast.success(editing ? "Follow-up updated" : "Follow-up added to your calendar");
@@ -77,8 +76,8 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
       },
       onError: (error: Error) => toast.error(error.message),
     };
-    if (editing) update.mutate({ id: editing.id, draft }, done);
-    else create.mutate(draft, done);
+    if (editing) update.mutate({ id: editing.id, fields: toFollowUpFields(values, editing) }, done);
+    else create.mutate(toCreateFollowUp(values, sessionId), done);
   };
 
   return (

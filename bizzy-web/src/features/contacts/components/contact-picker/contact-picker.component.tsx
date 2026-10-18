@@ -6,7 +6,7 @@ import { ContactsMutation } from "../../contacts.mutation";
 import { ContactsQuery } from "../../contacts.query";
 import { searchContacts } from "../../contacts.util";
 import { ContactDetailsForm } from "../contact-details-form/contact-details-form.component";
-import type { Contact, ContactDetails } from "../../contacts.types";
+import type { ContactDetails, ContactView } from "../../contacts.types";
 import { useQuip } from "~/components/shared/quip/quip.hook";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -20,7 +20,7 @@ interface ContactPickerProps {
   initialQuery: string;
   /** Prefills a new contact instead of the search text, e.g. to recreate one. */
   createFrom?: ContactDetails | undefined;
-  onPick: (contact: Contact) => void;
+  onPick: (contact: ContactView) => void;
 }
 
 /** Finds one of her Google contacts, or creates one, for a client. */
@@ -110,7 +110,7 @@ function NewContact({
   onCancel,
 }: {
   initial: ContactDetails;
-  onCreated: (contact: Contact) => void;
+  onCreated: (contact: ContactView) => void;
   onCancel: () => void;
 }) {
   const create = ContactsMutation.useCreate();

@@ -1,5 +1,5 @@
 import { normalizeName } from "./expenses.util";
-import type { Catalogue, Expense, SaveExpenseInput } from "./expenses.types";
+import type { CatalogueView, ExpenseFields, ExpenseView } from "./expenses.types";
 import { centsToInput, parseCents } from "~/core/utils/money.util";
 import { todayISO } from "~/core/utils/date.util";
 
@@ -20,7 +20,7 @@ export interface ExpenseFormValues {
 
 export const EMPTY_LINE: ExpenseLineValues = { itemId: "", name: "", categoryId: "", amount: "" };
 
-export function toExpenseValues(expense: Expense | undefined): ExpenseFormValues {
+export function toExpenseValues(expense: ExpenseView | undefined): ExpenseFormValues {
   if (!expense) return { date: todayISO(), vendor: "", notes: "", lines: [{ ...EMPTY_LINE }] };
   return {
     date: expense.date,
@@ -40,7 +40,7 @@ export function toExpenseValues(expense: Expense | undefined): ExpenseFormValues
  * what it last cost (unless an amount is typed); a new name keeps the
  * category chosen. A line already saved keeps its own category.
  */
-export function withName(line: ExpenseLineValues, name: string, catalogue: Catalogue): ExpenseLineValues {
+export function withName(line: ExpenseLineValues, name: string, catalogue: CatalogueView): ExpenseLineValues {
   const item = catalogue.items.find((it) => normalizeName(it.name) === normalizeName(name));
   if (!item) return { ...line, name, itemId: "" };
   if (item.id === line.itemId) return { ...line, name };
@@ -61,10 +61,8 @@ export function amountError(amount: string): string | undefined {
   return parseCents(amount) === null ? "Enter an amount like 12.50" : undefined;
 }
 
-export function toExpenseInput(values: ExpenseFormValues, expense: Expense | undefined): SaveExpenseInput {
+export function toExpenseFields(values: ExpenseFormValues): ExpenseFields {
   return {
-    ...(expense ? { id: expense.id } : {}),
-    version: expense?.version ?? 0,
     date: values.date,
     vendor: values.vendor,
     notes: values.notes.trim(),

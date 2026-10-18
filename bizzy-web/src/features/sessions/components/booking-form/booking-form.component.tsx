@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { toBookingValues, toSessionDraft } from "../../sessions.form";
+import { SessionsQuery } from "../../sessions.query";
 import type { BookingValues, PriceIs } from "../../sessions.form";
-import type { Session, SessionDraft } from "../../sessions.types";
-import type { Cover, PreviewInput } from "~/features/billing/billing.types";
+import type { CoverView, PreviewSessionRequest, SessionDraft, SessionView } from "../../sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { BillingQuery } from "~/features/billing/billing.query";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
@@ -25,11 +25,12 @@ const PRICE_IS_ITEMS: Array<{ value: PriceIs; label: string }> = [
 interface BookingFormProps {
   initial: SessionDraft;
   /** The session being edited; omitted for a new one. */
-  session?: Session | undefined;
+  session?: SessionView | undefined;
   submitLabel: string;
   /**
-   * Resolves once saved; a rejection leaves the form as it is.
-   * updatePayment moves what was received to the new amounts.
+   * Resolves once saved; a refusal is shown with its remedies and leaves
+   * the form as it is. updatePayment moves what was received to the new
+   * amounts.
    */
   onSubmit: (draft: SessionDraft, updatePayment: boolean) => Promise<void>;
   /** Shown beside the submit button, e.g. Cancel. */
@@ -38,15 +39,15 @@ interface BookingFormProps {
 
 /**
  * When and with whom, and what it costs: everything the calendar event
- * shows. She fills in fields; the API writes the event, so its title always
- * reads back as this booking.
+ * shows. The user fills in fields; the API writes the event, so its title
+ * always reads back as this booking.
  */
 export function BookingForm({ initial, session, submitLabel, onSubmit, extraActions }: BookingFormProps) {
   const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   // What was received follows a new fee only on a receipt not issued yet.
-  const repayable = Boolean(session?.paid && !session.receipt?.number);
+  const repayable = Boolean(session?.paid && !session.paid.issued);
   const [updatePayment, setUpdatePayment] = useState(false);
 
   const form = useForm({
@@ -54,8 +55,8 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
     onSubmit: async ({ value }) => {
       try {
         await onSubmit(toSessionDraft(value), updatePayment);
-      } catch {
-        // The caller shows what went wrong.
+      } catch (error) {
+        toastRefusal(error);
       }
     },
   });
@@ -64,10 +65,10 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
     .map((client) => ({ value: client.id, label: client.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  // What would pay for it, as the reconcile will price it once saved.
-  const previewInput = useStore(form.store, (state) => previewOf(state.values, session));
-  const preview = BillingQuery.usePreview(previewInput);
-  const cover: Cover | undefined = previewInput ? preview.data : undefined;
+  // What would pay for it, as saving it will choose.
+  const previewRequest = useStore(form.store, (state) => previewOf(state.values, session));
+  const preview = SessionsQuery.usePreview(previewRequest);
+  const cover: CoverView | undefined = previewRequest ? preview.data : undefined;
 
   const describeCover = (values: BookingValues): string => {
     const name = clientsById.get(values.clientId)?.name;
@@ -126,7 +127,6 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
                   ))}
                 </SelectContent>
               </Select>
-              {session?.event.seen && <FieldDescription>In the calendar as “{session.event.seen.title}”.</FieldDescription>}
               <FieldError errors={fieldErrors(field.state.meta.errors)} />
             </Field>
           )}
@@ -378,7 +378,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
 }
 
 /** The booking to price, once it names a client and a time. */
-function previewOf(values: BookingValues, session: Session | undefined): PreviewInput | undefined {
+function previewOf(values: BookingValues, session: SessionView | undefined): PreviewSessionRequest | undefined {
   if (!values.clientId || !values.date || !values.time) return undefined;
   const draft = toSessionDraft(values);
   return { clientId: draft.clientId, start: draft.start, sessionId: session?.id, buysPackage: draft.package !== undefined };

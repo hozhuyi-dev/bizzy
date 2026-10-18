@@ -4,12 +4,13 @@ export interface ApiResponse<T> {
   error?: ApiErrorBody;
 }
 
-/** An error the API chose to return; mirrors router.ErrorBody. */
+/**
+ * An error the API chose to return; mirrors router.ErrorBody. A rule saying
+ * no has code "refused" and carries its remedies.
+ */
 export interface ApiErrorBody {
   code: string;
   message: string;
-  /** The guard that refused the action, when one did. */
-  guard?: string;
   remedies?: Array<Remedy>;
 }
 
@@ -22,25 +23,19 @@ export interface Remedy {
   action: string;
   /** What to call it on, e.g. a document's id. */
   target?: string;
+  /** The action's request as far as the remedy knows it, e.g. {"name": "Jane"}. */
+  request?: Record<string, unknown>;
   label: string;
 }
 
 /**
- * What a guard says about an action now: allowed, or why not and what
- * would let it through; mirrors statemodel.Verdict. Entities carry one per
- * action (`can`), so the app shows or explains an action without knowing
- * the rule behind it.
+ * What an action would say now: allowed, or why not and what would let it
+ * through; mirrors apperr.Verdict. Views carry one per action they offer
+ * (`can`), so the app shows or explains an action without knowing the rule
+ * behind it.
  */
 export interface Verdict {
   ok: boolean;
   why?: string;
-  guard?: string;
   remedies?: Array<Remedy>;
-}
-
-/** One page of a list; mirrors dynamo.Page. */
-export interface Page<T> {
-  items: Array<T>;
-  /** Reads the next page; absent on the last. */
-  next?: string;
 }

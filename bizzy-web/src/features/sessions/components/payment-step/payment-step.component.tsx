@@ -1,30 +1,29 @@
 import { hasHappened } from "../../session-stage.util";
-import { sessionPayables } from "../../session-payment.util";
+import { owedText, sessionPayables } from "../../session-payment.util";
 import type { PipelineStep, StepState } from "../pipeline-layout/pipeline-layout.component";
-import type { Session } from "../../sessions.types";
-import type { Package } from "~/features/packages/packages.types";
+import type { SessionView } from "../../sessions.types";
+import type { PackageView } from "~/features/packages/packages.types";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { methodLabel } from "~/features/payments/payments.util";
 import { formatDate } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
-export function paymentStep(session: Session, covering: Package | undefined, bought: Package | undefined): PipelineStep {
+export function paymentStep(session: SessionView, covering: PackageView | undefined, bought: PackageView | undefined): PipelineStep {
   const { paid } = session;
 
   let state: StepState = "todo";
-  if (session.settled && (paid || session.feeCents === 0)) state = "done";
+  if (session.owedCents === 0 && (paid || session.feeCents === 0)) state = "done";
   else if (!session.tentative && hasHappened(session)) state = "current";
 
   const parts: Array<string> = [];
-  if (paid) {
+  if (session.owedCents > 0) {
+    parts.push(owedText(session));
+  } else if (paid) {
     parts.push(`${formatCents(paid.amountCents)} · ${methodLabel(paid.method)} · ${formatDate(paid.paidOn)}`);
-  } else if (session.packageId) {
-    parts.push("Covered by a package");
   } else {
-    parts.push(session.feeCents > 0 ? `${formatCents(session.feeCents)} due` : "Nothing to pay");
+    parts.push(session.packageId ? "Covered by a package" : "Nothing to pay");
   }
-  if ((session.boughtOwedCents ?? 0) > 0) parts.push(`package ${formatCents(session.boughtOwedCents ?? 0)} due`);
-  else if (session.boughtPackageId) parts.push("package paid");
+  if (session.bought?.paid) parts.push("package paid");
 
   return {
     id: "payment",
@@ -32,7 +31,7 @@ export function paymentStep(session: Session, covering: Package | undefined, bou
     state,
     meta: parts.join(" · "),
     content: session.tentative ? (
-      <p className="text-sm text-muted-foreground">Confirm the session before recording its payment.</p>
+      <p className="text-sm text-muted-foreground">{session.can.pay.why ?? "Confirm the session before recording its payment."}</p>
     ) : (
       <SessionPayment session={session} covering={covering} bought={bought} />
     ),
@@ -40,17 +39,17 @@ export function paymentStep(session: Session, covering: Package | undefined, bou
 }
 
 /**
- * The session's fee and the package its title bought, each settled on its
- * own: together or one at a time.
+ * What was received for the session's fee and the package its title
+ * bought, and what is still owed, paid together.
  */
 function SessionPayment({
   session,
   covering,
   bought,
 }: {
-  session: Session;
-  covering: Package | undefined;
-  bought: Package | undefined;
+  session: SessionView;
+  covering: PackageView | undefined;
+  bought: PackageView | undefined;
 }) {
   const payables = sessionPayables(session, bought);
 

@@ -1,8 +1,8 @@
 import type { PaymentMethod } from "~/features/payments/payments.types";
 
-// Mirrors bizzy-lambda/internal/features/documents/model.go. Documents are
-// where money lives: a session's fee is its invoice's line, and what was
-// received its receipt's.
+// Mirrors bizzy-lambda/internal/features/documents/api.go and document.go.
+// Documents are where money lives: a session's fee is its invoice's line,
+// and what was received its receipt's.
 export type DocumentType = "invoice" | "receipt";
 export type DocumentStatus = "draft" | "issued" | "cancelled";
 
@@ -37,6 +37,8 @@ export interface DocumentLine {
   date?: string;
   amountCents: number;
   source?: DocumentSource;
+  /** The amount was entered for the item, not taken from the client's usual fee. */
+  typed?: boolean;
 }
 
 /** How and when what a receipt covers was paid. */
@@ -47,7 +49,7 @@ export interface DocumentPayment {
 
 /** Everything printed on the document. */
 export interface DocumentContent {
-  /** A draft has none until she sets one: it takes the day it is issued. */
+  /** A draft has none until the user sets one: it takes the day it is issued. */
   date: string;
   issuer: Issuer;
   recipient: Recipient;
@@ -60,62 +62,25 @@ export interface DocumentContent {
   totalCents: number;
 }
 
-export interface BizDocument {
-  id: string;
-  type: DocumentType;
-  status: DocumentStatus;
-  number?: string;
-  revision?: number;
-  clientId?: string;
-  date: string;
-  totalCents: number;
-  sources: Array<DocumentSource>;
-  /** The latest issued content. */
-  content?: DocumentContent;
-  /** Being edited: a new document, or the next revision. */
-  draft?: DocumentContent;
-  createdAt: string;
-  issuedAt?: string;
-  cancelledAt?: string;
-  cancelReason?: string;
-  /** Opens the issued content at /d/<token> without signing in. */
-  shareToken?: string;
-  version: number;
-}
-
-/**
- * A document as a list shows it, without the printed content. Mirrors
- * Summary in bizzy-lambda/internal/features/documents/model.go.
- */
+/** A document as a list shows it, without the printed content; mirrors documents.Summary. */
 export interface DocumentSummary {
   id: string;
   type: DocumentType;
   status: DocumentStatus;
   number?: string;
   revision?: number;
-  clientId?: string;
+  clientId: string;
   date: string;
   totalCents: number;
   /** Who the current content (issued, or the new draft) is for. */
   recipientName: string;
   /** An issued document with its next revision drafted. */
   revising?: boolean;
+  /** Opens the issued content at /d/<token> without signing in. */
   shareToken?: string;
 }
 
-/**
- * What a share link shows: the issued content only. Mirrors Shared in
- * bizzy-lambda/internal/features/documents/share.go.
- */
-export interface SharedDocument {
-  type: DocumentType;
-  status: DocumentStatus;
-  number: string;
-  revision?: number;
-  content: DocumentContent;
-  cancelledAt?: string;
-}
-
+/** One issued version, kept forever; mirrors documents.Revision. */
 export interface DocumentRevision {
   documentId: string;
   revision: number;
@@ -124,21 +89,49 @@ export interface DocumentRevision {
   issuedAt: string;
 }
 
-export interface DocumentDetail {
-  document: BizDocument;
+/**
+ * A document as its page shows it: what it prints, the draft as it would be
+ * issued now, and every revision issued; mirrors documents.View.
+ */
+export interface DocumentView extends DocumentSummary {
+  /** The latest issued content. */
+  content?: DocumentContent;
+  /** Being edited: a new document, or the next revision. */
+  draft?: DocumentContent;
+  createdAt: string;
+  issuedAt?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
   revisions: Array<DocumentRevision>;
 }
 
-/** A session's or package's link to a document covering it; mirrors docref.Ref. */
-export interface DocumentRef {
-  documentId: string;
-  /** Set once the document is issued. */
-  number?: string;
+/** What a share link shows: the issued content only; mirrors documents.SharedView. */
+export interface SharedDocumentView {
+  type: DocumentType;
+  status: DocumentStatus;
+  number: string;
   revision?: number;
+  content: DocumentContent;
+  cancelledAt?: string;
 }
 
-/** The version she was looking at, so a stale tab can't overwrite. */
-export type Versioned = Pick<BizDocument, "id" | "version">;
+/** A document a session or package is on; mirrors sessions.DocumentRef. */
+export interface DocumentRef {
+  id: string;
+  /** Set once the document is issued. */
+  number?: string;
+}
+
+/**
+ * A document covering a session or package, as a link to it. A receipt is
+ * known by the payment it records, which says whether it is issued but not
+ * its number.
+ */
+export interface DocumentLink {
+  type: DocumentType;
+  ref: DocumentRef;
+  issued: boolean;
+}
 
 /** What differs between document types in the app; see DOCUMENT_TYPES. */
 export interface DocumentTypeSpec {

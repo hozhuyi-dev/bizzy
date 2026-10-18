@@ -6,8 +6,8 @@ export function isApiError(error: unknown, ...codes: ReadonlyArray<string>): err
 }
 
 /**
- * The record changed since she looked (or is gone). The API has stored the
- * latest, so the app reloads to show it before she tries again.
+ * Something else changed it at the same moment, or it is gone. The app
+ * reloads to show the latest before the user tries again.
  */
 export function isStaleEdit(error: unknown): error is ApiError {
   return isApiError(error, "conflict", "not_found");

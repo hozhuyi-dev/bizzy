@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SessionsMutation } from "../../sessions.mutation";
-import type { Session } from "../../sessions.types";
+import type { SessionView } from "../../sessions.types";
 
 /** How long she pauses before what she typed is saved. */
 const SAVE_AFTER_MS = 1200;
@@ -22,9 +22,9 @@ export interface RecordDraft {
  * a client is ever lost. The page reads the summary from here, so the rail
  * shows what she typed before it is saved.
  */
-export function useRecordDraft(session: Session, savedNotes: string): RecordDraft {
+export function useRecordDraft(session: SessionView, savedNotes: string): RecordDraft {
   const save = SessionsMutation.useSaveRecord();
-  const [summary, setSummary] = useState(session.record?.summary ?? "");
+  const [summary, setSummary] = useState(session.record.summary);
   const [notes, setNotes] = useState(savedNotes);
   const [state, setState] = useState<SaveState>("saved");
   const [error, setError] = useState<string>();

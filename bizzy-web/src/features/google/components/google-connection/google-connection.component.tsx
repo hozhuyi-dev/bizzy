@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { GoogleMutation } from "../../google.mutation";
 import { GoogleQuery } from "../../google.query";
 import { useGoogleConsent } from "../../google.hook";
-import type { GoogleConnection } from "../../google.types";
+import type { GoogleConnectionView } from "../../google.types";
 import { SyncMutation } from "~/features/sync/sync.mutation";
 import {
   AlertDialog,
@@ -47,7 +47,7 @@ export function GoogleConnectionSettings() {
   });
 }
 
-function Connected({ connection }: { connection: GoogleConnection }) {
+function Connected({ connection }: { connection: GoogleConnectionView }) {
   const startConsent = useGoogleConsent();
   const calendars = GoogleQuery.useCalendars(!connection.problem);
   const setCalendar = GoogleMutation.useSetCalendar();
@@ -88,8 +88,8 @@ function Connected({ connection }: { connection: GoogleConnection }) {
             setCalendar.mutate(id, {
               onSuccess: (updated) => {
                 toast.success(`Reading ${updated.calendarName}`);
-                // A different calendar is read in full, replacing the old one's sessions.
-                sync.mutate({ all: true }, { onError: (error) => toast.error(error.message) });
+                // The sync reads the calendar now chosen.
+                sync.mutate(undefined, { onError: (error) => toast.error(error.message) });
               },
               onError: (error) => toast.error(error.message),
             })

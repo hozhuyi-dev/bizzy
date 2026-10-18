@@ -4,7 +4,7 @@ import type { DocumentContent, DocumentType } from "../../documents.types";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 
-interface DocumentViewProps {
+interface DocumentSheetProps {
   type: DocumentType;
   content: DocumentContent;
   number?: string | undefined;
@@ -14,9 +14,9 @@ interface DocumentViewProps {
 
 /**
  * The document as it prints, on screen: the same blocks as the PDF layout,
- * so the preview while editing is what she will send.
+ * so the preview while editing is what will be sent.
  */
-export function DocumentView({ type, content, number, revision, cancelled }: DocumentViewProps) {
+export function DocumentSheet({ type, content, number, revision, cancelled }: DocumentSheetProps) {
   const spec = DOCUMENT_TYPES[type];
   const { issuer, recipient } = content;
 

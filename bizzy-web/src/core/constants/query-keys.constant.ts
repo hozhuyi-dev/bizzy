@@ -13,6 +13,12 @@ export const SessionKeys = {
   range: (from: string, to: string) => [...SessionKeys.all, "range", from, to] as const,
   detail: (id: string) => [...SessionKeys.all, "detail", id] as const,
   client: (clientId: string) => [...SessionKeys.all, "client", clientId] as const,
+  preview: (request: object) => [...SessionKeys.all, "preview", request] as const,
+};
+
+export const ActivityKeys = {
+  all: ["activity"] as const,
+  list: () => [...ActivityKeys.all, "list"] as const,
 };
 
 export const ConflictKeys = {
@@ -35,11 +41,6 @@ export const TodoKeys = {
 export const PackageKeys = {
   all: ["packages"] as const,
   list: (all: boolean) => [...PackageKeys.all, "list", { all }] as const,
-};
-
-export const BillingKeys = {
-  all: ["billing"] as const,
-  preview: (input: object) => [...BillingKeys.all, "preview", input] as const,
 };
 
 export const DocumentKeys = {
@@ -94,8 +95,8 @@ export const BILLING_KEYS = [
   ConflictKeys.all,
   FollowUpKeys.all,
   PackageKeys.all,
-  BillingKeys.all,
   ClientKeys.all,
+  ActivityKeys.all,
   DocumentKeys.all,
   SyncKeys.all,
 ] as const;

@@ -6,14 +6,14 @@ import { toContent, toFormValues, validateContent } from "../../documents.form";
 import { DocumentsMutation } from "../../documents.mutation";
 import { DocumentPdfService } from "../../document-pdf.service";
 import { documentLabel } from "../../documents.util";
-import type { BizDocument, DocumentContent } from "../../documents.types";
+import type { DocumentContent, DocumentView } from "../../documents.types";
 
 /**
  * Free editing of everything printed on the document. Nothing is final until
  * Issue; a revision keeps its number. Split into a hook, its actions and its
  * fields so the page can put the actions in its header.
  */
-export function useDocumentEditor(doc: BizDocument, draft: DocumentContent) {
+export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
   const save = DocumentsMutation.useSaveDraft();
   const issue = DocumentsMutation.useIssue();
   const discard = DocumentsMutation.useDiscardDraft();
@@ -25,7 +25,7 @@ export function useDocumentEditor(doc: BizDocument, draft: DocumentContent) {
   const content = toContent(values);
   const invalid = validateContent(values);
 
-  const saveDraft = () => save.mutateAsync({ doc, content });
+  const saveDraft = () => save.mutateAsync({ id: doc.id, content });
 
   return {
     doc,
@@ -50,7 +50,7 @@ export function useDocumentEditor(doc: BizDocument, draft: DocumentContent) {
       try {
         const saved = await saveDraft();
         if (!saved) return;
-        const issued = await issue.mutateAsync(saved);
+        const issued = await issue.mutateAsync(saved.id);
         toast.success(`Issued ${issued ? documentLabel(issued.number, issued.revision) : ""}`);
       } catch (error) {
         toast.error((error as Error).message);
@@ -58,7 +58,7 @@ export function useDocumentEditor(doc: BizDocument, draft: DocumentContent) {
     },
 
     discard: () =>
-      discard.mutate(doc, {
+      discard.mutate(doc.id, {
         onSuccess: () => {
           if (doc.number) {
             toast.success("Revision discarded");

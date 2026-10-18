@@ -1,32 +1,30 @@
+import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactSummaryValue } from "~/features/contacts/contacts.types";
 
-// Mirrors bizzy-lambda/internal/features/clients/model.go.
-export interface Client {
+// Mirrors bizzy-lambda/internal/features/clients/api.go and client.go.
+
+/** A client as the app shows it; mirrors clients.View. */
+export interface ClientView {
   id: string;
-  /** Hers to choose; the Google contact may be named differently. */
+  /** The user's to choose; the Google contact may be named differently. */
   name: string;
+  /** Other names the user's calendar titles call the client by. */
+  aliases: Array<string>;
+  /** The client's fees over time, oldest first; see FeeRate. */
+  feeRates: Array<FeeRate>;
+  /** Sessions are home visits unless their title says (H). */
+  homeVisits: boolean;
   /** The linked Google contact, where the client's details live. */
   contact?: ClientContact;
-  /** Names she writes in the calendar; always includes the client's name. */
-  aliases: Array<string>;
-  /** Her fees for the client over time, oldest first; see FeeRate. */
-  feeRates?: Array<FeeRate>;
-  /** What a session without an amount would be charged today; worked out by the API. */
-  feeTodayCents?: number;
-  /** Sessions are home visits unless their title says (H). */
-  homeVisits?: boolean;
-
-  /** Keyed by month ("2026-10"); kept up to date by the API. */
-  activity?: Record<string, MonthActivity>;
-  lastSessionAt?: string;
-  nextBookedAt?: string;
   lastContactedAt?: string;
+  /** What a session without a fee would be charged today; unset when no fee is set. */
+  feeTodayCents?: number;
 }
 
 /**
- * One fee and the day it starts. A session with no amount in its title and
- * no package credit pays the last rate starting on or before its day; a new
- * rate leaves the sessions before it alone.
+ * One fee and the day it starts. A session with no fee typed and no package
+ * credit pays the last rate starting on or before its day; a new rate leaves
+ * the sessions before it alone.
  */
 export interface FeeRate {
   /** The first day it applies (YYYY-MM-DD). The first rate has none: it covers everything before the next. */
@@ -35,8 +33,8 @@ export interface FeeRate {
 }
 
 /**
- * A read-only copy of the linked Google contact. Edits go to Google, and the
- * sync refreshes the copy.
+ * A read-only copy of the linked Google contact; mirrors clients.Contact.
+ * Edits go to Google, and the sync refreshes the copy.
  */
 export interface ClientContact {
   resourceName: string;
@@ -52,25 +50,19 @@ export interface ClientContact {
   syncedAt: string;
 }
 
-export interface MonthActivity {
-  sessions: number;
-  homeSessions?: number;
-  /** Paid that month: payments recorded on sessions, packages bought in the app, and fees from before tracking. */
-  receivedCents: number;
-  /** Sessions valued as they happen; package sessions at their share. */
-  earnedCents: number;
-  homeEarnedCents?: number;
-}
-
 /**
- * The fields she edits; a new client has no id yet. Only the contact's
- * resource name is sent: the API copies the details from Google. An existing
- * client saved without one is unlinked.
+ * What clients.create and clients.update set; mirrors clients' saveRequest.
+ * An update is a patch: what isn't sent stays as it is. Only the contact's
+ * resource name is sent, and the API copies the details from Google; `""`
+ * unlinks it.
  */
-export type SaveClientInput = Pick<Client, "name" | "aliases" | "feeRates" | "homeVisits"> & {
-  id?: string;
+export interface ClientFields {
+  name?: string;
+  aliases?: Array<string>;
+  feeRates?: Array<FeeRate>;
+  homeVisits?: boolean;
   contact?: { resourceName: string };
-};
+}
 
 /** A client's activity summed over a span of months. */
 export interface ActivityTotals {
@@ -83,7 +75,8 @@ export interface ActivityTotals {
 
 /** A client with the figures the table sorts by. */
 export interface ClientRow {
-  client: Client;
+  client: ClientView;
+  activity: ActivityView | undefined;
   lastSessionAt: string | undefined;
   monthsSince: number | undefined;
   revenue12Cents: number;
@@ -92,7 +85,7 @@ export interface ClientRow {
 }
 
 /** Everyone, or the lapsed clients worth getting back in touch with. */
-export type ClientsView = "all" | "reconnect";
+export type ClientsFilter = "all" | "reconnect";
 
 /** Where a new client was started from, to go back there once saved. */
 export type ClientReturnTo = "home";

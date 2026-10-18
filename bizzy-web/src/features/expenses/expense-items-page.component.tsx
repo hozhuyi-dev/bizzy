@@ -4,7 +4,7 @@ import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
-import type { Catalogue, ExpenseItem } from "./expenses.types";
+import type { CatalogueView, ExpenseItem } from "./expenses.types";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -121,7 +121,7 @@ export function ExpenseItemsPage() {
   );
 }
 
-function ItemForm({ item, catalogue, onDone }: { item: ExpenseItem; catalogue: Catalogue; onDone: () => void }) {
+function ItemForm({ item, catalogue, onDone }: { item: ExpenseItem; catalogue: CatalogueView; onDone: () => void }) {
   const save = ExpensesMutation.useSaveItem();
   const [values, setValues] = useState(item);
   const categories = catalogue.categories.filter((c) => !c.archived || c.id === item.categoryId);

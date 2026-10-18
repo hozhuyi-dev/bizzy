@@ -3,7 +3,7 @@ import { ArrowRightIcon, CheckIcon, PencilIcon, RotateCcwIcon } from "lucide-rea
 import { cn } from "cn";
 import { useMarkDone } from "../../follow-ups.hook";
 import { formatDue } from "../../follow-ups.util";
-import type { FollowUp } from "../../follow-ups.types";
+import type { FollowUpView } from "../../follow-ups.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
@@ -12,9 +12,9 @@ import { startOfDay } from "~/core/utils/date.util";
 import { clientOf } from "~/features/clients/clients.util";
 
 interface FollowUpRowProps {
-  followUp: FollowUp;
+  followUp: FollowUpView;
   /** Opens it to edit; without it, the row links to Follow-ups instead. */
-  onEdit?: (followUp: FollowUp) => void;
+  onEdit?: (followUp: FollowUpView) => void;
   /** Leaves out the client, on their own page: the summary leads instead. */
   hideClient?: boolean;
   /** Links to the session it came from, unless that is the page it is on. */

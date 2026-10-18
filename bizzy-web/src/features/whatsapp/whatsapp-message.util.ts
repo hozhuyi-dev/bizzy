@@ -1,6 +1,6 @@
 import type { DocumentSummary } from "~/features/documents/documents.types";
 import type { SentDocument } from "./whatsapp.types";
-import type { Settings } from "~/features/settings/settings.types";
+import type { SettingsView } from "~/features/settings/settings.types";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { documentLabel, shareUrl  } from "~/features/documents/documents.util";
 import { formatCents } from "~/core/utils/money.util";
@@ -21,13 +21,13 @@ function person(name: string) {
 }
 
 /** Her bank details, one per line, skipping what she hasn't filled in. */
-export function bankDetails(settings: Settings): string {
+export function bankDetails(settings: SettingsView): string {
   return [settings.bankName, settings.accountName, settings.accountNo].filter(Boolean).join("\n");
 }
 
 /** Asks for payment for a session, with her bank details. */
 export function paymentMessage(
-  settings: Settings,
+  settings: SettingsView,
   session: { clientName: string; start: string; amountCents?: number | undefined },
 ): string {
   return fillMessage(settings.paymentMessage, {
@@ -58,7 +58,7 @@ function documentLine(doc: SentDocument): string {
 }
 
 /** Sends links to one or more issued documents, of any types. */
-export function documentsMessage(settings: Settings, clientName: string, docs: ReadonlyArray<SentDocument>): string {
+export function documentsMessage(settings: SettingsView, clientName: string, docs: ReadonlyArray<SentDocument>): string {
   return fillMessage(settings.documentMessage, {
     ...person(clientName),
     title: documentsTitle(docs),

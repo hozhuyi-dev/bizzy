@@ -12,11 +12,13 @@ import { Input } from "~/components/ui/input";
 import { formatDate, todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
+const keyOf = (p: Payable) => `${p.item.kind}:${p.item.id}:${p.paid ? "paid" : "owed"}`;
+
 /**
- * What was received for each item, and a form for those still owed. Clients
- * pay in full: each item is paid what its invoice charges, together or one
- * at a time. A payment is a draft receipt until she issues it; after that,
- * it stays as issued.
+ * What was received for each item, and a form for what is still owed.
+ * Clients pay in full: each item is paid all it owes. A payment is a draft
+ * receipt until it is issued; after that, it stays as issued. One recorded
+ * by mistake is undone, and recorded again.
  */
 export function PaymentPanel({
   payables,
@@ -26,30 +28,22 @@ export function PaymentPanel({
   /** After recording what was owed. */
   onPaid?: () => void;
 }) {
-  const [changing, setChanging] = useState<string>();
-  const key = (p: Payable) => `${p.item.kind}:${p.item.id}`;
-  const paid = payables.filter((p) => p.paid && key(p) !== changing);
+  const paid = payables.filter((p) => p.paid);
   const owed = payables.filter((p) => !p.paid && p.dueCents > 0);
-  const editing = payables.find((p) => key(p) === changing);
-  const single = payables.length === 1;
 
   return (
     <div className="flex flex-col gap-4">
       {paid.map((p) => (
-        <PaymentSummary key={key(p)} payable={p} showLabel={!single} onChange={() => setChanging(key(p))} />
+        <PaymentSummary key={keyOf(p)} payable={p} showLabel={payables.length > 1} />
       ))}
-      {editing ? (
-        <PaymentForm key={key(editing)} payables={[editing]} editing onDone={() => setChanging(undefined)} />
-      ) : (
-        owed.length > 0 && <PaymentForm key={owed.map(key).join()} payables={owed} onDone={onPaid} />
-      )}
+      {owed.length > 0 && <PaymentForm key={owed.map(keyOf).join()} payables={owed} onDone={onPaid} />}
     </div>
   );
 }
 
-function PaymentSummary({ payable, showLabel, onChange }: { payable: Payable; showLabel: boolean; onChange: () => void }) {
+function PaymentSummary({ payable, showLabel }: { payable: Payable; showLabel: boolean }) {
   const setPayment = PaymentsMutation.useSet();
-  const { paid, receipt } = payable;
+  const { paid } = payable;
   if (!paid) return null;
 
   return (
@@ -58,27 +52,22 @@ function PaymentSummary({ payable, showLabel, onChange }: { payable: Payable; sh
         {showLabel && <span className="text-muted-foreground">{payable.label}: </span>}
         <b>{formatCents(paid.amountCents)}</b> paid by {methodLabel(paid.method)} on {formatDate(paid.paidOn)}
       </p>
-      {receipt?.number ? (
+      {paid.issued ? (
         <span className="text-xs text-muted-foreground">On an issued receipt.</span>
       ) : (
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onChange}>
-            Change
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={setPayment.isPending}
-            onClick={() =>
-              setPayment.mutate(
-                { items: [payable.item], payment: null },
-                { onSuccess: () => toast.success("Payment undone"), onError: toastRefusal },
-              )
-            }
-          >
-            Undo
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={setPayment.isPending}
+          onClick={() =>
+            setPayment.mutate(
+              { items: [payable.item], payment: null },
+              { onSuccess: () => toast.success("Payment undone"), onError: toastRefusal },
+            )
+          }
+        >
+          Undo
+        </Button>
       )}
     </div>
   );
@@ -86,19 +75,17 @@ function PaymentSummary({ payable, showLabel, onChange }: { payable: Payable; sh
 
 interface PaymentFormProps {
   payables: ReadonlyArray<Payable>;
-  /** Changing how or when one was paid, rather than recording it. */
-  editing?: boolean;
   onDone?: (() => void) | undefined;
 }
 
-function PaymentForm({ payables, editing = false, onDone }: PaymentFormProps) {
+function PaymentForm({ payables, onDone }: PaymentFormProps) {
   const setPayment = PaymentsMutation.useSet();
-  const [chosen, setChosen] = useState(() => new Set(payables.map((p) => p.item.id + p.item.kind)));
-  const [first] = payables;
-  const [method, setMethod] = useState<PaymentMethod | undefined>(editing ? first?.paid?.method : undefined);
-  const [paidOn, setPaidOn] = useState(editing && first?.paid ? first.paid.paidOn : todayISO());
-  const selected = payables.filter((p) => chosen.has(p.item.id + p.item.kind));
+  const [chosen, setChosen] = useState(() => new Set(payables.map(keyOf)));
+  const [method, setMethod] = useState<PaymentMethod>();
+  const [paidOn, setPaidOn] = useState(todayISO());
+  const selected = payables.filter((p) => chosen.has(keyOf(p)));
   const total = selected.reduce((sum, p) => sum + p.dueCents, 0);
+  const [first] = payables;
   const single = payables.length === 1;
 
   return (
@@ -128,8 +115,8 @@ function PaymentForm({ payables, editing = false, onDone }: PaymentFormProps) {
           <FieldLabel id="payment-items">Paying for</FieldLabel>
           <ul aria-labelledby="payment-items" className="flex flex-col gap-2 text-sm">
             {payables.map((p) => {
-              const id = `pay-${p.item.kind}-${p.item.id}`;
-              const k = p.item.id + p.item.kind;
+              const k = keyOf(p);
+              const id = `pay-${k.replaceAll(":", "-")}`;
               return (
                 <li key={k} className="flex items-center gap-2">
                   <Checkbox
@@ -183,13 +170,8 @@ function PaymentForm({ payables, editing = false, onDone }: PaymentFormProps) {
 
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={!method || selected.length === 0 || setPayment.isPending}>
-          {editing ? "Save payment" : "Mark paid"}
+          Mark paid
         </Button>
-        {editing && (
-          <Button type="button" variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-        )}
       </div>
     </form>
   );

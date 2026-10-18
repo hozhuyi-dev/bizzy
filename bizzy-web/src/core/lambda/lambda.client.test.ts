@@ -34,7 +34,7 @@ describe("invoke", () => {
 
   test("returns data", async () => {
     reply({ data: { id: "1" } });
-    await expect(invoke("clients.save")).resolves.toEqual({ id: "1" });
+    await expect(invoke("clients.get")).resolves.toEqual({ id: "1" });
   });
 
   test("returns null for an empty result", async () => {
@@ -43,11 +43,11 @@ describe("invoke", () => {
   });
 
   test("throws the API's error", async () => {
-    reply({ error: { code: "conflict", message: "taken" } });
+    reply({ error: { code: "refused", message: "taken" } });
 
-    const error = await invoke("clients.save").catch((e: unknown) => e);
+    const error = await invoke("clients.get").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
-    expect(error).toMatchObject({ code: "conflict", message: "taken" });
+    expect(error).toMatchObject({ code: "refused", message: "taken" });
   });
 
   test("hides function crashes behind a generic error", async () => {

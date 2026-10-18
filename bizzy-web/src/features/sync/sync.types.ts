@@ -1,25 +1,11 @@
-// Mirrors bizzy-lambda/internal/features/googlesync.
-export interface SyncSummary {
-  /** Sessions in the range: every timed event bar follow-ups. */
-  sessions: number;
-  saved: number;
-  deleted: number;
-  /** Follow-ups added, changed or removed. */
-  followUps: number;
-  /** Clients whose contact copy changed. */
-  contacts: number;
-}
+// Mirrors bizzy-lambda/internal/features/googlesync/api.go.
 
-export interface SyncRun {
+/** A sync run: how many changed events it read, and how many it refused; mirrors googlesync.View. */
+export interface SyncView {
   at: string;
-  summary: SyncSummary;
+  read: number;
+  /** Events refused, waiting on the to-do list as conflicts. */
+  refused: number;
   /** Why the run failed, e.g. Google was disconnected. */
   error?: string;
 }
-
-/**
- * The calendar a sync re-reads: dates as YYYY-MM-DD, both included, or the
- * whole calendar. Without one it re-reads the last 60 days. Bookings and
- * contacts are refreshed whatever the range.
- */
-export type SyncRange = { from: string; to: string } | { all: true };

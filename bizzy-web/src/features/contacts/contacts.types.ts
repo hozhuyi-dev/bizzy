@@ -10,7 +10,7 @@ export interface ContactAddress {
 }
 
 /** A Google contact: its primary email, phone and address. */
-export interface Contact {
+export interface ContactView {
   resourceName: string;
   /** The version read; an edit against an older one is refused. */
   etag: string;

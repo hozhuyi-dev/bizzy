@@ -1,7 +1,7 @@
 import { contactUrl, searchContacts } from "./contacts.util";
-import type { Contact } from "./contacts.types";
+import type { ContactView } from "./contacts.types";
 
-const contact = (displayName: string, extra: Partial<Contact> = {}): Contact => ({
+const contact = (displayName: string, extra: Partial<ContactView> = {}): ContactView => ({
   resourceName: `people/${displayName}`,
   etag: "e",
   displayName,

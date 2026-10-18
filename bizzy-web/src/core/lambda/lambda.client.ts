@@ -5,20 +5,18 @@ import type { ApiResponse, Remedy } from "./lambda.types";
 /**
  * The API is one Lambda invoked directly with the signed-in user's
  * identity-pool credentials. Every call is an {action, payload} pair and every
- * reply is {data} or {error}; see bizzy-lambda/internal/router.
+ * reply is {data} or {error}; see bizzy-lambda/internal/platform/router.
  */
 
 export class ApiError extends Error {
   readonly code: string;
-  /** The guard that refused the action, and what would let it through. */
-  readonly guard: string | undefined;
+  /** What would let a refused action through. */
   readonly remedies: Array<Remedy>;
 
-  constructor(code: string, message: string, guard?: string, remedies: Array<Remedy> = []) {
+  constructor(code: string, message: string, remedies: Array<Remedy> = []) {
     super(message);
     this.name = "ApiError";
     this.code = code;
-    this.guard = guard;
     this.remedies = remedies;
   }
 }
@@ -58,7 +56,7 @@ async function send(functionName: string, payload: unknown): Promise<string> {
 function unwrap<T>(text: string): T {
   const body = JSON.parse(text) as ApiResponse<T>;
   if (body.error) {
-    throw new ApiError(body.error.code, body.error.message, body.error.guard, body.error.remedies);
+    throw new ApiError(body.error.code, body.error.message, body.error.remedies);
   }
 
   // The API omits an empty result ("data" is omitempty); queries need null,

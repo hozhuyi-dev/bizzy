@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useBookingSave } from "../../sessions-booking.hook";
 import type { SessionDraft } from "../../sessions.types";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -39,8 +40,7 @@ export function NextVisitDialog({ from, clientName, onClose }: NextVisitDialogPr
 
 function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clientName: string; onClose: () => void }) {
   const navigate = useNavigate();
-  // A refusal (no fee known, say) is shown with what would settle it.
-  const save = useBookingSave(undefined, (draft, id) => {
+  const save = useBookingSave(undefined, undefined, (draft, id) => {
     toast.success(`Booked ${clientName} for ${formatSessionTime(draft.start)}`, {
       action: {
         label: "Open",
@@ -62,8 +62,8 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
       homeVisit: from.homeVisit,
       tentative,
     };
-    // A refusal is shown by the save, with its remedies.
-    save.submit(draft).catch(() => undefined);
+    // A refusal (no fee known, say) is shown with what would settle it.
+    save.submit(draft).catch(toastRefusal);
   };
 
   return (

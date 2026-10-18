@@ -28,7 +28,7 @@ export const AttachmentsMutation = {
   useRemove: (owner: AttachmentOwner) => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: (id: string) => AttachmentsService.remove(owner, id),
+      mutationFn: (id: string) => AttachmentsService.remove(id),
       onSettled: () => invalidateOwner(queryClient, owner),
     });
   },

@@ -1,25 +1,26 @@
 import { MessageCircleIcon, SendIcon } from "lucide-react";
 import { toast } from "sonner";
-import type { Session, SessionDocument } from "./sessions.types";
+import type { SessionView } from "./sessions.types";
+import type { DocumentLink } from "~/features/documents/documents.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
-import type { Client } from "~/features/clients/clients.types";
+import type { ClientView } from "~/features/clients/clients.types";
 import { DocumentsQuery } from "~/features/documents/documents.query";
 import { SettingsQuery } from "~/features/settings/settings.query";
 import { useSendDocuments, useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { documentsTitle, paymentMessage } from "~/features/whatsapp/whatsapp-message.util";
 
 /**
- * WhatsApp messages to the client (the app on her phone, WhatsApp Web on her
- * computer): asking to pay (with her bank details) while it is unpaid, and
+ * WhatsApp messages to the client (the app on a phone, WhatsApp Web on a
+ * computer): asking to pay (with the bank details) while it is unpaid, and
  * sending the issued documents that cover it.
  */
 export function useSessionMessageActions(
-  session: Session,
-  client: Client | undefined,
-  documents: ReadonlyArray<SessionDocument>,
+  session: SessionView,
+  client: ClientView | undefined,
+  documents: ReadonlyArray<DocumentLink>,
 ): Array<RowAction> {
   const settings = SettingsQuery.useGet();
-  const issuedIds = documents.filter(({ ref }) => ref.number).map(({ ref }) => ref.documentId);
+  const issuedIds = documents.filter((doc) => doc.issued).map(({ ref }) => ref.id);
   const docs = DocumentsQuery.useByClient(client?.id ?? "", issuedIds.length > 0);
   const { send, busy } = useSendDocuments();
   const whatsapp = useWhatsApp();

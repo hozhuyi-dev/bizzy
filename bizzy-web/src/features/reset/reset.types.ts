@@ -1,9 +1,9 @@
-import type { SyncSummary } from "~/features/sync/sync.types";
+import type { SyncView } from "~/features/sync/sync.types";
 
-/** What a reset deleted, and what the full sync after it brought back. */
-export interface ResetResult {
+/** What a reset deleted, and what the sync after it read; mirrors reset.View. */
+export interface ResetView {
   deleted: number;
-  synced?: SyncSummary;
-  /** Why the sync failed; the data is reset but empty until she syncs. */
+  synced?: SyncView;
+  /** Why the sync failed; the data is reset but empty until the next sync. */
   syncError?: string;
 }

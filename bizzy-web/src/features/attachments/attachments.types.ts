@@ -9,7 +9,7 @@ export interface AttachmentOwner {
 }
 
 /** One attached file, with short-lived links to it. */
-export interface Attachment extends AttachmentOwner {
+export interface AttachmentView extends AttachmentOwner {
   id: string;
   /** The file name as she uploaded it. */
   name: string;

@@ -1,9 +1,8 @@
 import { FileTextIcon, ReceiptIcon } from "lucide-react";
-import type { Client } from "../../clients.types";
+import type { ClientView } from "../../clients.types";
 import { SessionsQuery } from "~/features/sessions/sessions.query";
 import { stageBadges } from "~/features/sessions/session-stage.util";
-import { documentLabel, documentRoute } from "~/features/documents/documents.util";
-import { LoadMore } from "~/components/shared/load-more/load-more.component";
+import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
@@ -11,12 +10,11 @@ import { formatSessionTime } from "~/core/utils/date.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 /**
- * The client's sessions, newest first, each with what she wrote about it and
- * the documents on it: the story of their care. Read a page at a time, so a
- * client of many years loads as fast as a new one.
+ * The client's sessions, newest first, each with what was written about it
+ * and the documents on it: the story of their care.
  */
-export function ClientTimeline({ client }: { client: Client }) {
-  const timeline = SessionsQuery.useTimeline(client.id);
+export function ClientTimeline({ client }: { client: ClientView }) {
+  const timeline = SessionsQuery.useByClient(client.id);
 
   if (timeline.isPending) return <Loading />;
   if (timeline.error) {
@@ -26,7 +24,7 @@ export function ClientTimeline({ client }: { client: Client }) {
       </p>
     );
   }
-  const sessions = timeline.data.pages.flatMap((page) => page.items);
+  const sessions = timeline.data;
   if (sessions.length === 0) {
     return <EmptyState quips={QUIPS.timeline}>Sessions with {client.name} show up here, with your notes.</EmptyState>;
   }
@@ -50,29 +48,26 @@ export function ClientTimeline({ client }: { client: Client }) {
                 </Badge>
               ))}
             </div>
-            {session.record?.summary ? (
+            {session.record.summary ? (
               <p className="mt-1 text-sm">{session.record.summary}</p>
             ) : (
               <p className="mt-1 text-sm text-muted-foreground italic">No notes</p>
             )}
-            {(session.invoice || session.receipt) && (
+            {coveringDocuments(session).length > 0 && (
               <div className="mt-1 flex flex-wrap gap-3 text-xs">
-                {session.invoice && (
-                  <TextLink to={documentRoute("invoice")} params={{ id: session.invoice.documentId }} className="inline-flex items-center gap-1 font-normal">
-                    <FileTextIcon className="size-3" aria-hidden="true" /> {documentLabel(session.invoice.number, session.invoice.revision)}
-                  </TextLink>
-                )}
-                {session.receipt && (
-                  <TextLink to={documentRoute("receipt")} params={{ id: session.receipt.documentId }} className="inline-flex items-center gap-1 font-normal">
-                    <ReceiptIcon className="size-3" aria-hidden="true" /> {documentLabel(session.receipt.number, session.receipt.revision)}
-                  </TextLink>
-                )}
+                {coveringDocuments(session).map(({ type, ref, issued }) => {
+                  const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
+                  return (
+                    <TextLink key={type} to={documentRoute(type)} params={{ id: ref.id }} className="inline-flex items-center gap-1 font-normal">
+                      <Icon className="size-3" aria-hidden="true" /> {refLabel(type, ref, issued)}
+                    </TextLink>
+                  );
+                })}
               </div>
             )}
           </li>
         ))}
       </ol>
-      <LoadMore hasMore={timeline.hasNextPage} loading={timeline.isFetchingNextPage} onLoad={() => void timeline.fetchNextPage()} />
     </div>
   );
 }

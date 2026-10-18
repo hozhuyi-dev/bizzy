@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { CopyIcon, MessageCircleIcon } from "lucide-react";
-import type { Client } from "../../clients.types";
+import type { ClientView } from "../../clients.types";
 import type { DocumentSummary } from "~/features/documents/documents.types";
 import { DocumentsQuery } from "~/features/documents/documents.query";
-import { DocumentStatusBadge } from "~/features/documents/components/document-status-badge/document-status-badge.component";
+import { DocumentStatusBadge } from "~/features/documents/documents.columns";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { documentLabel, documentRoute } from "~/features/documents/documents.util";
 import { useSendDocuments } from "~/features/whatsapp/whatsapp.hook";
@@ -20,7 +20,7 @@ import { formatDate } from "~/core/utils/date.util";
  * link (the app on her phone, WhatsApp Web on her computer); Copy message
  * gives the same text to paste anywhere.
  */
-export function ClientDocuments({ client }: { client: Client }) {
+export function ClientDocuments({ client }: { client: ClientView }) {
   const docs = DocumentsQuery.useByClient(client.id);
   const { send, copy, busy } = useSendDocuments();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());

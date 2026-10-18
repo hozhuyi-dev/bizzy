@@ -1,15 +1,14 @@
 import { useState } from "react";
-import type { Client } from "../../clients.types";
+import type { ClientView } from "../../clients.types";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { FollowUpsQuery } from "~/features/follow-ups/follow-ups.query";
-import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
 
 /** The client's follow-ups, latest first, done or not. */
-export function ClientFollowUps({ client }: { client: Client }) {
+export function ClientFollowUps({ client }: { client: ClientView }) {
   const list = FollowUpsQuery.useByClient(client.id);
   const [target, setTarget] = useState<FollowUpTarget | null>(null);
 
@@ -21,7 +20,7 @@ export function ClientFollowUps({ client }: { client: Client }) {
       </p>
     );
   }
-  const items = list.data.pages.flatMap((page) => page.items);
+  const items = list.data;
 
   return (
     <div className="flex flex-col gap-3">
@@ -36,7 +35,6 @@ export function ClientFollowUps({ client }: { client: Client }) {
           ))}
         </ul>
       )}
-      <LoadMore hasMore={list.hasNextPage} loading={list.isFetchingNextPage} onLoad={() => void list.fetchNextPage()} />
       <div>
         <Button variant="outline" size="sm" onClick={() => setTarget({ mode: "new", clientId: client.id })}>
           Add follow-up

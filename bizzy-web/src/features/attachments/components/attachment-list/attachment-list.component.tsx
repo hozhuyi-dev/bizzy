@@ -5,7 +5,7 @@ import { ATTACHMENT_ACCEPT } from "../../attachments.constant";
 import { AttachmentsMutation } from "../../attachments.mutation";
 import { AttachmentsQuery } from "../../attachments.query";
 import { formatBytes, isPreviewable } from "../../attachments.util";
-import type { Attachment, AttachmentOwner } from "../../attachments.types";
+import type { AttachmentOwner, AttachmentView } from "../../attachments.types";
 import type { Verdict } from "~/core/lambda/lambda.types";
 import {
   AlertDialog,
@@ -36,7 +36,7 @@ export function AttachmentList({ owner, can, addLabel = "Attach photos or PDFs" 
   const remove = AttachmentsMutation.useRemove(owner);
   const input = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [removing, setRemoving] = useState<Attachment | null>(null);
+  const [removing, setRemoving] = useState<AttachmentView | null>(null);
 
   const attach = async (picked: FileList | null) => {
     const list = Array.from(picked ?? []);

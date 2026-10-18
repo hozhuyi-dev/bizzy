@@ -3,21 +3,25 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ArrowRightIcon, BanknoteIcon, CalendarX2Icon, CheckIcon, ChevronDownIcon, NotebookPenIcon, PencilLineIcon, XIcon } from "lucide-react";
 import { TODO_FILTERS, TODO_GROUPS } from "../../todo.constant";
-import { groupOf, matchesFilter, owedText, packagePayable, sessionPayables, todoKey } from "../../todo.util";
-import type { TodoFilter, TodoItem } from "../../todo.types";
-import type { Conflict } from "~/features/conflicts/conflicts.types";
+import { groupOf, matchesFilter, todoKey } from "../../todo.util";
+import type { TodoFilter, TodoView } from "../../todo.types";
+import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
-import type { Package } from "~/features/packages/packages.types";
+import type { PackageView } from "~/features/packages/packages.types";
 import type { Payable } from "~/features/payments/payments.types";
-import type { Session, TodoReason } from "~/features/sessions/sessions.types";
+import type { SessionReason, SessionView } from "~/features/sessions/sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { ConflictActions } from "~/features/conflicts/components/conflict-actions/conflict-actions.component";
+import { conflictKind, conflictTime } from "~/features/conflicts/conflicts.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
+import { packagePayables } from "~/features/packages/packages.util";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { PaymentsMutation } from "~/features/payments/payments.mutation";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
-import { RemedyButtons, toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { DeleteSessionDialog } from "~/features/sessions/components/delete-session-dialog/delete-session-dialog.component";
+import { owedText, sessionPayables } from "~/features/sessions/session-payment.util";
 import { SessionsMutation } from "~/features/sessions/sessions.mutation";
 import { useConfirmBooking } from "~/features/sessions/sessions-booking.hook";
 import { Badge } from "~/components/ui/badge";
@@ -31,9 +35,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { Input } from "~/components/ui/input";
@@ -42,9 +43,8 @@ import { EmptyState } from "~/components/shared/quip/quip.component";
 import { formatDate, formatSessionTime, todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { clientOf } from "~/features/clients/clients.util";
 
-const REASONS: Record<TodoReason | "fix", { label: string; tone: "waiting" | "attention" | "info" }> = {
+const REASONS: Record<SessionReason | "fix", { label: string; tone: "waiting" | "attention" | "info" }> = {
   confirm: { label: "Confirm", tone: "waiting" },
   record: { label: "Record", tone: "info" },
   collect: { label: "Collect", tone: "attention" },
@@ -52,16 +52,15 @@ const REASONS: Record<TodoReason | "fix", { label: string; tone: "waiting" | "at
 };
 
 /**
- * Everything that needs her, sessions, packages, follow-ups and edits made
- * in the calendar that weren't applied, grouped by when: earlier (overdue),
- * today, coming up. Chips filter by what to do. Most jobs are done right
- * here (confirm, a one-line summary, mark paid, tick a follow-up, settle a
- * calendar edit), so she opens a session only for more.
+ * Everything that needs the user, sessions, packages, follow-ups and edits
+ * made in the calendar that bizzy refused, grouped by when: earlier
+ * (overdue), today, coming up. Chips filter by what to do. Most jobs are
+ * done right here (confirm, a one-line summary, mark paid, tick a
+ * follow-up, settle a calendar edit), so a session is opened only for more.
  */
-export function TodoList({ items }: { items: ReadonlyArray<TodoItem> }) {
-  const clientsById = ClientsQuery.useById();
+export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
   const [filter, setFilter] = useState<TodoFilter>();
-  const [cancelling, setCancelling] = useState<Session | null>(null);
+  const [cancelling, setCancelling] = useState<SessionView | null>(null);
   const [paying, setPaying] = useState<Array<Payable> | null>(null);
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUpTarget | null>(null);
 
@@ -118,7 +117,7 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoItem> }) {
                   {inGroup.map((item) => (
                     <li key={todoKey(item)} className="py-3 first:pt-0 last:pb-0">
                       {item.kind === "session" && (
-                        <SessionTodo session={item.session} reasons={item.reasons} onCancel={setCancelling} onPayOther={setPaying} />
+                        <SessionTodo session={item.session} onCancel={setCancelling} onPayOther={setPaying} />
                       )}
                       {item.kind === "package" && <PackageTodo pkg={item.package} onPayOther={setPaying} />}
                       {item.kind === "followUp" && (
@@ -136,7 +135,7 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoItem> }) {
 
       <DeleteSessionDialog
         session={cancelling}
-        clientName={clientOf(clientsById, cancelling?.clientId)?.name ?? "the client"}
+        clientName={cancelling?.clientName ?? "the client"}
         onClose={() => setCancelling(null)}
         onDeleted={() => undefined}
       />
@@ -154,18 +153,14 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoItem> }) {
 }
 
 interface SessionTodoProps {
-  session: Session;
-  reasons: Array<TodoReason>;
-  onCancel: (session: Session) => void;
+  session: SessionView;
+  onCancel: (session: SessionView) => void;
   onPayOther: (payables: Array<Payable>) => void;
 }
 
-function SessionTodo({ session, reasons, onCancel, onPayOther }: SessionTodoProps) {
-  const clientsById = ClientsQuery.useById();
+function SessionTodo({ session, onCancel, onPayOther }: SessionTodoProps) {
   const [writing, setWriting] = useState(false);
-  const client = clientOf(clientsById, session.clientId);
-  const collecting = reasons.includes("collect");
-  const payables = collecting ? sessionPayables(session) : [];
+  const collecting = session.todo.includes("collect");
 
   return (
     <div className="flex flex-col gap-2">
@@ -173,9 +168,9 @@ function SessionTodo({ session, reasons, onCancel, onPayOther }: SessionTodoProp
         <div className="flex min-w-0 flex-col gap-0.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <TextLink to="/sessions/$id" params={{ id: session.id }} search={{ from: "home" }}>
-              {client?.name ?? "Unknown client"}
+              {session.clientName}
             </TextLink>
-            {reasons.map((reason) => (
+            {session.todo.map((reason) => (
               <Badge key={reason} variant={REASONS[reason].tone}>
                 {REASONS[reason].label}
               </Badge>
@@ -183,16 +178,14 @@ function SessionTodo({ session, reasons, onCancel, onPayOther }: SessionTodoProp
           </div>
           <span className="text-sm text-muted-foreground">
             {formatSessionTime(session.start)}
-            {collecting && ` · ${owedText(payables, session.owedCents)}`}
+            {collecting && ` · ${owedText(session)}`}
           </span>
-          {session.record?.summary && <span className="line-clamp-1 text-xs text-muted-foreground">{session.record.summary}</span>}
+          {session.record.summary && <span className="line-clamp-1 text-xs text-muted-foreground">{session.record.summary}</span>}
         </div>
         <div className="flex flex-wrap gap-1.5">
           <QuickActions
             session={session}
-            reasons={reasons}
             writing={writing}
-            payables={payables}
             onCancel={onCancel}
             onWrite={() => setWriting(true)}
             onPayOther={onPayOther}
@@ -214,48 +207,41 @@ function SessionTodo({ session, reasons, onCancel, onPayOther }: SessionTodoProp
 }
 
 interface QuickActionsProps {
-  session: Session;
-  reasons: Array<TodoReason>;
+  session: SessionView;
   writing: boolean;
-  payables: Array<Payable>;
-  onCancel: (session: Session) => void;
+  onCancel: (session: SessionView) => void;
   onWrite: () => void;
   onPayOther: (payables: Array<Payable>) => void;
 }
 
-function QuickActions({ session, reasons, writing, payables, onCancel, onWrite, onPayOther }: QuickActionsProps) {
+/** The fix for each reason it is on the list, as far as its `can` allows. */
+function QuickActions({ session, writing, onCancel, onWrite, onPayOther }: QuickActionsProps) {
   const confirm = useConfirmBooking();
-  // Each button is one of the fixes its to-do rules name (session.fixes).
-  const offers = (action: string) => session.fixes.includes(action);
+  const { todo, can } = session;
 
-  if (reasons.includes("confirm") && offers("sessions.update")) {
+  if (todo.includes("confirm")) {
     return (
       <>
-        <Button size="sm" disabled={confirm.pending} onClick={() => confirm.confirm(session.id)}>
+        <Button size="sm" disabled={confirm.pending} onClick={() => void confirm.confirm(session.id).catch(toastRefusal)}>
           <CheckIcon /> Confirm
         </Button>
-        {offers("sessions.delete") && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!session.can.delete.ok}
-            title={session.can.delete.why}
-            onClick={() => onCancel(session)}
-          >
-            <XIcon /> Cancel
-          </Button>
-        )}
+        <Button size="sm" variant="outline" disabled={!can.delete.ok} title={can.delete.why} onClick={() => onCancel(session)}>
+          <XIcon /> Cancel
+        </Button>
       </>
     );
   }
+  const payables = sessionPayables(session).filter((p) => !p.paid);
   return (
     <>
-      {reasons.includes("record") && offers("sessions.saveRecord") && !writing && (
+      {todo.includes("record") && can.record.ok && !writing && (
         <Button size="sm" variant="outline" onClick={onWrite}>
           <PencilLineIcon /> Add summary
         </Button>
       )}
-      {payables.length > 0 && offers("payments.set") && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}
+      {todo.includes("collect") && can.pay.ok && payables.length > 0 && (
+        <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />
+      )}
     </>
   );
 }
@@ -264,7 +250,7 @@ function QuickActions({ session, reasons, writing, payables, onCancel, onWrite, 
  * The one line that clears "Record", saved from the list. Long notes are on
  * the session's page; the summary alone leaves them as they are.
  */
-function SummaryEditor({ session, onDone }: { session: Session; onDone: () => void }) {
+function SummaryEditor({ session, onDone }: { session: SessionView; onDone: () => void }) {
   const save = SessionsMutation.useSaveSummary();
   const [summary, setSummary] = useState("");
   const trimmed = summary.trim();
@@ -320,20 +306,19 @@ function SummaryEditor({ session, onDone }: { session: Session; onDone: () => vo
 }
 
 /**
- * Mark paid today in one tap by method: everything owed at once, or (with a
- * session's fee and its package both owed) either alone. Another day opens
- * the payment form.
+ * Mark paid today in one tap by method: everything owed at once. Another
+ * day opens the payment form.
  */
 function PaidMenu({ payables, onOther }: { payables: ReadonlyArray<Payable>; onOther: () => void }) {
   const pay = PaymentsMutation.useSet();
   const total = payables.reduce((sum, p) => sum + p.dueCents, 0);
-  const several = payables.length > 1;
+  const label = payables.map((p) => p.label).join(" and ");
 
-  const payWith = (list: ReadonlyArray<Payable>, method: (typeof PAYMENT_METHODS)[number]) =>
+  const payWith = (method: (typeof PAYMENT_METHODS)[number]) =>
     pay.mutate(
-      { items: list.map((p) => p.item), payment: { method: method.value, paidOn: todayISO() } },
+      { items: payables.map((p) => p.item), payment: { method: method.value, paidOn: todayISO() } },
       {
-        onSuccess: () => toast.success(`${formatCents(list.reduce((sum, p) => sum + p.dueCents, 0))} paid by ${method.label}`),
+        onSuccess: () => toast.success(`${formatCents(total)} paid by ${method.label}`),
         onError: toastRefusal,
       },
     );
@@ -346,29 +331,14 @@ function PaidMenu({ payables, onOther }: { payables: ReadonlyArray<Payable>; onO
       <DropdownMenuContent align="end" className="w-auto">
         <DropdownMenuGroup>
           <DropdownMenuLabel>
-            {several ? "Both" : payables[0]?.item.kind === "package" ? "Package" : "Session"} · {formatCents(total)} today, by
+            {label} · {formatCents(total)} today, by
           </DropdownMenuLabel>
           {PAYMENT_METHODS.map((method) => (
-            <DropdownMenuItem key={method.value} onClick={() => payWith(payables, method)}>
+            <DropdownMenuItem key={method.value} onClick={() => payWith(method)}>
               {method.label}
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
-        {several &&
-          payables.map((p) => (
-            <DropdownMenuSub key={p.item.kind}>
-              <DropdownMenuSubTrigger>
-                {p.label} only · {formatCents(p.dueCents)}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {PAYMENT_METHODS.map((method) => (
-                  <DropdownMenuItem key={method.value} onClick={() => payWith([p], method)}>
-                    {method.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onOther}>Another day…</DropdownMenuItem>
       </DropdownMenuContent>
@@ -377,10 +347,10 @@ function PaidMenu({ payables, onOther }: { payables: ReadonlyArray<Payable>; onO
 }
 
 /** A package bought on its own, to collect. */
-function PackageTodo({ pkg, onPayOther }: { pkg: Package; onPayOther: (payables: Array<Payable>) => void }) {
+function PackageTodo({ pkg, onPayOther }: { pkg: PackageView; onPayOther: (payables: Array<Payable>) => void }) {
   const clientsById = ClientsQuery.useById();
   const client = clientsById.get(pkg.clientId);
-  const payable = packagePayable(pkg);
+  const payables = packagePayables(pkg).filter((p) => !p.paid);
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
@@ -396,12 +366,12 @@ function PackageTodo({ pkg, onPayOther }: { pkg: Package; onPayOther: (payables:
           <Badge variant={REASONS.collect.tone}>{REASONS.collect.label}</Badge>
         </div>
         <span className="text-sm text-muted-foreground">
-          Package of {pkg.sessions} · bought {formatDate(pkg.purchasedAt)} · {formatCents(pkg.priceCents)} due
+          Package of {pkg.sessions} · bought {formatDate(pkg.purchasedAt)} · {formatCents(pkg.owedCents)} due
         </span>
         {pkg.note && <span className="line-clamp-1 text-xs text-muted-foreground">{pkg.note}</span>}
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {pkg.fixes.includes("payments.set") && <PaidMenu payables={[payable]} onOther={() => onPayOther([payable])} />}
+        {payables.length > 0 && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}
         <Button variant="ghost" size="sm" aria-label="Open packages" render={<Link to="/packages" />} nativeButton={false}>
           <span className="hidden sm:inline">Packages</span> <ArrowRightIcon />
         </Button>
@@ -411,58 +381,32 @@ function PackageTodo({ pkg, onPayOther }: { pkg: Package; onPayOther: (payables:
 }
 
 /**
- * An edit she made in the calendar that bizzy didn't apply: what it asks,
- * why not, and her ways out (its fixes, the guards' remedies first). Once
- * nothing refuses it, it is ready: she applies it, or undoes it.
+ * An edit made in the calendar that bizzy refused: what the event says, why
+ * not, and the ways out (its remedies, or applying it once settled).
  */
-function ConflictTodo({ conflict }: { conflict: Conflict }) {
-  const clientsById = ClientsQuery.useById();
-  const client = conflict.clientId ? clientsById.get(conflict.clientId) : undefined;
-  const event = conflict.now ?? conflict.seen;
-  const what = { new: "New in your calendar", changed: "Changed in your calendar", gone: "Deleted in your calendar" }[conflict.kind];
-  const name = event && conflictName(event.title);
-  const ready = conflict.rules.includes("edit-ready");
-  const followUp = conflict.targetKind === "followUp";
+function ConflictTodo({ conflict }: { conflict: ConflictView }) {
+  const time = conflictTime(conflict);
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <CalendarX2Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-          {conflict.targetId && followUp ? (
-            <TextLink to="/follow-ups">{client?.name ?? event?.title ?? "A follow-up"}</TextLink>
-          ) : conflict.targetId ? (
-            <TextLink to="/sessions/$id" params={{ id: conflict.targetId }} search={{ from: "home" }}>
-              {client?.name ?? event?.title ?? "A session"}
+          {conflict.itemId && conflict.itemKind === "followUp" ? (
+            <TextLink to="/follow-ups">“{conflict.title}”</TextLink>
+          ) : conflict.itemId ? (
+            <TextLink to="/sessions/$id" params={{ id: conflict.itemId }} search={{ from: "home" }}>
+              “{conflict.title}”
             </TextLink>
           ) : (
-            <span className="font-medium">“{event?.title}”</span>
+            <span className="font-medium">“{conflict.title}”</span>
           )}
-          <Badge variant={REASONS.fix.tone}>{what}</Badge>
-          {ready && <Badge variant="info">Ready to apply</Badge>}
+          <Badge variant={REASONS.fix.tone}>{conflictKind(conflict)}</Badge>
         </div>
-        {event?.start && <span className="text-sm text-muted-foreground">{formatSessionTime(event.start)}</span>}
-        {event?.date && <span className="text-sm text-muted-foreground">{formatDate(event.date)}</span>}
-        {conflict.asks.length > 0 && <span className="text-xs text-muted-foreground">It asks: {conflict.asks.join(", ")}.</span>}
-        {conflict.violations.map((v) => (
-          <span key={v.guard} className="text-xs text-status-attention-foreground">
-            {v.message}
-          </span>
-        ))}
+        {time && <span className="text-sm text-muted-foreground">{time}</span>}
+        <span className="text-xs text-status-attention-foreground">{conflict.message}</span>
       </div>
-      {ready && (
-        <span className="text-xs text-muted-foreground">
-          Nothing stands in its way now. Apply it if you still want it, or undo it in the calendar.
-        </span>
-      )}
-      <RemedyButtons remedies={conflict.fixes} name={name} applyAfter={conflict.key} onDone={() => toast.success("Done")} />
+      <ConflictActions conflict={conflict} />
     </div>
   );
-}
-
-/** The name an event's title gives: a session's (`? Jane 95 (V)`) or a follow-up's (`! Jane: call`). */
-function conflictName(title: string): string | undefined {
-  const bare = title.trim();
-  if (bare.startsWith("!")) return bare.slice(1).split(":")[0]?.trim();
-  return bare.replace(/^\?\s*/, "").split(/\s+(?:\d|\()/)[0];
 }

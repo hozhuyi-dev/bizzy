@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_LINE, toExpenseInput, totalOf, withName } from "./expenses.form";
-import type { Catalogue } from "./expenses.types";
+import { EMPTY_LINE, toExpenseFields, totalOf, withName } from "./expenses.form";
+import type { CatalogueView } from "./expenses.types";
 
-const catalogue: Catalogue = {
+const catalogue: CatalogueView = {
   categories: [
     { id: "purchases", name: "Purchases and cost of production" },
     { id: "travel", name: "Travelling and transportation" },
@@ -30,22 +30,18 @@ describe("withName", () => {
   });
 });
 
-describe("toExpenseInput", () => {
-  it("sends new items without an id, and the version edited", () => {
-    const input = toExpenseInput(
-      {
-        date: "2026-10-12",
-        vendor: "Shopee",
-        notes: " ",
-        lines: [
-          { itemId: "tape", name: "Kinesio tape", categoryId: "purchases", amount: "45" },
-          { itemId: "", name: "Parking", categoryId: "travel", amount: "3.50" },
-        ],
-      },
-      undefined,
-    );
+describe("toExpenseFields", () => {
+  it("sends new items without an id", () => {
+    const input = toExpenseFields({
+      date: "2026-10-12",
+      vendor: "Shopee",
+      notes: " ",
+      lines: [
+        { itemId: "tape", name: "Kinesio tape", categoryId: "purchases", amount: "45" },
+        { itemId: "", name: "Parking", categoryId: "travel", amount: "3.50" },
+      ],
+    });
     expect(input).toEqual({
-      version: 0,
       date: "2026-10-12",
       vendor: "Shopee",
       notes: "",

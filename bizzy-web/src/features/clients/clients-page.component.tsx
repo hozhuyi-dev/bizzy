@@ -10,7 +10,7 @@ import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
 import { toClientRow } from "./clients.util";
 import type { LapseMonths } from "./clients.constant";
-import type { Client, ClientRow, ClientsView } from "./clients.types";
+import type { ClientRow, ClientView, ClientsFilter } from "./clients.types";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
@@ -19,6 +19,7 @@ import { SearchInput } from "~/components/shared/search-input/search-input.compo
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { ActivityQuery } from "~/features/activity/activity.query";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { queryMatch } from "~/core/utils/query.util";
@@ -30,20 +31,21 @@ const LAPSE_OPTIONS = LAPSE_MONTHS.map((months) => ({
 }));
 
 interface ClientsPageProps {
-  view: ClientsView;
+  view: ClientsFilter;
   lapse: LapseMonths;
   onLapseChange?: (lapse: LapseMonths) => void;
 }
 
 export function ClientsPage({ view, lapse, onLapseChange }: ClientsPageProps) {
   const clients = ClientsQuery.useList();
+  const activityByClient = ActivityQuery.useByClient();
   const [search, setSearch] = useState("");
 
   const rows = useMemo(() => {
     const now = new Date();
-    const all = (clients.data ?? []).map((client) => toClientRow(client, now));
-    return view === "all" ? all : all.filter((row) => isLapsed(row.client, Number(lapse), now));
-  }, [clients.data, view, lapse]);
+    const all = (clients.data ?? []).map((client) => toClientRow(client, activityByClient.get(client.id), now));
+    return view === "all" ? all : all.filter((row) => isLapsed(row.client, row.activity, Number(lapse), now));
+  }, [clients.data, activityByClient, view, lapse]);
 
   return (
     <>
@@ -99,7 +101,7 @@ export function ClientsPage({ view, lapse, onLapseChange }: ClientsPageProps) {
 }
 
 interface ClientsTableProps {
-  view: ClientsView;
+  view: ClientsFilter;
   rows: Array<ClientRow>;
   search: string;
 }
@@ -108,10 +110,10 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
   const { mutate: mark } = ClientsMutation.useMarkContacted();
   const reconnect = view === "reconnect";
   const [remind, setRemind] = useState<FollowUpTarget | null>(null);
-  const onRemind = useCallback((client: Client) => setRemind({ mode: "new", clientId: client.id }), []);
+  const onRemind = useCallback((client: ClientView) => setRemind({ mode: "new", clientId: client.id }), []);
 
   const onContacted = useCallback(
-    (client: Client) =>
+    (client: ClientView) =>
       mark(
         { id: client.id, contacted: true },
         {
@@ -129,7 +131,7 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
   );
 
   const whatsapp = useWhatsApp();
-  const onWhatsApp = useCallback((client: Client) => whatsapp.message(client.contact?.phone), [whatsapp]);
+  const onWhatsApp = useCallback((client: ClientView) => whatsapp.message(client.contact?.phone), [whatsapp]);
   const handlers = useMemo(
     () => (reconnect ? { onWhatsApp, onContacted, onRemind } : { onWhatsApp }),
     [onWhatsApp, onContacted, onRemind, reconnect],

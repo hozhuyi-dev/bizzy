@@ -11,8 +11,9 @@ import {
 import { useConfirmBooking } from "../../sessions-booking.hook";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
-import type { Session, SessionReturnTo } from "../../sessions.types";
+import type { SessionReturnTo, SessionView } from "../../sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
@@ -21,7 +22,7 @@ import { Card, CardContent } from "~/components/ui/card";
 import { formatSessionTime } from "~/core/utils/date.util";
 
 interface SessionsTableProps {
-  sessions: Array<Session>;
+  sessions: Array<SessionView>;
   /** Shown when there are no sessions; usually an EmptyState. */
   empty: ReactNode;
   query?: string | undefined;
@@ -49,7 +50,7 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
       from,
       clientsById,
       packagesById,
-      onConfirm: (session) => confirm(session.id),
+      onConfirm: (session) => void confirm(session.id).catch(toastRefusal),
     }),
     [from, clientsById, packagesById, confirm],
   );

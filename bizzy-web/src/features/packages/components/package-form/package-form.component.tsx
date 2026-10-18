@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { toPackageInput, toPackageValues } from "../../packages.form";
+import { toPackageFields, toPackageValues } from "../../packages.form";
 import { usePackageSave } from "../../packages-save.hook";
-import type { Package } from "../../packages.types";
+import type { PackageView } from "../../packages.types";
 import { fieldErrors } from "~/core/utils/form.util";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ClientsQuery } from "~/features/clients/clients.query";
@@ -16,7 +17,7 @@ import { formatCents, parseCents } from "~/core/utils/money.util";
 
 interface PackageFormProps {
   /** Omitted when adding a package. */
-  pkg?: Package | undefined;
+  pkg?: PackageView | undefined;
   onDone: () => void;
 }
 
@@ -34,8 +35,10 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
     onSubmit: async ({ value }) => {
       setError(null);
       try {
-        await save.submit(toPackageInput(value, pkg));
+        await save.submit(toPackageFields(value, pkg));
       } catch (e) {
+        // Shown with what would let it through, and kept on the form.
+        toastRefusal(e);
         setError((e as Error).message);
       }
     },
@@ -163,7 +166,7 @@ export function PackageForm({ pkg, onDone }: PackageFormProps) {
           )}
         </form.Field>
 
-        {pkg?.paid && !pkg.receipt?.number && (
+        {pkg?.paid && !pkg.paid.issued && (
           <form.Field name="updatePayment">
             {(field) => (
               <Field orientation="horizontal">

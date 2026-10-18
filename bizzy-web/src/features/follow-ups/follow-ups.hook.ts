@@ -1,11 +1,11 @@
 import { toast } from "sonner";
 import { FollowUpsMutation } from "./follow-ups.mutation";
-import type { FollowUp } from "./follow-ups.types";
+import type { FollowUpView } from "./follow-ups.types";
 
 /** Marks a follow-up done with an Undo in the toast. */
 export function useMarkDone() {
   const { mutate, isPending } = FollowUpsMutation.useSetDone();
-  const mark = (followUp: FollowUp, done = true) =>
+  const mark = (followUp: FollowUpView, done = true) =>
     mutate(
       { id: followUp.id, done },
       {

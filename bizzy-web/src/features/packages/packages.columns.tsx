@@ -1,9 +1,8 @@
 import { BanknoteIcon, PackageCheckIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { clientName, paymentText } from "./packages.util";
 import type { ReactNode } from "react";
-import type { Package } from "./packages.types";
-import type { Client } from "~/features/clients/clients.types";
-import type { DocumentType } from "~/features/documents/documents.types";
+import type { PackageView } from "./packages.types";
+import type { ClientView } from "~/features/clients/clients.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
@@ -11,21 +10,19 @@ import { RowActionButtons } from "~/components/shared/row-actions/row-actions.co
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
-import { documentLabel, documentRoute } from "~/features/documents/documents.util";
+import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
 
 export interface PackageHandlers {
-  clientsById: ReadonlyMap<string, Client>;
-  onEdit: (pkg: Package) => void;
-  onDelete: (pkg: Package) => void;
-  onMakeStandalone: (pkg: Package) => void;
-  onPay: (pkg: Package) => void;
+  clientsById: ReadonlyMap<string, ClientView>;
+  onEdit: (pkg: PackageView) => void;
+  onDelete: (pkg: PackageView) => void;
+  onMakeStandalone: (pkg: PackageView) => void;
+  onPay: (pkg: PackageView) => void;
 }
 
-const DOCUMENT_TYPES_ORDER: ReadonlyArray<DocumentType> = ["invoice", "receipt"];
+const helper = createDataTableColumnHelper<PackageView>();
 
-const helper = createDataTableColumnHelper<Package>();
-
-export function PackageCredits({ pkg }: { pkg: Package }) {
+export function PackageCredits({ pkg }: { pkg: PackageView }) {
   return (
     <span>
       {pkg.creditsLeft} of {pkg.sessions} left
@@ -33,12 +30,12 @@ export function PackageCredits({ pkg }: { pkg: Package }) {
   );
 }
 
-export function PackagePayment({ pkg }: { pkg: Package }) {
+export function PackagePayment({ pkg }: { pkg: PackageView }) {
   if (pkg.owedCents > 0) return <Badge variant="attention">Unpaid</Badge>;
   return <span className="text-sm text-muted-foreground">{paymentText(pkg)}</span>;
 }
 
-export function PackagePrice({ pkg }: { pkg: Package }) {
+export function PackagePrice({ pkg }: { pkg: PackageView }) {
   return (
     <span className="flex flex-col">
       <span>{formatCents(pkg.priceCents)}</span>
@@ -49,7 +46,7 @@ export function PackagePrice({ pkg }: { pkg: Package }) {
   );
 }
 
-export function PackageSource({ pkg }: { pkg: Package }) {
+export function PackageSource({ pkg }: { pkg: PackageView }) {
   return (
     <span className="flex flex-wrap items-center gap-1">
       <Badge variant="neutral">{pkg.boughtIn ? "In a session" : "On its own"}</Badge>
@@ -63,20 +60,17 @@ export function PackageDocuments({
   pkg,
   empty = "—",
 }: {
-  pkg: Package;
+  pkg: PackageView;
   /** Shown when there is none yet. */
   empty?: ReactNode;
 }) {
-  const docs = DOCUMENT_TYPES_ORDER.flatMap((type) => {
-    const ref = pkg[type];
-    return ref ? [{ type, ref }] : [];
-  });
+  const docs = coveringDocuments(pkg);
   if (docs.length === 0) return empty;
   return (
     <span className="flex flex-wrap items-center gap-2">
-      {docs.map(({ type, ref }) => (
-        <TextLink key={ref.documentId} to={documentRoute(type)} params={{ id: ref.documentId }} className="text-sm">
-          {documentLabel(ref.number, ref.revision)}
+      {docs.map(({ type, ref, issued }) => (
+        <TextLink key={ref.id} to={documentRoute(type)} params={{ id: ref.id }} className="text-sm">
+          {refLabel(type, ref, issued)}
         </TextLink>
       ))}
     </span>
@@ -84,24 +78,26 @@ export function PackageDocuments({
 }
 
 /**
- * What can be done to a package, as the API's guards say: one bought in a
- * session can be kept as its own, so the session no longer buys it.
+ * What can be done to a package: pay what it owes, see its payment, keep
+ * one bought in a session as its own (so the session no longer buys it),
+ * edit or delete it. The API refuses what its rules don't allow, with what
+ * would let it through.
  */
-export function packageActions(pkg: Package, handlers: PackageHandlers): Array<RowAction> {
+export function packageActions(pkg: PackageView, handlers: PackageHandlers): Array<RowAction> {
   const actions: Array<RowAction> = [];
-  if (pkg.owedCents > 0 && pkg.can.pay.ok) {
+  if (pkg.owedCents > 0) {
     actions.push({ label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
   if (pkg.paid) {
     actions.push({ label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
-  if (pkg.can.makeStandalone.ok) {
+  if (pkg.boughtIn) {
     actions.push({ label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
   }
-  if (pkg.can.edit.ok) actions.push({ label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) });
-  if (pkg.can.delete.ok) {
-    actions.push({ label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => handlers.onDelete(pkg) });
-  }
+  actions.push(
+    { label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) },
+    { label: "Delete", icon: Trash2Icon, destructive: true, onClick: () => handlers.onDelete(pkg) },
+  );
   return actions;
 }
 
@@ -116,41 +112,40 @@ export function createPackageColumns(handlers: PackageHandlers) {
     helper.accessor("purchasedAt", {
       header: "Bought",
       sortFn: "alphanumeric",
-      meta: { search: (pkg: Package) => formatDate(pkg.purchasedAt) },
+      meta: { search: (pkg: PackageView) => formatDate(pkg.purchasedAt) },
       cell: ({ getValue }) => formatDate(getValue()),
     }),
     helper.accessor((pkg) => pkg.creditsLeft, {
       id: "credits",
       header: "Credits",
       sortFn: "basic",
-      meta: { search: (pkg: Package) => `${pkg.creditsLeft} of ${pkg.sessions} left` },
+      meta: { search: (pkg: PackageView) => `${pkg.creditsLeft} of ${pkg.sessions} left` },
       cell: ({ row }) => <PackageCredits pkg={row.original} />,
     }),
     helper.accessor("priceCents", {
       header: "Price",
       sortFn: "basic",
-      meta: { search: (pkg: Package) => formatCents(pkg.priceCents) },
+      meta: { search: (pkg: PackageView) => formatCents(pkg.priceCents) },
       cell: ({ row }) => <PackagePrice pkg={row.original} />,
     }),
     helper.accessor((pkg) => paymentText(pkg), {
       id: "payment",
       header: "Payment",
       sortFn: "alphanumeric",
-      meta: { search: (pkg: Package) => paymentText(pkg) },
+      meta: { search: (pkg: PackageView) => paymentText(pkg) },
       cell: ({ row }) => <PackagePayment pkg={row.original} />,
     }),
     helper.display({
       id: "source",
       header: "From",
-      meta: { search: (pkg: Package) => [pkg.boughtIn ? "In a session" : "On its own", pkg.note] },
+      meta: { search: (pkg: PackageView) => [pkg.boughtIn ? "In a session" : "On its own", pkg.note] },
       cell: ({ row }) => <PackageSource pkg={row.original} />,
     }),
     helper.display({
       id: "documents",
       header: "Documents",
       meta: {
-        search: (pkg: Package) =>
-          DOCUMENT_TYPES_ORDER.map((type) => pkg[type]).flatMap((ref) => (ref ? [documentLabel(ref.number, ref.revision)] : [])),
+        search: (pkg: PackageView) => coveringDocuments(pkg).map(({ type, ref, issued }) => refLabel(type, ref, issued)),
       },
       cell: ({ row }) => <PackageDocuments pkg={row.original} />,
     }),

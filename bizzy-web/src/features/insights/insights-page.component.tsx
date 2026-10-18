@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from "react";
 import type { Basis } from "./insights.types";
 import type { ChartConfig } from "~/components/ui/chart";
+import { ActivityQuery } from "~/features/activity/activity.query";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
@@ -53,7 +54,7 @@ interface InsightsPageProps {
 }
 
 export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
-  const clients = ClientsQuery.useList();
+  const activity = ActivityQuery.useList();
   const packages = PackagesQuery.useList();
 
   return (
@@ -70,7 +71,7 @@ export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
         }
       />
 
-      {queryMatch(clients, {
+      {queryMatch(activity, {
         pending: () => <Loading />,
         error: (error) => (
           <p role="alert" className="text-sm text-destructive">
@@ -79,7 +80,7 @@ export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
         ),
         success: (data) => (
           <Insights
-            clients={data}
+            activities={data}
             basis={basis}
             credits={(packages.data ?? []).reduce(
               (sum, p) => {
@@ -99,19 +100,20 @@ export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
 }
 
 interface InsightsProps {
-  clients: Parameters<typeof monthTotals>[0];
+  activities: Parameters<typeof monthTotals>[0];
   basis: Basis;
   credits: { count: number; cents: number };
 }
 
-function Insights({ clients, basis, credits }: InsightsProps) {
+function Insights({ activities, basis, credits }: InsightsProps) {
   const now = monthKey(new Date());
-  const totals = useMemo(() => monthTotals(clients), [clients]);
+  const clientsById = ClientsQuery.useById();
+  const totals = useMemo(() => monthTotals(activities), [activities]);
   const months = useMemo(() => monthlySeries(totals, basis, now, 12), [totals, basis, now]);
   const years = useMemo(() => yearlySeries(totals, basis), [totals, basis]);
   const top = useMemo(
-    () => topClients(clients, basis, addMonths(now, -11), now),
-    [clients, basis, now],
+    () => topClients(activities, clientsById, basis, addMonths(now, -11), now),
+    [activities, clientsById, basis, now],
   );
 
   const thisYear = summarize(totals, basis, addMonths(now, -11), now);

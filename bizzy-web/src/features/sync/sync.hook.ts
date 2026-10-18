@@ -2,8 +2,9 @@ import { useEffect, useRef } from "react";
 import { SyncMutation } from "./sync.mutation";
 
 /**
- * Syncs the last 60 days once per page load, so she never has to. A
- * failure shows on the nav bar's Sync button rather than a toast.
+ * Syncs once per page load, reading what changed in the calendar since the
+ * last sync, so the user never has to. A failure shows on the nav bar's Sync
+ * button rather than a toast.
  */
 export function useSyncOnLoad() {
   const { mutate } = SyncMutation.useRun();
@@ -12,6 +13,6 @@ export function useSyncOnLoad() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    mutate(undefined);
+    mutate();
   }, [mutate]);
 }

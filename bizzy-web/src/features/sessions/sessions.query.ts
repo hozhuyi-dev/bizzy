@@ -1,13 +1,14 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
+import type { PreviewSessionRequest } from "./sessions.types";
 import { SessionKeys } from "~/core/constants/query-keys.constant";
 import { monthRange } from "~/core/utils/date.util";
 
 export const SessionsQuery = {
   /**
-   * One session, its draft and notes, read fresh on every visit. Not
-   * refetched on focus: a refetch restarts the forms, which would lose what
-   * she typed.
+   * One session and its notes, read fresh on every visit. Not refetched on
+   * focus: a refetch restarts the forms, which would lose what the user
+   * typed.
    */
   useDetail: (id: string) =>
     useQuery({
@@ -30,12 +31,19 @@ export const SessionsQuery = {
       queryFn: () => SessionsService.list(from, to),
     }),
 
-  /** A client's sessions, newest first; "Load more" reads the next page. */
-  useTimeline: (clientId: string) =>
-    useInfiniteQuery({
+  /** A client's sessions, newest first. */
+  useByClient: (clientId: string) =>
+    useQuery({
       queryKey: SessionKeys.client(clientId),
-      queryFn: ({ pageParam }) => SessionsService.listByClient(clientId, pageParam),
-      initialPageParam: undefined as string | undefined,
-      getNextPageParam: (page) => page.next,
+      queryFn: () => SessionsService.listByClient(clientId),
+    }),
+
+  /** What would pay for a booking; keeps the last answer while the form changes. */
+  usePreview: (request: PreviewSessionRequest | undefined) =>
+    useQuery({
+      queryKey: SessionKeys.preview(request ?? {}),
+      queryFn: () => SessionsService.preview(request as PreviewSessionRequest),
+      enabled: request !== undefined,
+      placeholderData: keepPreviousData,
     }),
 };

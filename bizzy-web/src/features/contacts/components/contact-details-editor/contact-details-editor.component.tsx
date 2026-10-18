@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { ContactsMutation } from "../../contacts.mutation";
 import { ContactsQuery } from "../../contacts.query";
 import { ContactDetailsForm } from "../contact-details-form/contact-details-form.component";
-import type { Contact } from "../../contacts.types";
+import type { ContactView } from "../../contacts.types";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { isApiError } from "~/core/utils/api-error.util";
 import { queryMatch } from "~/core/utils/query.util";
@@ -10,7 +10,7 @@ import { queryMatch } from "~/core/utils/query.util";
 interface ContactDetailsEditorProps {
   resourceName: string;
   onDone: () => void;
-  onSaved?: ((contact: Contact) => void) | undefined;
+  onSaved?: ((contact: ContactView) => void) | undefined;
 }
 
 /**

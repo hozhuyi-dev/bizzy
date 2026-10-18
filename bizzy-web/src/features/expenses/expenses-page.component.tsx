@@ -5,8 +5,8 @@ import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { ExpenseLink, ExpenseReceipt, createExpenseColumns } from "./expenses.columns";
 import { ExpensesQuery } from "./expenses.query";
 import { linesSummary, totalsByCategory } from "./expenses.util";
-import type { Expense } from "./expenses.types";
-import { ClientsQuery } from "~/features/clients/clients.query";
+import type { ExpenseView } from "./expenses.types";
+import { ActivityQuery } from "~/features/activity/activity.query";
 import { monthTotals } from "~/features/insights/insights-metrics.util";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
@@ -20,7 +20,7 @@ import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 // Stable fallback: a fresh [] each render would rebuild the row models.
-const NO_EXPENSES: Array<Expense> = [];
+const NO_EXPENSES: Array<ExpenseView> = [];
 
 interface ExpensesPageProps {
   year: number;
@@ -117,22 +117,22 @@ export function ExpensesPage({ year, onYearChange }: ExpensesPageProps) {
 }
 
 /** Spent, received and what is left, over the calendar year. */
-function YearSummary({ year, expenses }: { year: number; expenses: ReadonlyArray<Expense> }) {
-  const clients = ClientsQuery.useList();
+function YearSummary({ year, expenses }: { year: number; expenses: ReadonlyArray<ExpenseView> }) {
+  const activity = ActivityQuery.useList();
   const spent = expenses.reduce((sum, expense) => sum + expense.totalCents, 0);
   const received = useMemo(() => {
     let cents = 0;
-    for (const [month, total] of monthTotals(clients.data ?? [])) {
+    for (const [month, total] of monthTotals(activity.data ?? [])) {
       if (month.startsWith(`${year}-`)) cents += total.received;
     }
     return cents;
-  }, [clients.data, year]);
+  }, [activity.data, year]);
 
   return (
     <dl className="grid grid-cols-3 gap-3">
       <Stat label="Spent" value={formatCents(spent)} />
-      <Stat label="Received" value={clients.data ? formatCents(received) : "…"} />
-      <Stat label="Left" value={clients.data ? formatCents(received - spent) : "…"} />
+      <Stat label="Received" value={activity.data ? formatCents(received) : "…"} />
+      <Stat label="Left" value={activity.data ? formatCents(received - spent) : "…"} />
     </dl>
   );
 }

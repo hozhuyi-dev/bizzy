@@ -1,24 +1,19 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { FollowUpsService } from "./follow-ups.service";
-import type { FollowUpView } from "./follow-ups.types";
+import type { FollowUpList } from "./follow-ups.types";
 import { FollowUpKeys } from "~/core/constants/query-keys.constant";
 
 export const FollowUpsQuery = {
-  /** A page at a time; "Load more" reads the next. */
-  useList: (view: FollowUpView) =>
-    useInfiniteQuery({
+  useList: (view: FollowUpList) =>
+    useQuery({
       queryKey: FollowUpKeys.list(view),
-      queryFn: ({ pageParam }) => FollowUpsService.list(view, pageParam),
-      initialPageParam: undefined as string | undefined,
-      getNextPageParam: (page) => page.next,
+      queryFn: () => FollowUpsService.list(view),
     }),
 
   useByClient: (clientId: string) =>
-    useInfiniteQuery({
+    useQuery({
       queryKey: FollowUpKeys.client(clientId),
-      queryFn: ({ pageParam }) => FollowUpsService.listByClient(clientId, pageParam),
-      initialPageParam: undefined as string | undefined,
-      getNextPageParam: (page) => page.next,
+      queryFn: () => FollowUpsService.listByClient(clientId),
     }),
 
   useBySession: (sessionId: string) =>

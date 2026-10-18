@@ -1,7 +1,7 @@
-import type { Settings } from "./settings.types";
+import type { SettingsView } from "./settings.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const SettingsService = {
-  get: () => invoke<Settings>("settings.get"),
-  save: (input: Settings) => invoke<Settings>("settings.save", input),
+  get: () => invoke<SettingsView>("settings.get"),
+  save: (input: SettingsView) => invoke<SettingsView>("settings.save", input),
 };

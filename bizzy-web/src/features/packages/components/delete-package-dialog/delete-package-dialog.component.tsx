@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { PackagesMutation } from "../../packages.mutation";
-import type { Package } from "../../packages.types";
+import type { PackageView } from "../../packages.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import {
   AlertDialog,
@@ -15,7 +15,7 @@ import { Button } from "~/components/ui/button";
 import { formatCents } from "~/core/utils/money.util";
 
 interface DeletePackageDialogProps {
-  pkg: Package | null;
+  pkg: PackageView | null;
   clientName: string;
   onClose: () => void;
 }

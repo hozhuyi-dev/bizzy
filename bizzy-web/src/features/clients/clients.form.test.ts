@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { feeStartError, feesChanged, toFeeRates } from "./clients.form";
-import type { Client } from "./clients.types";
+import type { ClientView } from "./clients.types";
 
-const client = (feeRates?: Client["feeRates"]): Client => ({
+const client = (feeRates: ClientView["feeRates"] = []): ClientView => ({
   id: "c1",
   name: "Jane",
-  aliases: ["jane"],
-  ...(feeRates ? { feeRates } : {}),
+  aliases: [],
+  feeRates,
+  homeVisits: false,
 });
 
 describe("toFeeRates", () => {

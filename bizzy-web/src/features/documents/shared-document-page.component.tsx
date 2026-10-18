@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { BanIcon, DownloadIcon } from "lucide-react";
-import { DocumentView } from "./components/document-view/document-view.component";
+import { DocumentSheet } from "./components/document-sheet/document-sheet.component";
 import { DocumentsQuery } from "./documents.query";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { documentLabel } from "./documents.util";
 import { useDocumentPdf } from "./documents.hook";
-import type { SharedDocument } from "./documents.types";
+import type { SharedDocumentView } from "./documents.types";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { Button } from "~/components/ui/button";
 import { formatDate } from "~/core/utils/date.util";
@@ -37,13 +37,13 @@ export function SharedDocumentPage({ token }: { token: string }) {
             {error.message}
           </p>
         ),
-        success: (doc) => <SharedDocumentView doc={doc} />,
+        success: (doc) => <SharedDocument doc={doc} />,
       })}
     </main>
   );
 }
 
-function SharedDocumentView({ doc }: { doc: SharedDocument }) {
+function SharedDocument({ doc }: { doc: SharedDocumentView }) {
   const { busy, download: downloadPdf } = useDocumentPdf({ errorMessage: "Couldn't make the PDF. Please try again." });
   const cancelled = doc.status === "cancelled";
   const title = DOCUMENT_TYPES[doc.type].title;
@@ -78,7 +78,7 @@ function SharedDocumentView({ doc }: { doc: SharedDocument }) {
           title={`This ${title.toLowerCase()} was cancelled${doc.cancelledAt ? ` on ${formatDate(doc.cancelledAt)}` : ""}.`}
         />
       )}
-      <DocumentView
+      <DocumentSheet
         type={doc.type}
         content={doc.content}
         number={doc.number}

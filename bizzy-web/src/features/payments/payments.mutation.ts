@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PaymentsService } from "./payments.service";
-import type { PayItem, PaymentInput } from "./payments.types";
+import type { SetPaymentRequest } from "./payments.types";
 import { invalidateBilling } from "~/core/utils/query.util";
 
 export const PaymentsMutation = {
@@ -11,8 +11,7 @@ export const PaymentsMutation = {
   useSet: () => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: ({ items, payment }: { items: Array<PayItem>; payment: PaymentInput | null }) =>
-        PaymentsService.set(items, payment),
+      mutationFn: (request: SetPaymentRequest) => PaymentsService.set(request),
       onSettled: () => invalidateBilling(queryClient),
     });
   },

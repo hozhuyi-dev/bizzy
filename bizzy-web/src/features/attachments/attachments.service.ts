@@ -1,6 +1,6 @@
 import { IMAGE_KEEP_BYTES, IMAGE_QUALITY } from "./attachments.constant";
 import { contentTypeOf, shrunkSize } from "./attachments.util";
-import type { Attachment, AttachmentOwner, UploadTicket } from "./attachments.types";
+import type { AttachmentOwner, AttachmentView, UploadTicket } from "./attachments.types";
 import { ApiError, invoke } from "~/core/lambda/lambda.client";
 
 /**
@@ -41,14 +41,14 @@ async function shrinkImage(file: File): Promise<File> {
 }
 
 export const AttachmentsService = {
-  list: (owner: AttachmentOwner) => invoke<Array<Attachment>>("attachments.list", owner),
-  remove: (owner: AttachmentOwner, id: string) => invoke<null>("attachments.delete", { ...owner, id }),
+  list: (owner: AttachmentOwner) => invoke<Array<AttachmentView>>("attachments.list", owner),
+  remove: (id: string) => invoke<null>("attachments.delete", { id }),
 
   /**
    * Attaches one file: shrinks a photo, asks the API where to put it,
    * uploads it straight to storage, then confirms it so it is kept.
    */
-  upload: async (owner: AttachmentOwner, original: File): Promise<Attachment> => {
+  upload: async (owner: AttachmentOwner, original: File): Promise<AttachmentView> => {
     const file = await shrinkImage(original);
     const contentType = contentTypeOf(file);
     const ticket = await invoke<UploadTicket>("attachments.requestUpload", {
@@ -61,6 +61,6 @@ export const AttachmentsService = {
     if (!response.ok) {
       throw new ApiError("upload", `${original.name} didn't upload. Check the connection and try again.`);
     }
-    return invoke<Attachment>("attachments.confirm", { ...owner, id: ticket.id, name: file.name, contentType });
+    return invoke<AttachmentView>("attachments.confirm", { ...owner, id: ticket.id, name: file.name, contentType });
   },
 };

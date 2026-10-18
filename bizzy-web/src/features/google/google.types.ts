@@ -1,5 +1,5 @@
 // Mirrors bizzy-lambda/internal/features/googleconnect.
-export interface GoogleConnection {
+export interface GoogleConnectionView {
   /** The connected account; may differ from the one she signs in with. */
   email: string;
   /** The calendar the sync reads. */

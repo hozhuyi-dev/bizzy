@@ -16,14 +16,14 @@ import {
   documentEditorSections,
 } from "./components/document-editor/document-editor.component";
 import { useDocumentEditor } from "./components/document-editor/document-editor.hook";
-import { DocumentView } from "./components/document-view/document-view.component";
-import { DocumentStatusBadge } from "./components/document-status-badge/document-status-badge.component";
+import { DocumentSheet } from "./components/document-sheet/document-sheet.component";
+import { DocumentStatusBadge } from "./documents.columns";
 import { DocumentsMutation } from "./documents.mutation";
 import { DocumentsQuery } from "./documents.query";
 import { documentLabel, shareUrl  } from "./documents.util";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { useDocumentPdf } from "./documents.hook";
-import type { BizDocument, DocumentContent, DocumentPdfProps, DocumentRevision, DocumentType } from "./documents.types";
+import type { DocumentContent, DocumentPdfProps, DocumentRevision, DocumentType, DocumentView } from "./documents.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { Banner } from "~/components/shared/banner/banner.component";
@@ -74,18 +74,18 @@ export function DocumentPage({ id, type }: { id: string; type: DocumentType }) {
         </p>
       </>
     ),
-    success: ({ document: doc, revisions }) => {
+    success: (doc) => {
       if (doc.draft) {
         // Remount on every save so the form restarts from what was stored.
-        return <DraftDocument key={doc.version} doc={doc} draft={doc.draft} revisions={revisions} />;
+        return <DraftDocument key={detail.dataUpdatedAt} doc={doc} draft={doc.draft} revisions={doc.revisions} />;
       }
-      return doc.content ? <IssuedDocument doc={doc} content={doc.content} revisions={revisions} /> : null;
+      return doc.content ? <IssuedDocument doc={doc} content={doc.content} revisions={doc.revisions} /> : null;
     },
   });
 }
 
 interface DraftDocumentProps {
-  doc: BizDocument;
+  doc: DocumentView;
   draft: DocumentContent;
   revisions: Array<DocumentRevision>;
 }
@@ -124,7 +124,7 @@ function DraftDocument({ doc, draft, revisions }: DraftDocumentProps) {
 }
 
 interface IssuedDocumentProps {
-  doc: BizDocument;
+  doc: DocumentView;
   content: DocumentContent;
   revisions: Array<DocumentRevision>;
 }
@@ -163,7 +163,7 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
                   label: "Revise",
                   icon: PencilIcon,
                   disabled: revise.isPending,
-                  onClick: () => revise.mutate(doc, { onError: (error) => toast.error(error.message) }),
+                  onClick: () => revise.mutate(doc.id, { onError: (error) => toast.error(error.message) }),
                 },
                 {
                   label: `Cancel ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
@@ -193,7 +193,7 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
             description: cancelled && doc.cancelReason ? `Cancelled: ${doc.cancelReason}` : undefined,
             bare: true,
             content: (
-              <DocumentView
+              <DocumentSheet
                 type={doc.type}
                 content={content}
                 number={doc.number}
@@ -216,7 +216,7 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
  * on her computer), Copy link, and Reset link for one sent to the wrong person. A cancelled document's
  * link still opens (marked cancelled), so it can be reset but not sent.
  */
-function useShareActions(doc: BizDocument, content: DocumentContent, onReset: () => void): Array<RowAction> {
+function useShareActions(doc: DocumentView, content: DocumentContent, onReset: () => void): Array<RowAction> {
   const clientsById = ClientsQuery.useById();
   const { send, busy } = useSendDocuments();
   const client = clientOf(clientsById, doc.clientId);
@@ -244,7 +244,7 @@ function useShareActions(doc: BizDocument, content: DocumentContent, onReset: ()
   return actions;
 }
 
-function ResetLinkDialog({ doc, open, onClose }: { doc: BizDocument; open: boolean; onClose: () => void }) {
+function ResetLinkDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean; onClose: () => void }) {
   const reset = DocumentsMutation.useResetShare();
 
   return (
@@ -263,7 +263,7 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: BizDocument; open: boole
             variant="destructive"
             disabled={reset.isPending}
             onClick={() =>
-              reset.mutate(doc, {
+              reset.mutate(doc.id, {
                 onSuccess: () => {
                   toast.success("New link made; the old one no longer works");
                   onClose();
@@ -281,7 +281,7 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: BizDocument; open: boole
 }
 
 /** Earlier issued versions, each still viewable as the PDF it was. */
-function revisionsSection(doc: BizDocument, revisions: Array<DocumentRevision>): PageSection | undefined {
+function revisionsSection(doc: DocumentView, revisions: Array<DocumentRevision>): PageSection | undefined {
   if (revisions.length === 0) return undefined;
   return {
     id: "revisions",
@@ -318,7 +318,7 @@ function PdfButtons({ pdf }: { pdf: DocumentPdfProps }) {
   return <RowActionButtons actions={usePdfActions(pdf)} />;
 }
 
-function CancelDialog({ doc, open, onClose }: { doc: BizDocument; open: boolean; onClose: () => void }) {
+function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean; onClose: () => void }) {
   const cancel = DocumentsMutation.useCancel();
   const [reason, setReason] = useState("");
   const title = DOCUMENT_TYPES[doc.type].title.toLowerCase();
@@ -341,7 +341,7 @@ function CancelDialog({ doc, open, onClose }: { doc: BizDocument; open: boolean;
             disabled={cancel.isPending}
             onClick={() =>
               cancel.mutate(
-                { doc, reason },
+                { id: doc.id, reason },
                 {
                   onSuccess: () => {
                     toast.success(`${documentLabel(doc.number, doc.revision)} cancelled`);

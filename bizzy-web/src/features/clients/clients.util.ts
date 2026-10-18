@@ -1,53 +1,40 @@
 import { last12Months, monthsSinceLastSession, totals } from "./client-activity.util";
-import type { ChosenContact, Client, ClientRow, SaveClientInput } from "./clients.types";
-import type { Contact, ContactDetails } from "~/features/contacts/contacts.types";
+import type { ChosenContact, ClientRow, ClientView } from "./clients.types";
+import type { ActivityView } from "~/features/activity/activity.types";
+import type { ContactDetails, ContactView } from "~/features/contacts/contacts.types";
 
 /** The client an item is for, when it has one and it still exists. */
-export function clientOf(clientsById: ReadonlyMap<string, Client>, clientId: string | undefined): Client | undefined {
+export function clientOf(clientsById: ReadonlyMap<string, ClientView>, clientId: string | undefined): ClientView | undefined {
   return clientId ? clientsById.get(clientId) : undefined;
 }
 
-export function toClientRow(client: Client, now = new Date()): ClientRow {
-  const year = last12Months(client, now);
+export function toClientRow(client: ClientView, activity: ActivityView | undefined, now = new Date()): ClientRow {
+  const year = last12Months(activity, now);
   return {
     client,
-    lastSessionAt: client.lastSessionAt,
-    monthsSince: monthsSinceLastSession(client, now),
+    activity,
+    lastSessionAt: activity?.lastSessionAt,
+    monthsSince: monthsSinceLastSession(activity, now),
     revenue12Cents: year.receivedCents,
-    lifetimeCents: totals(client).receivedCents,
+    lifetimeCents: totals(activity).receivedCents,
     sessions12: year.sessions,
   };
 }
 
-/** Aliases other than the client's own name, which is always one of them. */
-export function extraAliases(client: Client): Array<string> {
+/** The client's other calendar names, leaving out one that is just their name. */
+export function extraAliases(client: ClientView): Array<string> {
   const name = client.name.toLowerCase();
   return client.aliases.filter((alias) => alias !== name);
 }
 
-/** Says when the client's Google contact needs her attention. */
-export function contactProblem(client: Client): string | undefined {
+/** Says when the client's Google contact needs the user's attention. */
+export function contactProblem(client: ClientView): string | undefined {
   if (!client.contact) return "No contact";
   if (client.contact.missing) return "Contact deleted in Google";
   return undefined;
 }
 
-/**
- * The editable part of a client, to save it back with a change. Every client
- * is created with a contact, so a missing one only fails loudly on save.
- */
-export function profileOf(client: Client): SaveClientInput {
-  return {
-    id: client.id,
-    name: client.name,
-    aliases: client.aliases,
-    ...(client.contact ? { contact: { resourceName: client.contact.resourceName } } : {}),
-    ...(client.feeRates ? { feeRates: client.feeRates } : {}),
-    ...(client.homeVisits ? { homeVisits: true } : {}),
-  };
-}
-
-export function chosenFromContact(contact: Contact): ChosenContact {
+export function chosenFromContact(contact: ContactView): ChosenContact {
   return {
     resourceName: contact.resourceName,
     displayName: contact.displayName,

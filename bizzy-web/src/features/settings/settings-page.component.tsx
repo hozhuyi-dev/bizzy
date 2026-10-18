@@ -2,7 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { SettingsMutation } from "./settings.mutation";
 import { SettingsQuery } from "./settings.query";
-import type { Settings } from "./settings.types";
+import type { SettingsView } from "./settings.types";
 import { CAN_RESET } from "~/features/reset/reset.constant";
 import { ResetData } from "~/features/reset/components/reset-data/reset-data.component";
 import { GoogleConnectionSettings } from "~/features/google/components/google-connection/google-connection.component";
@@ -54,7 +54,7 @@ export function SettingsPage() {
 
 const FORM_ID = "settings-form";
 
-type TextKey = Exclude<keyof Settings, "confirmAheadDays" | "followUpAheadDays">;
+type TextKey = Exclude<keyof SettingsView, "confirmAheadDays" | "followUpAheadDays">;
 
 const placeholderList = (names: ReadonlyArray<string>) => names.map((name) => `{${name}}`).join(" ");
 
@@ -81,7 +81,7 @@ const BANK_FIELDS: Array<{ name: TextKey; label: string }> = [
   { name: "accountNo", label: "Account no." },
 ];
 
-function SettingsForm({ saved }: { saved: Settings }) {
+function SettingsForm({ saved }: { saved: SettingsView }) {
   const save = SettingsMutation.useSave();
 
   const form = useForm({

@@ -18,15 +18,16 @@ import { newSessionDraft } from "./sessions.form";
 import { useSessionMessageActions } from "./sessions.hook";
 import { SessionsQuery } from "./sessions.query";
 import type { PipelineStep } from "./components/pipeline-layout/pipeline-layout.component";
-import type { SessionDocument, SessionDraft, SessionReturnTo, StoredSession } from "./sessions.types";
+import type { SessionDraft, SessionFullView, SessionReturnTo } from "./sessions.types";
+import type { DocumentLink } from "~/features/documents/documents.types";
 import type { RowAction } from "~/components/shared/row-actions/row-actions.component";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
-import type { Conflict } from "~/features/conflicts/conflicts.types";
+import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { ConflictActions } from "~/features/conflicts/components/conflict-actions/conflict-actions.component";
 import { ConflictsQuery } from "~/features/conflicts/conflicts.query";
-import { RemedyButtons } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
-import { documentLabel, documentRoute } from "~/features/documents/documents.util";
+import { conflictKind } from "~/features/conflicts/conflicts.util";
+import { documentRoute, refLabel } from "~/features/documents/documents.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { TodoQuery } from "~/features/todo/todo.query";
@@ -62,7 +63,7 @@ export function SessionPage(props: SessionPageProps) {
 function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
-  const save = useBookingSave(undefined, (draft, id) => {
+  const save = useBookingSave(undefined, undefined, (draft, id) => {
     const booked = new Date(draft.start) > new Date();
     toast.success(booked ? `Booked for ${formatSessionTime(draft.start)}` : "Session added");
     // Straight to its notes and payment.
@@ -120,16 +121,15 @@ function ExistingSession({ id, returnTo }: { id: string; returnTo: SessionReturn
       </>
     );
   }
-  return <SessionPipeline stored={detail.data} returnTo={returnTo} />;
+  return <SessionPipeline session={detail.data} returnTo={returnTo} />;
 }
 
-function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo: SessionReturnTo | undefined }) {
-  const { session } = stored;
+function SessionPipeline({ session, returnTo }: { session: SessionFullView; returnTo: SessionReturnTo | undefined }) {
   const navigate = useNavigate();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   const todo = TodoQuery.useList();
-  const record = useRecordDraft(session, stored.notes);
+  const record = useRecordDraft(session, session.notes);
   const conflicts = ConflictsQuery.useByTarget(session.id);
   const [deleting, setDeleting] = useState(false);
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
@@ -142,7 +142,7 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
   const documents = allSessionDocuments(session, bought);
   // An issued document stays as it says: an edit that would change it is
   // refused, with cancelling it as the remedy.
-  const issued = documents.filter(({ ref }) => ref.number);
+  const issued = documents.filter((doc) => doc.issued);
   const next = nextTodoSession(todo.data, session.id);
   const leave = () => void navigate(returnTo === "home" ? { to: "/" } : { to: "/sessions" });
   const waiting = conflicts.data ?? [];
@@ -160,18 +160,18 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
   ];
 
   const steps: Array<PipelineStep> = [
-    bookingStep(session, stored.draft, () => setDeleting(true)),
+    bookingStep(session, () => setDeleting(true)),
     recordStep(session, record),
     paymentStep(session, covering, bought),
     documentsStep(session, bought),
-    followUpsStep(session, client, stored.draft, setFollowUp, setNextVisit),
+    followUpsStep(session, client, setFollowUp, setNextVisit),
   ];
 
   return (
     <>
       <PageHeader
         parent={parent}
-        title={client?.name ?? "Unknown client"}
+        title={client?.name ?? session.clientName}
         actions={
           next && (
             <Button
@@ -191,7 +191,7 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
           (waiting.length > 0 || issued.length > 0) && (
             <>
               {waiting.map((conflict) => (
-                <ConflictBanner key={conflict.key} conflict={conflict} />
+                <ConflictBanner key={conflict.eventId} conflict={conflict} />
               ))}
               {issued.length > 0 && (
                 <Banner tone="neutral" icon={LockIcon} title="On an issued document.">
@@ -206,41 +206,39 @@ function SessionPipeline({ stored, returnTo }: { stored: StoredSession; returnTo
       />
       <DeleteSessionDialog
         session={deleting ? session : null}
-        clientName={client?.name ?? "the client"}
+        clientName={client?.name ?? session.clientName}
         onClose={() => setDeleting(false)}
         onDeleted={leave}
       />
       <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
-      <NextVisitDialog from={nextVisit} clientName={client?.name ?? "the client"} onClose={() => setNextVisit(null)} />
+      <NextVisitDialog from={nextVisit} clientName={client?.name ?? session.clientName} onClose={() => setNextVisit(null)} />
     </>
   );
 }
 
 /**
- * An edit she made to this session's event in the calendar that bizzy
- * didn't apply: what it asks, why not, and how to settle it.
+ * An edit made to this session's event in the calendar that bizzy refused:
+ * what the event says, why not, and how to settle it.
  */
-function ConflictBanner({ conflict }: { conflict: Conflict }) {
-  const title = conflict.kind === "gone" ? "Deleted in your calendar, but kept here." : "Changed in your calendar, but not here.";
+function ConflictBanner({ conflict }: { conflict: ConflictView }) {
+  const title = conflict.gone ? `${conflictKind(conflict)}, but kept here.` : `${conflictKind(conflict)}, but not here.`;
   return (
     <Banner tone="attention" icon={CalendarX2Icon} title={title}>
       <span className="flex flex-col gap-2">
-        {conflict.asks.length > 0 && <span>It asks: {conflict.asks.join(", ")}.</span>}
-        {conflict.violations.map((v) => (
-          <span key={v.guard}>{v.message}</span>
-        ))}
-        <RemedyButtons remedies={conflict.fixes} size="xs" onDone={() => toast.success("Done")} />
+        {!conflict.gone && <span>It says “{conflict.title}”.</span>}
+        <span>{conflict.message}</span>
+        <ConflictActions conflict={conflict} size="xs" />
       </span>
     </Banner>
   );
 }
 
-function documentLinks(documents: ReadonlyArray<SessionDocument>) {
-  return documents.map(({ type, ref }, i) => (
-    <span key={ref.documentId}>
+function documentLinks(documents: ReadonlyArray<DocumentLink>) {
+  return documents.map(({ type, ref, issued }, i) => (
+    <span key={ref.id}>
       {i > 0 && " and "}
-      <TextLink to={documentRoute(type)} params={{ id: ref.documentId }}>
-        {ref.number ? documentLabel(ref.number, ref.revision) : `the draft ${DOCUMENT_TYPES[type].title.toLowerCase()}`}
+      <TextLink to={documentRoute(type)} params={{ id: ref.id }}>
+        {refLabel(type, ref, issued)}
       </TextLink>
     </span>
   ));

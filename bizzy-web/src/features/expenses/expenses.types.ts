@@ -1,4 +1,4 @@
-// Mirrors bizzy-lambda/internal/features/expenses.
+// Mirrors bizzy-lambda/internal/features/expenses/api.go and expense.go.
 
 /** One item on a receipt. Name and category are the item's as the line was written. */
 export interface ExpenseLine {
@@ -8,8 +8,8 @@ export interface ExpenseLine {
   amountCents: number;
 }
 
-/** One receipt. */
-export interface Expense {
+/** One receipt, as the app shows it; mirrors expenses.View. */
+export interface ExpenseView {
   id: string;
   /** The day on the receipt, YYYY-MM-DD. */
   date: string;
@@ -17,12 +17,11 @@ export interface Expense {
   vendor?: string;
   lines: Array<ExpenseLine>;
   notes?: string;
+  totalCents: number;
   /** How many files are attached: the receipt's photo or PDF. */
-  files?: number;
+  files: number;
   createdAt: string;
   updatedAt: string;
-  version: number;
-  totalCents: number;
 }
 
 /** One thing she buys, from the list lines are picked from. */
@@ -48,15 +47,17 @@ export interface ExpenseCategory {
   archived?: boolean;
 }
 
-export interface Catalogue {
+/** What lines are picked from; mirrors expenses.CatalogueView. */
+export interface CatalogueView {
   categories: Array<ExpenseCategory & { id: string }>;
   items: Array<ExpenseItem>;
 }
 
-/** An expense as the form sends it; a line without an item id adds a new item. */
-export interface SaveExpenseInput {
-  id?: string;
-  version: number;
+/**
+ * What expenses.create and expenses.update take: the whole receipt; mirrors
+ * expenses.Receipt. A line without an item id adds a new item.
+ */
+export interface ExpenseFields {
   date: string;
   vendor: string;
   notes: string;

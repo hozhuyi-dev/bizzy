@@ -1,27 +1,28 @@
 import { change, monthTotals, monthlySeries, summarize, topClients, yearlySeries } from "./insights-metrics.util";
-import type { Client } from "~/features/clients/clients.types";
+import type { ActivityView } from "~/features/activity/activity.types";
 
-const clients: Array<Client> = [
+const activities: Array<ActivityView> = [
   {
-    id: "jane",
-    name: "Jane",
-    aliases: [],
-    activity: {
+    clientId: "jane",
+    months: {
       "2025-10": { sessions: 2, receivedCents: 20000, earnedCents: 20000 },
       "2026-09": { sessions: 3, homeSessions: 1, receivedCents: 85000, earnedCents: 25500, homeEarnedCents: 8500 },
       "2026-10": { sessions: 2, receivedCents: 0, earnedCents: 17000 },
     },
   },
   {
-    id: "bob",
-    name: "Bob",
-    aliases: [],
-    activity: { "2026-10": { sessions: 1, receivedCents: 12000, earnedCents: 12000 } },
+    clientId: "bob",
+    months: { "2026-10": { sessions: 1, receivedCents: 12000, earnedCents: 12000 } },
   },
 ];
 
+const names = new Map([
+  ["jane", { name: "Jane" }],
+  ["bob", { name: "Bob" }],
+]);
+
 describe("insights metrics", () => {
-  const totals = monthTotals(clients);
+  const totals = monthTotals(activities);
 
   test("monthly series compares with last year and counts new clients", () => {
     const series = monthlySeries(totals, "received", "2026-10", 2);
@@ -59,7 +60,7 @@ describe("insights metrics", () => {
   });
 
   test("top clients with their share", () => {
-    const top = topClients(clients, "received", "2026-01", "2026-12");
+    const top = topClients(activities, names, "received", "2026-01", "2026-12");
     expect(top.map((c) => c.id)).toEqual(["jane", "bob"]);
     expect(top[0]?.share).toBeCloseTo(85000 / 97000);
   });
