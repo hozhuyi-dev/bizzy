@@ -9,7 +9,7 @@ import { createDataTableColumnHelper } from "~/components/shared/data-table/data
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { formatCents } from "~/core/utils/money.util";
-import { formatDate } from "~/core/utils/date.util";
+import { formatDate, formatHours } from "~/core/utils/date.util";
 import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
 
 export interface PackageHandlers {
@@ -25,7 +25,7 @@ const helper = createDataTableColumnHelper<PackageView>();
 export function PackageCredits({ pkg }: { pkg: PackageView }) {
   return (
     <span>
-      {pkg.creditsLeft} of {pkg.sessions} left
+      {formatHours(pkg.creditsLeft)} of {formatHours(pkg.hours)} left
     </span>
   );
 }
@@ -40,7 +40,7 @@ export function PackagePrice({ pkg }: { pkg: PackageView }) {
     <span className="flex flex-col">
       <span>{formatCents(pkg.priceCents)}</span>
       <span className="text-xs text-muted-foreground">
-        {formatCents(Math.round(pkg.priceCents / pkg.sessions))} each
+        {formatCents(Math.round(pkg.priceCents / pkg.hours))} an hour
       </span>
     </span>
   );
@@ -119,7 +119,7 @@ export function createPackageColumns(handlers: PackageHandlers) {
       id: "credits",
       header: "Credits",
       sortFn: "basic",
-      meta: { search: (pkg: PackageView) => `${pkg.creditsLeft} of ${pkg.sessions} left` },
+      meta: { search: (pkg: PackageView) => `${formatHours(pkg.creditsLeft)} of ${formatHours(pkg.hours)} left` },
       cell: ({ row }) => <PackageCredits pkg={row.original} />,
     }),
     helper.accessor("priceCents", {

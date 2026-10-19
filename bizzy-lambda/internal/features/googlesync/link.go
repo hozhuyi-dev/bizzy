@@ -125,7 +125,7 @@ func sessionEvent(tx *txn.Tx, s *sessions.Session, seen *calendar.Snapshot) (cal
 	title := calendar.Title{Tentative: s.Tentative, Name: writtenName(client, seen, false), Place: placeFor(s.Location, client.HomeVisits)}
 	if cents, typed, err := sessions.Fee(tx, s); err != nil {
 		return calendar.Snapshot{}, err
-	} else if typed && s.PackageID == "" {
+	} else if typed && len(s.Credits) == 0 {
 		title.FeeCents = &cents
 	}
 	if p, err := packages.BoughtIn(tx, s.ID); err != nil {
@@ -135,7 +135,7 @@ func sessionEvent(tx *txn.Tx, s *sessions.Session, seen *calendar.Snapshot) (cal
 		if err != nil {
 			return calendar.Snapshot{}, err
 		}
-		title.Package = &calendar.PackageSpec{Sessions: p.Sessions, PriceCents: price}
+		title.Package = &calendar.PackageSpec{Hours: p.Hours, PriceCents: price}
 	}
 	return calendar.Snapshot{Title: calendar.FormatTitle(title), Start: s.Start.UTC(), End: s.End.UTC()}, nil
 }

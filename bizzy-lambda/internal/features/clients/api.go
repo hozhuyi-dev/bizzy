@@ -17,8 +17,8 @@ type View struct {
 	HomeVisits      bool       `json:"homeVisits"`
 	Contact         *Contact   `json:"contact,omitempty"`
 	LastContactedAt *time.Time `json:"lastContactedAt,omitempty"`
-	// FeeTodayCents is the fee a session without one would be charged
-	// today; nil when no fee is set.
+	// FeeTodayCents is the hourly fee a session without one would be
+	// charged today; nil when no fee is set.
 	FeeTodayCents *int64 `json:"feeTodayCents,omitempty"`
 }
 

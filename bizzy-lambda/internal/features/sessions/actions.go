@@ -70,12 +70,14 @@ func apply(tx *txn.Tx, s *Session, f Fields, isNew bool) error {
 	if err != nil {
 		return err
 	}
-	rescheduled := false
+	rescheduled, resized := false, false
 	if f.Time != nil {
 		rescheduled = !isNew && (!f.Time.Start.Equal(s.Start) || !f.Time.End.Equal(s.End))
+		was := s.Billable()
 		if err := reschedule(tx, s, *f.Time); err != nil {
 			return err
 		}
+		resized = !isNew && s.Billable() != was
 	}
 	if f.Location != nil {
 		if *f.Location != LocationOwn && *f.Location != LocationVisit {
@@ -92,16 +94,16 @@ func apply(tx *txn.Tx, s *Session, f Fields, isNew bool) error {
 	if err != nil {
 		return err
 	}
-	if s.PackageID != "" {
-		p, ok, err := packages.Packages.Find(tx, s.PackageID)
+	for _, c := range s.Credits {
+		p, ok, err := packages.Packages.Find(tx, c.PackageID)
 		if err != nil {
 			return err
 		}
 		if !ok || p.ClientID != s.ClientID {
-			moved = true // Its credit is gone, or another client's: choose again.
+			moved = true // Its credits are gone, or another client's: choose again.
 		}
 	}
-	if isNew || f.Fee != nil || moved || bought {
+	if isNew || f.Fee != nil || moved || bought || resized {
 		var fee *int64
 		if f.Fee != nil {
 			fee = f.Fee.Cents
@@ -213,8 +215,8 @@ func setTentative(tx *txn.Tx, s *Session, tentative bool) error {
 // rebuy makes the package bought in it what choice says (nil: as it is),
 // following the session's client and day when follow is set. It reports
 // whether what pays for the session must be chosen again: one was bought
-// that wasn't (its first credit pays for it), or the one whose credit
-// did is no longer bought.
+// that wasn't (its credits may pay for it), or one whose credits did is
+// no longer bought.
 func rebuy(tx *txn.Tx, s *Session, choice *PackageChoice, follow bool) (bool, error) {
 	had, err := packages.BoughtIn(tx, s.ID)
 	if err != nil {
@@ -231,10 +233,10 @@ func rebuy(tx *txn.Tx, s *Session, choice *PackageChoice, follow bool) (bool, er
 	default:
 		return false, nil
 	}
-	dropped := spec == nil && had != nil && s.PackageID == had.ID
+	dropped := spec == nil && had != nil && s.Uses(had.ID)
 	if dropped {
-		// Its credit paid for the session: something else will.
-		s.PackageID = ""
+		// Its credits paid for the session: something else will.
+		s.Credits = nil
 	}
 	into, err := draftInvoice(tx, s.Source())
 	if err != nil {

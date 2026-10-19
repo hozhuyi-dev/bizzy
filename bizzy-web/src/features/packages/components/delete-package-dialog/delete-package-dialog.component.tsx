@@ -13,6 +13,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
 import { formatCents } from "~/core/utils/money.util";
+import { formatHours } from "~/core/utils/date.util";
 
 interface DeletePackageDialogProps {
   pkg: PackageView | null;
@@ -35,7 +36,7 @@ export function DeletePackageDialog({ pkg, clientName, onClose }: DeletePackageD
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this package?</AlertDialogTitle>
               <AlertDialogDescription>
-                {clientName}, {pkg.sessions} sessions for {formatCents(pkg.priceCents)}. This can't be undone.
+                {clientName}, {formatHours(pkg.hours)} for {formatCents(pkg.priceCents)}. This can't be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

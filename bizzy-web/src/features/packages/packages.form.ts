@@ -5,7 +5,7 @@ import { toISODate, todayISO } from "~/core/utils/date.util";
 
 export interface PackageFormValues {
   clientId: string;
-  sessions: string;
+  hours: string;
   /** Total price, as written after the @. */
   price: string;
   purchasedOn: string;
@@ -17,11 +17,11 @@ export interface PackageFormValues {
   updatePayment: boolean;
 }
 
-/** A package to edit, or a new one of 10 bought today. */
+/** A package to edit, or a new one of 10 hours bought today. */
 export function toPackageValues(pkg: PackageView | undefined, clientId?: string): PackageFormValues {
   return {
     clientId: pkg?.clientId ?? clientId ?? "",
-    sessions: pkg ? String(pkg.sessions) : "10",
+    hours: pkg ? String(pkg.hours) : "10",
     price: centsToInput(pkg?.priceCents),
     purchasedOn: pkg ? toISODate(new Date(pkg.purchasedAt)) : todayISO(),
     note: pkg?.note ?? "",
@@ -42,10 +42,10 @@ export function toPackageFields(values: PackageFormValues, pkg: PackageView | un
   // it covers that day's sessions.
   const sameDay = pkg !== undefined && toISODate(new Date(pkg.purchasedAt)) === values.purchasedOn;
   const fields: PackageFields = {};
-  const sessions = Number(values.sessions);
+  const hours = Number(values.hours);
   const priceCents = parseCents(values.price) ?? 0;
   if (!pkg || values.clientId !== pkg.clientId) fields.clientId = values.clientId;
-  if (!pkg || sessions !== pkg.sessions) fields.sessions = sessions;
+  if (!pkg || hours !== pkg.hours) fields.hours = hours;
   if (!pkg || priceCents !== pkg.priceCents) fields.priceCents = priceCents;
   if (!sameDay) fields.purchasedAt = new Date(year, month - 1, day).toISOString();
   if (!pkg || values.note !== (pkg.note ?? "")) fields.note = values.note;

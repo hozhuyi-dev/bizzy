@@ -15,7 +15,7 @@ import (
 // Fields are what the app sets on a package; nil leaves a field as it is.
 type Fields struct {
 	ClientID    *string    `json:"clientId,omitempty"`
-	Sessions    *int       `json:"sessions,omitempty"`
+	Hours       *int       `json:"hours,omitempty"`
 	PriceCents  *int64     `json:"priceCents,omitempty"`
 	PurchasedAt *time.Time `json:"purchasedAt,omitempty"`
 	Note        *string    `json:"note,omitempty"`
@@ -28,8 +28,8 @@ type Fields struct {
 
 // Create buys a package on its own.
 func Create(tx *txn.Tx, f Fields, used Usage) (*Package, error) {
-	if f.ClientID == nil || f.Sessions == nil || f.PriceCents == nil || f.PurchasedAt == nil {
-		return nil, apperr.Invalid("A package needs a client, how many sessions, a price and when it was bought.")
+	if f.ClientID == nil || f.Hours == nil || f.PriceCents == nil || f.PurchasedAt == nil {
+		return nil, apperr.Invalid("A package needs a client, how many hours, a price and when it was bought.")
 	}
 	if _, err := clients.Clients.Get(tx, *f.ClientID); err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func Update(tx *txn.Tx, id string, f Fields, used Usage) (*Package, error) {
 
 // Bought is a package bought in a session, as its booking says it.
 type Bought struct {
-	Sessions   int   `json:"sessions"`
+	Hours      int   `json:"hours"`
 	PriceCents int64 `json:"priceCents"`
 }
 
@@ -80,7 +80,7 @@ func Rebuy(tx *txn.Tx, sessionID, clientID string, at time.Time, b *Bought, into
 			return nil, err
 		}
 	}
-	f := Fields{ClientID: &clientID, Sessions: &b.Sessions, PriceCents: &b.PriceCents, PurchasedAt: &at}
+	f := Fields{ClientID: &clientID, Hours: &b.Hours, PriceCents: &b.PriceCents, PurchasedAt: &at}
 	return p, apply(tx, p, f, used, into)
 }
 
@@ -94,7 +94,7 @@ func Delete(tx *txn.Tx, id string, used Usage) error {
 	if n, err := used(tx, p.ID); err != nil {
 		return err
 	} else if n > 0 {
-		return apperr.Refused(fmt.Sprintf("%d sessions use this package's credits. Give them a fee instead first.", n))
+		return apperr.Refused(fmt.Sprintf("Sessions use %s of this package's credits. Give them a fee instead first.", Hours(n)))
 	}
 	if err := documents.Remove(tx, documents.PackageSource(p.ID), describe(tx, p)); err != nil {
 		return err
@@ -137,34 +137,34 @@ func apply(tx *txn.Tx, p *Package, f Fields, used Usage, into string) error {
 		if n, err := used(tx, p.ID); err != nil {
 			return err
 		} else if n > 0 {
-			return apperr.Refused(fmt.Sprintf("%d sessions use this package's credits, so it stays their client's.", n))
+			return apperr.Refused(fmt.Sprintf("Sessions use %s of this package's credits, so it stays their client's.", Hours(n)))
 		}
 		if err := documents.MoveToClient(tx, src, *f.ClientID, map[documents.Type]string{}); err != nil {
 			return err
 		}
 		p.ClientID = *f.ClientID
 	}
-	if f.Sessions != nil && *f.Sessions != p.Sessions {
-		if *f.Sessions < 1 || *f.Sessions > 1000 {
-			return apperr.Invalid("A package has 1 to 1000 sessions.")
+	if f.Hours != nil && *f.Hours != p.Hours {
+		if *f.Hours < 1 || *f.Hours > 1000 {
+			return apperr.Invalid("A package has 1 to 1000 hours.")
 		}
 		if n, err := used(tx, p.ID); err != nil {
 			return err
-		} else if *f.Sessions < n {
-			return apperr.Refused(fmt.Sprintf("%d sessions use its credits already.", n))
+		} else if *f.Hours*60 < n {
+			return apperr.Refused(fmt.Sprintf("Sessions use %s of its credits already.", Hours(n)))
 		}
 		if inv, _, err := documents.Invoice(tx, src); err != nil {
 			return err
 		} else if !isNew && inv.Issued() {
-			return apperr.Refused(fmt.Sprintf("%s is issued for a package of %d sessions. Cancel it first, then change the package.", inv.Number, p.Sessions),
+			return apperr.Refused(fmt.Sprintf("%s is issued for a package of %s. Cancel it first, then change the package.", inv.Number, Hours(p.Hours*60)),
 				apperr.Remedy{Action: "documents.cancel", Target: inv.ID, Label: "Cancel " + inv.Number})
 		}
 		if !isNew {
-			if err := documents.Redescribe(tx, src, Description(cfg, p.Sessions), Description(cfg, *f.Sessions)); err != nil {
+			if err := documents.Redescribe(tx, src, Description(cfg, p.Hours), Description(cfg, *f.Hours)); err != nil {
 				return err
 			}
 		}
-		p.Sessions = *f.Sessions
+		p.Hours = *f.Hours
 	}
 	if f.PurchasedAt != nil {
 		if f.PurchasedAt.IsZero() {
@@ -182,7 +182,7 @@ func apply(tx *txn.Tx, p *Package, f Fields, used Usage, into string) error {
 			return apperr.Invalid("A price can't be negative.")
 		}
 		if _, err := documents.SetCharge(tx, documents.Charge{
-			ClientID: p.ClientID, Source: src, Description: Description(cfg, p.Sessions),
+			ClientID: p.ClientID, Source: src, Description: Description(cfg, p.Hours),
 			Date: day(tx, p.PurchasedAt), Cents: *f.PriceCents, Into: into,
 		}); err != nil {
 			return err

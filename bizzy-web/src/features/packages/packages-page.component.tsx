@@ -23,7 +23,7 @@ import { RowActionMenu } from "~/components/shared/row-actions/row-actions.compo
 import { Card, CardContent } from "~/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { formatDate } from "~/core/utils/date.util";
+import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -176,7 +176,7 @@ export function PackagesPage({ view, onViewChange, newFor, settle }: PackagesPag
             <DialogTitle>Package payment</DialogTitle>
             {paying && (
               <DialogDescription>
-                {clientName(paying, clientsById)} · {paying.sessions} sessions, bought {formatDate(paying.purchasedAt)}
+                {clientName(paying, clientsById)} · {formatHours(paying.hours)}, bought {formatDate(paying.purchasedAt)}
               </DialogDescription>
             )}
           </DialogHeader>

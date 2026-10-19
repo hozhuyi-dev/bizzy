@@ -25,8 +25,8 @@ type View struct {
 	Conflict *conflicts.View `json:"conflict,omitempty"`
 }
 
-// Routes registers the to-do list's actions. used counts the sessions
-// using a package's credits (packages.Usage).
+// Routes registers the to-do list's actions. used counts the minutes of
+// a package's credits that sessions use (packages.Usage).
 func Routes(r *router.Router, run *txn.Runner, used packages.Usage) {
 	r.Query("todo.list", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) { return List(tx, used) })

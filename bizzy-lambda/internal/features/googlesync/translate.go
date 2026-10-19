@@ -239,7 +239,7 @@ func bought(p *calendar.PackageSpec) *packages.Bought {
 	if p == nil {
 		return nil
 	}
-	return &packages.Bought{Sessions: p.Sessions, PriceCents: p.PriceCents}
+	return &packages.Bought{Hours: p.Hours, PriceCents: p.PriceCents}
 }
 
 func sameFee(a, b *int64) bool {

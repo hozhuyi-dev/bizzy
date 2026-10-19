@@ -17,14 +17,14 @@ export interface ClientView {
   /** The linked Google contact, where the client's details live. */
   contact?: ClientContact;
   lastContactedAt?: string;
-  /** What a session without a fee would be charged today; unset when no fee is set. */
+  /** The hourly fee a session without one would be charged today; unset when no fee is set. */
   feeTodayCents?: number;
 }
 
 /**
- * One fee and the day it starts. A session with no fee typed and no package
- * credit pays the last rate starting on or before its day; a new rate leaves
- * the sessions before it alone.
+ * One hourly fee and the day it starts. What package credits leave of a
+ * session with no fee typed is charged at the last rate starting on or
+ * before its day; a new rate leaves the sessions before it alone.
  */
 export interface FeeRate {
   /** The first day it applies (YYYY-MM-DD). The first rate has none: it covers everything before the next. */

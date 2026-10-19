@@ -1,7 +1,8 @@
-import type { DocumentItem, SessionReason, SessionView, StageBadge } from "./sessions.types";
+import type { CoveringCredit, DocumentItem, SessionReason, SessionView, StageBadge } from "./sessions.types";
 import type { DocumentLink, DocumentType } from "~/features/documents/documents.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import { coveringDocuments } from "~/features/documents/documents.util";
+import { formatHours } from "~/core/utils/date.util";
 
 /**
  * How a session reads in lists and on its page. What it is (what is left to
@@ -31,23 +32,32 @@ export function stageBadges(session: SessionView, now = new Date()): Array<Stage
   return [{ label: "Done", tone: "done" }];
 }
 
-/** What the session costs: its fee, or nothing of its own on a package credit. */
+/** What the session costs: its fee, or nothing of its own when package credits pay it all. */
 export function sessionAmount(session: SessionView): number | undefined {
-  return session.packageId ? undefined : session.feeCents;
+  return session.invoice ? session.feeCents : undefined;
+}
+
+/** The packages whose credits pay for the session, with the hours each pays, as far as they are loaded. */
+export function coveringCredits(session: SessionView, packages: ReadonlyArray<PackageView> | undefined): Array<CoveringCredit> {
+  return session.credits.flatMap(({ packageId, hours }) => {
+    const pkg = packages?.find((p) => p.id === packageId);
+    return pkg ? [{ pkg, hours }] : [];
+  });
 }
 
 /**
- * What a session's invoice covers: the session's fee (none on a credit)
- * and the package bought in it. Each is on a draft invoice from the start.
+ * What a session's invoice covers: the session's fee (none when credits
+ * pay it all) and the package bought in it. Each is on a draft invoice
+ * from the start.
  */
 export function documentItems(session: SessionView): Array<DocumentItem> {
   const items: Array<DocumentItem> = [];
-  if (!session.packageId) {
+  if (session.invoice) {
     items.push({ source: { kind: "session", id: session.id }, label: "Session fee", amountCents: session.feeCents });
   }
   if (session.bought) {
     const { bought } = session;
-    items.push({ source: { kind: "package", id: bought.id }, label: `Package of ${bought.sessions}`, amountCents: bought.priceCents });
+    items.push({ source: { kind: "package", id: bought.id }, label: `Package of ${formatHours(bought.hours)}`, amountCents: bought.priceCents });
   }
   return items;
 }

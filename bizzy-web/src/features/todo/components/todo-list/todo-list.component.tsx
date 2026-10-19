@@ -43,7 +43,7 @@ import { ListRow } from "~/components/shared/list-row/list-row.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { EmptyState } from "~/components/shared/quip/quip.component";
 import { toastWithQuip } from "~/components/shared/quip/quip-toast";
-import { formatDate, formatSessionTime, todayISO } from "~/core/utils/date.util";
+import { formatDate, formatHours, formatSessionTime, todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -458,7 +458,7 @@ function PackageTodo({ pkg, onPayOther }: { pkg: PackageView; onPayOther: (payab
           <Badge variant={REASONS.collect.tone}>{REASONS.collect.label}</Badge>
         </>
       }
-      meta={`Package of ${pkg.sessions} · bought ${formatDate(pkg.purchasedAt)} · ${formatCents(pkg.owedCents)} due`}
+      meta={`Package of ${formatHours(pkg.hours)} · bought ${formatDate(pkg.purchasedAt)} · ${formatCents(pkg.owedCents)} due`}
       detail={pkg.note}
       detailTitle={pkg.note}
       actions={

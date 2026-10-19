@@ -1,6 +1,11 @@
-import { addDays, addMonths, dayRange, monthRange, monthsBetween, startOfDay, toISODate, todayISO } from "./date.util";
+import { addDays, addMonths, dayRange, formatHours, monthRange, monthsBetween, startOfDay, toISODate, todayISO } from "./date.util";
 
 describe("date utils", () => {
+  test("formatHours writes half hours", () => {
+    expect(formatHours(1.5)).toBe("1.5 h");
+    expect(formatHours(10)).toBe("10 h");
+  });
+
   test("addMonths crosses years", () => {
     expect(addMonths("2026-11", 2)).toBe("2027-01");
     expect(addMonths("2026-01", -1)).toBe("2025-12");

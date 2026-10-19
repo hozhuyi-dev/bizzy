@@ -1,5 +1,5 @@
 // Package clients is the practice's clients: who they are, the names a
-// calendar title can call them by, their usual fee and place, and the
+// calendar title can call them by, their usual hourly fee and place, and the
 // Google contact their details live in.
 package clients
 
@@ -19,9 +19,10 @@ type Client struct {
 	// Aliases are other names the user's calendar titles call the client
 	// by, e.g. "jane s".
 	Aliases []string `json:"aliases,omitempty"`
-	// FeeRates are the client's fees over time, oldest first, charged
-	// when nothing else pays for a session (see FeeOn). A new fee from a
-	// date leaves the sessions before it alone.
+	// FeeRates are the client's hourly fees over time, oldest first,
+	// charging for what package credits leave of a session with no fee
+	// typed (see FeeOn). A new fee from a date leaves the sessions before
+	// it alone.
 	FeeRates []FeeRate `json:"feeRates,omitempty"`
 	// HomeVisits makes the client's sessions home visits unless a title
 	// says (H).
@@ -36,11 +37,11 @@ type Client struct {
 
 var Clients = txn.Kind[Client]{
 	Name: "CLIENT", Gone: "This client was deleted.",
-	Doc:  txn.Doc{What: "A client: name, calendar names, usual fees and place, and a copy of their Google contact."},
+	Doc:  txn.Doc{What: "A client: name, calendar names, usual hourly fees and place, and a copy of their Google contact."},
 	Meta: func(c *Client) txn.Meta { return txn.Meta{ID: c.ID} },
 }
 
-// FeeRate is one fee and the day it starts.
+// FeeRate is one hourly fee and the day it starts.
 type FeeRate struct {
 	// From is the first local day (YYYY-MM-DD) it applies; empty for the
 	// first rate, which also covers every session before the next one.
@@ -48,8 +49,8 @@ type FeeRate struct {
 	Cents int64  `json:"cents"`
 }
 
-// FeeOn is the fee for a session on a local day (YYYY-MM-DD): the last
-// rate starting on or before it. Nil when no fee is set.
+// FeeOn is the hourly fee for a session on a local day (YYYY-MM-DD): the
+// last rate starting on or before it. Nil when no fee is set.
 func (c Client) FeeOn(day string) *int64 {
 	var fee *int64
 	for _, r := range c.FeeRates {

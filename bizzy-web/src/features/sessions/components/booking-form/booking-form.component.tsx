@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
-import { toBookingValues, toSessionDraft } from "../../sessions.form";
+import { sessionTime, toBookingValues, toSessionDraft } from "../../sessions.form";
 import { SessionsQuery } from "../../sessions.query";
 import type { BookingValues, PriceIs } from "../../sessions.form";
 import type { CoverView, PreviewSessionRequest, SessionDraft, SessionView } from "../../sessions.types";
@@ -14,12 +14,12 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLab
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Separator } from "~/components/ui/separator";
-import { formatDate } from "~/core/utils/date.util";
+import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents, parseCents } from "~/core/utils/money.util";
 import { fieldErrors } from "~/core/utils/form.util";
 
 const PRICE_IS_ITEMS: Array<{ value: PriceIs; label: string }> = [
-  { value: "each", label: "per session" },
+  { value: "each", label: "per hour" },
   { value: "total", label: "in total" },
 ];
 
@@ -77,20 +77,28 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
     const name = clientsById.get(values.clientId)?.name;
     if (!name) return "Choose a client to see what covers it.";
     if (!cover) return "Working out what covers it…";
-    const prefix = values.fee.trim() ? "Takes priority over" : "Leave blank to use";
+    const prefix = values.fee.trim() ? `Its whole fee, in place of` : "Leave blank to use";
+    const credits = cover.credits
+      .map(({ packageId, hours }) => {
+        const pkg = packages.data?.find((p) => p.id === packageId);
+        return pkg
+          ? `${formatHours(hours)} of ${name}'s package bought ${formatDate(pkg.purchasedAt)} (${formatHours(pkg.creditsLeft)} left)`
+          : `${formatHours(hours)} of ${name}'s package credits`;
+      })
+      .join(", then ");
+    const then = credits ? `${credits}, then ` : "";
+    const charged = `Charged as ${formatHours(cover.hours)}.`;
     switch (cover.kind) {
       case "bought":
-        return `${prefix} the package bought in this session.`;
-      case "credit": {
-        const { packageId } = cover;
-        const pkg = packages.data?.find((p) => p.id === packageId);
-        if (!pkg) return `${prefix} a credit of one of ${name}'s packages.`;
-        return `${prefix} ${name}'s package bought ${formatDate(pkg.purchasedAt)}: ${pkg.creditsLeft} of ${pkg.sessions} credits left.`;
-      }
+        return `${charged} ${prefix} ${then}the package bought in this session.`;
+      case "credit":
+        return `${charged} ${prefix} ${credits}.`;
       case "default":
-        return `${prefix} ${name}'s usual fee of ${formatCents(cover.feeCents)}; no package credits left.`;
+        return `${charged} ${prefix} ${then}${name}'s usual fee for ${formatHours(cover.feeHours)}: ${formatCents(cover.feeCents ?? 0)}.`;
       case "none":
-        return `${name} has no package credits left and no fee set.`;
+        return credits
+          ? `${charged} ${credits} leaves ${formatHours(cover.feeHours)}, and ${name} has no fee set.`
+          : `${charged} ${name} has no package credits left and no fee set.`;
     }
   };
 
@@ -227,12 +235,12 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
         <form.Field
           name="fee"
           validators={{
-            onChangeListenTo: ["clientId", "date", "time", "packageSessions", "packagePrice", "tentative"],
+            onChangeListenTo: ["clientId", "date", "time", "minutes", "packageHours", "packagePrice", "tentative"],
             onChange: ({ value, fieldApi }) => {
               if (value.trim()) return parseCents(value) !== null ? undefined : "Like 95 or 95.50";
               // A booking not yet confirmed can wait for its fee.
               return cover?.kind === "none" && !fieldApi.form.getFieldValue("tentative")
-                ? "Enter the fee: no package credit or client fee covers it"
+                ? "Enter the fee: no package credits or client fee cover it"
                 : undefined;
             },
           }}
@@ -258,12 +266,12 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
 
         <div className="flex flex-wrap items-start gap-4">
           <form.Field
-            name="packageSessions"
+            name="packageHours"
             validators={{
               onChangeListenTo: ["packagePrice"],
               onChange: ({ value, fieldApi }) => {
                 if (!value.trim()) {
-                  return fieldApi.form.getFieldValue("packagePrice").trim() ? "How many sessions?" : undefined;
+                  return fieldApi.form.getFieldValue("packagePrice").trim() ? "How many hours?" : undefined;
                 }
                 return /^\d+$/.test(value.trim()) && Number(value) >= 1 && Number(value) <= 1000
                   ? undefined
@@ -277,7 +285,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
                 <Input
                   id={field.name}
                   inputMode="numeric"
-                  placeholder="Sessions"
+                  placeholder="Hours"
                     value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
@@ -290,10 +298,10 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
           <form.Field
             name="packagePrice"
             validators={{
-              onChangeListenTo: ["packageSessions"],
+              onChangeListenTo: ["packageHours"],
               onChange: ({ value, fieldApi }) => {
                 if (!value.trim()) {
-                  return fieldApi.form.getFieldValue("packageSessions").trim() ? "What does it cost?" : undefined;
+                  return fieldApi.form.getFieldValue("packageHours").trim() ? "What does it cost?" : undefined;
                 }
                 const cents = parseCents(value);
                 return cents !== null && cents > 0 ? undefined : "Like 180 or 1800";
@@ -345,8 +353,8 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
             return (
               <FieldDescription>
                 {pkg
-                  ? `${pkg.sessions} sessions for ${formatCents(pkg.priceCents)} (${formatCents(Math.round(pkg.priceCents / pkg.sessions))} each), due with this session, which uses the first.`
-                  : "Only if one is bought in this session; it uses the first credit."}
+                  ? `${formatHours(pkg.hours)} for ${formatCents(pkg.priceCents)} (${formatCents(Math.round(pkg.priceCents / pkg.hours))} an hour), due with this session, which uses its credits once older packages' run out.`
+                  : "Only if one is bought in this session, as hours; it uses the credits older packages leave."}
               </FieldDescription>
             );
           }}
@@ -385,5 +393,5 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
 function previewOf(values: BookingValues, session: SessionView | undefined): PreviewSessionRequest | undefined {
   if (!values.clientId || !values.date || !values.time) return undefined;
   const draft = toSessionDraft(values);
-  return { clientId: draft.clientId, start: draft.start, sessionId: session?.id, buysPackage: draft.package !== undefined };
+  return { clientId: draft.clientId, time: sessionTime(draft), sessionId: session?.id, buysPackage: draft.package !== undefined };
 }

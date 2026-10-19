@@ -8,8 +8,8 @@ import (
 	"bizzy-lambda/internal/platform/txn"
 )
 
-// Invariants are what holds for every package, always. That no more
-// sessions use one than it has, and that one bought in a session follows
+// Invariants are what holds for every package, always. That sessions use
+// no more of one than it has, and that one bought in a session follows
 // it, are held by sessions, which see both.
 var Invariants = []txn.Invariant{
 	{

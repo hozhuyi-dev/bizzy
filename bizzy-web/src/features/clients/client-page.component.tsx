@@ -29,7 +29,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { formatDate, todayISO } from "~/core/utils/date.util";
+import { formatDate, formatHours, todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { fieldErrors } from "~/core/utils/form.util";
 
@@ -171,7 +171,7 @@ function ClientEditor({ client, initialName, settle }: ClientEditorProps) {
           <form.Field name="fees" mode="array">
             {(feesField) => (
               <Field>
-                <FieldLabel>Fee</FieldLabel>
+                <FieldLabel>Hourly fee</FieldLabel>
                 {feesField.state.value.map((_, i) => (
                   <div key={i} className="grid grid-cols-[7rem_minmax(0,1fr)_auto] items-start gap-2">
                     <form.Field
@@ -396,12 +396,12 @@ function ClientPackages({ clientId }: { clientId: string }) {
       {own.map((pkg) => (
         <li key={pkg.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
           <span>
-            {pkg.sessions} sessions for {formatCents(pkg.priceCents)}
+            {formatHours(pkg.hours)} for {formatCents(pkg.priceCents)}
             <span className="text-muted-foreground"> · bought {formatDate(pkg.purchasedAt)}</span>
           </span>
           <span className="flex items-center gap-3">
             <span className={pkg.creditsLeft > 0 ? undefined : "text-muted-foreground"}>
-              {pkg.creditsLeft} of {pkg.sessions} left
+              {formatHours(pkg.creditsLeft)} of {formatHours(pkg.hours)} left
             </span>
             {coveringDocuments(pkg).length > 0 ? (
               coveringDocuments(pkg).map(({ type, ref, issued }) => (

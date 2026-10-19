@@ -147,7 +147,7 @@ func addSessionFields(t *rapid.T, in map[string]any, isNew bool) {
 	switch rapid.IntRange(0, 5).Draw(t, "package") {
 	case 0:
 		in["package"] = map[string]any{"bought": map[string]any{
-			"sessions": rapid.SampledFrom([]int{1, 5}).Draw(t, "package sessions"), "priceCents": rapid.SampledFrom([]int64{0, 40000}).Draw(t, "package price")}}
+			"hours": rapid.SampledFrom([]int{1, 5}).Draw(t, "package hours"), "priceCents": rapid.SampledFrom([]int64{0, 40000}).Draw(t, "package price")}}
 	case 1:
 		in["package"] = map[string]any{}
 	}
@@ -159,7 +159,7 @@ func addSessionFields(t *rapid.T, in map[string]any, isNew bool) {
 var moneyActions = []Action{
 	{Name: "packages.create", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		in := map[string]any{
-			"clientId": clientID(t, w), "sessions": rapid.SampledFrom([]int{1, 5, 10}).Draw(t, "sessions"),
+			"clientId": clientID(t, w), "hours": rapid.SampledFrom([]int{1, 5, 10}).Draw(t, "hours"),
 			"priceCents": rapid.SampledFrom([]int64{0, 40000, 85000}).Draw(t, "price"), "purchasedAt": startTime(t, w),
 		}
 		if rapid.Bool().Draw(t, "paid there and then?") {
@@ -174,7 +174,7 @@ var moneyActions = []Action{
 		case 0:
 			in["clientId"] = clientID(t, w)
 		case 1:
-			in["sessions"] = rapid.SampledFrom([]int{1, 2, 5, 10}).Draw(t, "sessions")
+			in["hours"] = rapid.SampledFrom([]int{1, 2, 5, 10}).Draw(t, "hours")
 		case 2:
 			in["priceCents"] = rapid.SampledFrom([]int64{0, 40000, 85000}).Draw(t, "price")
 		case 3:
@@ -430,12 +430,16 @@ func clientID(t *rapid.T, w *World) string {
 	return rapid.SampledFrom(all).Draw(t, "client").ID
 }
 
-// span draws an hour or two on the hour, around now, so sessions often
-// meet.
+// span draws a session from the hour, around now, so sessions often meet.
 func span(t *rapid.T, w *World) map[string]any {
 	start := startTime(t, w)
-	hours := rapid.SampledFrom([]int{1, 1, 2}).Draw(t, "hours")
-	return map[string]any{"start": start, "end": start.Add(time.Duration(hours) * time.Hour)}
+	return map[string]any{"start": start, "end": start.Add(length(t))}
+}
+
+// length draws up to two hours, often lengths that are charged rounded
+// down to the half hour, or up to one.
+func length(t *rapid.T) time.Duration {
+	return time.Duration(rapid.SampledFrom([]int{60, 60, 120, 20, 45, 80, 90}).Draw(t, "minutes")) * time.Minute
 }
 
 func startTime(t *rapid.T, w *World) time.Time {

@@ -17,14 +17,15 @@ type DocumentRef struct {
 
 // View is a package as the app shows it.
 type View struct {
-	ID          string          `json:"id"`
-	ClientID    string          `json:"clientId"`
-	Sessions    int             `json:"sessions"`
-	PurchasedAt time.Time       `json:"purchasedAt"`
-	BoughtIn    string          `json:"boughtIn,omitempty"`
-	Note        string          `json:"note,omitempty"`
-	CreditsUsed int             `json:"creditsUsed"`
-	CreditsLeft int             `json:"creditsLeft"`
+	ID          string    `json:"id"`
+	ClientID    string    `json:"clientId"`
+	Hours       int       `json:"hours"`
+	PurchasedAt time.Time `json:"purchasedAt"`
+	BoughtIn    string    `json:"boughtIn,omitempty"`
+	Note        string    `json:"note,omitempty"`
+	// CreditsUsed and CreditsLeft are in hours, by the half hour.
+	CreditsUsed float64         `json:"creditsUsed"`
+	CreditsLeft float64         `json:"creditsLeft"`
 	PriceCents  int64           `json:"priceCents"`
 	Invoice     *DocumentRef    `json:"invoice,omitempty"`
 	Paid        *documents.Paid `json:"paid,omitempty"`
@@ -41,8 +42,8 @@ func ViewOf(tx *txn.Tx, p *Package, used Usage) (View, error) {
 		return View{}, err
 	}
 	v := View{
-		ID: p.ID, ClientID: p.ClientID, Sessions: p.Sessions, PurchasedAt: p.PurchasedAt, BoughtIn: p.BoughtIn, Note: p.Note,
-		CreditsUsed: n, CreditsLeft: max(p.Sessions-n, 0), Todo: []Reason{},
+		ID: p.ID, ClientID: p.ClientID, Hours: p.Hours, PurchasedAt: p.PurchasedAt, BoughtIn: p.BoughtIn, Note: p.Note,
+		CreditsUsed: float64(n) / 60, CreditsLeft: float64(max(p.Hours*60-n, 0)) / 60, Todo: []Reason{},
 	}
 	inv, line, err := documents.Invoice(tx, src)
 	if err != nil {
@@ -76,8 +77,8 @@ type idRequest struct {
 	ID string `json:"id"`
 }
 
-// Routes registers the packages' actions. used counts the sessions using
-// a package's credits (see Usage).
+// Routes registers the packages' actions. used counts the minutes of a
+// package's credits that sessions use (see Usage).
 func Routes(r *router.Router, run *txn.Runner, used Usage) {
 	view := func(tx *txn.Tx, p *Package, err error) (any, error) {
 		if err != nil {

@@ -19,7 +19,7 @@ Every commit also moves one counter (`PK COMMIT`, `SK COUNTER`), which makes com
 
 ### CLIENT
 
-A client: name, calendar names, usual fees and place, and a copy of their Google contact.
+A client: name, calendar names, usual hourly fees and place, and a copy of their Google contact.
 
 | Field | Type |
 |---|---|
@@ -162,13 +162,13 @@ The last number taken in a sequence: <type>#<year>.
 
 ### PACKAGE
 
-A prepaid package of sessions; its price is its invoice line.
+A prepaid package of hours; its price is its invoice line.
 
 | Field | Type |
 |---|---|
 | id | `string` |
 | clientId | `string` |
-| sessions | `int` |
+| hours | `int` |
 | purchasedAt | `time.Time` |
 | boughtIn | `string` |
 | note | `string` |
@@ -184,7 +184,7 @@ Checked on every change to one:
 
 - **packages-are-invoiced**: A package is always on an invoice, which says its price
 - **packages-are-a-clients**: Every package is a client's
-- **credits-in-hand**: No more sessions use a package's credits than it has, and a package used isn't deleted
+- **credits-in-hand**: Sessions use no more of a package's credits than it has, and a package used isn't deleted
 - **bought-in-its-session**: A package bought in a session is that session's client's, bought on its day
 
 ### ATTACHMENT
@@ -215,7 +215,7 @@ Checked on every change to one:
 
 ### SESSION
 
-A session: who, when, where, whether confirmed, the credit paying for it, and its summary.
+A session: who, when, where, whether confirmed, the credits paying for it, and its summary.
 
 | Field | Type |
 |---|---|
@@ -226,7 +226,7 @@ A session: who, when, where, whether confirmed, the credit paying for it, and it
 | tentative | `bool` |
 | confirmedAt | `*time.Time` |
 | location | `sessions.Location` |
-| packageId | `string` |
+| credits | `[]sessions.Credit` |
 | record | `*sessions.Record` |
 | createdAt | `time.Time` |
 
@@ -235,15 +235,15 @@ A session: who, when, where, whether confirmed, the credit paying for it, and it
 | LSI1 time | its start |
 | LSI2 client | its client, by start |
 | LSI3 open | to confirm, or to record |
-| LSI5 ref | the package whose credit pays for it |
 
 Checked on every change to one:
 
 - **sessions-never-overlap**: The user sees one client at a time
 - **sessions-last-a-while**: A session ends after it starts, within a day's work, at a place
 - **sessions-are-a-clients**: Every session is a client's
-- **fee-or-credit**: A credit pays for a session, or its fee on an invoice: one, never both
-- **credits-of-own-package**: A credit pays for a session from a package of its own client
+- **paid-for**: Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more
+- **credits-of-own-package**: Credits pay for a session from packages of its own client, each once
+- **credits-in-hand**: Sessions use no more of a package's credits than it has, and a package used isn't deleted
 - **confirmed-before-invoiced**: An invoice is issued, and a payment recorded, for a confirmed session only
 - **bought-in-its-session**: A package bought in a session is that session's client's, bought on its day
 - **records-are-a-sessions**: Notes and files are a session's, and go with it

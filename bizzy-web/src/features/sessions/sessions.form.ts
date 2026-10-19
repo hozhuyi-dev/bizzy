@@ -3,7 +3,7 @@ import type { SessionDraft, SessionFields, SessionView } from "./sessions.types"
 import { toISODate, toTimeInput } from "~/core/utils/date.util";
 import { centsToInput, parseCents } from "~/core/utils/money.util";
 
-/** Whether a package's price is per session (`10x180`) or the total (`10@1800`). */
+/** Whether a package's price is per hour (`10x180`) or the total (`10@1800`). */
 export type PriceIs = "each" | "total";
 
 export interface BookingValues {
@@ -11,9 +11,9 @@ export interface BookingValues {
   date: string;
   time: string;
   minutes: string;
-  /** Blank leaves it to a package credit or the client's fee. */
+  /** Its whole fee; blank leaves it to package credits and the client's hourly fee. */
   fee: string;
-  packageSessions: string;
+  packageHours: string;
   packagePrice: string;
   packagePriceIs: PriceIs;
   homeVisit: boolean;
@@ -34,7 +34,7 @@ export function draftOf(session: SessionView): SessionDraft {
     start: session.start,
     minutes: sessionMinutes(session),
     ...(session.feeTyped ? { feeCents: session.feeCents } : {}),
-    ...(session.bought ? { package: { sessions: session.bought.sessions, priceCents: session.bought.priceCents } } : {}),
+    ...(session.bought ? { package: { hours: session.bought.hours, priceCents: session.bought.priceCents } } : {}),
     homeVisit: session.location === "visit",
     tentative: session.tentative,
   };
@@ -54,22 +54,20 @@ export function toBookingValues(draft: SessionDraft): BookingValues {
   };
 }
 
-/** Per session when the total divides evenly, as the title writes it. */
-function packageValues(
-  pkg: SessionDraft["package"],
-): Pick<BookingValues, "packageSessions" | "packagePrice" | "packagePriceIs"> {
-  if (!pkg) return { packageSessions: "", packagePrice: "", packagePriceIs: "each" };
-  const each = pkg.priceCents % pkg.sessions === 0;
+/** Per hour when the total divides evenly, as the title writes it. */
+function packageValues(pkg: SessionDraft["package"]): Pick<BookingValues, "packageHours" | "packagePrice" | "packagePriceIs"> {
+  if (!pkg) return { packageHours: "", packagePrice: "", packagePriceIs: "each" };
+  const each = pkg.priceCents % pkg.hours === 0;
   return {
-    packageSessions: String(pkg.sessions),
-    packagePrice: centsToInput(each ? pkg.priceCents / pkg.sessions : pkg.priceCents),
+    packageHours: String(pkg.hours),
+    packagePrice: centsToInput(each ? pkg.priceCents / pkg.hours : pkg.priceCents),
     packagePriceIs: each ? "each" : "total",
   };
 }
 
 export function toSessionDraft(values: BookingValues): SessionDraft {
   const fee = parseCents(values.fee);
-  const sessions = Number(values.packageSessions);
+  const hours = Number(values.packageHours);
   const price = parseCents(values.packagePrice);
   return {
     clientId: values.clientId,
@@ -77,30 +75,30 @@ export function toSessionDraft(values: BookingValues): SessionDraft {
     start: new Date(`${values.date}T${values.time}`).toISOString(),
     minutes: Number(values.minutes),
     ...(fee !== null ? { feeCents: fee } : {}),
-    ...(values.packageSessions.trim() && sessions >= 1 && price !== null && price > 0
-      ? { package: { sessions, priceCents: values.packagePriceIs === "each" ? price * sessions : price } }
+    ...(values.packageHours.trim() && hours >= 1 && price !== null && price > 0
+      ? { package: { hours, priceCents: values.packagePriceIs === "each" ? price * hours : price } }
       : {}),
     homeVisit: values.homeVisit,
     tentative: values.tentative,
   };
 }
 
+/** When a booking starts and ends. */
+export function sessionTime(draft: Pick<SessionDraft, "start" | "minutes">): { start: string; end: string } {
+  const start = new Date(draft.start);
+  return { start: start.toISOString(), end: new Date(start.getTime() + draft.minutes * 60_000).toISOString() };
+}
+
 /**
  * What to send for a booking: all of it for a new session, and only what
  * changed from `was` for an edit, since an update is a patch. A fee or
- * package taken away is sent empty, which returns the session to a credit
- * or the usual fee, or drops the package.
+ * package taken away is sent empty, which returns the session to package
+ * credits and the usual fee, or drops the package.
  */
 export function toSessionFields(draft: SessionDraft, was?: SessionDraft): SessionFields {
   const fields: SessionFields = {};
   if (!was || draft.clientId !== was.clientId) fields.clientId = draft.clientId;
-  if (!was || !sameInstant(draft.start, was.start) || draft.minutes !== was.minutes) {
-    const start = new Date(draft.start);
-    fields.time = {
-      start: start.toISOString(),
-      end: new Date(start.getTime() + draft.minutes * 60_000).toISOString(),
-    };
-  }
+  if (!was || !sameInstant(draft.start, was.start) || draft.minutes !== was.minutes) fields.time = sessionTime(draft);
   if (!was || draft.homeVisit !== was.homeVisit) fields.location = draft.homeVisit ? "visit" : "own";
   if (!was || draft.tentative !== was.tentative) fields.tentative = draft.tentative;
   if (was ? draft.feeCents !== was.feeCents : draft.feeCents !== undefined) {
@@ -117,5 +115,5 @@ function sameInstant(a: string, b: string): boolean {
 }
 
 function samePackage(a: SessionDraft["package"], b: SessionDraft["package"]): boolean {
-  return a?.sessions === b?.sessions && a?.priceCents === b?.priceCents;
+  return a?.hours === b?.hours && a?.priceCents === b?.priceCents;
 }

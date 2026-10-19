@@ -37,11 +37,11 @@ const (
 // refusal lists them.
 var Places = []string{PlaceVisit, PlaceHome}
 
-// PackageSpec is a package bought in a session: `10x85` is 10 sessions at 85
-// each, `10@1000` is 10 sessions for 1000 in total (for when the price per
-// session isn't a round number). Either way the total is what's kept.
+// PackageSpec is a package bought in a session: `10x85` is 10 hours at 85
+// an hour, `10@1000` is 10 hours for 1000 in total (for when the price per
+// hour isn't a round number). Either way the total is what's kept.
 type PackageSpec struct {
-	Sessions   int
+	Hours      int
 	PriceCents int64
 }
 
@@ -90,15 +90,15 @@ func ParseTitle(raw string) (Title, error) {
 			if title.Package != nil {
 				return title, &ParseError{Reason: "more than one package (10x85 or 10@850) in the title"}
 			}
-			sessions, err := strconv.Atoi(match[1])
-			if err != nil || sessions < 1 || sessions > 1000 {
-				return title, &ParseError{Reason: fmt.Sprintf("package %q needs at least 1 session", last)}
+			hours, err := strconv.Atoi(match[1])
+			if err != nil || hours < 1 || hours > 1000 {
+				return title, &ParseError{Reason: fmt.Sprintf("package %q needs 1 to 1000 hours", last)}
 			}
 			price := toCents(match[3])
 			if match[2] != "@" {
-				price *= int64(sessions)
+				price *= int64(hours)
 			}
-			title.Package = &PackageSpec{Sessions: sessions, PriceCents: price}
+			title.Package = &PackageSpec{Hours: hours, PriceCents: price}
 		} else if match := amountPattern.FindStringSubmatch(last); match != nil {
 			if title.FeeCents != nil {
 				return title, &ParseError{Reason: "more than one amount in the title"}
@@ -132,7 +132,7 @@ func toCents(decimal string) int64 {
 }
 
 // FormatTitle writes a title in the syntax, for sessions she adds or edits
-// in the app. A package is written per session (`10x85`) when the total
+// in the app. A package is written per hour (`10x85`) when the total
 // divides evenly, else as a total (`3@250`).
 func FormatTitle(t Title) string {
 	parts := []string{t.Name}
@@ -146,10 +146,10 @@ func FormatTitle(t Title) string {
 		parts = append(parts, formatCents(*t.FeeCents))
 	}
 	if p := t.Package; p != nil {
-		if p.PriceCents%int64(p.Sessions) == 0 {
-			parts = append(parts, fmt.Sprintf("%dx%s", p.Sessions, formatCents(p.PriceCents/int64(p.Sessions))))
+		if p.PriceCents%int64(p.Hours) == 0 {
+			parts = append(parts, fmt.Sprintf("%dx%s", p.Hours, formatCents(p.PriceCents/int64(p.Hours))))
 		} else {
-			parts = append(parts, fmt.Sprintf("%d@%s", p.Sessions, formatCents(p.PriceCents)))
+			parts = append(parts, fmt.Sprintf("%d@%s", p.Hours, formatCents(p.PriceCents)))
 		}
 	}
 	return strings.Join(parts, " ")

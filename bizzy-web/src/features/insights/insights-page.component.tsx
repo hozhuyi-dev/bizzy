@@ -26,7 +26,7 @@ import {
   ChartTooltipContent,
 } from "~/components/ui/chart";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { addMonths, formatMonth, monthKey } from "~/core/utils/date.util";
+import { addMonths, formatHours, formatMonth, monthKey } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -87,7 +87,7 @@ export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
                 const left = p.creditsLeft;
                 return {
                   count: sum.count + left,
-                  cents: sum.cents + Math.round((p.priceCents / p.sessions) * left),
+                  cents: sum.cents + Math.round((p.priceCents / p.hours) * left),
                 };
               },
               { count: 0, cents: 0 },
@@ -157,8 +157,8 @@ function Insights({ activities, basis, credits }: InsightsProps) {
         />
         <StatTile
           label="Prepaid, not yet used"
-          value={`${credits.count} sessions`}
-          detail={`${formatCents(credits.cents)} still owed in sessions`}
+          value={formatHours(credits.count)}
+          detail={`${formatCents(credits.cents)} still owed in package hours`}
         />
       </div>
 

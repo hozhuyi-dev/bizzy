@@ -6,7 +6,7 @@ export interface MonthActivity {
   homeSessions?: number;
   /** Money paid that month, as the receipts say. */
   receivedCents: number;
-  /** The sessions that happened that month, confirmed; a session on a credit at its share of the package. */
+  /** The sessions that happened that month, confirmed; what package credits pay of one at its share of the package. */
   earnedCents: number;
   homeEarnedCents?: number;
 }

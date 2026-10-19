@@ -28,8 +28,10 @@ type View struct {
 	Tentative   bool       `json:"tentative"`
 	ConfirmedAt *time.Time `json:"confirmedAt,omitempty"`
 	Location    Location   `json:"location"`
-	// PackageID is the package whose credit pays for it.
-	PackageID string `json:"packageId,omitempty"`
+	// Hours is how long it is charged for, and Credits what package
+	// credits pay of it.
+	Hours   float64      `json:"hours"`
+	Credits []CreditView `json:"credits"`
 	// FeeCents is what its invoice charges; FeeTyped says it was entered
 	// for it, rather than the client's usual fee.
 	FeeCents  int64           `json:"feeCents"`
@@ -43,6 +45,22 @@ type View struct {
 	Can       Can             `json:"can"`
 }
 
+// CreditView is the hours of a session a package's credits pay for.
+type CreditView struct {
+	PackageID string  `json:"packageId"`
+	Hours     float64 `json:"hours"`
+}
+
+func creditViews(cs []Credit) []CreditView {
+	out := []CreditView{}
+	for _, c := range cs {
+		out = append(out, CreditView{PackageID: c.PackageID, Hours: hours(c.Minutes)})
+	}
+	return out
+}
+
+func hours(minutes int) float64 { return float64(minutes) / 60 }
+
 // DocumentRef names a document a session is on.
 type DocumentRef struct {
 	ID     string `json:"id"`
@@ -52,7 +70,7 @@ type DocumentRef struct {
 // BoughtView is the package bought in a session.
 type BoughtView struct {
 	ID         string `json:"id"`
-	Sessions   int    `json:"sessions"`
+	Hours      int    `json:"hours"`
 	PriceCents int64  `json:"priceCents"`
 	Paid       bool   `json:"paid"`
 }
@@ -78,11 +96,15 @@ type FullView struct {
 	Notes string `json:"notes"`
 }
 
-// CoverView is what would pay for a session being booked.
+// CoverView is what would pay for a session being booked: the credits of
+// packages bought before it, and what pays for the FeeHours they leave
+// (Kind), at FeeCents when that is the usual fee.
 type CoverView struct {
-	Kind      CoverKind `json:"kind"`
-	PackageID string    `json:"packageId,omitempty"`
-	FeeCents  *int64    `json:"feeCents,omitempty"`
+	Kind     CoverKind    `json:"kind"`
+	Hours    float64      `json:"hours"`
+	Credits  []CreditView `json:"credits"`
+	FeeHours float64      `json:"feeHours"`
+	FeeCents *int64       `json:"feeCents,omitempty"`
 }
 
 // ViewOf is a session as of now.
@@ -93,7 +115,8 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 	}
 	v := View{
 		ID: s.ID, ClientID: s.ClientID, ClientName: client.Name, Start: s.Start, End: s.End,
-		Tentative: s.Tentative, ConfirmedAt: s.ConfirmedAt, Location: s.Location, PackageID: s.PackageID,
+		Tentative: s.Tentative, ConfirmedAt: s.ConfirmedAt, Location: s.Location,
+		Hours: hours(s.Billable()), Credits: creditViews(s.Credits),
 	}
 	inv, line, err := documents.Invoice(tx, s.Source())
 	if err != nil {
@@ -116,7 +139,7 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 		if err != nil {
 			return View{}, err
 		}
-		v.Bought = &BoughtView{ID: p.ID, Sessions: p.Sessions, PriceCents: price, Paid: paid != nil}
+		v.Bought = &BoughtView{ID: p.ID, Hours: p.Hours, PriceCents: price, Paid: paid != nil}
 	}
 	if v.OwedCents, err = owed(tx, s); err != nil {
 		return View{}, err
@@ -189,8 +212,8 @@ type recordRequest struct {
 }
 
 type previewRequest struct {
-	ClientID string    `json:"clientId"`
-	Start    time.Time `json:"start"`
+	ClientID string `json:"clientId"`
+	Time     Span   `json:"time"`
 	// SessionID is the session being edited, if any.
 	SessionID   string `json:"sessionId,omitempty"`
 	BuysPackage bool   `json:"buysPackage"`
@@ -249,8 +272,11 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 	}))
 	r.Query("sessions.preview", router.Typed(func(ctx context.Context, in previewRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) (CoverView, error) {
-			kind, pkg, fee, err := Preview(tx, in.ClientID, in.Start, in.SessionID, in.BuysPackage)
-			return CoverView{Kind: kind, PackageID: pkg, FeeCents: fee}, err
+			c, err := Preview(tx, in.ClientID, in.Time, in.SessionID, in.BuysPackage)
+			return CoverView{
+				Kind: c.Kind, Hours: hours(c.Minutes), Credits: creditViews(c.Credits),
+				FeeHours: hours(c.FeeMinutes), FeeCents: c.FeeCents,
+			}, err
 		})
 	}))
 	r.Mutation("sessions.create", router.Typed(func(ctx context.Context, in Fields) (any, error) {

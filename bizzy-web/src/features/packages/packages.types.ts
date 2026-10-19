@@ -10,12 +10,13 @@ export type PackageReason = "collect";
 export interface PackageView {
   id: string;
   clientId: string;
-  sessions: number;
+  /** Its credits, an hour each. */
+  hours: number;
   purchasedAt: string;
   /** The session it was bought in (its title shows it); unset for one bought on its own. */
   boughtIn?: string;
   note?: string;
-  /** How many sessions its credits pay for. */
+  /** Hours of its credits sessions use, and have left, by the half hour. */
   creditsUsed: number;
   creditsLeft: number;
   /** What its invoice charges. */
@@ -33,7 +34,7 @@ export interface PackageView {
  */
 export interface PackageFields {
   clientId?: string;
-  sessions?: number;
+  hours?: number;
   priceCents?: number;
   purchasedAt?: string;
   note?: string;

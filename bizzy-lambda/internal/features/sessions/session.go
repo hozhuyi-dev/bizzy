@@ -1,6 +1,6 @@
 // Package sessions is the practice's sessions: the booking (who, when,
-// where, whether confirmed), what pays for it (a package credit, or a fee
-// on an invoice: see pricing.go), and what the user records about it
+// where, whether confirmed), what pays for it (package credits, a fee on
+// an invoice, or both: see pricing.go), and what the user records about it
 // afterwards (record.go). It knows nothing of the calendar: googlesync
 // reads the user's events as these same actions, and writes sessions to
 // events.
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/platform/txn"
 )
 
@@ -31,13 +32,20 @@ type Session struct {
 	// confirmed.
 	ConfirmedAt *time.Time `json:"confirmedAt,omitempty"`
 	Location    Location   `json:"location"`
-	// PackageID is the package whose credit pays for it, chosen when it
-	// was booked; "" when its fee does, on an invoice.
-	PackageID string `json:"packageId,omitempty"`
+	// Credits are the package credits paying for it, chosen when it was
+	// booked, oldest package first; none when its fee alone does, on an
+	// invoice.
+	Credits []Credit `json:"credits,omitempty"`
 	// Record is what the user wrote about it; its long notes are an item
 	// of their own (Notes), and its files are attachments.
 	Record    *Record   `json:"record,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+// Credit is the time of a session a package's credits pay for.
+type Credit struct {
+	PackageID string `json:"packageId"`
+	Minutes   int    `json:"minutes"`
 }
 
 // Record is a session's one-line summary, for lists and the client's
@@ -48,19 +56,48 @@ type Record struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// Sessions are filed by client and time, by the package whose credit pays
-// for them, and as open while they will need the user once they happen:
-// to confirm, or to record.
+// Sessions are filed by client and time, and as open while they will
+// need the user once they happen: to confirm, or to record. The sessions
+// using a package's credits are its client's (see CreditsUsed).
 var Sessions = txn.Kind[Session]{
 	Name: "SESSION", Gone: "This session was deleted.",
-	Doc: txn.Doc{What: "A session: who, when, where, whether confirmed, the credit paying for it, and its summary.", Client: "its client, by start", Time: "its start", Open: "to confirm, or to record", Ref: "the package whose credit pays for it"},
+	Doc: txn.Doc{What: "A session: who, when, where, whether confirmed, the credits paying for it, and its summary.", Client: "its client, by start", Time: "its start", Open: "to confirm, or to record"},
 	Meta: func(s *Session) txn.Meta {
-		return txn.Meta{ID: s.ID, Client: s.ClientID, Time: s.Start, Open: s.Tentative || !s.Recorded(), Ref: s.PackageID}
+		return txn.Meta{ID: s.ID, Client: s.ClientID, Time: s.Start, Open: s.Tentative || !s.Recorded()}
 	},
 }
 
 // MaxLength is how long a session may last.
 const MaxLength = 12 * time.Hour
+
+// Step is what a session's length is charged by, in minutes: credits and
+// the usual fee pay for it a half hour at a time.
+const Step = 30
+
+// Billable is how long a session is charged for, in minutes: its length
+// rounded down to a Step, and at least one.
+func (s Session) Billable() int {
+	return max(int(s.End.Sub(s.Start)/time.Minute)/Step*Step, Step)
+}
+
+// CreditMinutes is how much of it credits pay for.
+func (s Session) CreditMinutes() int {
+	total := 0
+	for _, c := range s.Credits {
+		total += c.Minutes
+	}
+	return total
+}
+
+// Uses reports whether a package's credits pay for some of it.
+func (s Session) Uses(packageID string) bool {
+	for _, c := range s.Credits {
+		if c.PackageID == packageID {
+			return true
+		}
+	}
+	return false
+}
 
 // Recorded reports whether its summary is written.
 func (s Session) Recorded() bool { return s.Record != nil && s.Record.Summary != "" }
@@ -102,11 +139,29 @@ func (s Session) Todo(owedCents int64, now time.Time) []Reason {
 	return out
 }
 
-// CreditsUsed is how many sessions use a package's credits
-// (packages.Usage).
+// CreditsUsed is how many minutes of a package's credits sessions use
+// (packages.Usage). They are its client's sessions; for a package
+// deleted, whose client is unknown, every session is counted.
 func CreditsUsed(tx *txn.Tx, packageID string) (int, error) {
-	using, err := Sessions.WithRef(tx, packageID)
-	return len(using), err
+	p, ok, err := packages.Packages.Find(tx, packageID)
+	if err != nil {
+		return 0, err
+	}
+	var ss []*Session
+	if ok {
+		ss, err = Sessions.OfClient(tx, p.ClientID)
+	} else {
+		ss, err = Sessions.All(tx)
+	}
+	total := 0
+	for _, s := range ss {
+		for _, c := range s.Credits {
+			if c.PackageID == packageID {
+				total += c.Minutes
+			}
+		}
+	}
+	return total, err
 }
 
 // overlaps reports whether two sessions take up the same time.

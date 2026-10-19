@@ -36,7 +36,7 @@ func TestParseTitle(t *testing.T) {
 		{
 			name:  "RM prefix on a package price",
 			input: "Jane Smith 10xrm85",
-			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
+			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Hours: 10, PriceCents: 85000}},
 		},
 		{
 			name:  "tentative",
@@ -49,34 +49,34 @@ func TestParseTitle(t *testing.T) {
 			want:  Title{Tentative: true, Name: "Jane Smith", FeeCents: cents(9500)},
 		},
 		{
-			name:  "package at a price per session",
+			name:  "package at a price per hour",
 			input: "Jane Smith 10x85",
-			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
+			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Hours: 10, PriceCents: 85000}},
 		},
 		{
 			name:  "uppercase X",
 			input: "Jane Smith 10X85.50",
-			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85500}},
+			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Hours: 10, PriceCents: 85500}},
 		},
 		{
 			name:  "package at a total price",
 			input: "Jane Smith 3@250",
-			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 3, PriceCents: 25000}},
+			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Hours: 3, PriceCents: 25000}},
 		},
 		{
 			name:  "RM prefix on a package total",
 			input: "Jane Smith 10@RM1000",
-			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 100000}},
+			want:  Title{Name: "Jane Smith", Package: &PackageSpec{Hours: 10, PriceCents: 100000}},
 		},
 		{
 			name:  "paid session plus package for later",
 			input: "Jane Smith 95 10x85",
-			want:  Title{Name: "Jane Smith", FeeCents: cents(9500), Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
+			want:  Title{Name: "Jane Smith", FeeCents: cents(9500), Package: &PackageSpec{Hours: 10, PriceCents: 85000}},
 		},
 		{
 			name:  "package then amount, either order",
 			input: "Jane Smith 10@850 95",
-			want:  Title{Name: "Jane Smith", FeeCents: cents(9500), Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
+			want:  Title{Name: "Jane Smith", FeeCents: cents(9500), Package: &PackageSpec{Hours: 10, PriceCents: 85000}},
 		},
 		{
 			name:  "extra whitespace",
@@ -96,7 +96,7 @@ func TestParseTitle(t *testing.T) {
 		{
 			name:  "her place, lowercase, among the other tokens",
 			input: "? Jane Smith 95 (h) 10x85",
-			want:  Title{Tentative: true, Name: "Jane Smith", Place: PlaceHome, FeeCents: cents(9500), Package: &PackageSpec{Sessions: 10, PriceCents: 85000}},
+			want:  Title{Tentative: true, Name: "Jane Smith", Place: PlaceHome, FeeCents: cents(9500), Package: &PackageSpec{Hours: 10, PriceCents: 85000}},
 		},
 		{
 			name:  "brackets inside the name are part of the name",
@@ -128,8 +128,8 @@ func TestParseTitleErrors(t *testing.T) {
 	}{
 		{name: "two amounts", input: "Jane Smith 95 100"},
 		{name: "two packages", input: "Jane Smith 10x85 5@400"},
-		{name: "zero-session package", input: "Jane Smith 0x85"},
-		{name: "zero-session package total", input: "Jane Smith 0@850"},
+		{name: "zero-hour package", input: "Jane Smith 0x85"},
+		{name: "zero-hour package total", input: "Jane Smith 0@850"},
 		{name: "amount without name", input: "95"},
 		{name: "tentative without name", input: "?"},
 		{name: "empty title", input: "   "},
@@ -180,10 +180,10 @@ func TestFormatTitleRoundTrips(t *testing.T) {
 		{Title{Name: "Jane Smith"}, "Jane Smith"},
 		{Title{Name: "Jane Smith", Tentative: true}, "? Jane Smith"},
 		{Title{Name: "Jane Smith", FeeCents: cents(9550)}, "Jane Smith 95.50"},
-		{Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 10, PriceCents: 85000}}, "Jane Smith 10x85"},
-		{Title{Name: "Jane Smith", Package: &PackageSpec{Sessions: 3, PriceCents: 25000}}, "Jane Smith 3@250"},
+		{Title{Name: "Jane Smith", Package: &PackageSpec{Hours: 10, PriceCents: 85000}}, "Jane Smith 10x85"},
+		{Title{Name: "Jane Smith", Package: &PackageSpec{Hours: 3, PriceCents: 25000}}, "Jane Smith 3@250"},
 		{
-			Title{Name: "Jane Smith", Tentative: true, FeeCents: cents(9500), Package: &PackageSpec{Sessions: 3, PriceCents: 25001}},
+			Title{Name: "Jane Smith", Tentative: true, FeeCents: cents(9500), Package: &PackageSpec{Hours: 3, PriceCents: 25001}},
 			"? Jane Smith 95 3@250.01",
 		},
 		{Title{Name: "Jane Smith", Place: PlaceVisit, FeeCents: cents(9500)}, "Jane Smith (V) 95"},

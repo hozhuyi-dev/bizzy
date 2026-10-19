@@ -1,4 +1,5 @@
 import type { DocumentRef, DocumentSource } from "~/features/documents/documents.types";
+import type { PackageView } from "~/features/packages/packages.types";
 import type { Paid } from "~/features/payments/payments.types";
 import type { Verdict } from "~/core/lambda/lambda.types";
 
@@ -13,9 +14,15 @@ export type SessionReason = "confirm" | "record" | "collect";
 /** The package bought in a session, collected with it; mirrors sessions.BoughtView. */
 export interface BoughtView {
   id: string;
-  sessions: number;
+  hours: number;
   priceCents: number;
   paid: boolean;
+}
+
+/** The hours of a session a package's credits pay for; mirrors sessions.CreditView. */
+export interface CreditView {
+  packageId: string;
+  hours: number;
 }
 
 /** What was recorded on a session; mirrors sessions.RecordView. */
@@ -49,9 +56,11 @@ export interface SessionView {
   tentative: boolean;
   confirmedAt?: string;
   location: SessionLocation;
-  /** The package whose credit pays for it; otherwise its fee is on an invoice. */
-  packageId?: string;
-  /** What its invoice charges; 0 on a credit. */
+  /** How long it is charged for: its length rounded down to the half hour, at least a half hour. */
+  hours: number;
+  /** What package credits pay of it, oldest package first; its fee on an invoice pays the rest. */
+  credits: Array<CreditView>;
+  /** What its invoice charges; 0 when credits pay it all. */
   feeCents: number;
   /** The fee was entered for it, not the client's usual fee. */
   feeTyped: boolean;
@@ -70,20 +79,32 @@ export interface SessionFullView extends SessionView {
   notes: string;
 }
 
+/**
+ * What pays for the hours package credits leave: the package bought in it,
+ * nothing (they leave none), the client's usual fee, or nothing at all (a
+ * fee must be entered); mirrors sessions.CoverKind.
+ */
+export type CoverKind = "bought" | "credit" | "default" | "none";
+
 /** What would pay for a session with no fee entered; mirrors sessions.CoverView. */
-export type CoverView =
-  | { kind: "bought" }
-  | { kind: "credit"; packageId: string }
-  | { kind: "default"; feeCents: number }
-  | { kind: "none" };
+export interface CoverView {
+  kind: CoverKind;
+  /** How long it is charged for. */
+  hours: number;
+  /** What packages bought before it pay, oldest first. */
+  credits: Array<CreditView>;
+  /** What they leave, which feeCents charges when kind is "default". */
+  feeHours: number;
+  feeCents?: number;
+}
 
 /** sessions.preview's request: a booking as the form has it, with no fee entered. */
 export interface PreviewSessionRequest {
   clientId: string;
-  start: string;
+  time: { start: string; end: string };
   /** The session being edited: what pays for it stays unless something else changes. */
   sessionId?: string | undefined;
-  /** It buys a package, whose first credit it uses. */
+  /** It buys a package, whose credits pay what older ones leave. */
   buysPackage: boolean;
 }
 
@@ -96,10 +117,10 @@ export interface SessionFields {
   time?: { start: string; end: string };
   tentative?: boolean;
   location?: SessionLocation;
-  /** `{cents}` is a fee typed for it; `{}` returns it to a credit or the usual fee. */
+  /** `{cents}` is its whole fee, typed for it; `{}` returns it to credits and the usual fee. */
   fee?: { cents?: number };
   /** `{bought}` is the package bought in it; `{}` drops it. */
-  package?: { bought?: { sessions: number; priceCents: number } };
+  package?: { bought?: { hours: number; priceCents: number } };
   /** Move what was received to the new amounts, on receipts not issued yet. */
   updatePayment?: boolean;
 }
@@ -109,10 +130,10 @@ export interface SessionDraft {
   clientId: string;
   start: string;
   minutes: number;
-  /** A fee typed for it; unset leaves it to a package credit or the client's fee. */
+  /** Its whole fee, typed for it; unset leaves it to package credits and the client's hourly fee. */
   feeCents?: number;
-  /** A package bought in this session. */
-  package?: { sessions: number; priceCents: number };
+  /** A package of hours bought in this session. */
+  package?: { hours: number; priceCents: number };
   homeVisit: boolean;
   tentative: boolean;
 }
@@ -132,6 +153,12 @@ export type StageTone = "neutral" | "done" | "info" | "waiting" | "attention";
 export interface StageBadge {
   label: string;
   tone: StageTone;
+}
+
+/** A package whose credits pay hours of a session. */
+export interface CoveringCredit {
+  pkg: PackageView;
+  hours: number;
 }
 
 /** Something a session's invoice covers: its fee, or the package bought in it. */

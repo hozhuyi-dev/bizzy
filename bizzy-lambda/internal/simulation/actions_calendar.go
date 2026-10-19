@@ -23,7 +23,7 @@ var allDayTitles = []string{"! Jane Smith: call back", "! Bob Lee", "! Zed Ong",
 var calendarActions = []Action{
 	{Name: "calendar.add", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {
 		start := startTime(t, w)
-		w.Calendar.UserAdd(rapid.SampledFrom(titles).Draw(t, "title"), start, start.Add(time.Hour))
+		w.Calendar.UserAdd(rapid.SampledFrom(titles).Draw(t, "title"), start, start.Add(length(t)))
 		w.InSync = false
 	}},
 	{Name: "calendar.addAllDay", Actor: ActorCalendar, Run: func(t *rapid.T, w *World) {

@@ -91,7 +91,8 @@ function BookingStep({ session, onCancel, settled }: BookingStepProps) {
         <span>
           {formatSessionTime(session.start)} · {sessionMinutes(session)} min ·{" "}
           {session.location === "visit" ? "Home visit" : "Your place"}
-          {session.packageId ? <> · package credit</> : <> · {formatCents(session.feeCents)}</>}
+          {session.credits.length > 0 && <> · package credit</>}
+          {session.invoice && <> · {formatCents(session.feeCents)}</>}
         </span>
         {!editing && (
           <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>

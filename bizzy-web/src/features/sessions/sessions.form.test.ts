@@ -18,9 +18,9 @@ describe("toSessionFields", () => {
       location: "own",
       tentative: false,
     });
-    expect(toSessionFields({ ...booked, feeCents: 9500, package: { sessions: 10, priceCents: 85000 } })).toMatchObject({
+    expect(toSessionFields({ ...booked, feeCents: 9500, package: { hours: 10, priceCents: 85000 } })).toMatchObject({
       fee: { cents: 9500 },
-      package: { bought: { sessions: 10, priceCents: 85000 } },
+      package: { bought: { hours: 10, priceCents: 85000 } },
     });
   });
 
@@ -36,7 +36,7 @@ describe("toSessionFields", () => {
   });
 
   test("a fee or package taken away is sent empty", () => {
-    const priced = { ...booked, feeCents: 9500, package: { sessions: 10, priceCents: 85000 } };
+    const priced = { ...booked, feeCents: 9500, package: { hours: 10, priceCents: 85000 } };
     expect(toSessionFields(booked, priced)).toEqual({ fee: {}, package: {} });
     expect(toSessionFields({ ...priced, feeCents: 12000 }, priced)).toEqual({ fee: { cents: 12000 } });
   });

@@ -22,7 +22,7 @@ type Month struct {
 	// ReceivedCents is money paid that month, as the receipts say.
 	ReceivedCents int64 `json:"receivedCents"`
 	// EarnedCents values the sessions that happened that month, confirmed:
-	// a session on a credit at its share of the package's price.
+	// what package credits pay of one at its share of the package's price.
 	EarnedCents     int64 `json:"earnedCents"`
 	HomeEarnedCents int64 `json:"homeEarnedCents,omitempty"`
 }
@@ -77,7 +77,7 @@ func All(tx *txn.Tx) ([]Client, error) {
 		return nil, err
 	}
 	slices.SortFunc(all, func(a, b *sessions.Session) int { return cmp.Or(a.Start.Compare(b.Start), cmp.Compare(a.ID, b.ID)) })
-	credit := map[string]int{} // credits of each package used so far, in session order
+	credit := map[string]int{} // minutes of each package's credits used so far, in session order
 	now := tx.Now()
 	for _, s := range all {
 		c := of(s.ClientID)
@@ -89,15 +89,15 @@ func All(tx *txn.Tx) ([]Client, error) {
 			continue
 		}
 		value := charged[s.Source()]
-		if s.PackageID != "" {
-			p, ok, err := packages.Packages.Find(tx, s.PackageID)
+		for _, cr := range s.Credits {
+			p, ok, err := packages.Packages.Find(tx, cr.PackageID)
 			if err != nil {
 				return nil, err
 			}
 			if ok {
-				value = p.ShareCents(charged[documents.PackageSource(p.ID)], credit[p.ID])
+				value += p.ShareCents(charged[documents.PackageSource(p.ID)], credit[p.ID], cr.Minutes)
 			}
-			credit[s.PackageID]++
+			credit[cr.PackageID] += cr.Minutes
 		}
 		if s.Tentative {
 			continue

@@ -65,8 +65,8 @@ export function RemedyButtons({ remedies, conflict, onDone, first = false, more 
   if (asking?.ask === "fee") {
     return (
       <InlineField
-        label="Usual fee"
-        placeholder="Usual fee, e.g. 95"
+        label="Usual hourly fee"
+        placeholder="Usual hourly fee, e.g. 95"
         inputMode="decimal"
         valid={(value) => parseCents(value) !== null}
         pending={remedy.pending}

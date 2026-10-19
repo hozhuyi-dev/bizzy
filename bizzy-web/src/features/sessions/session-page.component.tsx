@@ -13,7 +13,7 @@ import { paymentStep } from "./components/payment-step/payment-step.component";
 import { PipelineLayout } from "./components/pipeline-layout/pipeline-layout.component";
 import { useRecordDraft } from "./components/record-editor/record-editor.hook";
 import { recordStep } from "./components/record-step/record-step.component";
-import { allSessionDocuments, boughtIn } from "./session-stage.util";
+import { allSessionDocuments, boughtIn, coveringCredits } from "./session-stage.util";
 import { newSessionDraft } from "./sessions.form";
 import { useSessionMessageActions } from "./sessions.hook";
 import { SessionsQuery } from "./sessions.query";
@@ -153,7 +153,7 @@ function SessionPipeline({ session, returnTo, settle }: SessionPipelineProps) {
   const parent = parentOf(returnTo);
   const client = clientOf(clientsById, session.clientId);
   const bought = boughtIn(session, packages.data);
-  const covering = session.packageId ? packages.data?.find((pkg) => pkg.id === session.packageId) : undefined;
+  const covering = coveringCredits(session, packages.data);
   const documents = allSessionDocuments(session, bought);
   // An issued document stays as it says: an edit that would change it is
   // refused, with cancelling it as the remedy.

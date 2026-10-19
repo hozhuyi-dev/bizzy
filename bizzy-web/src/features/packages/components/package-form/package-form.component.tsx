@@ -28,7 +28,7 @@ interface PackageFormProps {
 }
 
 /**
- * A package's client, sessions, price and day. One bought in a session
+ * A package's client, hours, price and day. One bought in a session
  * stays that session's client's and day: change the session for those.
  */
 export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) {
@@ -90,7 +90,7 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
 
         <div className="grid grid-cols-2 gap-4">
           <form.Field
-            name="sessions"
+            name="hours"
             validators={{
               onChange: ({ value }) =>
                 /^\d+$/.test(value.trim()) && Number(value) >= 1 && Number(value) <= 1000
@@ -100,7 +100,7 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
           >
             {(field) => (
               <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel htmlFor={field.name}>Sessions</FieldLabel>
+                <FieldLabel htmlFor={field.name}>Hours</FieldLabel>
                 <Input
                   id={field.name}
                   inputMode="numeric"
@@ -135,12 +135,14 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
           </form.Field>
         </div>
 
-        <form.Subscribe selector={(state) => [state.values.sessions, state.values.price] as const}>
-          {([sessions, price]) => {
+        <form.Subscribe selector={(state) => [state.values.hours, state.values.price] as const}>
+          {([hours, price]) => {
             const cents = parseCents(price);
-            const n = Number(sessions);
+            const n = Number(hours);
             return cents !== null && n >= 1 ? (
-              <FieldDescription>{formatCents(Math.round(cents / n))} per session</FieldDescription>
+              <FieldDescription>
+                {formatCents(Math.round(cents / n))} an hour. Sessions use credits by the half hour.
+              </FieldDescription>
             ) : null;
           }}
         </form.Subscribe>

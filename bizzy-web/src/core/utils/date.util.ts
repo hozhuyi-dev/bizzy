@@ -19,6 +19,11 @@ export function formatSessionTime(value: string): string {
   return `${dayFormat.format(date)} · ${timeFormat.format(date)}`;
 }
 
+/** "1.5 h" from hours, as charged and credited: by the half hour. */
+export function formatHours(hours: number): string {
+  return `${hours.toLocaleString(LOCALE, { maximumFractionDigits: 2 })} h`;
+}
+
 /** "Oct 2026" from a "2026-10" month key. */
 export function formatMonth(month: string): string {
   const [year = 0, mon = 1] = month.split("-").map(Number);

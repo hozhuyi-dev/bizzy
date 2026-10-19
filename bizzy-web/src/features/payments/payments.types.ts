@@ -41,7 +41,7 @@ export interface SetPaymentRequest {
 /** One thing to pay for, as the payment panel shows it. */
 export interface Payable {
   item: PayItem;
-  /** "Session", "Package of 10". */
+  /** "Session", "Package of 10 h". */
   label: string;
   /** What it costs while unpaid. */
   dueCents: number;

@@ -2,7 +2,7 @@ import type { PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { Payable } from "~/features/payments/payments.types";
 import { methodShortLabel } from "~/features/payments/payments.util";
-import { formatDate } from "~/core/utils/date.util";
+import { formatDate, formatHours } from "~/core/utils/date.util";
 
 export function clientName(pkg: PackageView, clientsById: ReadonlyMap<string, ClientView>): string {
   return clientsById.get(pkg.clientId)?.name ?? "Unknown client";
@@ -18,7 +18,7 @@ export function paymentText(pkg: PackageView): string {
 /** What a package's payment panel shows: its payment, or what it owes. */
 export function packagePayables(pkg: PackageView): Array<Payable> {
   const item = { kind: "package", id: pkg.id } as const;
-  const label = `Package of ${pkg.sessions}`;
+  const label = `Package of ${formatHours(pkg.hours)}`;
   if (pkg.paid) return [{ item, label, dueCents: 0, paid: pkg.paid }];
   return pkg.owedCents > 0 ? [{ item, label, dueCents: pkg.owedCents }] : [];
 }

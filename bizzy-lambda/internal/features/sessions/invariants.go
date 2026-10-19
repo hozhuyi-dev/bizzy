@@ -63,42 +63,56 @@ var Invariants = []txn.Invariant{
 		},
 	},
 	{
-		ID: "fee-or-credit", Why: "A credit pays for a session, or its fee on an invoice: one, never both",
+		ID: "paid-for", Why: "Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more",
 		On: Sessions.Name,
 		Broken: each(func(tx *txn.Tx, s *Session) ([]string, error) {
-			_, charged, err := documents.Charged(tx, s.Source())
-			switch {
-			case err != nil:
+			_, line, err := documents.Invoice(tx, s.Source())
+			if err != nil {
 				return nil, err
-			case s.PackageID != "" && charged:
-				return []string{"session " + s.ID + " uses a credit and is invoiced"}, nil
-			case s.PackageID == "" && !charged:
-				return []string{"session " + s.ID + " is paid for by nothing"}, nil
+			}
+			for _, c := range s.Credits {
+				if c.Minutes <= 0 || c.Minutes%Step != 0 {
+					return []string{fmt.Sprintf("session %s uses %d minutes of package %s", s.ID, c.Minutes, c.PackageID)}, nil
+				}
+			}
+			credited := s.CreditMinutes()
+			switch {
+			case credited > s.Billable():
+				return []string{fmt.Sprintf("session %s is charged %d minutes and credits pay %d", s.ID, s.Billable(), credited)}, nil
+			case credited > 0 && line != nil && line.Typed:
+				return []string{"session " + s.ID + " uses credits and a fee typed for it"}, nil
+			case credited == s.Billable() && line != nil:
+				return []string{"session " + s.ID + " is paid for by credits and invoiced"}, nil
+			case credited < s.Billable() && line == nil:
+				return []string{"session " + s.ID + " is paid for in part, or not at all"}, nil
 			}
 			return nil, nil
 		}),
 	},
 	{
-		ID: "credits-of-own-package", Why: "A credit pays for a session from a package of its own client",
+		ID: "credits-of-own-package", Why: "Credits pay for a session from packages of its own client, each once",
 		On: Sessions.Name,
 		Broken: each(func(tx *txn.Tx, s *Session) ([]string, error) {
-			if s.PackageID == "" {
-				return nil, nil
-			}
-			p, ok, err := packages.Packages.Find(tx, s.PackageID)
-			switch {
-			case err != nil:
-				return nil, err
-			case !ok:
-				return []string{fmt.Sprintf("session %s uses a credit of %s, which doesn't exist", s.ID, s.PackageID)}, nil
-			case p.ClientID != s.ClientID:
-				return []string{fmt.Sprintf("session %s of %s uses %s's package %s", s.ID, s.ClientID, p.ClientID, p.ID)}, nil
+			seen := map[string]bool{}
+			for _, c := range s.Credits {
+				p, ok, err := packages.Packages.Find(tx, c.PackageID)
+				switch {
+				case err != nil:
+					return nil, err
+				case seen[c.PackageID]:
+					return []string{fmt.Sprintf("session %s uses package %s twice", s.ID, c.PackageID)}, nil
+				case !ok:
+					return []string{fmt.Sprintf("session %s uses credits of %s, which doesn't exist", s.ID, c.PackageID)}, nil
+				case p.ClientID != s.ClientID:
+					return []string{fmt.Sprintf("session %s of %s uses %s's package %s", s.ID, s.ClientID, p.ClientID, p.ID)}, nil
+				}
+				seen[c.PackageID] = true
 			}
 			return nil, nil
 		}),
 	},
 	{
-		ID: "credits-in-hand", Why: "No more sessions use a package's credits than it has, and a package used isn't deleted",
+		ID: "credits-in-hand", Why: "Sessions use no more of a package's credits than it has, and a package used isn't deleted",
 		On: packages.Packages.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {
 			used, err := CreditsUsed(tx, id)
@@ -110,11 +124,34 @@ var Invariants = []txn.Invariant{
 			case err != nil:
 				return nil, err
 			case !ok && used > 0:
-				return []string{fmt.Sprintf("package %s was deleted while %d sessions use it", id, used)}, nil
-			case ok && used > p.Sessions:
-				return []string{fmt.Sprintf("package %s has %d credits and %d sessions use them", id, p.Sessions, used)}, nil
+				return []string{fmt.Sprintf("package %s was deleted while sessions use %d minutes of it", id, used)}, nil
+			case ok && used > p.Hours*60:
+				return []string{fmt.Sprintf("package %s has %d hours and sessions use %d minutes", id, p.Hours, used)}, nil
 			}
 			return nil, nil
+		},
+	},
+	{
+		ID: "credits-in-hand", Why: "Sessions use no more of a package's credits than it has, and a package used isn't deleted",
+		On: Sessions.Name,
+		Broken: func(tx *txn.Tx, id string) ([]string, error) {
+			s, ok, err := Sessions.Find(tx, id)
+			if err != nil || !ok {
+				return nil, err
+			}
+			var out []string
+			for _, c := range s.Credits {
+				p, ok, err := packages.Packages.Find(tx, c.PackageID)
+				if err != nil || !ok {
+					return nil, err // credits-of-own-package says it.
+				}
+				if used, err := CreditsUsed(tx, p.ID); err != nil {
+					return nil, err
+				} else if used > p.Hours*60 {
+					out = append(out, fmt.Sprintf("package %s has %d hours and sessions use %d minutes", p.ID, p.Hours, used))
+				}
+			}
+			return out, nil
 		},
 	},
 	{

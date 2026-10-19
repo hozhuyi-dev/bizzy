@@ -133,7 +133,3 @@ Deeper runs (from `bizzy-lambda/`):
 go test ./internal/simulation -rapid.checks=1000 -rapid.steps=300
 TABLE_NAME=<dev table> go test ./internal/platform/dynamo   # the table contract against real DynamoDB
 ```
-
-## Open decisions
-
-- **Package credits by duration**: 1 credit = 1 h, rounded down to 15 min, with the shortfall charged at the usual fee. Still open: is the usual fee hourly? Should a session spill into the next package? Where do overrides live? What does `10x85` mean (sessions or hours)?

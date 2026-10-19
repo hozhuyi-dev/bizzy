@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { allSessionDocuments, documentItems, sessionAmount, stageBadges } from "./session-stage.util";
+import { allSessionDocuments, coveringCredits, documentItems, sessionAmount, stageBadges } from "./session-stage.util";
 import type { SessionCan, SessionView } from "./sessions.types";
 import type { PackageView } from "~/features/packages/packages.types";
 
@@ -22,6 +22,8 @@ function session(overrides: Partial<SessionView> = {}): SessionView {
     end: "2026-10-12T07:00:00Z",
     tentative: false,
     location: "own",
+    hours: 1,
+    credits: [],
     feeCents: 9500,
     feeTyped: false,
     invoice: { id: "d1" },
@@ -37,7 +39,7 @@ function pkg(overrides: Partial<PackageView> = {}): PackageView {
   return {
     id: "p1",
     clientId: "jane",
-    sessions: 10,
+    hours: 10,
     purchasedAt: "2026-10-12T06:00:00Z",
     boughtIn: "s1",
     creditsUsed: 1,
@@ -64,15 +66,29 @@ describe("stageBadges", () => {
 
 describe("documentItems", () => {
   test("a session's fee and the package bought in it", () => {
-    const bought = session({ bought: { id: "p1", sessions: 10, priceCents: 85000, paid: false } });
-    expect(documentItems(bought).map((item) => item.label)).toEqual(["Session fee", "Package of 10"]);
+    const bought = session({ bought: { id: "p1", hours: 10, priceCents: 85000, paid: false } });
+    expect(documentItems(bought).map((item) => item.label)).toEqual(["Session fee", "Package of 10 h"]);
   });
 
-  test("a credit leaves the session nothing of its own to bill", () => {
+  test("credits paying it all leave the session nothing of its own to bill", () => {
     const { invoice: _, ...rest } = session();
-    const onCredit = { ...rest, packageId: "p0", feeCents: 0 };
+    const onCredit = { ...rest, credits: [{ packageId: "p0", hours: 1 }], feeCents: 0 };
     expect(documentItems(onCredit)).toEqual([]);
     expect(sessionAmount(onCredit)).toBeUndefined();
+  });
+
+  test("what credits leave is billed as its fee", () => {
+    const partly = session({ hours: 1.5, credits: [{ packageId: "p0", hours: 1 }], feeCents: 4750 });
+    expect(documentItems(partly)).toEqual([{ source: { kind: "session", id: "s1" }, label: "Session fee", amountCents: 4750 }]);
+    expect(sessionAmount(partly)).toBe(4750);
+  });
+});
+
+describe("coveringCredits", () => {
+  test("pairs each credit with its package, as far as they are loaded", () => {
+    const covered = session({ credits: [{ packageId: "p1", hours: 0.5 }, { packageId: "p2", hours: 1 }] });
+    expect(coveringCredits(covered, [pkg()])).toEqual([{ pkg: pkg(), hours: 0.5 }]);
+    expect(coveringCredits(covered, undefined)).toEqual([]);
   });
 });
 

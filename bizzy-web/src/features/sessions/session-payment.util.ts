@@ -1,6 +1,7 @@
 import type { SessionView } from "./sessions.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { Payable } from "~/features/payments/payments.types";
+import { formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
 /** What is owed for the package bought in a session, while it is unpaid. */
@@ -19,7 +20,7 @@ export function sessionPayables(session: SessionView, bought?: PackageView): Arr
     payables.push({ item: { kind: "session", id: session.id }, label: "Session", dueCents: 0, paid: session.paid });
   }
   if (session.bought?.paid && bought?.paid) {
-    payables.push({ item: { kind: "package", id: bought.id }, label: `Package of ${bought.sessions}`, dueCents: 0, paid: bought.paid });
+    payables.push({ item: { kind: "package", id: bought.id }, label: `Package of ${formatHours(bought.hours)}`, dueCents: 0, paid: bought.paid });
   }
   if (session.owedCents > 0) {
     payables.push({ item: { kind: "session", id: session.id }, label: owedLabel(session), dueCents: session.owedCents });
@@ -27,11 +28,11 @@ export function sessionPayables(session: SessionView, bought?: PackageView): Arr
   return payables;
 }
 
-/** "Session", "Package of 10", or both, as what is owed on a session covers. */
+/** "Session", "Package of 10 h", or both, as what is owed on a session covers. */
 function owedLabel(session: SessionView): string {
   const pkg = boughtOwedCents(session);
   if (pkg === 0) return "Session";
-  const pkgLabel = `package of ${session.bought?.sessions ?? 0}`;
+  const pkgLabel = `package of ${formatHours(session.bought?.hours ?? 0)}`;
   return session.owedCents > pkg ? `Session and ${pkgLabel}` : pkgLabel.charAt(0).toUpperCase() + pkgLabel.slice(1);
 }
 
