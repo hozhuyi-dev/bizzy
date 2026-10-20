@@ -1,18 +1,30 @@
 import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
 import { contactProblem, extraAliases } from "./clients.util";
+import type { LinkOptions } from "@tanstack/react-router";
 import type { ClientRow, ClientView } from "./clients.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { RowActionSet } from "~/components/shared/row-actions/row-actions.component";
 import { whatsappNumber } from "~/features/whatsapp/whatsapp.util";
 import { Badge } from "~/components/ui/badge";
-import { Card, CardContent } from "~/components/ui/card";
+import { CellEmpty, CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { RowActionButtons, RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { DataCard } from "~/components/shared/data-card/data-card.component";
+import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 
 const helper = createDataTableColumnHelper<ClientRow>();
 
+/** "3 mo ago · Booked 12 Nov 2026": how long since, and the next session booked. */
+function sinceText(row: ClientRow): string | undefined {
+  const parts = [
+    row.monthsSince !== undefined && row.monthsSince > 0 ? `${row.monthsSince} mo ago` : undefined,
+    row.activity?.nextBookedAt ? `Booked ${formatDate(row.activity.nextBookedAt)}` : undefined,
+  ];
+  return parts.filter(Boolean).join(" · ") || undefined;
+}
+
+/** When the client was last seen, how long ago, and the next session booked; for the client's page. */
 export function LastSeen({ row }: { row: ClientRow }) {
   if (!row.lastSessionAt) return <span className="text-muted-foreground">—</span>;
   return (
@@ -21,11 +33,25 @@ export function LastSeen({ row }: { row: ClientRow }) {
       {row.monthsSince !== undefined && row.monthsSince > 0 && (
         <span className="text-muted-foreground">· {row.monthsSince} mo ago</span>
       )}
-      {row.activity?.nextBookedAt && (
-        <Badge variant="info">Booked {formatDate(row.activity.nextBookedAt)}</Badge>
-      )}
+      {row.activity?.nextBookedAt && <Badge variant="info">Booked {formatDate(row.activity.nextBookedAt)}</Badge>}
     </span>
   );
+}
+
+/** Under the name: what is wrong with the contact, else the client's other calendar names. */
+function ClientNote({ client }: { client: ClientView }) {
+  const problem = contactProblem(client);
+  if (problem) return <span className="text-status-attention-foreground">{problem}</span>;
+  const aliases = extraAliases(client);
+  return aliases.length > 0 ? `Also ${aliases.join(", ")}` : undefined;
+}
+
+export function clientLink(client: ClientView): LinkOptions {
+  return { to: "/clients/$id", params: { id: client.id } };
+}
+
+function ClientLink({ client }: { client: ClientView }) {
+  return <RowLink {...clientLink(client)}>{client.name}</RowLink>;
 }
 
 interface ClientActions {
@@ -37,72 +63,39 @@ interface ClientActions {
 }
 
 /** The client's name links to their page, so editing needs no action here. */
-export function clientActions(client: ClientView, { onWhatsApp, onContacted, onRemind }: ClientActions): Array<Action> {
-  const actions: Array<Action> = [];
+export function clientActions(client: ClientView, { onWhatsApp, onContacted, onRemind }: ClientActions): RowActionSet {
+  const set = { actions: [] as Array<Action>, more: [] as Array<Action> };
   if (onWhatsApp && whatsappNumber(client.contact?.phone)) {
-    actions.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => onWhatsApp(client) });
+    set.actions.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => onWhatsApp(client) });
   }
-  if (onContacted) actions.push({ type: "button", label: "Contacted", icon: CheckIcon, onClick: () => onContacted(client) });
-  if (onRemind) actions.push({ type: "button", label: "Remind me", icon: BellIcon, onClick: () => onRemind(client) });
-  return actions;
-}
-
-/** The name with her other calendar names under it. */
-export function ClientName({ client }: { client: ClientView }) {
-  const aliases = extraAliases(client);
-  const problem = contactProblem(client);
-  return (
-    <div className="flex flex-col gap-1">
-      <TextLink to="/clients/$id" params={{ id: client.id }} className="w-fit">
-        {client.name}
-      </TextLink>
-      {(aliases.length > 0 || problem) && (
-        <div className="flex flex-wrap gap-1">
-          {problem && <Badge variant="attention">{problem}</Badge>}
-          {aliases.map((alias) => (
-            <Badge key={alias} variant="neutral">
-              {alias}
-            </Badge>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  if (onContacted) set.actions.push({ type: "button", label: "Contacted", icon: CheckIcon, onClick: () => onContacted(client) });
+  if (onRemind) set.more.push({ type: "button", label: "Remind me", icon: BellIcon, onClick: () => onRemind(client) });
+  return set;
 }
 
 /** The phone layout of a table row: the same fields and actions. */
 export function ClientCard({ row, ...handlers }: { row: ClientRow } & ClientActions) {
   const { client } = row;
+  const problem = contactProblem(client);
+  const since = sinceText(row);
   return (
-    <Card size="sm">
-      <CardContent className="flex flex-col gap-3">
-        <div className="flex items-start justify-between gap-2">
-          <ClientName client={client} />
-          <RowActionMenu actions={clientActions(client, handlers)} />
-        </div>
-        <div className="text-sm">
-          <span className="text-xs text-muted-foreground">Last session</span>
-          <LastSeen row={row} />
-        </div>
-        <dl className="grid grid-cols-3 gap-2 text-sm">
-          <div>
-            <dt className="text-xs text-muted-foreground">Last 12 months</dt>
-            <dd>
-              {formatCents(row.revenue12Cents)}
-              <span className="text-muted-foreground"> · {row.sessions12}×</span>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Lifetime</dt>
-            <dd>{formatCents(row.lifetimeCents)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Hourly fee</dt>
-            <dd>{client.feeTodayCents === undefined ? "—" : formatCents(client.feeTodayCents)}</dd>
-          </div>
-        </dl>
-      </CardContent>
-    </Card>
+    <DataCard
+      title={
+        <>
+          <span className="font-medium">{client.name}</span>
+          {problem && <Badge variant="attention">{problem}</Badge>}
+        </>
+      }
+      value={client.feeTodayCents === undefined ? undefined : `${formatCents(client.feeTodayCents)}/h`}
+      meta={
+        row.lastSessionAt
+          ? `Last session ${formatDate(row.lastSessionAt)}${since ? ` · ${since}` : ""}`
+          : "No sessions yet"
+      }
+      detail={`${formatCents(row.revenue12Cents)} in 12 months (${row.sessions12}×) · ${formatCents(row.lifetimeCents)} in all`}
+      {...clientActions(client, handlers)}
+      open={clientLink(client)}
+    />
   );
 }
 
@@ -113,15 +106,32 @@ export function createClientColumns(handlers: ClientActions) {
       header: "Name",
       sortFn: "alphanumeric",
       meta: {
-        search: ({ client }: ClientRow) => [
-          client.name,
-          ...client.aliases,
-          client.contact?.phone,
-          client.contact?.email,
-          contactProblem(client),
-        ],
+        width: "grow",
+        search: ({ client }: ClientRow) => [client.name, ...client.aliases, contactProblem(client)],
       },
-      cell: ({ row }) => <ClientName client={row.original.client} />,
+      cell: ({ row }) => (
+        <CellText sub={<ClientNote client={row.original.client} />}>
+          <ClientLink client={row.original.client} />
+        </CellText>
+      ),
+    }),
+    helper.accessor((row) => row.client.contact?.phone ?? row.client.contact?.email ?? "", {
+      id: "contact",
+      header: "Contact",
+      sortFn: "alphanumeric",
+      meta: {
+        from: "lg",
+        search: ({ client }: ClientRow) => [client.contact?.phone, client.contact?.email],
+      },
+      cell: ({ row }) => {
+        const { contact } = row.original.client;
+        if (!contact?.phone && !contact?.email) return <CellEmpty />;
+        return (
+          <CellText className="max-w-56" sub={contact.phone ? contact.email : undefined}>
+            {contact.phone ?? contact.email}
+          </CellText>
+        );
+      },
     }),
     helper.accessor("lastSessionAt", {
       header: "Last session",
@@ -133,23 +143,27 @@ export function createClientColumns(handlers: ClientActions) {
         ],
       },
       sortUndefined: "last",
-      cell: ({ row }) => <LastSeen row={row.original} />,
+      cell: ({ row }) =>
+        row.original.lastSessionAt ? (
+          <CellText sub={sinceText(row.original)}>{formatDate(row.original.lastSessionAt)}</CellText>
+        ) : (
+          <CellEmpty />
+        ),
     }),
     helper.accessor("revenue12Cents", {
       header: "Last 12 months",
       sortFn: "basic",
-      meta: { search: (row: ClientRow) => formatCents(row.revenue12Cents) },
+      meta: { align: "end", search: (row: ClientRow) => formatCents(row.revenue12Cents) },
       cell: ({ row }) => (
-        <span>
+        <CellText sub={`${row.original.sessions12} ${row.original.sessions12 === 1 ? "session" : "sessions"}`}>
           {formatCents(row.original.revenue12Cents)}
-          <span className="text-muted-foreground"> · {row.original.sessions12}×</span>
-        </span>
+        </CellText>
       ),
     }),
     helper.accessor("lifetimeCents", {
       header: "Lifetime",
       sortFn: "basic",
-      meta: { search: (row: ClientRow) => formatCents(row.lifetimeCents) },
+      meta: { align: "end", search: (row: ClientRow) => formatCents(row.lifetimeCents) },
       cell: ({ getValue }) => formatCents(getValue()),
     }),
     helper.accessor((row) => row.client.feeTodayCents, {
@@ -157,19 +171,24 @@ export function createClientColumns(handlers: ClientActions) {
       header: "Hourly fee",
       sortFn: "basic",
       meta: {
-        search: ({ client }: ClientRow) =>
+        align: "end",
+        search: ({ client }: ClientRow) => [
           client.feeTodayCents === undefined ? undefined : formatCents(client.feeTodayCents),
+          client.homeVisits ? "Home visits" : undefined,
+        ],
       },
       sortUndefined: "last",
-      cell: ({ getValue }) => {
-        const cents = getValue();
-        return cents === undefined ? "—" : formatCents(cents);
+      cell: ({ row }) => {
+        const { client } = row.original;
+        if (client.feeTodayCents === undefined) return <CellEmpty />;
+        return <CellText sub={client.homeVisits ? "Home visits" : undefined}>{formatCents(client.feeTodayCents)}</CellText>;
       },
     }),
     helper.display({
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => <RowActionButtons actions={clientActions(row.original.client, handlers)} />,
+      meta: { width: "fit" },
+      cell: ({ row }) => <RowActionButtons {...clientActions(row.original.client, handlers)} />,
     }),
   ]);
 }

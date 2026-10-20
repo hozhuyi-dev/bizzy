@@ -1,4 +1,5 @@
-import type { CoveringCredit, DocumentItem, SessionReason, SessionView, StageBadge } from "./sessions.types";
+import { SESSION_PLACES } from "./sessions.constant";
+import type { CoveringCredit, DocumentItem, RecordView, SessionReason, SessionView, StageBadge } from "./sessions.types";
 import type { DocumentLink, DocumentType } from "~/features/documents/documents.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import { coveringDocuments } from "~/features/documents/documents.util";
@@ -30,6 +31,27 @@ export function stageBadges(session: SessionView, now = new Date()): Array<Stage
   if (session.todo.length > 0) return session.todo.map((reason) => REASON_BADGES[reason]);
   if (!hasHappened(session, now)) return [{ label: "Booked", tone: "info" }];
   return [{ label: "Done", tone: "done" }];
+}
+
+/** "1.5 h · Home visit": how long it is and where, under its time in a list. */
+export function lengthAndPlace(session: SessionView): string {
+  return `${formatHours(sessionMinutes(session) / 60)} · ${SESSION_PLACES[session.location]}`;
+}
+
+/** "Notes · 2 files": what was recorded besides the summary, if anything. */
+export function recordText(record: RecordView): string | undefined {
+  const parts = [record.hasNotes ? "Notes" : undefined, record.files > 0 ? `${record.files} ${record.files === 1 ? "file" : "files"}` : undefined];
+  return parts.filter(Boolean).join(" · ") || undefined;
+}
+
+/** "1 h on credits · + 10 h package": what pays for it besides its fee, and the package it buys. */
+export function coverText(session: SessionView): string | undefined {
+  const credited = session.credits.reduce((sum, credit) => sum + credit.hours, 0);
+  const parts = [
+    credited > 0 ? `${formatHours(credited)} on credits` : undefined,
+    session.bought ? `+ ${formatHours(session.bought.hours)} package` : undefined,
+  ];
+  return parts.filter(Boolean).join(" · ") || undefined;
 }
 
 /** What the session costs: its fee, or nothing of its own when package credits pay it all. */

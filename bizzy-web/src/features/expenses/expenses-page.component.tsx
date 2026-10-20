@@ -2,9 +2,9 @@ import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
 import { cn } from "cn";
-import { ExpenseLink, ExpenseReceipt, createExpenseColumns } from "./expenses.columns";
+import { ExpenseCard, createExpenseColumns, expenseLink } from "./expenses.columns";
 import { ExpensesQuery } from "./expenses.query";
-import { expenseFacets, linesSummary, totalsByCategory } from "./expenses.util";
+import { expenseFacets, totalsByCategory } from "./expenses.util";
 import type { ExpenseTotals } from "./expenses.types";
 import type { ListFilter, When } from "~/core/filter/filter.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
@@ -35,7 +35,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
   const expenses = ExpensesQuery.useSearch(filter);
   const catalogue = ExpensesQuery.useCatalogue();
   const facets = useMemo(() => expenseFacets(catalogue.data), [catalogue.data]);
-  const columns = useMemo(() => createExpenseColumns(), []);
+  const columns = useMemo(() => createExpenseColumns(catalogue.data), [catalogue.data]);
   const data = useMemo(() => pageItems(expenses.data), [expenses.data]);
   const totals = expenses.data?.pages[0]?.totals;
 
@@ -74,6 +74,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
           <div>
             <DataTable
               table={table}
+              rowLink={expenseLink}
               empty={
                 isNarrowed(filter) || expenses.hasNextPage ? (
                   <EmptyState quips={QUIPS.search}>No expenses found{expenses.hasNextPage ? " yet" : ""}.</EmptyState>
@@ -83,23 +84,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
                   </EmptyState>
                 )
               }
-              renderCard={(row) => (
-                <Card size="sm">
-                  <CardContent className="flex flex-col gap-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="flex flex-col">
-                        <ExpenseLink expense={row.original} />
-                        <span className="text-xs text-muted-foreground">{row.original.vendor}</span>
-                      </span>
-                      <span className="font-medium tabular-nums">{formatCents(row.original.totalCents)}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 text-sm">
-                      <span className="truncate text-muted-foreground">{linesSummary(row.original)}</span>
-                      <ExpenseReceipt expense={row.original} />
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+              renderCard={(row) => <ExpenseCard expense={row.original} catalogue={catalogue.data} />}
             />
             <LoadMore pages={expenses} found={data.length > 0} />
           </div>
@@ -154,9 +139,9 @@ function CategoryTotals({ totals }: { totals: ReturnType<typeof totalsByCategory
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-sm font-medium">By category</h2>
-      <ul className="flex flex-col divide-y rounded-md border text-sm">
+      <ul className="flex flex-col divide-y overflow-hidden rounded-xl bg-card text-sm ring-1 ring-foreground/10">
         {totals.map(({ category, cents }) => (
-          <li key={category.id} className="flex items-center justify-between gap-2 px-3 py-2">
+          <li key={category.id} className="flex h-10 items-center justify-between gap-2 px-4">
             <span className="flex flex-wrap items-center gap-1.5">
               {category.name}
               {category.capital && <Badge variant="info">Capital allowance</Badge>}

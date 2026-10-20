@@ -35,6 +35,13 @@ export function linesSummary(expense: ExpenseView, shown = 2): string {
   return names.slice(0, shown).join(", ") + (more > 0 ? ` +${more}` : "");
 }
 
+/** "Supplies, Equipment": the categories of a receipt's lines, each once, by name. */
+export function linesCategories(expense: ExpenseView, catalogue: CatalogueView | undefined): string {
+  const names = new Map((catalogue?.categories ?? []).map((category) => [category.id, category.name]));
+  const ids = [...new Set(expense.lines.map((line) => line.categoryId))];
+  return ids.flatMap((id) => names.get(id) ?? []).join(", ");
+}
+
 /** Where she has bought things, most often first, to suggest as she types. */
 export function vendorsOf(expenses: ReadonlyArray<ExpenseView>): Array<string> {
   const counts = new Map<string, number>();

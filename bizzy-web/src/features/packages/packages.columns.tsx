@@ -1,11 +1,13 @@
 import { BanknoteIcon, PackageCheckIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { clientName, paymentText } from "./packages.util";
-import type { ReactNode } from "react";
 import type { PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { RowActionSet } from "~/components/shared/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
+import { CellEmpty, CellText } from "~/components/shared/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
+import { DataCard } from "~/components/shared/data-card/data-card.component";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { formatCents } from "~/core/utils/money.util";
@@ -22,52 +24,56 @@ export interface PackageHandlers {
 
 const helper = createDataTableColumnHelper<PackageView>();
 
-export function PackageCredits({ pkg }: { pkg: PackageView }) {
+function creditsText(pkg: PackageView): string {
+  return `${formatHours(pkg.creditsLeft)} of ${formatHours(pkg.hours)} left`;
+}
+
+function sourceText(pkg: PackageView): string {
+  return pkg.boughtIn ? "In a session" : "On its own";
+}
+
+/** The client, linking to their page. */
+function PackageClient({ pkg, handlers }: { pkg: PackageView; handlers: PackageHandlers }) {
+  const client = handlers.clientsById.get(pkg.clientId);
+  if (!client) return <span className="text-muted-foreground italic">{clientName(pkg, handlers.clientsById)}</span>;
   return (
-    <span>
-      {formatHours(pkg.creditsLeft)} of {formatHours(pkg.hours)} left
-    </span>
+    <TextLink to="/clients/$id" params={{ id: client.id }}>
+      {client.name}
+    </TextLink>
   );
 }
 
-export function PackagePayment({ pkg }: { pkg: PackageView }) {
+/** The credits left, and a bar of how much is used. */
+function PackageCredits({ pkg }: { pkg: PackageView }) {
+  const left = pkg.hours > 0 ? pkg.creditsLeft / pkg.hours : 0;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span>{creditsText(pkg)}</span>
+      <div
+        role="meter"
+        aria-label="Credits left"
+        aria-valuemin={0}
+        aria-valuemax={pkg.hours}
+        aria-valuenow={pkg.creditsLeft}
+        className="h-1 w-full min-w-20 overflow-hidden rounded-full bg-muted"
+      >
+        <div className="h-full rounded-full bg-foreground/35" style={{ width: `${left * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function PackagePayment({ pkg }: { pkg: PackageView }) {
   if (pkg.owedCents > 0) return <Badge variant="attention">Unpaid</Badge>;
-  return <span className="text-sm text-muted-foreground">{paymentText(pkg)}</span>;
-}
-
-export function PackagePrice({ pkg }: { pkg: PackageView }) {
-  return (
-    <span className="flex flex-col">
-      <span>{formatCents(pkg.priceCents)}</span>
-      <span className="text-xs text-muted-foreground">
-        {formatCents(Math.round(pkg.priceCents / pkg.hours))} an hour
-      </span>
-    </span>
-  );
-}
-
-export function PackageSource({ pkg }: { pkg: PackageView }) {
-  return (
-    <span className="flex flex-wrap items-center gap-1">
-      <Badge variant="neutral">{pkg.boughtIn ? "In a session" : "On its own"}</Badge>
-      {pkg.note && <span className="text-xs text-muted-foreground">{pkg.note}</span>}
-    </span>
-  );
+  return <span className="text-muted-foreground">{paymentText(pkg)}</span>;
 }
 
 /** The invoice and receipt covering the package, if any. */
-export function PackageDocuments({
-  pkg,
-  empty = "—",
-}: {
-  pkg: PackageView;
-  /** Shown when there is none yet. */
-  empty?: ReactNode;
-}) {
+function PackageDocuments({ pkg }: { pkg: PackageView }) {
   const docs = coveringDocuments(pkg);
-  if (docs.length === 0) return empty;
+  if (docs.length === 0) return <CellEmpty />;
   return (
-    <span className="flex flex-wrap items-center gap-2">
+    <span className="flex items-center gap-2">
       {docs.map(({ type, ref, issued }) => (
         <TextLink key={ref.id} to={documentRoute(type)} params={{ id: ref.id }} className="text-sm">
           {refLabel(type, ref, issued)}
@@ -78,27 +84,46 @@ export function PackageDocuments({
 }
 
 /**
- * What can be done to a package: pay what it owes, see its payment, keep
- * one bought in a session as its own (so the session no longer buys it),
- * edit or delete it. The API refuses what its rules don't allow, with what
- * would let it through.
+ * What can be done to a package: pay what it owes or see its payment;
+ * behind ⋯, edit it (as a click on its row does, kept there for the
+ * keyboard), keep one bought in a session as its own (so the session no
+ * longer buys it), or delete it. The API refuses what its rules don't
+ * allow, with what would let it through.
  */
-export function packageActions(pkg: PackageView, handlers: PackageHandlers): Array<Action> {
-  const actions: Array<Action> = [];
+export function packageActions(pkg: PackageView, handlers: PackageHandlers): RowActionSet {
+  const set = { actions: [] as Array<Action>, more: [] as Array<Action> };
   if (pkg.owedCents > 0) {
-    actions.push({ type: "button", label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
+    set.actions.push({ type: "button", label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
   if (pkg.paid) {
-    actions.push({ type: "button", label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
+    set.actions.push({ type: "button", label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
+  set.more.push({ type: "button", label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) });
   if (pkg.boughtIn) {
-    actions.push({ type: "button", label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
+    set.more.push({ type: "button", label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
   }
-  actions.push(
-    { type: "button", label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) },
-    { type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", onClick: () => handlers.onDelete(pkg) },
+  set.more.push({ type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", onClick: () => handlers.onDelete(pkg) });
+  return set;
+}
+
+/** The phone layout of a row: who, the price, credits left and when bought, the note; then its actions. */
+export function PackageCard({ pkg, handlers }: { pkg: PackageView; handlers: PackageHandlers }) {
+  return (
+    <DataCard
+      title={
+        <>
+          <PackageClient pkg={pkg} handlers={handlers} />
+          {pkg.owedCents > 0 && <Badge variant="attention">Unpaid</Badge>}
+        </>
+      }
+      value={formatCents(pkg.priceCents)}
+      meta={`${creditsText(pkg)} · bought ${formatDate(pkg.purchasedAt)}`}
+      detail={[sourceText(pkg), pkg.note].filter(Boolean).join(" · ")}
+      detailTitle={pkg.note}
+      {...packageActions(pkg, handlers)}
+      onOpen={() => handlers.onEdit(pkg)}
+    />
   );
-  return actions;
 }
 
 export function createPackageColumns(handlers: PackageHandlers) {
@@ -107,26 +132,28 @@ export function createPackageColumns(handlers: PackageHandlers) {
       id: "client",
       header: "Client",
       sortFn: "alphanumeric",
-      cell: ({ getValue }) => <span className="font-medium">{getValue()}</span>,
+      meta: {
+        width: "grow",
+        search: (pkg: PackageView) => [clientName(pkg, handlers.clientsById), pkg.note],
+      },
+      cell: ({ row }) => (
+        <CellText sub={row.original.note} title={row.original.note}>
+          <PackageClient pkg={row.original} handlers={handlers} />
+        </CellText>
+      ),
     }),
     helper.accessor("purchasedAt", {
       header: "Bought",
       sortFn: "alphanumeric",
-      meta: { search: (pkg: PackageView) => formatDate(pkg.purchasedAt) },
-      cell: ({ getValue }) => formatDate(getValue()),
+      meta: { search: (pkg: PackageView) => [formatDate(pkg.purchasedAt), sourceText(pkg)] },
+      cell: ({ row }) => <CellText sub={sourceText(row.original)}>{formatDate(row.original.purchasedAt)}</CellText>,
     }),
     helper.accessor((pkg) => pkg.creditsLeft, {
       id: "credits",
       header: "Credits",
       sortFn: "basic",
-      meta: { search: (pkg: PackageView) => `${formatHours(pkg.creditsLeft)} of ${formatHours(pkg.hours)} left` },
+      meta: { search: (pkg: PackageView) => creditsText(pkg) },
       cell: ({ row }) => <PackageCredits pkg={row.original} />,
-    }),
-    helper.accessor("priceCents", {
-      header: "Price",
-      sortFn: "basic",
-      meta: { search: (pkg: PackageView) => formatCents(pkg.priceCents) },
-      cell: ({ row }) => <PackagePrice pkg={row.original} />,
     }),
     helper.accessor((pkg) => paymentText(pkg), {
       id: "payment",
@@ -136,23 +163,29 @@ export function createPackageColumns(handlers: PackageHandlers) {
       cell: ({ row }) => <PackagePayment pkg={row.original} />,
     }),
     helper.display({
-      id: "source",
-      header: "From",
-      meta: { search: (pkg: PackageView) => [pkg.boughtIn ? "In a session" : "On its own", pkg.note] },
-      cell: ({ row }) => <PackageSource pkg={row.original} />,
-    }),
-    helper.display({
       id: "documents",
       header: "Documents",
       meta: {
+        from: "xl",
         search: (pkg: PackageView) => coveringDocuments(pkg).map(({ type, ref, issued }) => refLabel(type, ref, issued)),
       },
       cell: ({ row }) => <PackageDocuments pkg={row.original} />,
     }),
+    helper.accessor("priceCents", {
+      header: "Price",
+      sortFn: "basic",
+      meta: { align: "end", search: (pkg: PackageView) => formatCents(pkg.priceCents) },
+      cell: ({ row }) => (
+        <CellText sub={`${formatCents(Math.round(row.original.priceCents / row.original.hours))} an hour`}>
+          {formatCents(row.original.priceCents)}
+        </CellText>
+      ),
+    }),
     helper.display({
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => <RowActionButtons actions={packageActions(row.original, handlers)} />,
+      meta: { width: "fit" },
+      cell: ({ row }) => <RowActionButtons {...packageActions(row.original, handlers)} />,
     }),
   ]);
 }

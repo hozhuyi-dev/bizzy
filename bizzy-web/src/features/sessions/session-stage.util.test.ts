@@ -1,5 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { allSessionDocuments, coveringCredits, documentItems, sessionAmount, stageBadges } from "./session-stage.util";
+import {
+  allSessionDocuments,
+  coverText,
+  coveringCredits,
+  documentItems,
+  lengthAndPlace,
+  recordText,
+  sessionAmount,
+  stageBadges,
+} from "./session-stage.util";
 import type { SessionCan, SessionView } from "./sessions.types";
 import type { PackageView } from "~/features/packages/packages.types";
 
@@ -106,5 +115,37 @@ describe("allSessionDocuments", () => {
       { type: "invoice", ref: { id: "d1", number: "INV260001" }, issued: true },
       { type: "receipt", ref: { id: "r1" }, issued: true },
     ]);
+  });
+
+  test("shows an issued receipt's number, as an invoice's", () => {
+    const paid = session({
+      paid: { amountCents: 9500, method: "cash", paidOn: "2026-10-12", receiptId: "r1", receiptNumber: "RCP260001", issued: true },
+    });
+    expect(allSessionDocuments(paid, undefined)).toContainEqual({
+      type: "receipt",
+      ref: { id: "r1", number: "RCP260001" },
+      issued: true,
+    });
+  });
+});
+
+describe("list lines", () => {
+  test("how long and where, in words", () => {
+    expect(lengthAndPlace(session())).toBe("1 h · Your place");
+    expect(lengthAndPlace(session({ end: "2026-10-12T07:30:00Z", location: "visit" }))).toBe("1.5 h · Home visit");
+  });
+
+  test("what was recorded besides the summary, or nothing", () => {
+    expect(recordText({ summary: "Neck", hasNotes: false, files: 0 })).toBeUndefined();
+    expect(recordText({ summary: "", hasNotes: true, files: 1 })).toBe("Notes · 1 file");
+    expect(recordText({ summary: "", hasNotes: false, files: 3 })).toBe("3 files");
+  });
+
+  test("what credits pay and the package bought", () => {
+    expect(coverText(session())).toBeUndefined();
+    expect(
+      coverText(session({ credits: [{ packageId: "p0", hours: 0.5 }, { packageId: "p1", hours: 0.5 }] })),
+    ).toBe("1 h on credits");
+    expect(coverText(session({ bought: { id: "p1", hours: 10, priceCents: 85000, paid: false } }))).toBe("+ 10 h package");
   });
 });

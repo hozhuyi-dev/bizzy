@@ -2,14 +2,13 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRightIcon, CheckIcon, PencilIcon, RotateCcwIcon } from "lucide-react";
 import { cn } from "cn";
 import { useMarkDone } from "../../follow-ups.hook";
-import { formatDue } from "../../follow-ups.util";
+import { formatDue, isOverdue } from "../../follow-ups.util";
 import type { FollowUpView } from "../../follow-ups.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ListRow } from "~/components/shared/list-row/list-row.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { startOfDay } from "~/core/utils/date.util";
 import { clientOf } from "~/features/clients/clients.util";
 
 interface FollowUpRowProps {
@@ -33,7 +32,7 @@ export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, 
   const { mark, isPending } = useMarkDone();
   const client = clientOf(clientsById, followUp.clientId);
   const done = Boolean(followUp.doneAt);
-  const overdue = !done && new Date(followUp.due) < startOfDay();
+  const overdue = isOverdue(followUp);
   const summary = followUp.summary || "Follow up";
   // Under the client's name; on their own page it leads instead.
   const shownSummary = hideClient ? undefined : followUp.summary;

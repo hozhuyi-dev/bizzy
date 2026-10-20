@@ -1,10 +1,15 @@
+import { LinkIcon } from "lucide-react";
+import { toast } from "sonner";
 import { DOCUMENT_STATUS } from "./documents.constant";
-import { documentLabel, documentRoute } from "./documents.util";
+import { documentLabel, documentRoute, shareUrl } from "./documents.util";
+import type { LinkOptions } from "@tanstack/react-router";
 import type { DocumentStatus, DocumentSummary } from "./documents.types";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import { Badge } from "~/components/ui/badge";
+import { CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { Card, CardContent } from "~/components/ui/card";
+import { DataCard } from "~/components/shared/data-card/data-card.component";
+import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 
@@ -17,12 +22,38 @@ export function DocumentStatusBadge({ status, revising }: { status: DocumentStat
   );
 }
 
-export function DocumentLink({ doc }: { doc: DocumentSummary }) {
-  return (
-    <TextLink to={documentRoute(doc.type)} params={{ id: doc.id }}>
-      {documentLabel(doc.number, doc.revision)}
-    </TextLink>
-  );
+function DocumentLink({ doc }: { doc: DocumentSummary }) {
+  return <RowLink {...documentLink(doc)}>{documentLabel(doc.number, doc.revision)}</RowLink>;
+}
+
+export function documentLink(doc: DocumentSummary): LinkOptions {
+  return { to: documentRoute(doc.type), params: { id: doc.id } };
+}
+
+/** A draft takes the day it is issued. */
+function dateText(doc: DocumentSummary): string {
+  return doc.date ? formatDate(doc.date) : "Dated when issued";
+}
+
+/**
+ * Copy link, to send an issued document from the list; the rest (WhatsApp,
+ * PDF, reset the link) is on its page. A draft's link shows nothing yet.
+ */
+export function documentActions(doc: DocumentSummary): Array<Action> {
+  const token = doc.shareToken;
+  if (doc.status !== "issued" || !token) return [];
+  return [
+    {
+      type: "button",
+      label: "Copy link",
+      icon: LinkIcon,
+      onClick: () =>
+        void navigator.clipboard
+          .writeText(shareUrl(token))
+          .then(() => toast.success("Link copied"))
+          .catch(() => toast.error("Couldn't copy the link")),
+    },
+  ];
 }
 
 const helper = createDataTableColumnHelper<DocumentSummary>();
@@ -40,17 +71,14 @@ export const documentColumns = helper.columns([
     header: "Date",
     sortFn: "alphanumeric",
     meta: { search: (doc: DocumentSummary) => (doc.date ? formatDate(doc.date) : undefined) },
-    cell: ({ getValue }) => (getValue() ? formatDate(getValue()) : "—"),
+    cell: ({ row }) =>
+      row.original.date ? formatDate(row.original.date) : <span className="text-muted-foreground">{dateText(row.original)}</span>,
   }),
   helper.accessor("recipientName", {
     header: "For",
     sortFn: "alphanumeric",
-  }),
-  helper.accessor("totalCents", {
-    header: "Total",
-    sortFn: "basic",
-    meta: { search: (doc: DocumentSummary) => formatCents(doc.totalCents) },
-    cell: ({ getValue }) => formatCents(getValue()),
+    meta: { width: "grow" },
+    cell: ({ getValue }) => <CellText title={getValue()}>{getValue()}</CellText>,
   }),
   helper.accessor("status", {
     header: "Status",
@@ -60,25 +88,35 @@ export const documentColumns = helper.columns([
     },
     cell: ({ row }) => <DocumentStatusBadge status={row.original.status} revising={row.original.revising} />,
   }),
+  helper.accessor("totalCents", {
+    header: "Total",
+    sortFn: "basic",
+    meta: { align: "end", search: (doc: DocumentSummary) => formatCents(doc.totalCents) },
+    cell: ({ getValue }) => formatCents(getValue()),
+  }),
+  helper.display({
+    id: "actions",
+    header: () => <span className="sr-only">Actions</span>,
+    meta: { width: "fit" },
+    cell: ({ row }) => <RowActionButtons actions={documentActions(row.original)} />,
+  }),
 ]);
 
 /** The phone layout of a table row. */
 export function DocumentCard({ doc }: { doc: DocumentSummary }) {
   return (
-    <Card size="sm">
-      <CardContent className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-1">
-          <DocumentLink doc={doc} />
-          <span className="text-sm text-muted-foreground">
-            {doc.recipientName}
-            {doc.date && ` · ${formatDate(doc.date)}`}
-          </span>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <span className="text-sm">{formatCents(doc.totalCents)}</span>
+    <DataCard
+      title={
+        <>
+          <span className="font-medium">{documentLabel(doc.number, doc.revision)}</span>
           <DocumentStatusBadge status={doc.status} revising={doc.revising} />
-        </div>
-      </CardContent>
-    </Card>
+        </>
+      }
+      value={formatCents(doc.totalCents)}
+      meta={doc.recipientName}
+      detail={dateText(doc)}
+      actions={documentActions(doc)}
+      open={documentLink(doc)}
+    />
   );
 }

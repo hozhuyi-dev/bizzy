@@ -5,15 +5,17 @@ import { toast } from "sonner";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
 import type { CatalogueView, ExpenseItem } from "./expenses.types";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { RowActionButtons, RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
+import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
+import { CellEmpty } from "~/components/shared/data-table/data-table-cell.component";
+import { DataCard } from "~/components/shared/data-card/data-card.component";
 import { SearchInput } from "~/components/shared/search-input/search-input.component";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
@@ -27,9 +29,9 @@ const NO_ITEMS: Array<ExpenseItem> = [];
 const helper = createDataTableColumnHelper<ExpenseItem>();
 
 /**
- * The things she buys, which lines are picked from. Items are added as she
- * types new ones on an expense; here they are renamed, moved to another
- * category for lines from now on, or archived.
+ * The things the user buys, which lines are picked from. Items are added
+ * as new ones are typed on an expense; here they are renamed, moved to
+ * another category for lines from now on, or archived.
  */
 export function ExpenseItemsPage() {
   const [search, setSearch] = useState("");
@@ -39,6 +41,10 @@ export function ExpenseItemsPage() {
     const names = new Map((catalogue.data?.categories ?? []).map((c) => [c.id, c.name]));
     return (item: ExpenseItem) => names.get(item.categoryId) ?? "—";
   }, [catalogue.data]);
+  // A click on the row opens it to edit; Edit is behind ⋯ for the keyboard.
+  const itemMore = (item: ExpenseItem): Array<Action> => [
+    { type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(item) },
+  ];
 
   const columns = useMemo(
     () =>
@@ -46,6 +52,7 @@ export function ExpenseItemsPage() {
         helper.accessor("name", {
           header: "Item",
           sortFn: "alphanumeric",
+          meta: { width: "grow" },
           cell: ({ row }) => (
             <span className="flex flex-wrap items-center gap-1.5">
               {row.original.name}
@@ -59,15 +66,21 @@ export function ExpenseItemsPage() {
           header: "Last paid",
           sortFn: "basic",
           sortUndefined: "last",
+          meta: { align: "end" },
           cell: ({ getValue }) => {
             const cents = getValue();
-            return cents === undefined ? "—" : formatCents(cents);
+            return cents === undefined ? <CellEmpty /> : formatCents(cents);
           },
         }),
         helper.display({
           id: "actions",
+          header: () => <span className="sr-only">Actions</span>,
+          meta: { width: "fit" },
           cell: ({ row }) => (
-            <RowActionButtons actions={[{ type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]} />
+            <RowActionButtons
+              actions={[]}
+              more={[{ type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]}
+            />
           ),
         }),
       ]),
@@ -95,17 +108,21 @@ export function ExpenseItemsPage() {
         <DataTable
           table={table}
           query={search}
+          onRowOpen={setEditing}
           empty={<EmptyState quips={QUIPS.expenses}>No items yet. They're added as you record expenses.</EmptyState>}
           renderCard={(row) => (
-            <Card size="sm">
-              <CardContent className="flex items-start justify-between gap-2">
-                <span className="flex flex-col">
+            <DataCard
+              title={
+                <>
                   <span className="font-medium">{row.original.name}</span>
-                  <span className="text-xs text-muted-foreground">{categoryName(row.original)}</span>
-                </span>
-                <RowActionMenu actions={[{ type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]} />
-              </CardContent>
-            </Card>
+                  {row.original.archived && <Badge variant="neutral">Archived</Badge>}
+                </>
+              }
+              value={row.original.lastAmountCents === undefined ? undefined : formatCents(row.original.lastAmountCents)}
+              meta={categoryName(row.original)}
+              more={itemMore(row.original)}
+              onOpen={() => setEditing(row.original)}
+            />
           )}
         />
       )}

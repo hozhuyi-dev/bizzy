@@ -19,8 +19,8 @@ export function documentLabel(number: string | undefined, revision: number | und
 
 /**
  * How a link to a document reads: its number, or what it is when the link
- * doesn't know it ("Receipt", known by the payment it records) or it has
- * none yet ("Draft invoice").
+ * doesn't know it ("Receipt", from an API without the receipt's number) or
+ * it has none yet ("Draft invoice").
  */
 export function refLabel(type: DocumentType, ref: DocumentRef, issued = Boolean(ref.number)): string {
   if (ref.number) return ref.number;
@@ -38,7 +38,10 @@ interface Covered {
 export function coveringDocuments(item: Covered | undefined): Array<DocumentLink> {
   const links: Array<DocumentLink> = [];
   if (item?.invoice) links.push({ type: "invoice", ref: item.invoice, issued: Boolean(item.invoice.number) });
-  if (item?.paid) links.push({ type: "receipt", ref: { id: item.paid.receiptId }, issued: item.paid.issued });
+  if (item?.paid) {
+    const { receiptId, receiptNumber, issued } = item.paid;
+    links.push({ type: "receipt", ref: receiptNumber ? { id: receiptId, number: receiptNumber } : { id: receiptId }, issued });
+  }
   return links;
 }
 

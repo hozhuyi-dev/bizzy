@@ -3,7 +3,7 @@ import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { isLapsed } from "./client-activity.util";
-import { ClientCard, createClientColumns } from "./clients.columns";
+import { ClientCard, clientLink, createClientColumns } from "./clients.columns";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
 import { lapseFacet, lapseOf, toClientRow } from "./clients.util";
@@ -121,23 +121,20 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
 
   return (
     <>
-    <DataTable
-      table={table}
-      query={search}
-      empty={
-        reconnect ? (
-          <EmptyState quips={QUIPS.clientsReconnect}>Nobody to get back in touch with right now.</EmptyState>
-        ) : (
-          <EmptyState quips={QUIPS.clients}>
-            No clients yet. Add one, or link an unmatched calendar entry.
-          </EmptyState>
-        )
-      }
-      renderCard={(row) => (
-        <ClientCard row={row.original} {...handlers} />
-      )}
-    />
-    <FollowUpDialog target={remind} onClose={() => setRemind(null)} />
+      <DataTable
+        table={table}
+        query={search}
+        rowLink={(row) => clientLink(row.client)}
+        empty={
+          reconnect ? (
+            <EmptyState quips={QUIPS.clientsReconnect}>Nobody to get back in touch with right now.</EmptyState>
+          ) : (
+            <EmptyState quips={QUIPS.clients}>No clients yet. Add one, or link an unmatched calendar entry.</EmptyState>
+          )
+        }
+        renderCard={(row) => <ClientCard row={row.original} {...handlers} />}
+      />
+      <FollowUpDialog target={remind} onClose={() => setRemind(null)} />
     </>
   );
 }

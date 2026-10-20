@@ -1,13 +1,6 @@
 import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
-import {
-  SessionAmount,
-  SessionDocuments,
-  SessionStageCell,
-  SessionWho,
-  createSessionColumns,
-  sessionActions,
-} from "../../sessions.columns";
+import { SessionCard, createSessionColumns, sessionLink } from "../../sessions.columns";
 import { useConfirmBooking } from "../../sessions-booking.hook";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
@@ -17,9 +10,6 @@ import { toastRefusal } from "~/features/remedies/components/remedy-buttons/reme
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
-import { Card, CardContent } from "~/components/ui/card";
-import { formatSessionTime } from "~/core/utils/date.util";
 
 interface SessionsTableProps {
   /** In the order the API found them: latest first. */
@@ -31,8 +21,8 @@ interface SessionsTableProps {
 }
 
 /**
- * Sessions with the quick fix she can make to them: confirm. Each links to
- * its page, where everything else is.
+ * Sessions with the quick fix the user can make to them: confirm. Each
+ * links to its page, where everything else is.
  */
 export function SessionsTable({ sessions, empty, from }: SessionsTableProps) {
   const clientsById = ClientsQuery.useById();
@@ -68,29 +58,11 @@ export function SessionsTable({ sessions, empty, from }: SessionsTableProps) {
   });
 
   return (
-    <>
-      <DataTable
-        table={table}
-        empty={empty}
-        renderCard={(row) => (
-          <Card size="sm">
-            <CardContent className="flex flex-col gap-2">
-              <div className="flex items-start justify-between gap-2">
-                <SessionWho session={row.original} handlers={handlers} />
-                <RowActionMenu actions={sessionActions(row.original, handlers)} />
-              </div>
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-muted-foreground">{formatSessionTime(row.original.start)}</span>
-                <SessionAmount session={row.original} />
-              </div>
-              <div className="flex items-end justify-between gap-2">
-                <SessionStageCell session={row.original} />
-                <SessionDocuments session={row.original} handlers={handlers} empty={null} />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      />
-    </>
+    <DataTable
+      table={table}
+      empty={empty}
+      rowLink={(session) => sessionLink(session, from)}
+      renderCard={(row) => <SessionCard session={row.original} handlers={handlers} />}
+    />
   );
 }

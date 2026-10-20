@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { linesSummary, totalsByCategory, vendorsOf, yearRange } from "./expenses.util";
+import { linesCategories, linesSummary, totalsByCategory, vendorsOf, yearRange } from "./expenses.util";
 import type { CatalogueView, ExpenseView } from "./expenses.types";
 
 const expense = (vendor: string, lines: Array<[string, string, number]>): ExpenseView => ({
@@ -44,5 +44,13 @@ describe("expenses util", () => {
   it("summarises a receipt's lines", () => {
     expect(linesSummary(year[0] as ExpenseView)).toBe("Tape, Gel +1");
     expect(yearRange(2026)).toEqual({ from: "2026-01-01", to: "2026-12-31" });
+  });
+});
+
+describe("linesCategories", () => {
+  it("names each category once, in line order, skipping unknown ones", () => {
+    const receipt = expense("Shopee", [["Tape", "purchases", 4500], ["Bag", "travel", 900], ["Gel", "purchases", 1200], ["X", "gone", 1]]);
+    expect(linesCategories(receipt, catalogue)).toBe("Purchases, Travel");
+    expect(linesCategories(receipt, undefined)).toBe("");
   });
 });

@@ -31,6 +31,11 @@ interface FilterBarProps {
  * words; it also offers what it could mean as a filter (a client, a stage,
  * a month), taken as a chip under the box. Every chip can be removed, and
  * a month or year chip steps back and forth.
+ *
+ * The chips keep to one row that scrolls sideways, beside the box from a
+ * small screen up (so taking one moves nothing) and under it on a phone
+ * (so only the first one moves the list, and only once). The newest chip
+ * scrolls into view; Clear all stays put at the end.
  */
 export function FilterBar({ value, onChange, label, facets = [], dates = false, className }: FilterBarProps) {
   const placeholder = useQuip(QUIPS.searchPlaceholder);
@@ -65,6 +70,16 @@ export function FilterBar({ value, onChange, label, facets = [], dates = false, 
   const options = groups.flatMap((group) => group.items);
   const chips = chipsOf(value, facets);
   const showList = open && !pickingDays && options.length > 0;
+  const chipCount = chips.length + (value.when ? 1 : 0);
+
+  // A chip just taken is added at the end, maybe out of view: bring it in.
+  const scroller = useRef<HTMLDivElement>(null);
+  const shownChips = useRef(chipCount);
+  useEffect(() => {
+    const row = scroller.current;
+    if (row && chipCount > shownChips.current) row.scrollTo({ left: row.scrollWidth, behavior: "smooth" });
+    shownChips.current = chipCount;
+  }, [chipCount]);
 
   const change = (next: ListFilter) => {
     setDraft(next.text);
@@ -88,12 +103,12 @@ export function FilterBar({ value, onChange, label, facets = [], dates = false, 
   return (
     <div
       ref={container}
-      className={cn("relative flex w-full flex-col gap-2", className)}
+      className={cn("relative flex w-full flex-col gap-2 sm:flex-row sm:items-center", className)}
       onBlur={(event) => {
         if (!container.current?.contains(event.relatedTarget)) close();
       }}
     >
-      <div className="relative">
+      <div className="relative sm:w-80 sm:shrink-0">
         <SearchIcon
           aria-hidden="true"
           className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
@@ -217,22 +232,27 @@ export function FilterBar({ value, onChange, label, facets = [], dates = false, 
         )}
       </div>
 
-      {(value.when || chips.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {value.when && (
-            <WhenChip when={value.when} onChange={(when) => change({ ...value, when })} />
-          )}
-          {chips.map((chip) => (
-            <ChipShell
-              key={`${chip.facet}:${chip.value}`}
-              removeLabel={`Remove ${chip.facetLabel.toLowerCase()} ${chip.label}`}
-              onRemove={() => change(removeChip(value, chip.facet, chip.value))}
-            >
-              <span className="text-muted-foreground">{chip.facetLabel}:</span> {chip.label}
-            </ChipShell>
-          ))}
-          {chips.length + (value.when ? 1 : 0) > 1 && (
-            <Button variant="link" size="sm" className="h-7 px-1" onClick={() => change({ text: "", when: undefined, chips: {} })}>
+      {chipCount > 0 && (
+        <div className="flex min-w-0 items-center gap-1.5 sm:flex-1">
+          <div
+            ref={scroller}
+            className="-my-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {value.when && (
+              <WhenChip when={value.when} onChange={(when) => change({ ...value, when })} />
+            )}
+            {chips.map((chip) => (
+              <ChipShell
+                key={`${chip.facet}:${chip.value}`}
+                removeLabel={`Remove ${chip.facetLabel.toLowerCase()} ${chip.label}`}
+                onRemove={() => change(removeChip(value, chip.facet, chip.value))}
+              >
+                <span className="text-muted-foreground">{chip.facetLabel}:</span> {chip.label}
+              </ChipShell>
+            ))}
+          </div>
+          {chipCount > 1 && (
+            <Button variant="link" size="sm" className="h-7 shrink-0 px-1" onClick={() => change({ text: "", when: undefined, chips: {} })}>
               Clear all
             </Button>
           )}
@@ -244,7 +264,7 @@ export function FilterBar({ value, onChange, label, facets = [], dates = false, 
 
 function ChipShell({ children, removeLabel, onRemove }: { children: ReactNode; removeLabel: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex h-7 items-center gap-0.5 rounded-full border bg-muted/40 pr-0.5 pl-2.5 text-sm">
+    <span className="inline-flex h-7 max-w-64 shrink-0 items-center gap-0.5 rounded-full border bg-muted/40 pr-0.5 pl-2.5 text-sm whitespace-nowrap">
       <span className="truncate">{children}</span>
       <Button variant="ghost" size="icon-xs" className="rounded-full" aria-label={removeLabel} onClick={onRemove}>
         <XIcon />
@@ -258,7 +278,7 @@ function WhenChip({ when, onChange }: { when: string; onChange: (when: string | 
   const earlier = stepWhen(when, -1);
   const later = stepWhen(when, 1);
   return (
-    <span className="inline-flex h-7 items-center gap-0.5 rounded-full border bg-muted/40 px-0.5 text-sm">
+    <span className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-full border bg-muted/40 px-0.5 text-sm whitespace-nowrap">
       {earlier && (
         <Button variant="ghost" size="icon-xs" className="rounded-full" aria-label="Earlier" onClick={() => onChange(earlier)}>
           <ChevronLeftIcon />

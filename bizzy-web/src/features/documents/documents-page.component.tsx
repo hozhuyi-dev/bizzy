@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
 import { cn } from "cn";
-import { DocumentCard, documentColumns } from "./documents.columns";
+import { DocumentCard, documentColumns, documentLink } from "./documents.columns";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { DocumentsQuery } from "./documents.query";
 import { documentFacets } from "./documents.util";
@@ -72,6 +72,7 @@ export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPagePro
           <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
             <DataTable
               table={table}
+              rowLink={documentLink}
               empty={
                 isNarrowed(filter) || documents.hasNextPage ? (
                   <EmptyState quips={QUIPS.search}>

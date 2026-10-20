@@ -12,6 +12,8 @@ export interface Paid {
   /** YYYY-MM-DD. */
   paidOn: string;
   receiptId: string;
+  /** Set once its receipt is issued. */
+  receiptNumber?: string;
   /** Its receipt is issued: the payment stays as it is. */
   issued: boolean;
 }

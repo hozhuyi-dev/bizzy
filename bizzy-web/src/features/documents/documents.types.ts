@@ -133,8 +133,8 @@ export interface DocumentRef {
 
 /**
  * A document covering a session or package, as a link to it. A receipt is
- * known by the payment it records, which says whether it is issued but not
- * its number.
+ * known by the payment it records, which says whether it is issued and,
+ * once it is, its number.
  */
 export interface DocumentLink {
   type: DocumentType;

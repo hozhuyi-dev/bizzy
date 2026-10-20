@@ -1,3 +1,4 @@
+import { SESSION_PLACES } from "./sessions.constant";
 import { REASON_BADGES } from "./session-stage.util";
 import type { SearchSessionsRequest, SessionLocation, SessionReason, SessionSearch } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
@@ -11,8 +12,6 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   return { from: oneOf(search.from, ["home"] as const), settle: textParam(search.settle) };
 }
 
-const PLACES: Record<SessionLocation, string> = { visit: "Home visit", own: "Your place" };
-
 /** What the sessions list can be narrowed by (SESSION_FACETS). */
 export function sessionFacets(clients: ReadonlyArray<ClientView>): Array<Facet> {
   return [
@@ -22,7 +21,7 @@ export function sessionFacets(clients: ReadonlyArray<ClientView>): Array<Facet> 
       label: "Stage",
       options: Object.entries(REASON_BADGES).map(([reason, badge]) => ({ value: reason, label: badge.label })),
     },
-    { key: "place", label: "Place", options: Object.entries(PLACES).map(([value, label]) => ({ value, label })) },
+    { key: "place", label: "Place", options: Object.entries(SESSION_PLACES).map(([value, label]) => ({ value, label })) },
   ];
 }
 

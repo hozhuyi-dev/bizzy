@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { cn } from "cn";
 import { FollowUpDialog } from "./components/follow-up-dialog/follow-up-dialog.component";
-import { FollowUpRow } from "./components/follow-up-row/follow-up-row.component";
+import { FollowUpsTable } from "./components/follow-ups-table/follow-ups-table.component";
 import { FollowUpsQuery } from "./follow-ups.query";
 import type { FollowUpList, FollowUpTarget, FollowUpView } from "./follow-ups.types";
 import type { ListFilter } from "~/core/filter/filter.types";
@@ -13,7 +13,6 @@ import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
 import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { Card, CardContent } from "~/components/ui/card";
 import { isNarrowed, pageItems } from "~/core/filter/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -39,8 +38,10 @@ export function FollowUpsPage({ view, filter, onFilterChange, open, onOpenChange
   const items = useMemo(() => pageItems(list.data), [list.data]);
   const opened = open ? items.find((followUp) => followUp.id === open) : undefined;
   const target: FollowUpTarget | null = opened ? { mode: "edit", followUp: opened } : adding;
-  const edit = (followUp: FollowUpView) =>
-    onOpenChange ? onOpenChange(followUp.id) : setAdding({ mode: "edit", followUp });
+  const edit = useCallback(
+    (followUp: FollowUpView) => (onOpenChange ? onOpenChange(followUp.id) : setAdding({ mode: "edit", followUp })),
+    [onOpenChange],
+  );
   const close = () => {
     setAdding(null);
     if (open) onOpenChange?.(undefined);
@@ -70,34 +71,25 @@ export function FollowUpsPage({ view, filter, onFilterChange, open, onOpenChange
         <p role="alert" className="text-sm text-destructive">
           {list.error.message}
         </p>
-      ) : items.length === 0 ? (
-        <div className="py-10">
-          {isNarrowed(filter) || filter.when || list.hasNextPage ? (
-            <>
-              <EmptyState quips={QUIPS.search}>No follow-ups found{list.hasNextPage ? " yet" : ""}.</EmptyState>
-              <LoadMore pages={list} found={false} />
-            </>
-          ) : view === "upcoming" ? (
-            <EmptyState quips={QUIPS.followUps}>
-              Follow-ups you add, or write in your calendar as “! Name: what”, show up here.
-            </EmptyState>
-          ) : (
-            <EmptyState quips={QUIPS.followUpsDone}>Follow-ups you tick off show up here.</EmptyState>
-          )}
-        </div>
       ) : (
-        <Card className={cn("transition-opacity", list.isPlaceholderData && "opacity-60")}>
-          <CardContent>
-            <ul className="flex flex-col divide-y">
-              {items.map((followUp) => (
-                <li key={followUp.id} className="py-3 first:pt-0 last:pb-0">
-                  <FollowUpRow followUp={followUp} onEdit={edit} />
-                </li>
-              ))}
-            </ul>
-            <LoadMore pages={list} found />
-          </CardContent>
-        </Card>
+        <div className={cn("transition-opacity", list.isPlaceholderData && "opacity-60")}>
+          <FollowUpsTable
+            followUps={items}
+            onEdit={edit}
+            empty={
+              isNarrowed(filter) || filter.when || list.hasNextPage ? (
+                <EmptyState quips={QUIPS.search}>No follow-ups found{list.hasNextPage ? " yet" : ""}.</EmptyState>
+              ) : view === "upcoming" ? (
+                <EmptyState quips={QUIPS.followUps}>
+                  Follow-ups you add, or write in your calendar as “! Name: what”, show up here.
+                </EmptyState>
+              ) : (
+                <EmptyState quips={QUIPS.followUpsDone}>Follow-ups you tick off show up here.</EmptyState>
+              )
+            }
+          />
+          <LoadMore pages={list} found={items.length > 0} />
+        </div>
       )}
 
       <FollowUpDialog target={target} onClose={close} />

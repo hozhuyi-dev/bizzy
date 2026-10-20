@@ -4,7 +4,7 @@ import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { DeletePackageDialog } from "./components/delete-package-dialog/delete-package-dialog.component";
 import { PackageForm } from "./components/package-form/package-form.component";
-import { PackageCredits, PackageDocuments, PackagePayment, PackagePrice, PackageSource, createPackageColumns, packageActions } from "./packages.columns";
+import { PackageCard, createPackageColumns } from "./packages.columns";
 import { clientName, packageFacets, packagePayables, packagesView } from "./packages.util";
 import { PackagesMutation } from "./packages.mutation";
 import { PackagesQuery } from "./packages.query";
@@ -20,8 +20,6 @@ import { dataTableFeatures } from "~/components/shared/data-table/data-table.con
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
-import { Card, CardContent } from "~/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
@@ -118,35 +116,13 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
           <DataTable
             table={table}
             query={filter.text}
+            onRowOpen={handlers.onEdit}
             empty={
               <EmptyState quips={QUIPS.packages}>
                 No packages. Write 10x85 or 10@850 after a name in the calendar, or add one here.
               </EmptyState>
             }
-            renderCard={(row) => (
-              <Card size="sm">
-                <CardContent className="flex flex-col gap-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex flex-col">
-                      <span className="font-medium">{clientName(row.original, clientsById)}</span>
-                      <span className="text-xs text-muted-foreground">
-                        Bought {formatDate(row.original.purchasedAt)}
-                      </span>
-                    </div>
-                    <RowActionMenu actions={packageActions(row.original, handlers)} />
-                  </div>
-                  <div className="flex items-start justify-between gap-2 text-sm">
-                    <PackageCredits pkg={row.original} />
-                    <PackagePrice pkg={row.original} />
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <PackageSource pkg={row.original} />
-                    <PackagePayment pkg={row.original} />
-                  </div>
-                  <PackageDocuments pkg={row.original} empty={null} />
-                </CardContent>
-              </Card>
-            )}
+            renderCard={(row) => <PackageCard pkg={row.original} handlers={handlers} />}
           />
         ),
       })}

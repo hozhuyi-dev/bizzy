@@ -83,7 +83,9 @@ type Paid struct {
 	Method      Method `json:"method"`
 	PaidOn      string `json:"paidOn"`
 	ReceiptID   string `json:"receiptId"`
-	Issued      bool   `json:"issued"`
+	// ReceiptNumber is set once the receipt is issued, as an invoice's is.
+	ReceiptNumber string `json:"receiptNumber,omitempty"`
+	Issued        bool   `json:"issued"`
 }
 
 // Received is what was received for an item; nil when nothing was.
@@ -92,7 +94,7 @@ func Received(tx *txn.Tx, src Source) (*Paid, error) {
 	if err != nil || line == nil {
 		return nil, err
 	}
-	p := &Paid{AmountCents: line.AmountCents, ReceiptID: d.ID, Issued: d.Issued()}
+	p := &Paid{AmountCents: line.AmountCents, ReceiptID: d.ID, ReceiptNumber: d.Number, Issued: d.Issued()}
 	if pay := d.Counting().Payment; pay != nil {
 		p.Method, p.PaidOn = pay.Method, pay.PaidOn
 	}
