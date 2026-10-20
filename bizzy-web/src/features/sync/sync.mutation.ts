@@ -14,12 +14,21 @@ export const SyncMutation = {
     });
   },
 
+  /**
+   * One step of a backfill, after waiting `pauseMs`. Waiting inside the
+   * step keeps it running meanwhile, so the backfill shows as running
+   * throughout. Only the status is refreshed here; useBackfill refreshes the
+   * rest once it's done, rather than every page on every step.
+   */
   useBackfill: () => {
     const queryClient = useQueryClient();
     return useMutation({
       mutationKey: SyncKeys.backfill(),
-      mutationFn: () => SyncService.backfill(),
-      onSettled: () => invalidateBilling(queryClient),
+      mutationFn: async (pauseMs: number) => {
+        if (pauseMs > 0) await new Promise((resolve) => setTimeout(resolve, pauseMs));
+        return SyncService.backfill();
+      },
+      onSettled: () => queryClient.invalidateQueries({ queryKey: SyncKeys.status() }),
     });
   },
 

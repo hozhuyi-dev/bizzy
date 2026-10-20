@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { BACKFILL_PAUSE_MS } from "./sync.constant";
 import { SyncMutation } from "./sync.mutation";
 import type { SyncView } from "./sync.types";
 import { SyncKeys } from "~/core/constants/query-keys.constant";
+import { invalidateBilling } from "~/core/utils/query.util";
 
 /**
  * Reads the calendar further back from where a sync got to (its `back`), a
  * month or so a call, so a calendar's whole history comes in without one
  * long wait. It runs on its own, one at a time; one that fails stops, and
- * the next sync goes on from where it got to.
+ * the next sync goes on from where it got to. What it read shows once it
+ * stops, so the pages aren't all read again on every call.
  */
 export function useBackfill(): (back: string | undefined) => void {
   const queryClient = useQueryClient();
@@ -19,8 +22,10 @@ export function useBackfill(): (back: string | undefined) => void {
       if (!from || queryClient.isMutating({ mutationKey: SyncKeys.backfill() }) > 0) return;
       void (async () => {
         let back: string | undefined = from;
-        while (back) back = (await backfill()).back;
-      })().catch(() => undefined);
+        for (let step = 0; back; step++) back = (await backfill(step === 0 ? 0 : BACKFILL_PAUSE_MS)).back;
+      })()
+        .catch(() => undefined)
+        .finally(() => invalidateBilling(queryClient));
     },
     [queryClient, backfill],
   );
