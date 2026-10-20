@@ -1,11 +1,17 @@
-import type { DocumentContent, DocumentSummary, DocumentType, DocumentView, SharedDocumentView } from "./documents.types";
+import type {
+  DocumentContent,
+  DocumentSummary,
+  DocumentView,
+  SearchDocumentsRequest,
+  SharedDocumentView,
+} from "./documents.types";
+import type { Page } from "~/core/filter/filter.types";
 import type { ApiResponse } from "~/core/lambda/lambda.types";
 import { ApiError, invoke } from "~/core/lambda/lambda.client";
 
 export const DocumentsService = {
-  /** One month ("2026-10") of one type. */
-  list: (type: DocumentType, month: string) =>
-    invoke<Array<DocumentSummary>>("documents.list", { type, month }),
+  /** A page of the documents of a type found, latest first, drafts without a date last. */
+  search: (request: SearchDocumentsRequest) => invoke<Page<DocumentSummary>>("documents.search", request),
   /** Every document for a client, of any type, newest first, the drafts last. */
   listByClient: (clientId: string) =>
     invoke<Array<DocumentSummary>>("documents.listByClient", { clientId }),

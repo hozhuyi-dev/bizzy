@@ -98,6 +98,48 @@ func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 		}
 	})
 
+	t.Run("a query reads backwards, and a page at a time", func(t *testing.T) {
+		tb := open(t)
+		// Two pairs share a time: a page can end between them.
+		var writes []table.Write
+		for i, at := range []string{"2026-10-01", "2026-10-02", "2026-10-02", "2026-10-03", "2026-10-03", "2026-10-04"} {
+			writes = append(writes, put(item(fmt.Sprintf("i%d", i), table.Indexes{Time: at})))
+		}
+		if err := tb.Commit(ctx, counter(), 0, writes); err != nil {
+			t.Fatal(err)
+		}
+		for _, desc := range []bool{false, true} {
+			q := table.Query{PK: pk + "THING", Index: table.ByTime, To: "2026-10-03", Desc: desc}
+			all, err := tb.Query(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(all) != 5 {
+				t.Fatalf("desc %v: %v, want the five up to 2026-10-03", desc, keys(all))
+			}
+			if desc && all[0].Time != "2026-10-03" {
+				t.Errorf("backwards: %v, want the latest first", keys(all))
+			}
+			var paged []table.Item
+			q.Limit = 2
+			for {
+				page, err := tb.Query(ctx, q)
+				if err != nil {
+					t.Fatal(err)
+				}
+				paged = append(paged, page...)
+				if len(page) < q.Limit {
+					break
+				}
+				after := table.PlaceOf(q.Index, page[len(page)-1])
+				q.After = &after
+			}
+			if !slices.Equal(keys(paged), keys(all)) {
+				t.Errorf("desc %v: by pages %v, at once %v", desc, keys(paged), keys(all))
+			}
+		}
+	})
+
 	t.Run("a wipe deletes everything outside the kept partitions", func(t *testing.T) {
 		tb := open(t)
 		kept := item("k", table.Indexes{})

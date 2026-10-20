@@ -3,13 +3,13 @@ package documents
 import (
 	"cmp"
 	"context"
-	"regexp"
 	"slices"
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/listing"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -102,10 +102,14 @@ func SharedViewOf(d *Document) SharedView {
 	return SharedView{Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, Content: *d.Content, CancelledAt: d.CancelledAt}
 }
 
-type listRequest struct {
-	Type Type `json:"type"`
-	// Month is "2026-10": a list covers one month of document dates.
-	Month string `json:"month"`
+// searchRequest finds documents of a type by words in their number, who
+// they are for or the client's name, and by days (a draft without a date
+// is on no day), clients and status; an empty filter takes every value.
+type searchRequest struct {
+	listing.Request
+	Type      Type     `json:"type"`
+	ClientIDs []string `json:"clientIds"`
+	Statuses  []Status `json:"statuses"`
 }
 
 type clientRequest struct {
@@ -137,8 +141,6 @@ type shareRequest struct {
 	IDs []string `json:"ids"`
 }
 
-var monthPattern = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])$`)
-
 // Routes registers the documents' actions. checks are what other features
 // hold a document to before it is issued (see Check).
 func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
@@ -159,17 +161,34 @@ func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
 		})
 	}
 
-	r.Query("documents.list", router.Typed(func(ctx context.Context, in listRequest) (any, error) {
-		month, err := time.Parse("2006-01", in.Month)
-		if err != nil || !monthPattern.MatchString(in.Month) {
-			return nil, apperr.Invalid("Choose a month like 2026-10.")
-		}
+	// documents.search finds documents of a type, latest first, a page at
+	// a time.
+	r.Query("documents.search", router.Typed(func(ctx context.Context, in searchRequest) (any, error) {
 		if _, ok := Types[in.Type]; !ok {
 			return nil, apperr.Invalid("Unknown document type %q.", in.Type)
 		}
-		return txn.Read(ctx, run, func(tx *txn.Tx) ([]Summary, error) {
-			all, err := Documents.TaggedBetween(tx, string(in.Type), month, month.AddDate(0, 1, 0).Add(-time.Second))
-			return summaries(all), err
+		return txn.Read(ctx, run, func(tx *txn.Tx) (listing.Page[Summary], error) {
+			// Document dates are days, filed as UTC.
+			from, to, err := in.Span(time.UTC)
+			if err != nil {
+				return listing.Page[Summary]{}, err
+			}
+			l := txn.List{Tag: string(in.Type), From: from, To: to, Latest: true}
+			if len(in.ClientIDs) == 1 {
+				l = txn.List{Client: in.ClientIDs[0], From: from, To: to, Latest: true}
+			}
+			words := in.Words()
+			return listing.Read(tx, Documents, l, in.Request, func(d *Document) (Summary, bool, error) {
+				if d.Type != in.Type || !listing.OneOf(in.ClientIDs, d.ClientID) || !listing.OneOf(in.Statuses, d.Status) {
+					return Summary{}, false, nil
+				}
+				s := summaryOf(d)
+				client, err := clients.Clients.Get(tx, d.ClientID)
+				if err != nil {
+					return Summary{}, false, err
+				}
+				return s, words.In(s.Number, s.RecipientName, client.Name), nil
+			})
 		})
 	}))
 	// documents.listByClient lists a client's documents of every type,

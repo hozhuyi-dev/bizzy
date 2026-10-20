@@ -1,47 +1,52 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
+import { cn } from "cn";
 import { ExpenseLink, ExpenseReceipt, createExpenseColumns } from "./expenses.columns";
 import { ExpensesQuery } from "./expenses.query";
-import { linesSummary, totalsByCategory } from "./expenses.util";
-import type { ExpenseView } from "./expenses.types";
+import { expenseFacets, linesSummary, totalsByCategory } from "./expenses.util";
+import type { ExpenseTotals } from "./expenses.types";
+import type { ListFilter, When } from "~/core/filter/filter.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { monthTotals } from "~/features/insights/insights-metrics.util";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
+import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { SearchInput } from "~/components/shared/search-input/search-input.component";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
+import { formatWhen, isNarrowed, pageItems, whenDays } from "~/core/filter/filter.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
-// Stable fallback: a fresh [] each render would rebuild the row models.
-const NO_EXPENSES: Array<ExpenseView> = [];
-
 interface ExpensesPageProps {
-  year: number;
-  onYearChange: (year: number) => void;
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
 }
 
 /**
- * A year of receipts: what was spent, on what (by Form B category, as the
- * tax return asks), and what is left of the money received.
+ * Receipts, latest first, searched on the server a page at a time: what
+ * was spent, on what (by Form B category, as the tax return asks), and,
+ * over the days shown, what is left of the money received.
  */
-export function ExpensesPage({ year, onYearChange }: ExpensesPageProps) {
-  const [search, setSearch] = useState("");
-  const expenses = ExpensesQuery.useYear(year);
+export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
+  const expenses = ExpensesQuery.useSearch(filter);
   const catalogue = ExpensesQuery.useCatalogue();
+  const facets = useMemo(() => expenseFacets(catalogue.data), [catalogue.data]);
   const columns = useMemo(() => createExpenseColumns(), []);
+  const data = useMemo(() => pageItems(expenses.data), [expenses.data]);
+  const totals = expenses.data?.pages[0]?.totals;
 
   const table = useTable({
     features: dataTableFeatures,
     columns,
-    data: expenses.data ?? NO_EXPENSES,
+    data,
     getRowId: (expense) => expense.id,
-    initialState: { sorting: [{ id: "date", desc: true }] },
+    // Read a page at a time, latest first: sorting a page would only sort
+    // what is loaded.
+    enableSorting: false,
   });
 
   return (
@@ -51,26 +56,7 @@ export function ExpensesPage({ year, onYearChange }: ExpensesPageProps) {
         actions={[
           { type: "link", label: "New expense", icon: PlusIcon, style: "primary", link: { to: "/expenses/new" } },
         ]}
-        toolbar={
-          <>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon-sm" aria-label="Previous year" onClick={() => onYearChange(year - 1)}>
-                <ChevronLeftIcon />
-              </Button>
-              <span className="w-12 text-center text-sm font-medium tabular-nums">{year}</span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Next year"
-                disabled={year >= new Date().getFullYear()}
-                onClick={() => onYearChange(year + 1)}
-              >
-                <ChevronRightIcon />
-              </Button>
-            </div>
-            <SearchInput label="Search expenses" value={search} onChange={setSearch} />
-          </>
-        }
+        toolbar={<FilterBar label="Search expenses" value={filter} onChange={onFilterChange} facets={facets} dates />}
       />
 
       {expenses.isPending ? (
@@ -80,56 +66,75 @@ export function ExpensesPage({ year, onYearChange }: ExpensesPageProps) {
           {expenses.error.message}
         </p>
       ) : (
-        <div className="flex flex-col gap-6">
-          <YearSummary year={year} expenses={expenses.data} />
-          {catalogue.data && expenses.data.length > 0 && (
-            <CategoryTotals totals={totalsByCategory(expenses.data, catalogue.data)} />
+        <div className={cn("flex flex-col gap-6 transition-opacity", expenses.isPlaceholderData && "opacity-60")}>
+          {totals && <Summary when={filter.when} totals={totals} narrowed={isNarrowed(filter)} />}
+          {catalogue.data && totals && totals.spentCents > 0 && (
+            <CategoryTotals totals={totalsByCategory(totals.byCategory, catalogue.data)} />
           )}
-          <DataTable
-            table={table}
-            query={search}
-            empty={<EmptyState quips={QUIPS.expenses}>No expenses in {year}. Add one with its receipt.</EmptyState>}
-            renderCard={(row) => (
-              <Card size="sm">
-                <CardContent className="flex flex-col gap-1.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="flex flex-col">
-                      <ExpenseLink expense={row.original} />
-                      <span className="text-xs text-muted-foreground">{row.original.vendor}</span>
-                    </span>
-                    <span className="font-medium tabular-nums">{formatCents(row.original.totalCents)}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate text-muted-foreground">{linesSummary(row.original)}</span>
-                    <ExpenseReceipt expense={row.original} />
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          />
+          <div>
+            <DataTable
+              table={table}
+              empty={
+                isNarrowed(filter) || expenses.hasNextPage ? (
+                  <EmptyState quips={QUIPS.search}>No expenses found{expenses.hasNextPage ? " yet" : ""}.</EmptyState>
+                ) : (
+                  <EmptyState quips={QUIPS.expenses}>
+                    No expenses{filter.when ? ` in ${formatWhen(filter.when)}` : " yet"}. Add one with its receipt.
+                  </EmptyState>
+                )
+              }
+              renderCard={(row) => (
+                <Card size="sm">
+                  <CardContent className="flex flex-col gap-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="flex flex-col">
+                        <ExpenseLink expense={row.original} />
+                        <span className="text-xs text-muted-foreground">{row.original.vendor}</span>
+                      </span>
+                      <span className="font-medium tabular-nums">{formatCents(row.original.totalCents)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate text-muted-foreground">{linesSummary(row.original)}</span>
+                      <ExpenseReceipt expense={row.original} />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            />
+            <LoadMore pages={expenses} found={data.length > 0} />
+          </div>
         </div>
       )}
     </>
   );
 }
 
-/** Spent, received and what is left, over the calendar year. */
-function YearSummary({ year, expenses }: { year: number; expenses: ReadonlyArray<ExpenseView> }) {
+/**
+ * What the expenses found add up to and, over the days shown (all time
+ * without any), what was received and is left. Received is by the month,
+ * so days picked inside a month count all of it. Searching words or
+ * categories leaves received out: it isn't theirs.
+ */
+function Summary({ when, totals, narrowed }: { when: When | undefined; totals: ExpenseTotals; narrowed: boolean }) {
   const activity = ActivityQuery.useList();
-  const spent = expenses.reduce((sum, expense) => sum + expense.totalCents, 0);
   const received = useMemo(() => {
+    const days = when ? whenDays(when) : undefined;
     let cents = 0;
     for (const [month, total] of monthTotals(activity.data ?? [])) {
-      if (month.startsWith(`${year}-`)) cents += total.received;
+      if (!days || (month >= days.from.slice(0, 7) && month <= days.to.slice(0, 7))) cents += total.received;
     }
     return cents;
-  }, [activity.data, year]);
+  }, [activity.data, when]);
 
   return (
     <dl className="grid grid-cols-3 gap-3">
-      <Stat label="Spent" value={formatCents(spent)} />
-      <Stat label="Received" value={activity.data ? formatCents(received) : "…"} />
-      <Stat label="Left" value={activity.data ? formatCents(received - spent) : "…"} />
+      <Stat label="Spent" value={formatCents(totals.spentCents)} />
+      {!narrowed && (
+        <>
+          <Stat label="Received" value={activity.data ? formatCents(received) : "…"} />
+          <Stat label="Left" value={activity.data ? formatCents(received - totals.spentCents) : "…"} />
+        </>
+      )}
     </dl>
   );
 }

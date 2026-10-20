@@ -1,9 +1,19 @@
-import type { CatalogueView, ExpenseCategory, ExpenseFields, ExpenseItem, ExpenseView } from "./expenses.types";
+import type {
+  CatalogueView,
+  ExpenseCategory,
+  ExpenseFields,
+  ExpenseItem,
+  ExpenseView,
+  ExpensesPage,
+  SearchExpensesRequest,
+} from "./expenses.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const ExpensesService = {
   /** Expenses dated between two days, both included. */
   list: (from: string, to: string) => invoke<Array<ExpenseView>>("expenses.list", { from, to }),
+  /** A page of the expenses found, latest first; the first page has their totals. */
+  search: (request: SearchExpensesRequest) => invoke<ExpensesPage>("expenses.search", request),
   get: (id: string) => invoke<ExpenseView>("expenses.get", { id }),
   catalogue: () => invoke<CatalogueView>("expenses.catalogue"),
   create: (fields: ExpenseFields) => invoke<ExpenseView>("expenses.create", fields),

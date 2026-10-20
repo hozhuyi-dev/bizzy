@@ -1,4 +1,5 @@
 import type { PaymentMethod } from "~/features/payments/payments.types";
+import type { ListRequest } from "~/core/filter/filter.types";
 
 // Mirrors bizzy-lambda/internal/features/documents/api.go and document.go.
 // Documents are where money lives: a session's fee is its invoice's line,
@@ -79,6 +80,13 @@ export interface DocumentSummary {
   revising?: boolean;
   /** Opens the issued content at /d/<token> without signing in. */
   shareToken?: string;
+}
+
+/** documents.search's request: an empty filter takes every value. */
+export interface SearchDocumentsRequest extends ListRequest {
+  type: DocumentType;
+  clientIds: Array<string>;
+  statuses: Array<DocumentStatus>;
 }
 
 /** One issued version, kept forever; mirrors documents.Revision. */

@@ -1,26 +1,35 @@
-import { useState } from "react";
+import { useMemo } from "react";
+import { cn } from "cn";
 import { NEW_SESSION_ACTION } from "./sessions.action";
 import { SessionsTable } from "./components/sessions-table/sessions-table.component";
 import { SessionsQuery } from "./sessions.query";
+import { sessionFacets } from "./sessions.util";
+import type { ListFilter } from "~/core/filter/filter.types";
+import { ClientsQuery } from "~/features/clients/clients.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
-import { MonthPicker } from "~/components/shared/month-picker/month-picker.component";
+import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { SearchInput } from "~/components/shared/search-input/search-input.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { formatMonth } from "~/core/utils/date.util";
+import { formatWhen, isNarrowed, pageItems } from "~/core/filter/filter.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 interface SessionsPageProps {
-  /** "2026-10". */
-  month: string;
-  onMonthChange: (month: string) => void;
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
 }
 
-/** Every session, a month at a time. What needs fixing is on Home. */
-export function SessionsPage({ month, onMonthChange }: SessionsPageProps) {
-  const [search, setSearch] = useState("");
-  const sessions = SessionsQuery.useMonth(month);
+/**
+ * Every session, latest first, searched and narrowed on the server a page
+ * at a time: by words in a client's name, the summary or the notes, by
+ * client, stage, place and days. What needs fixing is on Home.
+ */
+export function SessionsPage({ filter, onFilterChange }: SessionsPageProps) {
+  const clients = ClientsQuery.useList();
+  const facets = useMemo(() => sessionFacets(clients.data ?? []), [clients.data]);
+  const sessions = SessionsQuery.useSearch(filter);
+  const rows = useMemo(() => pageItems(sessions.data), [sessions.data]);
 
   return (
     <>
@@ -28,12 +37,7 @@ export function SessionsPage({ month, onMonthChange }: SessionsPageProps) {
         title="All sessions"
         actions={[NEW_SESSION_ACTION]}
         banners={<GoogleNotice />}
-        toolbar={
-          <>
-            <MonthPicker value={month} onChange={onMonthChange} />
-            <SearchInput label="Search sessions" value={search} onChange={setSearch} />
-          </>
-        }
+        toolbar={<FilterBar label="Search sessions" value={filter} onChange={onFilterChange} facets={facets} dates />}
       />
 
       {queryMatch(sessions, {
@@ -43,17 +47,23 @@ export function SessionsPage({ month, onMonthChange }: SessionsPageProps) {
             {error.message}
           </p>
         ),
-        success: (data) => (
-          <SessionsTable
-            sessions={data}
-            query={search}
-            empty={
-              // Keyed by month: each empty month gets its own line.
-              <EmptyState key={month} quips={QUIPS.sessionsHistory}>
-                No sessions in {formatMonth(month)}.
-              </EmptyState>
-            }
-          />
+        success: () => (
+          <div className={cn("transition-opacity", sessions.isPlaceholderData && "opacity-60")}>
+            <SessionsTable
+              sessions={rows}
+              empty={
+                isNarrowed(filter) || sessions.hasNextPage ? (
+                  <EmptyState quips={QUIPS.search}>No sessions found{sessions.hasNextPage ? " yet" : ""}.</EmptyState>
+                ) : (
+                  // Keyed by the days: each empty stretch gets its own line.
+                  <EmptyState key={filter.when} quips={QUIPS.sessionsHistory}>
+                    No sessions{filter.when ? ` in ${formatWhen(filter.when)}` : " yet"}.
+                  </EmptyState>
+                )
+              }
+            />
+            <LoadMore pages={sessions} found={rows.length > 0} />
+          </div>
         ),
       })}
     </>

@@ -1,7 +1,7 @@
 import { CheckIcon, HomeIcon } from "lucide-react";
 import { allSessionDocuments, sessionAmount, stageBadges } from "./session-stage.util";
 import type { ReactNode } from "react";
-import type { SessionReturnTo, SessionView } from "./sessions.types";
+import type { SessionHit, SessionReturnTo, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
@@ -24,8 +24,11 @@ export interface SessionHandlers {
 
 const helper = createDataTableColumnHelper<SessionView>();
 
-/** Who the session is with, linking to its page, where everything about it is. */
-export function SessionWho({ session, handlers }: { session: SessionView; handlers: SessionHandlers }) {
+/**
+ * Who the session is with, linking to its page, where everything about it
+ * is; under it the summary, and the notes a search found it by.
+ */
+export function SessionWho({ session, handlers }: { session: SessionHit; handlers: SessionHandlers }) {
   const client = clientOf(handlers.clientsById, session.clientId);
   return (
     <div className="flex flex-col items-start">
@@ -33,6 +36,7 @@ export function SessionWho({ session, handlers }: { session: SessionView; handle
         {client?.name ?? session.clientName}
       </TextLink>
       {session.record.summary && <span className="text-xs text-muted-foreground">{session.record.summary}</span>}
+      {session.excerpt && <span className="text-xs text-muted-foreground italic">{session.excerpt}</span>}
     </div>
   );
 }

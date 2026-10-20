@@ -41,9 +41,20 @@ func (m *Memory) Query(_ context.Context, q Query) ([]Item, error) {
 			out = append(out, it)
 		}
 	}
-	slices.SortFunc(out, func(a, b Item) int {
-		return cmp.Or(cmp.Compare(a.SortKey(q.Index), b.SortKey(q.Index)), cmp.Compare(a.SK, b.SK))
-	})
+	order := func(a, b Place) int {
+		c := cmp.Or(cmp.Compare(a.SortKey, b.SortKey), cmp.Compare(a.SK, b.SK))
+		if q.Desc {
+			return -c
+		}
+		return c
+	}
+	slices.SortFunc(out, func(a, b Item) int { return order(PlaceOf(q.Index, a), PlaceOf(q.Index, b)) })
+	if q.After != nil {
+		out = slices.DeleteFunc(out, func(it Item) bool { return order(PlaceOf(q.Index, it), *q.After) <= 0 })
+	}
+	if q.Limit > 0 && len(out) > q.Limit {
+		out = out[:q.Limit]
+	}
 	return out, nil
 }
 

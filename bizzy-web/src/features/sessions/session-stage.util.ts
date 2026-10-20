@@ -11,7 +11,7 @@ import { formatHours } from "~/core/utils/date.util";
  */
 
 /** How each of the API's to-do reasons shows as a badge. */
-const REASON_BADGES: Record<SessionReason, StageBadge> = {
+export const REASON_BADGES: Record<SessionReason, StageBadge> = {
   confirm: { label: "Not confirmed", tone: "waiting" },
   record: { label: "To record", tone: "waiting" },
   collect: { label: "Unpaid", tone: "attention" },

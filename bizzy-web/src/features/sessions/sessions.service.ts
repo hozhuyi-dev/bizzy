@@ -1,9 +1,20 @@
-import type { CoverView, PreviewSessionRequest, SessionFields, SessionFullView, SessionView } from "./sessions.types";
+import type {
+  CoverView,
+  PreviewSessionRequest,
+  SearchSessionsRequest,
+  SessionFields,
+  SessionFullView,
+  SessionHit,
+  SessionView,
+} from "./sessions.types";
+import type { Page } from "~/core/filter/filter.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const SessionsService = {
   /** Sessions starting in [from, to), a year at most. */
   list: (from: string, to: string) => invoke<Array<SessionView>>("sessions.list", { from, to }),
+  /** A page of the sessions found, latest first. */
+  search: (request: SearchSessionsRequest) => invoke<Page<SessionHit>>("sessions.search", request),
   /** A client's sessions, newest first. */
   listByClient: (clientId: string) => invoke<Array<SessionView>>("sessions.listByClient", { clientId }),
   get: (id: string) => invoke<SessionFullView>("sessions.get", { id }),

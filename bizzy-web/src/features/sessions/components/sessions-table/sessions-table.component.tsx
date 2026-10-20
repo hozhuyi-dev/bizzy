@@ -11,7 +11,7 @@ import {
 import { useConfirmBooking } from "../../sessions-booking.hook";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
-import type { SessionReturnTo, SessionView } from "../../sessions.types";
+import type { SessionHit, SessionReturnTo } from "../../sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
@@ -22,10 +22,10 @@ import { Card, CardContent } from "~/components/ui/card";
 import { formatSessionTime } from "~/core/utils/date.util";
 
 interface SessionsTableProps {
-  sessions: Array<SessionView>;
+  /** In the order the API found them: latest first. */
+  sessions: Array<SessionHit>;
   /** Shown when there are no sessions; usually an EmptyState. */
   empty: ReactNode;
-  query?: string | undefined;
   /** Where the table is, for a session's page to go back to. */
   from?: SessionReturnTo | undefined;
 }
@@ -34,7 +34,7 @@ interface SessionsTableProps {
  * Sessions with the quick fix she can make to them: confirm. Each links to
  * its page, where everything else is.
  */
-export function SessionsTable({ sessions, empty, query, from }: SessionsTableProps) {
+export function SessionsTable({ sessions, empty, from }: SessionsTableProps) {
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   const booking = useConfirmBooking();
@@ -62,14 +62,15 @@ export function SessionsTable({ sessions, empty, query, from }: SessionsTablePro
     columns,
     data: sessions,
     getRowId: (session) => session.id,
-    initialState: { sorting: [{ id: "start", desc: false }] },
+    // Read a page at a time, latest first: sorting a page would only sort
+    // what is loaded.
+    enableSorting: false,
   });
 
   return (
     <>
       <DataTable
         table={table}
-        query={query}
         empty={empty}
         renderCard={(row) => (
           <Card size="sm">

@@ -7,6 +7,7 @@ import (
 	"bizzy-lambda/internal/features/attachments"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/blobstore"
+	"bizzy-lambda/internal/platform/listing"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -32,6 +33,21 @@ func viewOf(tx *txn.Tx, e *Expense) (View, error) {
 	}, err
 }
 
+// SearchView is a page of expenses found and, on the first page, what all
+// of them add up to.
+type SearchView struct {
+	listing.Page[View]
+	Totals *Totals `json:"totals,omitempty"`
+}
+
+// Totals are what expenses add up to: only their lines in the categories
+// searched for, when it was by category.
+type Totals struct {
+	SpentCents int64 `json:"spentCents"`
+	// ByCategory is what was spent in each category, by its id.
+	ByCategory map[string]int64 `json:"byCategory"`
+}
+
 // CatalogueView is what lines are picked from.
 type CatalogueView struct {
 	Categories []Category `json:"categories"`
@@ -42,6 +58,14 @@ type listRequest struct {
 	// From and To are days, YYYY-MM-DD, both included.
 	From string `json:"from"`
 	To   string `json:"to"`
+}
+
+// searchRequest finds expenses by words in the vendor, the notes or the
+// items, and by days and categories (any of its lines in one); an empty
+// filter takes every value.
+type searchRequest struct {
+	listing.Request
+	CategoryIDs []string `json:"categoryIds"`
 }
 
 type idRequest struct {
@@ -87,6 +111,53 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 				}
 				out = append(out, v)
 			}
+			return out, err
+		})
+	}))
+	// expenses.search finds expenses, latest first, a page at a time.
+	r.Query("expenses.search", router.Typed(func(ctx context.Context, in searchRequest) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) (SearchView, error) {
+			// Expense dates are days, filed as UTC.
+			from, to, err := in.Span(time.UTC)
+			if err != nil {
+				return SearchView{}, err
+			}
+			l := txn.List{From: from, To: to, Latest: true}
+			words := in.Words()
+			found := func(e *Expense) bool {
+				fields := []string{e.Vendor, e.Notes}
+				inCategory := false
+				for _, line := range e.Lines {
+					fields = append(fields, line.Name)
+					inCategory = inCategory || listing.OneOf(in.CategoryIDs, line.CategoryID)
+				}
+				return inCategory && words.In(fields...)
+			}
+			var out SearchView
+			if in.After == "" {
+				out.Totals = &Totals{ByCategory: map[string]int64{}}
+				_, err := Expenses.Each(tx, l, "", func(e *Expense) (bool, error) {
+					if found(e) {
+						for _, line := range e.Lines {
+							if listing.OneOf(in.CategoryIDs, line.CategoryID) {
+								out.Totals.SpentCents += line.AmountCents
+								out.Totals.ByCategory[line.CategoryID] += line.AmountCents
+							}
+						}
+					}
+					return true, nil
+				})
+				if err != nil {
+					return SearchView{}, err
+				}
+			}
+			out.Page, err = listing.Read(tx, Expenses, l, in.Request, func(e *Expense) (View, bool, error) {
+				if !found(e) {
+					return View{}, false, nil
+				}
+				v, err := viewOf(tx, e)
+				return v, err == nil, err
+			})
 			return out, err
 		})
 	}))

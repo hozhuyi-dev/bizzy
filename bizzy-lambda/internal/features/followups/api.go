@@ -1,14 +1,13 @@
 package followups
 
 import (
-	"cmp"
 	"context"
-	"slices"
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/listing"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -65,8 +64,13 @@ const (
 	ListDone     List = "done"
 )
 
-type listRequest struct {
-	View List `json:"view"`
+// searchRequest finds follow-ups not done or done by words in their
+// summary, notes or client's name, and by days due and clients; an empty
+// filter takes every value.
+type searchRequest struct {
+	listing.Request
+	View      List     `json:"view"`
+	ClientIDs []string `json:"clientIds"`
 }
 
 type clientRequest struct {
@@ -109,33 +113,32 @@ func Routes(r *router.Router, run *txn.Runner) {
 		})
 	}
 
-	// followUps.list lists those not done (soonest first) or done (latest
-	// first).
-	r.Query("followUps.list", router.Typed(func(ctx context.Context, in listRequest) (any, error) {
+	// followUps.search finds those not done, soonest due first, or those
+	// done, latest due first, a page at a time.
+	r.Query("followUps.search", router.Typed(func(ctx context.Context, in searchRequest) (any, error) {
 		if in.View != ListUpcoming && in.View != ListDone {
 			return nil, apperr.Invalid("Unknown list %q.", in.View)
 		}
-		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
-			var picked []*FollowUp
-			if in.View == ListUpcoming {
-				open, err := FollowUps.Open(tx)
-				if err != nil {
-					return nil, err
-				}
-				picked = open
-			} else {
-				all, err := FollowUps.All(tx)
-				if err != nil {
-					return nil, err
-				}
-				for _, fu := range all {
-					if fu.DoneAt != nil {
-						picked = append(picked, fu)
-					}
-				}
-				slices.SortFunc(picked, func(a, b *FollowUp) int { return cmp.Compare(b.DoneAt.Unix(), a.DoneAt.Unix()) })
+		return txn.Read(ctx, run, func(tx *txn.Tx) (listing.Page[View], error) {
+			from, to, err := in.Span(tx.Location())
+			if err != nil {
+				return listing.Page[View]{}, err
 			}
-			return viewsOf(tx, picked)
+			l := txn.List{Open: true, From: from, To: to}
+			if in.View == ListDone {
+				l = txn.List{From: from, To: to, Latest: true}
+				if len(in.ClientIDs) == 1 {
+					l.Client = in.ClientIDs[0]
+				}
+			}
+			words := in.Words()
+			return listing.Read(tx, FollowUps, l, in.Request, func(fu *FollowUp) (View, bool, error) {
+				if (fu.DoneAt != nil) != (in.View == ListDone) || !listing.OneOf(in.ClientIDs, fu.ClientID) {
+					return View{}, false, nil
+				}
+				v, err := ViewOf(tx, fu)
+				return v, err == nil && words.In(v.ClientName, v.Summary, v.Notes), err
+			})
 		})
 	}))
 	r.Query("followUps.listByClient", router.Typed(func(ctx context.Context, in clientRequest) (any, error) {

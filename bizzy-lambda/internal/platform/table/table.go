@@ -97,9 +97,26 @@ type Query struct {
 	Equals   string
 	Prefix   string
 	From, To string
+	// Desc reads it backwards: latest first, in an index by time.
+	Desc bool
+	// After starts the read just past a place in the order (the last item
+	// of the read before), and Limit stops it after that many items (0
+	// reads to the end): a long list read a page at a time.
+	After *Place
+	Limit int
 }
 
-// Matches reports whether an item is in the query's result.
+// Place is an item's place in an index's order: its sort key there, and
+// its id.
+type Place struct {
+	SortKey, SK string
+}
+
+// PlaceOf is an item's place in an index.
+func PlaceOf(i Index, it Item) Place { return Place{SortKey: it.SortKey(i), SK: it.SK} }
+
+// Matches reports whether an item is in the query's result, Limit and
+// After aside.
 func (q Query) Matches(it Item) bool {
 	if it.PK != q.PK {
 		return false
@@ -136,7 +153,8 @@ var ErrTooBig = errors.New("table: too many writes for one commit")
 type Table interface {
 	// Get reads one item, consistently.
 	Get(ctx context.Context, key Key) (Item, bool, error)
-	// Query reads the items a query matches, consistently, in index order.
+	// Query reads the items a query matches, consistently, in index order
+	// (items with the same sort key in a fixed order of their own).
 	Query(ctx context.Context, q Query) ([]Item, error)
 	// Counter reads a counter's value; 0 before it was ever moved.
 	Counter(ctx context.Context, key Key) (int64, error)

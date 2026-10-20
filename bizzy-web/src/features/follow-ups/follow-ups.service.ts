@@ -1,9 +1,10 @@
-import type { CreateFollowUpRequest, FollowUpFields, FollowUpList, FollowUpView } from "./follow-ups.types";
+import type { CreateFollowUpRequest, FollowUpFields, FollowUpView, SearchFollowUpsRequest } from "./follow-ups.types";
+import type { Page } from "~/core/filter/filter.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const FollowUpsService = {
-  /** Those not done, soonest first, or those done, latest first. */
-  list: (view: FollowUpList) => invoke<Array<FollowUpView>>("followUps.list", { view }),
+  /** A page of those found: not done, soonest due first, or done, latest due first. */
+  search: (request: SearchFollowUpsRequest) => invoke<Page<FollowUpView>>("followUps.search", request),
   listByClient: (clientId: string) => invoke<Array<FollowUpView>>("followUps.listByClient", { clientId }),
   listBySession: (sessionId: string) => invoke<Array<FollowUpView>>("followUps.listBySession", { sessionId }),
   // Each is saved in bizzy, then written to its event.

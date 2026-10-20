@@ -1,7 +1,11 @@
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { LAPSE_MONTHS } from "./clients.constant";
 import { feesChanged } from "./clients.form";
 import { ClientsMutation } from "./clients.mutation";
+import { lapseOf } from "./clients.util";
 import type { ClientFields, ClientView } from "./clients.types";
+import type { ListFilter } from "~/core/filter/filter.types";
 import { toastWithQuip } from "~/components/shared/quip/quip-toast";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -41,4 +45,22 @@ export function useSaveClient(
   };
 
   return { submit, isSaving: save.isPending, error: save.error };
+}
+
+/**
+ * Goes where a clients filter is: Reconnect with a Last session chip (so
+ * the nav shows it), All clients without. Typing replaces the entry.
+ */
+export function useClientsNavigate(filter: ListFilter): (next: ListFilter) => void {
+  const navigate = useNavigate();
+  return (next) => {
+    const lapse = lapseOf(next);
+    const q = next.text.trim() || undefined;
+    const replace = next.text !== filter.text;
+    if (lapse) {
+      void navigate({ to: "/clients/reconnect", search: { q, lapse: lapse === LAPSE_MONTHS[0] ? undefined : lapse }, replace });
+    } else {
+      void navigate({ to: "/clients", search: { q }, replace });
+    }
+  };
 }

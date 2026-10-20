@@ -234,3 +234,68 @@ func TestReadsMustNotChange(t *testing.T) {
 		t.Error("a read added a note")
 	}
 }
+
+func TestEachReadsAListAPageAtATime(t *testing.T) {
+	r, _ := newRunner()
+	ctx := context.Background()
+	// 250 notes, a commit at most holds 99: in batches of 50.
+	for batch := range 5 {
+		_, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+			for i := batch * 50; i < (batch+1)*50; i++ {
+				owner := "bob"
+				if i%2 == 0 {
+					owner = "jane"
+				}
+				if err := notes.Add(tx, &note{ID: fmt.Sprintf("n%03d", i), Owner: owner, At: day.Add(time.Duration(i) * time.Hour)}); err != nil {
+					return nil, err
+				}
+			}
+			return nil, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// page reads up to n of a list from after, and where it stopped.
+	page := func(l txn.List, after string, n int) ([]string, string) {
+		var got []string
+		next, err := txn.Read(ctx, r, func(tx *txn.Tx) (string, error) {
+			return notes.Each(tx, l, after, func(v *note) (bool, error) {
+				got = append(got, v.ID)
+				return len(got) < n, nil
+			})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got, next
+	}
+
+	// Pages run past the table's batches, latest first, each once.
+	var all []string
+	after := ""
+	for {
+		got, next := page(txn.List{Latest: true}, after, 70)
+		all = append(all, got...)
+		if after = next; after == "" {
+			break
+		}
+	}
+	if len(all) != 250 || all[0] != "n249" || all[249] != "n000" || len(slices.Compact(slices.Clone(all))) != 250 {
+		t.Errorf("read %d, from %s to %s; want n249 to n000, each once", len(all), all[0], all[len(all)-1])
+	}
+
+	// A client's, between two times; ending on its last item ends the list.
+	got, next := page(txn.List{Client: "jane", From: day.Add(10 * time.Hour), To: day.Add(14 * time.Hour)}, "", 3)
+	if !slices.Equal(got, []string{"n010", "n012", "n014"}) || next != "" {
+		t.Errorf("jane's = %v, next %q; want n010, n012, n014 and no more", got, next)
+	}
+
+	// Each is only for reads: a change would see half of it.
+	_, err := txn.Run(ctx, r, func(tx *txn.Tx) (string, error) {
+		return notes.Each(tx, txn.List{}, "", func(*note) (bool, error) { return true, nil })
+	})
+	if err == nil {
+		t.Error("Each ran in an action")
+	}
+}

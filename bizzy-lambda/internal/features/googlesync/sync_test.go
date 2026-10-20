@@ -10,6 +10,7 @@ import (
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/platform/listing"
 	"bizzy-lambda/internal/platform/txn"
 	"bizzy-lambda/internal/testutil/fakecal"
 	"bizzy-lambda/internal/testutil/testapp"
@@ -191,10 +192,11 @@ func TestEveryEventIsBizzys(t *testing.T) {
 	// it.
 	party := a.Calendar.UserAddAllDay("Birthday", "2026-10-16")
 	sync(t, a)
-	var listed []followups.View
-	if err := a.Must("followUps.list", map[string]any{"view": "upcoming"}, &listed); err != nil {
+	var page listing.Page[followups.View]
+	if err := a.Must("followUps.search", map[string]any{"view": "upcoming"}, &page); err != nil {
 		t.Fatal(err)
 	}
+	listed := page.Items
 	if len(listed) != 1 || listed[0].Summary != "call back" || !listed[0].AllDay || title(t, a, fu) != "! Jane Smith: call back" {
 		t.Errorf("follow-ups = %+v, title %q", listed, title(t, a, fu))
 	}

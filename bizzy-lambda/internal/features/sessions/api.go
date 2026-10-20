@@ -12,6 +12,7 @@ import (
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/blobstore"
+	"bizzy-lambda/internal/platform/listing"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -43,6 +44,13 @@ type View struct {
 	Record    RecordView      `json:"record"`
 	Todo      []Reason        `json:"todo"`
 	Can       Can             `json:"can"`
+}
+
+// Hit is a session a search found, with the part of its notes that has
+// the words when they were found there.
+type Hit struct {
+	View
+	Excerpt string `json:"excerpt,omitempty"`
 }
 
 // CreditView is the hours of a session a package's credits pay for.
@@ -192,6 +200,16 @@ type clientRequest struct {
 	ClientID string `json:"clientId"`
 }
 
+// searchRequest finds sessions by words in the client's name, the summary
+// or the notes, and by days, clients, place and what is left to do; an
+// empty filter takes every value.
+type searchRequest struct {
+	listing.Request
+	ClientIDs []string   `json:"clientIds"`
+	Locations []Location `json:"locations"`
+	Todo      []Reason   `json:"todo"`
+}
+
 type updateRequest struct {
 	ID string `json:"id"`
 	Fields
@@ -245,6 +263,31 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 			return viewsOf(tx, ss)
 		})
 	}))
+	// sessions.search finds sessions, latest first, a page at a time.
+	r.Query("sessions.search", router.Typed(func(ctx context.Context, in searchRequest) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) (listing.Page[Hit], error) {
+			from, to, err := in.Span(tx.Location())
+			if err != nil {
+				return listing.Page[Hit]{}, err
+			}
+			l := txn.List{From: from, To: to, Latest: true}
+			if len(in.ClientIDs) == 1 {
+				l.Client = in.ClientIDs[0]
+			}
+			words := in.Words()
+			return listing.Read(tx, Sessions, l, in.Request, func(s *Session) (Hit, bool, error) {
+				if !listing.OneOf(in.ClientIDs, s.ClientID) || !listing.OneOf(in.Locations, s.Location) {
+					return Hit{}, false, nil
+				}
+				excerpt, found, err := search(tx, s, words)
+				if err != nil || !found {
+					return Hit{}, false, err
+				}
+				v, err := ViewOf(tx, s)
+				return Hit{View: v, Excerpt: excerpt}, err == nil && listing.AnyOf(in.Todo, v.Todo), err
+			})
+		})
+	}))
 	// sessions.listByClient lists a client's sessions, newest first.
 	r.Query("sessions.listByClient", router.Typed(func(ctx context.Context, in clientRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
@@ -296,4 +339,32 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 		attachments.DeleteFiles(ctx, blobs, keys...)
 		return nil, nil
 	}))
+}
+
+// search reports whether every word is in the session's client's names,
+// its summary or its notes, and the excerpt of the notes that has them
+// when they were needed. The notes are read only then: they are long.
+func search(tx *txn.Tx, s *Session, words listing.Words) (excerpt string, found bool, err error) {
+	if len(words) == 0 {
+		return "", true, nil
+	}
+	client, err := clients.Clients.Get(tx, s.ClientID)
+	if err != nil {
+		return "", false, err
+	}
+	fields := append([]string{client.Name}, client.Aliases...)
+	if s.Record != nil {
+		fields = append(fields, s.Record.Summary)
+	}
+	if words.In(fields...) {
+		return "", true, nil
+	}
+	if s.Record == nil || !s.Record.HasNotes {
+		return "", false, nil
+	}
+	notes, err := NotesOf(tx, s.ID)
+	if err != nil || !words.In(append(fields, notes)...) {
+		return "", false, err
+	}
+	return words.Excerpt(notes), true, nil
 }

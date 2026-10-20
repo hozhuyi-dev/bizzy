@@ -1,44 +1,50 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
+import { cn } from "cn";
 import { DocumentCard, documentColumns } from "./documents.columns";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { DocumentsQuery } from "./documents.query";
-import type { DocumentSummary, DocumentType } from "./documents.types";
+import { documentFacets } from "./documents.util";
+import type { DocumentType } from "./documents.types";
+import type { ListFilter } from "~/core/filter/filter.types";
+import { ClientsQuery } from "~/features/clients/clients.query";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { MonthPicker } from "~/components/shared/month-picker/month-picker.component";
+import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { SearchInput } from "~/components/shared/search-input/search-input.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { formatMonth, monthKey } from "~/core/utils/date.util";
+import { formatWhen, isNarrowed, pageItems } from "~/core/filter/filter.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
-const NO_DOCUMENTS: Array<DocumentSummary> = [];
-
 interface DocumentsPageProps {
   type: DocumentType;
-  /** "2026-10": one month at a time, like the sessions history. */
-  month: string;
-  onMonthChange: (month: string) => void;
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
 }
 
 /**
- * One month of one type of document, newest first. Invoices and receipts
- * are made from a session or a package, so there is no "new" button here.
+ * One type of document, latest first, searched on the server a page at a
+ * time: by number, who it is for, client, status and days. Invoices and
+ * receipts are made from a session or a package, so there is no "new"
+ * button here.
  */
-export function DocumentsPage({ type, month, onMonthChange }: DocumentsPageProps) {
-  const documents = DocumentsQuery.useList(type, month);
+export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPageProps) {
   const spec = DOCUMENT_TYPES[type];
-  const [search, setSearch] = useState("");
-  const data = useMemo(() => documents.data ?? NO_DOCUMENTS, [documents.data]);
+  const clients = ClientsQuery.useList();
+  const facets = useMemo(() => documentFacets(clients.data ?? []), [clients.data]);
+  const documents = DocumentsQuery.useSearch(type, filter);
+  const data = useMemo(() => pageItems(documents.data), [documents.data]);
 
   const table = useTable({
     features: dataTableFeatures,
     columns: documentColumns,
     data,
     getRowId: (doc) => doc.id,
-    initialState: { sorting: [{ id: "date", desc: true }] },
+    // Read a page at a time, latest first: sorting a page would only sort
+    // what is loaded.
+    enableSorting: false,
   });
 
   return (
@@ -46,10 +52,13 @@ export function DocumentsPage({ type, month, onMonthChange }: DocumentsPageProps
       <PageHeader
         title={spec.plural}
         toolbar={
-          <>
-            <MonthPicker value={month} onChange={onMonthChange} max={monthKey(new Date())} />
-            <SearchInput label={`Search ${spec.plural.toLowerCase()}`} value={search} onChange={setSearch} />
-          </>
+          <FilterBar
+            label={`Search ${spec.plural.toLowerCase()}`}
+            value={filter}
+            onChange={onFilterChange}
+            facets={facets}
+            dates
+          />
         }
       />
       {queryMatch(documents, {
@@ -60,18 +69,27 @@ export function DocumentsPage({ type, month, onMonthChange }: DocumentsPageProps
           </p>
         ),
         success: () => (
-          <DataTable
-            table={table}
-            query={search}
-            empty={
-              // Keyed by month: each empty month gets its own line.
-              <EmptyState key={month} quips={type === "invoice" ? QUIPS.invoices : QUIPS.receipts}>
-                No {spec.plural.toLowerCase()} in {formatMonth(month)}. Make one from{" "}
-                {type === "invoice" ? "a session" : "a paid session"} or a package.
-              </EmptyState>
-            }
-            renderCard={(row) => <DocumentCard doc={row.original} />}
-          />
+          <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
+            <DataTable
+              table={table}
+              empty={
+                isNarrowed(filter) || documents.hasNextPage ? (
+                  <EmptyState quips={QUIPS.search}>
+                    No {spec.plural.toLowerCase()} found{documents.hasNextPage ? " yet" : ""}.
+                  </EmptyState>
+                ) : (
+                  // Keyed by the days: each empty stretch gets its own line.
+                  <EmptyState key={filter.when} quips={type === "invoice" ? QUIPS.invoices : QUIPS.receipts}>
+                    No {spec.plural.toLowerCase()}
+                    {filter.when ? ` in ${formatWhen(filter.when)}` : " yet"}. Make one from{" "}
+                    {type === "invoice" ? "a session" : "a paid session"} or a package.
+                  </EmptyState>
+                )
+              }
+              renderCard={(row) => <DocumentCard doc={row.original} />}
+            />
+            <LoadMore pages={documents} found={data.length > 0} />
+          </div>
         ),
       })}
     </>

@@ -84,7 +84,8 @@ flowchart TD
 **Layout:**
 
 - `internal/features/<feature>/`: `api.go` (routes, views, requests), the entity file (model, `txn.Kind`, to-do), `actions.go`, `invariants.go`, and a file per other job (`translate.go`, `push.go`). Features import only what they build on; `app` passes in the reverse (`clients.Owner`). [app/dependencies_test.go](bizzy-lambda/internal/app/dependencies_test.go) enforces it.
-- `internal/platform/`: `router`, `apperr`, `txn`, `table` (storage interface, in-memory version, shared contract), `dynamo`, `blobstore` (S3), `googleauth`, `ssm`. Imports no feature.
+- `internal/platform/`: `router`, `apperr`, `txn`, `table` (storage interface, in-memory version, shared contract), `listing` (searching a long list a page at a time), `dynamo`, `blobstore` (S3), `googleauth`, `ssm`. Imports no feature.
+- **Long lists are searched, not loaded**: a `<feature>.search` query takes a `listing.Request` (words, days, the page to start after) and its own filters, narrows the read with an index (`txn.List`: by time, client, tag or open), filters the rest in Go, and returns a `listing.Page`, latest first. A page ends when full or after looking at `listing.Budget` items. Filters run in the Lambda, not as DynamoDB filter expressions, which bill every item read anyway and can't see what a view works out.
 - `internal/calendar`: Google Calendar events, title syntax and client, with no knowledge of features.
 - `internal/testutil`: `testapp` (the whole app on the memory table, with fakes of Google Calendar, Contacts and S3).
 - `internal/simulation`: a rapid state machine over `testapp`, with one action per mutation (enforced) plus calendar edits and clock moves. After each step it checks every invariant, that a refusal changed nothing, that each view's `can` matches the API, and that once synced the calendar shows bizzy.
@@ -100,6 +101,7 @@ Entry point: [src/main.tsx](bizzy-web/src/main.tsx) → `router.tsx` → `src/ro
 - Components reach data only through `query`, `mutation` and `hook`, never a `service`.
 - A feature's `types` mirror its `api.go`: a route's output is `<Entity>View` (`SessionView`), what a create or update sets is `<Entity>Fields` (sent as a patch on update: only what changed), and any other input is `<Action><Entity>Request`. The service calls each action by its API name.
 - `core/` holds shared infrastructure, `components/shared/` the app's shared components, and `components/ui/` the generated shadcn components (left untouched).
+- Every list page has one `FilterBar`: words, plus chips from the page's facets (a client, a stage, a month). The filter (`core/filter`) lives in the URL. Lists that grow without end (sessions, documents, follow-ups, expenses) send it to their `search` route and read pages with `usePages`. Lists loaded whole anyway (clients, packages) filter in the browser.
 - Tests mirror the file they test: `x.util.ts` → `x.util.test.ts`.
 
 ## Development setup

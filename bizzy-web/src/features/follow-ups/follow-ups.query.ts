@@ -1,14 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { FollowUpsService } from "./follow-ups.service";
+import { searchFollowUpsRequest } from "./follow-ups.util";
 import type { FollowUpList } from "./follow-ups.types";
+import type { ListFilter } from "~/core/filter/filter.types";
 import { FollowUpKeys } from "~/core/constants/query-keys.constant";
+import { usePages } from "~/core/filter/filter.hook";
 
 export const FollowUpsQuery = {
-  useList: (view: FollowUpList) =>
-    useQuery({
-      queryKey: FollowUpKeys.list(view),
-      queryFn: () => FollowUpsService.list(view),
-    }),
+  /** The follow-ups a filter finds, a page at a time. */
+  useSearch: (view: FollowUpList, filter: ListFilter) => {
+    const request = searchFollowUpsRequest(view, filter);
+    return usePages(FollowUpKeys.search(request), (after) => FollowUpsService.search({ ...request, after }));
+  },
 
   useByClient: (clientId: string) =>
     useQuery({

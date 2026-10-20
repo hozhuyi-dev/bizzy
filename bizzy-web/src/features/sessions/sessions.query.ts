@@ -1,8 +1,10 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
+import { searchSessionsRequest } from "./sessions.util";
 import type { PreviewSessionRequest } from "./sessions.types";
+import type { ListFilter } from "~/core/filter/filter.types";
 import { SessionKeys } from "~/core/constants/query-keys.constant";
-import { monthRange } from "~/core/utils/date.util";
+import { usePages } from "~/core/filter/filter.hook";
 
 export const SessionsQuery = {
   /**
@@ -18,10 +20,10 @@ export const SessionsQuery = {
       refetchOnWindowFocus: false,
     }),
 
-  /** One local month, "2026-10". */
-  useMonth: (month: string) => {
-    const { from, to } = monthRange(month);
-    return SessionsQuery.useRange(from, to);
+  /** The sessions a filter finds, latest first, a page at a time. */
+  useSearch: (filter: ListFilter) => {
+    const request = searchSessionsRequest(filter);
+    return usePages(SessionKeys.search(request), (after) => SessionsService.search({ ...request, after }));
   },
 
   /** Sessions starting in [from, to). */

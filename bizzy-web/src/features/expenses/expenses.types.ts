@@ -1,3 +1,5 @@
+import type { ListRequest, Page } from "~/core/filter/filter.types";
+
 // Mirrors bizzy-lambda/internal/features/expenses/api.go and expense.go.
 
 /** One item on a receipt. Name and category are the item's as the line was written. */
@@ -22,6 +24,24 @@ export interface ExpenseView {
   files: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** What the expenses found add up to; mirrors expenses.Totals. */
+export interface ExpenseTotals {
+  /** Only their lines in the categories searched for, when it was by category. */
+  spentCents: number;
+  /** By category id. */
+  byCategory: Record<string, number>;
+}
+
+/** A page of expenses found and, on the first page, their totals; mirrors expenses.SearchView. */
+export interface ExpensesPage extends Page<ExpenseView> {
+  totals?: ExpenseTotals;
+}
+
+/** expenses.search's request: an empty filter takes every value. */
+export interface SearchExpensesRequest extends ListRequest {
+  categoryIds: Array<string>;
 }
 
 /** One thing she buys, from the list lines are picked from. */

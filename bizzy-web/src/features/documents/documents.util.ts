@@ -1,6 +1,10 @@
-import { DOCUMENT_TYPES } from "./documents.constant";
-import type { DocumentLink, DocumentRef, DocumentType } from "./documents.types";
+import { DOCUMENT_STATUS, DOCUMENT_TYPES } from "./documents.constant";
+import type { DocumentLink, DocumentRef, DocumentStatus, DocumentType, SearchDocumentsRequest } from "./documents.types";
 import type { Paid } from "~/features/payments/payments.types";
+import type { ClientView } from "~/features/clients/clients.types";
+import type { Facet, ListFilter } from "~/core/filter/filter.types";
+import { clientFacet } from "~/features/clients/clients.util";
+import { listRequest } from "~/core/filter/filter.util";
 
 /** The route of one document's page. */
 export function documentRoute(type: DocumentType) {
@@ -41,4 +45,26 @@ export function coveringDocuments(item: Covered | undefined): Array<DocumentLink
 /** The link that opens a shared document, on whichever origin the app runs. */
 export function shareUrl(token: string): string {
   return `${window.location.origin}/d/${token}`;
+}
+
+/** What the invoices and receipts lists can be narrowed by (DOCUMENT_FACETS). */
+export function documentFacets(clients: ReadonlyArray<ClientView>): Array<Facet> {
+  return [
+    clientFacet(clients),
+    {
+      key: "status",
+      label: "Status",
+      options: Object.entries(DOCUMENT_STATUS).map(([value, status]) => ({ value, label: status.label })),
+    },
+  ];
+}
+
+/** The search the filter asks the API for. */
+export function searchDocumentsRequest(type: DocumentType, filter: ListFilter): SearchDocumentsRequest {
+  return {
+    ...listRequest(filter),
+    type,
+    clientIds: [...(filter.chips.client ?? [])],
+    statuses: [...(filter.chips.status ?? [])] as Array<DocumentStatus>,
+  };
 }

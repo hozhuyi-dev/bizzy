@@ -29,8 +29,9 @@ describe("expenses util", () => {
     expense("Shopee", [["Tape", "purchases", 4500]]),
   ];
 
-  it("sums each category's lines, largest first, leaving unused ones out", () => {
-    expect(totalsByCategory(year, catalogue).map(({ category, cents }) => [category.id, cents])).toEqual([
+  it("names each category's total, largest first, leaving unused ones out", () => {
+    const byCategory = { travel: 8900, purchases: 10200, rental: 0 };
+    expect(totalsByCategory(byCategory, catalogue).map(({ category, cents }) => [category.id, cents])).toEqual([
       ["purchases", 10200],
       ["travel", 8900],
     ]);

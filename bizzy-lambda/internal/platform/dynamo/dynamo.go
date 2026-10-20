@@ -87,13 +87,23 @@ func (t *Table) Query(ctx context.Context, q table.Query) ([]table.Item, error) 
 	in := &dynamodb.QueryInput{
 		TableName: aws.String(t.Name), KeyConditionExpression: aws.String(cond),
 		ExpressionAttributeValues: values, ConsistentRead: aws.Bool(true),
+		ScanIndexForward: aws.Bool(!q.Desc),
 	}
 	if q.Index != table.ByID {
 		in.IndexName = aws.String(string(q.Index))
 	}
+	if q.After != nil {
+		in.ExclusiveStartKey = keyOf(table.Key{PK: q.PK, SK: q.After.SK})
+		if q.Index != table.ByID {
+			in.ExclusiveStartKey[sk] = s(q.After.SortKey)
+		}
+	}
+	if q.Limit > 0 {
+		in.Limit = aws.Int32(int32(q.Limit))
+	}
 	out := []table.Item{}
 	pages := dynamodb.NewQueryPaginator(t.Client, in)
-	for pages.HasMorePages() {
+	for pages.HasMorePages() && (q.Limit == 0 || len(out) < q.Limit) {
 		page, err := pages.NextPage(ctx)
 		if err != nil {
 			return nil, err
@@ -105,6 +115,9 @@ func (t *Table) Query(ctx context.Context, q table.Query) ([]table.Item, error) 
 			}
 			out = append(out, it)
 		}
+	}
+	if q.Limit > 0 && len(out) > q.Limit {
+		out = out[:q.Limit]
 	}
 	return out, nil
 }

@@ -2,7 +2,9 @@ package txn
 
 import (
 	"cmp"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -165,6 +167,106 @@ func (k Kind[T]) TaggedBetween(tx *Tx, tag string, from, to time.Time) ([]*T, er
 // WithRef lists the items that refer to ref.
 func (k Kind[T]) WithRef(tx *Tx, ref string) ([]*T, error) {
 	return k.query(tx, table.Query{PK: k.Name, Index: table.ByRef, Equals: ref})
+}
+
+// List is one of a kind's lists in time order, for reading a page at a
+// time (Each): all its items, a client's, those with a tag, or the open
+// ones, between two times (a zero one leaves that end open).
+type List struct {
+	Client   string
+	Tag      string
+	Open     bool
+	From, To time.Time
+	// Latest lists the latest first.
+	Latest bool
+}
+
+// listQuery is the list as a table query.
+func (k Kind[T]) listQuery(l List) table.Query {
+	q := table.Query{PK: k.Name, Index: table.ByTime, Desc: l.Latest}
+	prefix := ""
+	switch {
+	case l.Client != "":
+		q.Index, prefix = table.ByClient, l.Client+"#"
+	case l.Tag != "":
+		q.Index, prefix = table.ByTag, l.Tag+"#"
+	case l.Open:
+		q.Index = table.ByOpen
+	}
+	if prefix != "" {
+		// Times are digits and punctuation, all before "~".
+		q.From, q.To = prefix, prefix+"~"
+	}
+	if !l.From.IsZero() {
+		q.From = prefix + TimeKey(l.From)
+	}
+	if !l.To.IsZero() {
+		q.To = prefix + TimeKey(l.To)
+	}
+	return q
+}
+
+// eachBatch is how many items Each reads from the table at a time.
+const eachBatch = 100
+
+// Each reads a list a batch at a time and hands each item to do, until do
+// returns false or the list runs out. It returns where it stopped, for
+// reading on from (after) later: "" when the list ran out. It reads what
+// is stored, not what the transaction changed, so it is only for a Read.
+func (k Kind[T]) Each(tx *Tx, l List, after string, do func(*T) (bool, error)) (string, error) {
+	if !tx.readOnly {
+		return "", errors.New("txn: Each reads what is stored: only in a Read")
+	}
+	q := k.listQuery(l)
+	q.Limit = eachBatch
+	if after != "" {
+		place, err := parsePlace(after)
+		if err != nil {
+			return "", err
+		}
+		q.After = &place
+	}
+	for {
+		items, err := tx.table.Query(tx.ctx, q)
+		if err != nil {
+			return "", err
+		}
+		for i, it := range items {
+			v, err := k.cache(tx, it)
+			if err != nil {
+				return "", err
+			}
+			more, err := do(v)
+			switch {
+			case err != nil:
+				return "", err
+			case more:
+				continue
+			case i == len(items)-1 && len(items) < q.Limit:
+				return "", nil
+			}
+			return formatPlace(table.PlaceOf(q.Index, it)), nil
+		}
+		if len(items) < q.Limit {
+			return "", nil
+		}
+		last := table.PlaceOf(q.Index, items[len(items)-1])
+		q.After = &last
+	}
+}
+
+// formatPlace writes a place in a list for the app to send back.
+func formatPlace(p table.Place) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(p.SortKey + "\n" + p.SK))
+}
+
+func parsePlace(s string) (table.Place, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	sortKey, sk, ok := strings.Cut(string(raw), "\n")
+	if err != nil || !ok {
+		return table.Place{}, apperr.Invalid("This list moved on; start it again.")
+	}
+	return table.Place{SortKey: sortKey, SK: sk}, nil
 }
 
 // Add stores a new item.

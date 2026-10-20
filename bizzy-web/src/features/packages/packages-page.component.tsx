@@ -5,11 +5,12 @@ import { toast } from "sonner";
 import { DeletePackageDialog } from "./components/delete-package-dialog/delete-package-dialog.component";
 import { PackageForm } from "./components/package-form/package-form.component";
 import { PackageCredits, PackageDocuments, PackagePayment, PackagePrice, PackageSource, createPackageColumns, packageActions } from "./packages.columns";
-import { clientName, packagePayables } from "./packages.util";
+import { clientName, packageFacets, packagePayables, packagesView } from "./packages.util";
 import { PackagesMutation } from "./packages.mutation";
 import { PackagesQuery } from "./packages.query";
 import type { PackageHandlers } from "./packages.columns";
-import type { PackageView, PackagesFilter } from "./packages.types";
+import type { PackageView } from "./packages.types";
+import type { ListFilter } from "~/core/filter/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
@@ -17,12 +18,11 @@ import { toastRefusal } from "~/features/remedies/components/remedy-buttons/reme
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { SearchInput } from "~/components/shared/search-input/search-input.component";
+import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { RowActionMenu } from "~/components/shared/row-actions/row-actions.component";
 import { Card, CardContent } from "~/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
@@ -34,23 +34,34 @@ type Editing = { mode: "new"; clientId?: string | undefined } | { mode: "edit"; 
 const NO_PACKAGES: Array<PackageView> = [];
 
 interface PackagesPageProps {
-  view: PackagesFilter;
-  onViewChange: (view: PackagesFilter) => void;
+  /** Words, and chips: Open (by default) and clients. */
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
   /** Opens a new package for this client. */
   newFor?: string | undefined;
   /** The calendar edit it was opened to settle: once the package is added, back to the to-do list. */
   settle?: string | undefined;
 }
 
-/** Prepaid packages with the credits each has left, and whether each is paid. */
-export function PackagesPage({ view, onViewChange, newFor, settle }: PackagesPageProps) {
+/**
+ * Prepaid packages with the credits each has left, and whether each is
+ * paid. Every package is loaded already (sessions show their credits), so
+ * the search and chips filter here, in the browser.
+ */
+export function PackagesPage({ filter, onFilterChange, newFor, settle }: PackagesPageProps) {
   const [editing, setEditing] = useState<Editing>(newFor || settle ? { mode: "new", clientId: newFor } : null);
   const settled = useSettleReturn(settle);
   const [deleting, setDeleting] = useState<PackageView | null>(null);
   const [payingId, setPayingId] = useState<string>();
-  const [search, setSearch] = useState("");
-  const packages = PackagesQuery.useList(view === "all");
+  const packages = PackagesQuery.useList(packagesView(filter) === "all");
+  const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
+  const facets = useMemo(() => packageFacets(clients.data ?? []), [clients.data]);
+  const rows = useMemo(() => {
+    const chosen = filter.chips.client ?? [];
+    const all = packages.data ?? NO_PACKAGES;
+    return chosen.length > 0 ? all.filter((pkg) => chosen.includes(pkg.clientId)) : all;
+  }, [packages.data, filter.chips.client]);
   const makeStandalone = PackagesMutation.useMakeStandalone();
   // Read from the list, so the dialog shows the payment once it is saved.
   const paying = packages.data?.find((pkg) => pkg.id === payingId);
@@ -75,7 +86,7 @@ export function PackagesPage({ view, onViewChange, newFor, settle }: PackagesPag
   const table = useTable({
     features: dataTableFeatures,
     columns,
-    data: packages.data ?? NO_PACKAGES,
+    data: rows,
     getRowId: (pkg) => pkg.id,
     initialState: { sorting: [{ id: "client", desc: false }] },
   });
@@ -93,17 +104,7 @@ export function PackagesPage({ view, onViewChange, newFor, settle }: PackagesPag
             onClick: () => setEditing({ mode: "new" }),
           },
         ]}
-        toolbar={
-          <>
-            <Tabs value={view} onValueChange={(value) => onViewChange(value as PackagesFilter)}>
-              <TabsList>
-                <TabsTrigger value="open">Open</TabsTrigger>
-                <TabsTrigger value="all">All</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <SearchInput label="Search packages" value={search} onChange={setSearch} />
-          </>
-        }
+        toolbar={<FilterBar label="Search packages" value={filter} onChange={onFilterChange} facets={facets} />}
       />
 
       {queryMatch(packages, {
@@ -116,7 +117,7 @@ export function PackagesPage({ view, onViewChange, newFor, settle }: PackagesPag
         success: () => (
           <DataTable
             table={table}
-            query={search}
+            query={filter.text}
             empty={
               <EmptyState quips={QUIPS.packages}>
                 No packages. Write 10x85 or 10@850 after a name in the calendar, or add one here.

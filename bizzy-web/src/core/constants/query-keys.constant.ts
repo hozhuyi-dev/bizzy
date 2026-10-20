@@ -11,6 +11,7 @@ export const ClientKeys = {
 export const SessionKeys = {
   all: ["sessions"] as const,
   range: (from: string, to: string) => [...SessionKeys.all, "range", from, to] as const,
+  search: (request: object) => [...SessionKeys.all, "search", request] as const,
   detail: (id: string) => [...SessionKeys.all, "detail", id] as const,
   client: (clientId: string) => [...SessionKeys.all, "client", clientId] as const,
   preview: (request: object) => [...SessionKeys.all, "preview", request] as const,
@@ -28,7 +29,7 @@ export const ConflictKeys = {
 
 export const FollowUpKeys = {
   all: ["followUps"] as const,
-  list: (view: string) => [...FollowUpKeys.all, "list", view] as const,
+  search: (request: object) => [...FollowUpKeys.all, "search", request] as const,
   client: (clientId: string) => [...FollowUpKeys.all, "client", clientId] as const,
   session: (sessionId: string) => [...FollowUpKeys.all, "session", sessionId] as const,
 };
@@ -45,7 +46,7 @@ export const PackageKeys = {
 
 export const DocumentKeys = {
   all: ["documents"] as const,
-  list: (type: string, month: string) => [...DocumentKeys.all, "list", type, month] as const,
+  search: (request: object) => [...DocumentKeys.all, "search", request] as const,
   detail: (id: string) => [...DocumentKeys.all, "detail", id] as const,
   client: (clientId: string) => [...DocumentKeys.all, "client", clientId] as const,
   shared: (token: string) => [...DocumentKeys.all, "shared", token] as const,
@@ -59,6 +60,7 @@ export const AttachmentKeys = {
 export const ExpenseKeys = {
   all: ["expenses"] as const,
   list: (from: string, to: string) => [...ExpenseKeys.all, "list", from, to] as const,
+  search: (request: object) => [...ExpenseKeys.all, "search", request] as const,
   detail: (id: string) => [...ExpenseKeys.all, "detail", id] as const,
   catalogue: () => [...ExpenseKeys.all, "catalogue"] as const,
 };

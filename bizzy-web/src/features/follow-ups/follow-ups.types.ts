@@ -1,3 +1,5 @@
+import type { ListRequest } from "~/core/filter/filter.types";
+
 // Mirrors bizzy-lambda/internal/features/followups/api.go.
 
 /** Why a follow-up is on the to-do list; mirrors followups.Reason. */
@@ -43,6 +45,12 @@ export interface CreateFollowUpRequest extends FollowUpFields {
 
 /** Which follow-ups to list; mirrors followups.List. */
 export type FollowUpList = "upcoming" | "done";
+
+/** followUps.search's request: an empty filter takes every value. */
+export interface SearchFollowUpsRequest extends ListRequest {
+  view: FollowUpList;
+  clientIds: Array<string>;
+}
 
 /** What the dialog is for: a new follow-up (maybe for a client, from a session), or one to edit. */
 export type FollowUpTarget =

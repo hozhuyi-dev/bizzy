@@ -1,6 +1,7 @@
 import type { DocumentRef, DocumentSource } from "~/features/documents/documents.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { Paid } from "~/features/payments/payments.types";
+import type { ListRequest } from "~/core/filter/filter.types";
 import type { Verdict } from "~/core/lambda/lambda.types";
 
 // Mirrors bizzy-lambda/internal/features/sessions/api.go.
@@ -72,6 +73,19 @@ export interface SessionView {
   record: RecordView;
   todo: Array<SessionReason>;
   can: SessionCan;
+}
+
+/** A session a search found; mirrors sessions.Hit. */
+export interface SessionHit extends SessionView {
+  /** The part of its notes with the words, when they were found there. */
+  excerpt?: string;
+}
+
+/** sessions.search's request: an empty filter takes every value. */
+export interface SearchSessionsRequest extends ListRequest {
+  clientIds: Array<string>;
+  locations: Array<SessionLocation>;
+  todo: Array<SessionReason>;
 }
 
 /** A session with its notes, for its page; mirrors sessions.FullView. */

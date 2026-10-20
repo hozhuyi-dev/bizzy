@@ -22,6 +22,9 @@ export const DOCUMENT_TYPES: Record<DocumentType, DocumentTypeSpec> = {
   },
 };
 
+/** What the invoices and receipts lists can be narrowed by, as their URLs name them. */
+export const DOCUMENT_FACETS = ["client", "status"] as const;
+
 export const DOCUMENT_STATUS: Record<DocumentStatus, { label: string; variant: "waiting" | "done" | "neutral" }> = {
   draft: { label: "Draft", variant: "waiting" },
   issued: { label: "Issued", variant: "done" },
