@@ -15,8 +15,10 @@ const SHEET = [
   "max-sm:rounded-b-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
   "max-sm:data-open:slide-in-from-bottom-8 max-sm:data-closed:slide-out-to-bottom-8",
   // Sticky over the fields scrolling under it: its muted tint laid on the
-  // popover's colour, so nothing shows through.
-  "[&_[data-slot$=dialog-footer]]:sticky [&_[data-slot$=dialog-footer]]:bottom-0 [&_[data-slot$=dialog-footer]]:z-10",
+  // popover's colour, so nothing shows through. It sticks inside the
+  // dialog's padding, so it is pulled down by that (p-4, and pb-4 below on
+  // a phone) to sit on the bottom edge.
+  "[&_[data-slot$=dialog-footer]]:sticky [&_[data-slot$=dialog-footer]]:-bottom-4 [&_[data-slot$=dialog-footer]]:z-10",
   "[&_[data-slot$=dialog-footer]]:bg-popover [&_[data-slot$=dialog-footer]]:bg-linear-to-b",
   "[&_[data-slot$=dialog-footer]]:from-muted/50 [&_[data-slot$=dialog-footer]]:to-muted/50",
   // The footer runs to the sheet's square bottom edge, and keeps clear of
