@@ -6,14 +6,13 @@ import { useGoogleConsent } from "../../google.hook";
 import type { GoogleConnectionView } from "../../google.types";
 import { useSyncCalendar } from "~/features/sync/sync.hook";
 import {
-  AlertDialog,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
@@ -152,52 +151,50 @@ function ChooseCalendarDialog({
   const name = choice?.name ?? "";
 
   return (
-    <AlertDialog open={choice !== null} onOpenChange={(isOpen) => !isOpen && close()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Sync bizzy with {name}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Every session and follow-up in bizzy is written into {name}, and every event already
-            in it is read as bizzy's: a session, a follow-up, or, if it doesn't fit, a fix on your
-            to-do list.{" "}
-            {current
-              ? `${current} is left as it is, and bizzy stops reading it.`
-              : "Older events come in a month at a time after the first sync."}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <Field>
-          <FieldLabel htmlFor="confirm-calendar">Type {name} to confirm</FieldLabel>
-          <Input
-            id="confirm-calendar"
-            autoComplete="off"
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-          />
-        </Field>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <Button
-            disabled={!choice || !sameName(typed, name) || setCalendar.isPending}
-            onClick={() =>
-              choice &&
-              setCalendar.mutate(
-                { id: choice.id, confirm: typed },
-                {
-                  onSuccess: (updated) => {
-                    toast.success(`Syncing ${updated.calendarName}…`);
-                    close();
-                    sync().catch((error: Error) => toast.error(error.message));
-                  },
-                  onError: (error) => toast.error(error.message),
+    <SheetAlertDialog open={choice !== null} onClose={close}>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Sync bizzy with {name}?</AlertDialogTitle>
+        <AlertDialogDescription>
+          Every session and follow-up in bizzy is written into {name}, and every event already
+          in it is read as bizzy's: a session, a follow-up, or, if it doesn't fit, a fix on your
+          to-do list.{" "}
+          {current
+            ? `${current} is left as it is, and bizzy stops reading it.`
+            : "Older events come in a month at a time after the first sync."}
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <Field>
+        <FieldLabel htmlFor="confirm-calendar">Type {name} to confirm</FieldLabel>
+        <Input
+          id="confirm-calendar"
+          autoComplete="off"
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+        />
+      </Field>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <Button
+          disabled={!choice || !sameName(typed, name) || setCalendar.isPending}
+          onClick={() =>
+            choice &&
+            setCalendar.mutate(
+              { id: choice.id, confirm: typed },
+              {
+                onSuccess: (updated) => {
+                  toast.success(`Syncing ${updated.calendarName}…`);
+                  close();
+                  sync().catch((error: Error) => toast.error(error.message));
                 },
-              )
-            }
-          >
-            {setCalendar.isPending ? "Choosing…" : "Sync with it"}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+                onError: (error) => toast.error(error.message),
+              },
+            )
+          }
+        >
+          {setCalendar.isPending ? "Choosing…" : "Sync with it"}
+        </Button>
+      </AlertDialogFooter>
+    </SheetAlertDialog>
   );
 }
 
@@ -205,34 +202,32 @@ function DisconnectDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const disconnect = GoogleMutation.useDisconnect();
 
   return (
-    <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Disconnect Google?</AlertDialogTitle>
-          <AlertDialogDescription>
-            The calendar stops syncing and clients can't be added until you connect again. Nothing
-            in your calendar or contacts is changed, and sessions, clients and receipts stay.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Keep connected</AlertDialogCancel>
-          <Button
-            variant="destructive"
-            disabled={disconnect.isPending}
-            onClick={() =>
-              disconnect.mutate(undefined, {
-                onSuccess: () => {
-                  toast.success("Google disconnected");
-                  onClose();
-                },
-                onError: (error) => toast.error(error.message),
-              })
-            }
-          >
-            Disconnect
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <SheetAlertDialog open={open} onClose={onClose}>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Disconnect Google?</AlertDialogTitle>
+        <AlertDialogDescription>
+          The calendar stops syncing and clients can't be added until you connect again. Nothing
+          in your calendar or contacts is changed, and sessions, clients and receipts stay.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Keep connected</AlertDialogCancel>
+        <Button
+          variant="destructive"
+          disabled={disconnect.isPending}
+          onClick={() =>
+            disconnect.mutate(undefined, {
+              onSuccess: () => {
+                toast.success("Google disconnected");
+                onClose();
+              },
+              onError: (error) => toast.error(error.message),
+            })
+          }
+        >
+          Disconnect
+        </Button>
+      </AlertDialogFooter>
+    </SheetAlertDialog>
   );
 }

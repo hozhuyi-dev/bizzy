@@ -1,14 +1,13 @@
 import { useBlocker } from "@tanstack/react-router";
 import type { ShouldBlockFn } from "@tanstack/react-router";
 import {
-  AlertDialog,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 
 // Every form with changes blocks on its own and the router asks them in turn,
@@ -34,27 +33,25 @@ export function UnsavedChangesPrompt({ when }: UnsavedChangesPromptProps) {
   const blocker = useBlocker({ shouldBlockFn: leavesPage, disabled: !when, withResolver: true });
 
   return (
-    <AlertDialog open={blocker.status === "blocked"} onOpenChange={(open) => !open && blocker.reset?.()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
-          <AlertDialogDescription>What you changed here will be lost.</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Keep editing</AlertDialogCancel>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              leavingTo = blocker.next?.pathname;
-              // The other blockers are asked before any timer runs.
-              setTimeout(() => (leavingTo = undefined));
-              blocker.proceed?.();
-            }}
-          >
-            Leave
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <SheetAlertDialog open={blocker.status === "blocked"} onClose={() => blocker.reset?.()}>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
+        <AlertDialogDescription>What you changed here will be lost.</AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Keep editing</AlertDialogCancel>
+        <Button
+          variant="destructive"
+          onClick={() => {
+            leavingTo = blocker.next?.pathname;
+            // The other blockers are asked before any timer runs.
+            setTimeout(() => (leavingTo = undefined));
+            blocker.proceed?.();
+          }}
+        >
+          Leave
+        </Button>
+      </AlertDialogFooter>
+    </SheetAlertDialog>
   );
 }

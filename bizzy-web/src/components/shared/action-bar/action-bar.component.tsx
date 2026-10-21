@@ -62,6 +62,8 @@ interface ActionBarProps {
   actions?: ReadonlyArray<Action> | undefined;
   /** Before them on wider screens, behind ⋯ on a phone. */
   more?: ReadonlyArray<Action> | undefined;
+  /** Behind ⋯ on every screen, after `more`: the rare ones (Reset link, Cancel). */
+  menu?: ReadonlyArray<Action> | undefined;
   size?: ActionSize;
   /** For actions without a style of their own. */
   defaultStyle?: ActionStyle;
@@ -78,12 +80,13 @@ interface ActionBarProps {
 export function ActionBar({
   actions = [],
   more = [],
+  menu = [],
   size = "default",
   defaultStyle = "secondary",
   className,
   buttonClassName,
 }: ActionBarProps) {
-  if (actions.length === 0 && more.length === 0) return null;
+  if (actions.length === 0 && more.length === 0 && menu.length === 0) return null;
   return (
     <div className={cn("flex shrink-0 items-center gap-2", className)}>
       {more.map((action) => (
@@ -104,7 +107,9 @@ export function ActionBar({
           className={buttonClassName}
         />
       ))}
-      {more.length > 0 && <ActionMenu actions={more} size={size} className="md:hidden" />}
+      {/* One ⋯ either way: with `more` in it on a phone, without on wider screens. */}
+      <ActionMenu actions={[...more, ...menu]} size={size} className="md:hidden" />
+      <ActionMenu actions={menu} size={size} className="hidden md:inline-flex" />
     </div>
   );
 }

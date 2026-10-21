@@ -36,6 +36,8 @@ interface PageHeaderProps {
   pager?: ReactNode;
   /** Everything else: buttons on wider screens, behind ⋯ on a phone. */
   moreActions?: ReadonlyArray<Action> | undefined;
+  /** The rare ones, behind ⋯ on every screen, so a wide header stays a few buttons. */
+  menuActions?: ReadonlyArray<Action> | undefined;
   /**
    * Notices about the whole page (Banners), stacked and kept in view under
    * the header; whatever sticks below (a contents list) sits under them. A
@@ -56,10 +58,20 @@ interface PageHeaderProps {
  * actions stay in reach on long tables, with the banners under it; the
  * toolbar scrolls with the page.
  */
-export function PageHeader({ title, parent, badges, actions, pager, moreActions, banners, toolbar }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  parent,
+  badges,
+  actions,
+  pager,
+  moreActions,
+  menuActions,
+  banners,
+  toolbar,
+}: PageHeaderProps) {
   const { pathname } = useLocation();
   const module = parent ? undefined : moduleOf(pathname);
-  const hasActions = (actions?.length ?? 0) > 0 || (moreActions?.length ?? 0) > 0;
+  const hasActions = [actions, moreActions, menuActions].some((list) => (list?.length ?? 0) > 0);
 
   return (
     <>
@@ -70,7 +82,7 @@ export function PageHeader({ title, parent, badges, actions, pager, moreActions,
           <h1 className="truncate text-lg font-semibold">{title}</h1>
           {badges && <div className="flex shrink-0 items-center gap-1">{badges}</div>}
         </div>
-        <ActionBar actions={actions} more={moreActions} />
+        <ActionBar actions={actions} more={moreActions} menu={menuActions} />
         {pager && (
           <div className={cn("flex shrink-0 items-center", hasActions && "border-l pl-1.5")}>{pager}</div>
         )}

@@ -21,14 +21,13 @@ import { Loading } from "~/components/shared/quip/quip.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import {
-  AlertDialog,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
@@ -388,37 +387,35 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
       <SectionLayout sections={sections} />
       <UnsavedChangesPrompt when={hasChanges} />
 
-      <AlertDialog open={deleting} onOpenChange={setDeleting}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this expense?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {expense && formatCents(expense.totalCents)}
-              {expense?.files ? ", with its receipt files" : ""}. This can't be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              disabled={remove.isPending}
-              onClick={() =>
-                expense &&
-                remove.mutate(expense.id, {
-                  onSuccess: () => {
-                    toast.success("Expense deleted");
-                    void navigate({ ...header.parent, ignoreBlocker: true });
-                  },
-                  onError: (error) => toast.error(error.message),
-                  onSettled: () => setDeleting(false),
-                })
-              }
-            >
-              {remove.isPending ? "Deleting…" : "Delete"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SheetAlertDialog open={deleting} onClose={() => setDeleting(false)}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this expense?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {expense && formatCents(expense.totalCents)}
+            {expense?.files ? ", with its receipt files" : ""}. This can't be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep it</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() =>
+              expense &&
+              remove.mutate(expense.id, {
+                onSuccess: () => {
+                  toast.success("Expense deleted");
+                  void navigate({ ...header.parent, ignoreBlocker: true });
+                },
+                onError: (error) => toast.error(error.message),
+                onSettled: () => setDeleting(false),
+              })
+            }
+          >
+            {remove.isPending ? "Deleting…" : "Delete"}
+          </Button>
+        </AlertDialogFooter>
+      </SheetAlertDialog>
     </>
   );
 }

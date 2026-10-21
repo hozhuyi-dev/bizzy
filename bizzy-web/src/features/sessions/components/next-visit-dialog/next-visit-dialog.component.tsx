@@ -6,14 +6,8 @@ import type { SessionDraft } from "../../sessions.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "~/components/ui/dialog";
+import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { addDays, formatSessionTime, toISODate, toTimeInput } from "~/core/utils/date.util";
@@ -34,9 +28,9 @@ interface NextVisitDialogProps {
  */
 export function NextVisitDialog({ from, clientName, onClose }: NextVisitDialogProps) {
   return (
-    <Dialog open={from !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>{from && <NextVisitForm from={from} clientName={clientName} onClose={onClose} />}</DialogContent>
-    </Dialog>
+    <SheetDialog open={from !== null} onClose={onClose}>
+      {from && <NextVisitForm from={from} clientName={clientName} onClose={onClose} />}
+    </SheetDialog>
   );
 }
 

@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { HomeIcon } from "lucide-react";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
-import { NEW_SESSION_ACTION } from "~/features/sessions/sessions.action";
+import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
+import { newSessionAction } from "~/features/sessions/sessions.action";
 import { stageBadges } from "~/features/sessions/session-stage.util";
 import { SessionsQuery } from "~/features/sessions/sessions.query";
 import { TodoList } from "~/features/todo/components/todo-list/todo-list.component";
@@ -23,10 +24,12 @@ import { dayRange } from "~/core/utils/date.util";
 export function HomePage() {
   const todo = TodoQuery.useList();
   const count = todo.data?.length;
+  const [adding, setAdding] = useState(false);
 
   return (
     <>
-      <PageHeader title="Home" actions={[NEW_SESSION_ACTION]} banners={<GoogleNotice />} />
+      <PageHeader title="Home" actions={[newSessionAction(() => setAdding(true))]} banners={<GoogleNotice />} />
+      <NewSessionDialog open={adding} returnTo="home" onClose={() => setAdding(false)} />
       <SectionLayout
         sections={[
           { id: "today", title: "Today", content: <Today /> },

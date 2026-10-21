@@ -8,14 +8,13 @@ import { formatBytes, isPreviewable } from "../../attachments.util";
 import type { AttachmentOwner, AttachmentView } from "../../attachments.types";
 import type { Verdict } from "~/core/lambda/lambda.types";
 import {
-  AlertDialog,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { toastWithQuip } from "~/components/shared/quip/quip-toast";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -146,31 +145,29 @@ export function AttachmentList({ owner, can, addLabel = "Attach photos or PDFs" 
         <p className="text-xs text-muted-foreground">{can.why}</p>
       )}
 
-      <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {removing?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>The file is deleted. Download it first if you still need it.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              disabled={remove.isPending}
-              onClick={() =>
-                removing &&
-                remove.mutate(removing.id, {
-                  onSuccess: () => toast.success("File removed"),
-                  onError: (error) => toast.error(error.message),
-                  onSettled: () => setRemoving(null),
-                })
-              }
-            >
-              {remove.isPending ? "Removing…" : "Remove"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SheetAlertDialog open={removing !== null} onClose={() => setRemoving(null)}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove {removing?.name}?</AlertDialogTitle>
+          <AlertDialogDescription>The file is deleted. Download it first if you still need it.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep it</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() =>
+              removing &&
+              remove.mutate(removing.id, {
+                onSuccess: () => toast.success("File removed"),
+                onError: (error) => toast.error(error.message),
+                onSettled: () => setRemoving(null),
+              })
+            }
+          >
+            {remove.isPending ? "Removing…" : "Remove"}
+          </Button>
+        </AlertDialogFooter>
+      </SheetAlertDialog>
     </div>
   );
 }

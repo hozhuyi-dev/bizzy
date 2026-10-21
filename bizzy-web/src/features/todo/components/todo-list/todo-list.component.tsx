@@ -28,7 +28,7 @@ import { useConfirmBooking } from "~/features/sessions/sessions-booking.hook";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +40,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { InlineField } from "~/components/shared/inline-action/inline-action.component";
 import { ListRow } from "~/components/shared/list-row/list-row.component";
+import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { EmptyState } from "~/components/shared/quip/quip.component";
 import { toastWithQuip } from "~/components/shared/quip/quip-toast";
@@ -88,14 +89,12 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
         onDeleted={() => undefined}
       />
       <FollowUpDialog target={editingFollowUp} onClose={() => setEditingFollowUp(null)} />
-      <Dialog open={paying !== null} onOpenChange={(open) => !open && setPaying(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Payment</DialogTitle>
-          </DialogHeader>
-          {paying && <PaymentPanel payables={paying} onPaid={() => setPaying(null)} />}
-        </DialogContent>
-      </Dialog>
+      <SheetDialog open={paying !== null} onClose={() => setPaying(null)}>
+        <DialogHeader>
+          <DialogTitle>Payment</DialogTitle>
+        </DialogHeader>
+        {paying && <PaymentPanel payables={paying} onPaid={() => setPaying(null)} />}
+      </SheetDialog>
     </>
   );
 

@@ -14,10 +14,11 @@ import { RowActionButtons } from "~/components/shared/row-actions/row-actions.co
 import { CellEmpty } from "~/components/shared/data-table/data-table-cell.component";
 import { DataCard } from "~/components/shared/data-card/data-card.component";
 import { SearchInput } from "~/components/shared/search-input/search-input.component";
+import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
@@ -127,13 +128,11 @@ export function ExpenseItemsPage() {
         />
       )}
 
-      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
-          {editing && catalogue.data && (
-            <ItemForm key={editing.id} item={editing} catalogue={catalogue.data} onDone={() => setEditing(null)} />
-          )}
-        </DialogContent>
-      </Dialog>
+      <SheetDialog open={editing !== null} onClose={() => setEditing(null)}>
+        {editing && catalogue.data && (
+          <ItemForm key={editing.id} item={editing} catalogue={catalogue.data} onDone={() => setEditing(null)} />
+        )}
+      </SheetDialog>
     </>
   );
 }

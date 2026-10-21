@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "cn";
-import { NEW_SESSION_ACTION } from "./sessions.action";
+import { newSessionAction } from "./sessions.action";
+import { NewSessionDialog } from "./components/booking-dialog/booking-dialog.component";
 import { SessionsTable } from "./components/sessions-table/sessions-table.component";
 import { SessionsQuery } from "./sessions.query";
 import { sessionFacets, sessionsUrl } from "./sessions.util";
@@ -32,12 +33,14 @@ export function SessionsPage({ filter, onFilterChange }: SessionsPageProps) {
   const rows = useMemo(() => pageItems(sessions.data), [sessions.data]);
   // Each session's page steps through this list.
   const search = useMemo(() => sessionsUrl.toSearch(filter), [filter]);
+  const [adding, setAdding] = useState(false);
 
   return (
     <>
+      <NewSessionDialog open={adding} onClose={() => setAdding(false)} />
       <PageHeader
         title="All sessions"
-        actions={[NEW_SESSION_ACTION]}
+        actions={[newSessionAction(() => setAdding(true))]}
         banners={<GoogleNotice />}
         toolbar={<FilterBar label="Search sessions" value={filter} onChange={onFilterChange} facets={facets} dates />}
       />

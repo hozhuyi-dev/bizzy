@@ -10,6 +10,7 @@ import { toastRefusal } from "~/features/remedies/components/remedy-buttons/reme
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { DialogFooter } from "~/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
@@ -34,16 +35,16 @@ interface BookingFormProps {
    * amounts.
    */
   onSubmit: (draft: SessionDraft, updatePayment: boolean) => Promise<void>;
-  /** Shown beside the submit button, e.g. Cancel. */
-  extraActions?: React.ReactNode;
+  onCancel: () => void;
 }
 
 /**
  * When and with whom, and what it costs: everything the calendar event
  * shows. The user fills in fields; the API writes the event, so its title
- * always reads back as this booking.
+ * always reads back as this booking. Laid out for a dialog: its buttons sit
+ * in the dialog's footer.
  */
-export function BookingForm({ initial, session, submitLabel, onSubmit, extraActions }: BookingFormProps) {
+export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel }: BookingFormProps) {
   const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
@@ -127,7 +128,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
                 value={field.state.value}
                 onValueChange={(value) => field.handleChange(value ?? "")}
               >
-                <SelectTrigger className="w-full max-w-sm">
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a client" />
                 </SelectTrigger>
                 <SelectContent>
@@ -374,7 +375,10 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
         </Field>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
         <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
           {([canSubmit, isSubmitting]) => (
             <Button type="submit" disabled={!canSubmit || isSubmitting}>
@@ -382,8 +386,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, extraActi
             </Button>
           )}
         </form.Subscribe>
-        {extraActions}
-      </div>
+      </DialogFooter>
       <UnsavedChangesPrompt when={hasChanges} />
     </form>
   );

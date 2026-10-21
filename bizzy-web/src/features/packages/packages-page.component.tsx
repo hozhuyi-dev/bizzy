@@ -20,7 +20,8 @@ import { dataTableFeatures } from "~/components/shared/data-table/data-table.con
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
@@ -127,41 +128,35 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
         ),
       })}
 
-      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing?.mode === "edit" ? "Edit package" : "New package"}</DialogTitle>
-          </DialogHeader>
-          {editing && (
-            <PackageForm
-              key={editing.mode === "edit" ? editing.pkg.id : "new"}
-              pkg={editing.mode === "edit" ? editing.pkg : undefined}
-              clientId={editing.mode === "new" ? editing.clientId : undefined}
-              quiet={editing.mode === "new" && Boolean(settled)}
-              onDone={(done) => {
-                setEditing(null);
-                if (editing.mode === "new") settled?.(done);
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      <SheetDialog open={editing !== null} onClose={() => setEditing(null)}>
+        <DialogHeader>
+          <DialogTitle>{editing?.mode === "edit" ? "Edit package" : "New package"}</DialogTitle>
+        </DialogHeader>
+        {editing && (
+          <PackageForm
+            key={editing.mode === "edit" ? editing.pkg.id : "new"}
+            pkg={editing.mode === "edit" ? editing.pkg : undefined}
+            clientId={editing.mode === "new" ? editing.clientId : undefined}
+            quiet={editing.mode === "new" && Boolean(settled)}
+            onDone={(done) => {
+              setEditing(null);
+              if (editing.mode === "new") settled?.(done);
+            }}
+          />
+        )}
+      </SheetDialog>
 
-      <Dialog open={paying !== undefined} onOpenChange={(open) => !open && setPayingId(undefined)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Package payment</DialogTitle>
-            {paying && (
-              <DialogDescription>
-                {clientName(paying, clientsById)} · {formatHours(paying.hours)}, bought {formatDate(paying.purchasedAt)}
-              </DialogDescription>
-            )}
-          </DialogHeader>
+      <SheetDialog open={paying !== undefined} onClose={() => setPayingId(undefined)}>
+        <DialogHeader>
+          <DialogTitle>Package payment</DialogTitle>
           {paying && (
-            <PaymentPanel payables={packagePayables(paying)} />
+            <DialogDescription>
+              {clientName(paying, clientsById)} · {formatHours(paying.hours)}, bought {formatDate(paying.purchasedAt)}
+            </DialogDescription>
           )}
-        </DialogContent>
-      </Dialog>
+        </DialogHeader>
+        {paying && <PaymentPanel payables={packagePayables(paying)} />}
+      </SheetDialog>
 
       <DeletePackageDialog
         pkg={deleting}

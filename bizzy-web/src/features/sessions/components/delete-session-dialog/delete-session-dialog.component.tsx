@@ -4,14 +4,13 @@ import { SessionsMutation } from "../../sessions.mutation";
 import type { SessionView } from "../../sessions.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import {
-  AlertDialog,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldLabel } from "~/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
@@ -38,13 +37,11 @@ interface DeleteSessionDialogProps {
  */
 export function DeleteSessionDialog({ session, clientName, onClose, onDeleted }: DeleteSessionDialogProps) {
   return (
-    <AlertDialog open={session !== null} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
-        {session && (
-          <DeleteSession key={session.id} session={session} clientName={clientName} onClose={onClose} onDeleted={onDeleted} />
-        )}
-      </AlertDialogContent>
-    </AlertDialog>
+    <SheetAlertDialog open={session !== null} onClose={onClose}>
+      {session && (
+        <DeleteSession key={session.id} session={session} clientName={clientName} onClose={onClose} onDeleted={onDeleted} />
+      )}
+    </SheetAlertDialog>
   );
 }
 

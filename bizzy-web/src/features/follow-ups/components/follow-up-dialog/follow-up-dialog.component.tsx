@@ -8,14 +8,8 @@ import type { FollowUpTarget } from "../../follow-ups.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "~/components/ui/dialog";
+import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
@@ -31,24 +25,15 @@ interface FollowUpDialogProps {
 /**
  * Adds or edits a follow-up. It is written to the calendar as
  * `! Name: summary` with the notes as the event's description, so it shows
- * on the user's phone too. Roomy on a wide screen; on a phone, a sheet
- * from the bottom, so the notes keep their room above the keyboard.
+ * on the user's phone too.
  */
 export function FollowUpDialog({ target, onClose }: FollowUpDialogProps) {
   return (
-    <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className={SHEET}>
-        {target && <FollowUpForm key={target.mode === "edit" ? target.followUp.id : "new"} target={target} onClose={onClose} />}
-      </DialogContent>
-    </Dialog>
+    <SheetDialog open={target !== null} onClose={onClose}>
+      {target && <FollowUpForm key={target.mode === "edit" ? target.followUp.id : "new"} target={target} onClose={onClose} />}
+    </SheetDialog>
   );
 }
-
-const SHEET = [
-  "max-h-[90dvh] overflow-y-auto sm:max-w-lg",
-  "max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0",
-  "max-sm:rounded-b-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:data-open:slide-in-from-bottom-8",
-].join(" ");
 
 /** Quick picks, counted from today. */
 const IN = [

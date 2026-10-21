@@ -14,7 +14,6 @@ function SessionRoute() {
   return (
     <SessionPage
       key={id}
-      mode="edit"
       id={id}
       returnTo={search.from}
       settle={search.settle}

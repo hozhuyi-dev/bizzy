@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CalendarX2Icon, CircleAlertIcon, LockIcon, Trash2Icon } from "lucide-react";
+import { CalendarX2Icon, LockIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { useBookingSave } from "./sessions-booking.hook";
-import { BookingForm } from "./components/booking-form/booking-form.component";
 import { bookingStep } from "./components/booking-step/booking-step.component";
 import { SessionPager } from "./components/session-pager/session-pager.component";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
@@ -15,7 +13,6 @@ import { PipelineLayout } from "./components/pipeline-layout/pipeline-layout.com
 import { useRecordDraft } from "./components/record-editor/record-editor.hook";
 import { recordStep } from "./components/record-step/record-step.component";
 import { allSessionDocuments, boughtIn, coveringCredits } from "./session-stage.util";
-import { newSessionDraft } from "./sessions.form";
 import { useSessionMessageActions } from "./sessions.hook";
 import { sessionsUrl } from "./sessions.util";
 import { SessionsQuery } from "./sessions.query";
@@ -39,27 +36,20 @@ import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { Card, CardContent } from "~/components/ui/card";
-import { formatSessionTime } from "~/core/utils/date.util";
 import { clientOf } from "~/features/clients/clients.util";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
-import { QUIPS } from "~/core/constants/quips.constant";
 
-export type SessionPageProps = { returnTo?: SessionReturnTo | undefined } & (
-  | { mode: "new" }
-  /**
-   * `settle`: the calendar edit it was opened to settle, by changing its
-   * booking. `filter`: the sessions list it steps through (unless opened
-   * from Home, which steps through the to-do list).
-   */
-  | {
-      mode: "edit";
-      id: string;
-      settle?: string | undefined;
-      filter: ListFilter;
-      onFilterChange: (filter: ListFilter) => void;
-    }
-);
+/**
+ * `settle`: the calendar edit it was opened to settle, by changing its
+ * booking. `filter`: the sessions list it steps through (unless opened
+ * from Home, which steps through the to-do list).
+ */
+export interface SessionPageProps {
+  id: string;
+  returnTo?: SessionReturnTo | undefined;
+  settle?: string | undefined;
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
+}
 
 /** Home, or the sessions list with the filter it was left at. */
 function parentOf(returnTo: SessionReturnTo | undefined, filter?: ListFilter) {
@@ -68,56 +58,11 @@ function parentOf(returnTo: SessionReturnTo | undefined, filter?: ListFilter) {
 }
 
 /**
- * A session's own page. A new one is just its booking; an existing one
- * walks through its steps: booking, notes, payment, then the optional
- * documents and follow-ups.
+ * A session's own page, walking through its steps: booking, notes,
+ * payment, then the optional documents and follow-ups. A new one is added
+ * in a dialog (NewSessionDialog), and opens here once it has happened.
  */
-export function SessionPage(props: SessionPageProps) {
-  if (props.mode === "new") return <NewSession returnTo={props.returnTo} />;
-  return <ExistingSession {...props} />;
-}
-
-function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
-  const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
-  const save = useBookingSave(undefined, undefined, (draft, id) => {
-    const booked = new Date(draft.start) > new Date();
-    toastWithQuip(booked ? `Booked for ${formatSessionTime(draft.start)}` : "Session added", QUIPS.booked);
-    // Straight to its notes and payment.
-    void navigate({ to: "/sessions/$id", params: { id }, search: { from: returnTo }, replace: true, ignoreBlocker: true });
-  });
-
-  return (
-    <>
-      <PageHeader
-        parent={parentOf(returnTo)}
-        title="New session"
-        banners={error && <Banner tone="attention" icon={CircleAlertIcon} title={error} role="alert" />}
-      />
-      <Card className="max-w-3xl">
-        <CardContent>
-          <BookingForm
-            initial={newSessionDraft()}
-            submitLabel="Add session"
-            onSubmit={async (draft) => {
-              setError(null);
-              try {
-                await save.submit(draft);
-              } catch (e) {
-                setError((e as Error).message);
-                throw e;
-              }
-            }}
-          />
-        </CardContent>
-      </Card>
-    </>
-  );
-}
-
-type ExistingSessionProps = Extract<SessionPageProps, { mode: "edit" }>;
-
-function ExistingSession({ id, returnTo, settle, filter, onFilterChange }: ExistingSessionProps) {
+export function SessionPage({ id, returnTo, settle, filter, onFilterChange }: SessionPageProps) {
   const detail = SessionsQuery.useDetail(id);
   const parent = parentOf(returnTo, filter);
   // Steps on while the next one loads, so the header stays put.

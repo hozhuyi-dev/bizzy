@@ -1,18 +1,14 @@
 import { useState } from "react";
 import { CheckIcon, PencilIcon } from "lucide-react";
-import { toast } from "sonner";
-import { BookingForm } from "../booking-form/booking-form.component";
+import { EditBookingDialog } from "../booking-dialog/booking-dialog.component";
 import { hasHappened, sessionMinutes } from "../../session-stage.util";
-import { useBookingSave, useConfirmBooking } from "../../sessions-booking.hook";
-import { draftOf } from "../../sessions.form";
+import { useConfirmBooking } from "../../sessions-booking.hook";
 import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
 import type { SessionView } from "../../sessions.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { Button } from "~/components/ui/button";
 import { formatDate, formatSessionTime } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
-import { QUIPS } from "~/core/constants/quips.constant";
 
 function Lines({ children }: { children: Array<string | false | undefined> }) {
   return (
@@ -57,13 +53,6 @@ interface BookingStepProps {
 function BookingStep({ session, onCancel, settled }: BookingStepProps) {
   const confirm = useConfirmBooking();
   const [editing, setEditing] = useState(Boolean(settled));
-  const draft = draftOf(session);
-  const save = useBookingSave(session, draft, (next) => {
-    const done = new Date(next.start) > new Date() ? `Booked for ${formatSessionTime(next.start)}` : "Booking saved";
-    setEditing(false);
-    if (settled) settled(done);
-    else toastWithQuip(done, QUIPS.booked);
-  });
 
   return (
     <>
@@ -94,28 +83,12 @@ function BookingStep({ session, onCancel, settled }: BookingStepProps) {
           {session.credits.length > 0 && <> · package credit</>}
           {session.invoice && <> · {formatCents(session.feeCents)}</>}
         </span>
-        {!editing && (
-          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-            <PencilIcon /> Edit booking
-          </Button>
-        )}
+        <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+          <PencilIcon /> Edit booking
+        </Button>
       </div>
 
-      {editing && (
-        <BookingForm
-          // Restarts whenever the booking changes, here or in the calendar.
-          key={JSON.stringify(draft)}
-          initial={draft}
-          session={session}
-          submitLabel="Save booking"
-          onSubmit={(next, updatePayment) => save.submit(next, updatePayment)}
-          extraActions={
-            <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-          }
-        />
-      )}
+      <EditBookingDialog session={session} open={editing} onClose={() => setEditing(false)} onSaved={settled} />
     </>
   );
 }

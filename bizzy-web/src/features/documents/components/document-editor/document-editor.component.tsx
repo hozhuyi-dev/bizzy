@@ -29,33 +29,40 @@ export function documentIssueAction(editor: DocumentEditorState): Action {
   };
 }
 
-/** The editor's other actions: beside Issue on wider screens, behind ⋯ on a phone. */
-export function documentEditorActions(editor: DocumentEditorState): Array<Action> {
+/**
+ * The editor's other actions: `more` beside Issue on wider screens (behind ⋯
+ * on a phone), and `menu`, Discard, behind ⋯ on every screen.
+ */
+export function documentEditorActions(editor: DocumentEditorState): { more: Array<Action>; menu: Array<Action> } {
   const { doc, invalid, busy } = editor;
-  return [
-    {
-      type: "button",
-      label: "Preview PDF",
-      icon: EyeIcon,
-      disabled: invalid !== undefined,
-      onClick: () => void editor.preview(),
-    },
-    {
-      type: "button",
-      label: editor.saving && !editor.issuing ? "Saving…" : "Save draft",
-      icon: SaveIcon,
-      disabled: busy || invalid !== undefined,
-      onClick: () => void editor.save(),
-    },
-    {
-      type: "button",
-      label: doc.number ? "Discard revision" : "Discard draft",
-      icon: Trash2Icon,
-      style: "destructive",
-      disabled: busy,
-      onClick: editor.discard,
-    },
-  ];
+  return {
+    more: [
+      {
+        type: "button",
+        label: "Preview PDF",
+        icon: EyeIcon,
+        disabled: invalid !== undefined,
+        onClick: () => void editor.preview(),
+      },
+      {
+        type: "button",
+        label: editor.saving && !editor.issuing ? "Saving…" : "Save draft",
+        icon: SaveIcon,
+        disabled: busy || invalid !== undefined,
+        onClick: () => void editor.save(),
+      },
+    ],
+    menu: [
+      {
+        type: "button",
+        label: doc.number ? "Discard revision" : "Discard draft",
+        icon: Trash2Icon,
+        style: "destructive",
+        disabled: busy,
+        onClick: editor.discard,
+      },
+    ],
+  };
 }
 
 /**

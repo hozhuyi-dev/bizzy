@@ -3,14 +3,13 @@ import { PackagesMutation } from "../../packages.mutation";
 import type { PackageView } from "../../packages.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import {
-  AlertDialog,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { formatCents } from "~/core/utils/money.util";
 import { formatHours } from "~/core/utils/date.util";
@@ -29,37 +28,35 @@ interface DeletePackageDialogProps {
 export function DeletePackageDialog({ pkg, clientName, onClose }: DeletePackageDialogProps) {
   const remove = PackagesMutation.useDelete();
   return (
-    <AlertDialog open={pkg !== null} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
-        {pkg && (
-          <>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete this package?</AlertDialogTitle>
-              <AlertDialogDescription>
-                {clientName}, {formatHours(pkg.hours)} for {formatCents(pkg.priceCents)}. This can't be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Keep it</AlertDialogCancel>
-              <Button
-                variant="destructive"
-                disabled={remove.isPending}
-                onClick={() =>
-                  remove.mutate(pkg.id, {
-                    onSuccess: () => {
-                      toast.success("Package deleted");
-                      onClose();
-                    },
-                    onError: toastRefusal,
-                  })
-                }
-              >
-                {remove.isPending ? "Deleting…" : "Delete"}
-              </Button>
-            </AlertDialogFooter>
-          </>
-        )}
-      </AlertDialogContent>
-    </AlertDialog>
+    <SheetAlertDialog open={pkg !== null} onClose={onClose}>
+      {pkg && (
+        <>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this package?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {clientName}, {formatHours(pkg.hours)} for {formatCents(pkg.priceCents)}. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={() =>
+                remove.mutate(pkg.id, {
+                  onSuccess: () => {
+                    toast.success("Package deleted");
+                    onClose();
+                  },
+                  onError: toastRefusal,
+                })
+              }
+            >
+              {remove.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </AlertDialogFooter>
+        </>
+      )}
+    </SheetAlertDialog>
   );
 }

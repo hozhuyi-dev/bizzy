@@ -32,7 +32,6 @@ import { Route as ReceiptsIndexRouteImport } from './routes/receipts/index'
 import { Route as ReceiptsIdRouteImport } from './routes/receipts/$id'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as SessionsIdRouteImport } from './routes/sessions/$id'
-import { Route as SessionsNewRouteImport } from './routes/sessions/new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -149,11 +148,6 @@ const SessionsIdRoute = SessionsIdRouteImport.update({
   path: '/sessions/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsNewRoute = SessionsNewRouteImport.update({
-  id: '/sessions/new',
-  path: '/sessions/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -173,7 +167,6 @@ export interface FileRoutesByFullPath {
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
-  '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/follow-ups/': typeof FollowUpsIndexRoute
@@ -199,7 +192,6 @@ export interface FileRoutesByTo {
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
-  '/sessions/new': typeof SessionsNewRoute
   '/clients': typeof ClientsIndexRoute
   '/expenses': typeof ExpensesIndexRoute
   '/follow-ups': typeof FollowUpsIndexRoute
@@ -226,7 +218,6 @@ export interface FileRoutesById {
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
-  '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/follow-ups/': typeof FollowUpsIndexRoute
@@ -254,7 +245,6 @@ export interface FileRouteTypes {
     | '/invoices/$id'
     | '/receipts/$id'
     | '/sessions/$id'
-    | '/sessions/new'
     | '/clients/'
     | '/expenses/'
     | '/follow-ups/'
@@ -280,7 +270,6 @@ export interface FileRouteTypes {
     | '/invoices/$id'
     | '/receipts/$id'
     | '/sessions/$id'
-    | '/sessions/new'
     | '/clients'
     | '/expenses'
     | '/follow-ups'
@@ -306,7 +295,6 @@ export interface FileRouteTypes {
     | '/invoices/$id'
     | '/receipts/$id'
     | '/sessions/$id'
-    | '/sessions/new'
     | '/clients/'
     | '/expenses/'
     | '/follow-ups/'
@@ -333,7 +321,6 @@ export interface RootRouteChildren {
   InvoicesIdRoute: typeof InvoicesIdRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
   SessionsIdRoute: typeof SessionsIdRoute
-  SessionsNewRoute: typeof SessionsNewRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
   ExpensesIndexRoute: typeof ExpensesIndexRoute
   FollowUpsIndexRoute: typeof FollowUpsIndexRoute
@@ -505,13 +492,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SessionsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/new': {
-      id: '/sessions/new'
-      path: '/sessions/new'
-      fullPath: '/sessions/new'
-      preLoaderRoute: typeof SessionsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -533,7 +513,6 @@ const rootRouteChildren: RootRouteChildren = {
   InvoicesIdRoute: InvoicesIdRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,
   SessionsIdRoute: SessionsIdRoute,
-  SessionsNewRoute: SessionsNewRoute,
   ClientsIndexRoute: ClientsIndexRoute,
   ExpensesIndexRoute: ExpensesIndexRoute,
   FollowUpsIndexRoute: FollowUpsIndexRoute,

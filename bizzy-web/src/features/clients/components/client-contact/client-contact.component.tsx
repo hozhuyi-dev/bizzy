@@ -4,7 +4,7 @@ import { chosenFromContact, recreateFrom } from "../../clients.util";
 import type { ChosenContact } from "../../clients.types";
 import type { ContactView } from "~/features/contacts/contacts.types";
 import { ContactsQuery } from "~/features/contacts/contacts.query";
-import { ContactDetailsEditor } from "~/features/contacts/components/contact-details-editor/contact-details-editor.component";
+import { ContactDetailsDialog } from "~/features/contacts/components/contact-details-dialog/contact-details-dialog.component";
 import { ContactPicker } from "~/features/contacts/components/contact-picker/contact-picker.component";
 import { ContactSummary } from "~/features/contacts/components/contact-summary/contact-summary.component";
 import { Button } from "~/components/ui/button";
@@ -19,17 +19,19 @@ interface ClientContactProps {
   onChange: (contact: ChosenContact | null) => void;
 }
 
-type Mode = "view" | "change" | "recreate" | "edit";
+type Mode = "view" | "change" | "recreate";
 
 /**
- * The client's Google contact, all in place: a summary once chosen, with its
- * details edited, the contact changed or recreated, or the link removed,
- * right here instead of in a dialog. Without one, a picker that can also
- * create the contact.
+ * The client's Google contact: a summary once chosen, with the contact
+ * changed or recreated, or the link removed, in place, saved with the
+ * client. Its details save straight to Google, so they are edited in a
+ * dialog of their own. Without one, a picker that can also create the
+ * contact.
  */
 export function ClientContact({ contact, linked, searchFor, clientName, onChange }: ClientContactProps) {
   const contacts = ContactsQuery.useList();
   const [mode, setMode] = useState<Mode>("view");
+  const [editing, setEditing] = useState(false);
 
   const pick = (picked: ContactView) => {
     onChange(chosenFromContact(picked));
@@ -72,16 +74,6 @@ export function ClientContact({ contact, linked, searchFor, clientName, onChange
     );
   }
 
-  if (mode === "edit") {
-    return (
-      <ContactDetailsEditor
-        resourceName={contact.resourceName}
-        onDone={() => setMode("view")}
-        onSaved={(saved) => onChange(chosenFromContact(saved))}
-      />
-    );
-  }
-
   // A contact chosen from a calendar suggestion arrives with only its name.
   const listed = contacts.data?.find((c) => c.resourceName === contact.resourceName);
   const shown = contact.missing || !listed ? contact : chosenFromContact(listed);
@@ -102,7 +94,7 @@ export function ClientContact({ contact, linked, searchFor, clientName, onChange
               <RotateCcwIcon /> Recreate
             </Button>
           ) : (
-            <Button type="button" variant="ghost" size="sm" onClick={() => setMode("edit")}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
               <PencilIcon /> Edit details
             </Button>
           )
@@ -122,6 +114,11 @@ export function ClientContact({ contact, linked, searchFor, clientName, onChange
           <UnlinkIcon /> Unlink
         </Button>
       </div>
+      <ContactDetailsDialog
+        resourceName={editing ? contact.resourceName : null}
+        onClose={() => setEditing(false)}
+        onSaved={(saved) => onChange(chosenFromContact(saved))}
+      />
     </div>
   );
 }

@@ -37,14 +37,13 @@ import { SectionLayout } from "~/components/shared/section-layout/section-layout
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import {
-  AlertDialog,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { formatCents } from "~/core/utils/money.util";
@@ -127,6 +126,7 @@ interface DraftDocumentProps {
 
 function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
   const editor = useDocumentEditor(doc, draft);
+  const editorActions = documentEditorActions(editor);
   const history = revisionsSection(doc, revisions);
 
   return (
@@ -136,7 +136,8 @@ function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
         title={documentLabel(doc.number, doc.revision)}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
         actions={[documentIssueAction(editor)]}
-        moreActions={documentEditorActions(editor)}
+        moreActions={editorActions.more}
+        menuActions={editorActions.menu}
         banners={
           editor.invalid && <Banner tone="attention" icon={CircleAlertIcon} title={editor.invalid} role="alert" />
         }
@@ -166,7 +167,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
   const revise = DocumentsMutation.useRevise();
   const [cancelling, setCancelling] = useState(false);
   const cancelled = doc.status === "cancelled";
-  const pdfActions = usePdfActions({
+  const [viewPdf, downloadPdf] = usePdfActions({
     type: doc.type,
     number: doc.number,
     revision: doc.revision,
@@ -174,7 +175,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
     content,
   });
   const [resettingLink, setResettingLink] = useState(false);
-  const shareActions = useShareActions(doc, content, () => setResettingLink(true));
+  const share = useShareActions(doc, content, () => setResettingLink(true));
 
   return (
     <>
@@ -182,14 +183,16 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
         {...header}
         title={documentLabel(doc.number, doc.revision)}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
-        // An issued receipt is mostly viewed; revising is rare, so nothing
-        // claims the always-visible slot and the title keeps the room on a phone.
-        moreActions={
+        // An issued receipt is mostly sent and viewed; revising is rare, so
+        // nothing claims the always-visible slot and the title keeps the room
+        // on a phone, and the rest waits behind ⋯ on a wide screen too.
+        moreActions={[...share.send, viewPdf]}
+        menuActions={
           cancelled
-            ? [...pdfActions, ...shareActions]
+            ? [downloadPdf, ...share.links]
             : [
-                ...shareActions,
-                ...pdfActions,
+                downloadPdf,
+                ...share.links,
                 {
                   type: "button",
                   label: "Revise",
@@ -249,19 +252,23 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
  * on her computer), Copy link, and Reset link for one sent to the wrong person. A cancelled document's
  * link still opens (marked cancelled), so it can be reset but not sent.
  */
-function useShareActions(doc: DocumentView, content: DocumentContent, onReset: () => void): Array<Action> {
+function useShareActions(
+  doc: DocumentView,
+  content: DocumentContent,
+  onReset: () => void,
+): { send: Array<Action>; links: Array<Action> } {
   const clientsById = ClientsQuery.useById();
   const { send, busy } = useSendDocuments();
   const client = clientOf(clientsById, doc.clientId);
   const to = { name: client?.name ?? content.recipient.name, phone: client?.contact?.phone ?? content.recipient.phone };
   const token = doc.shareToken;
 
-  const actions: Array<Action> = [];
+  const actions: { send: Array<Action>; links: Array<Action> } = { send: [], links: [] };
   if (doc.status === "issued") {
-    actions.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, disabled: busy, onClick: () => send(to, [doc]) });
+    actions.send.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, disabled: busy, onClick: () => send(to, [doc]) });
   }
   if (token) {
-    actions.push(
+    actions.links.push(
       {
         type: "button",
         label: "Copy link",
@@ -282,35 +289,33 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: DocumentView; open: bool
   const reset = DocumentsMutation.useResetShare();
 
   return (
-    <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Reset the link to {documentLabel(doc.number, doc.revision)}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Links already sent stop working, for example one sent to the wrong person. Send the new link to
-            whoever should still have it.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Keep it</AlertDialogCancel>
-          <Button
-            variant="destructive"
-            disabled={reset.isPending}
-            onClick={() =>
-              reset.mutate(doc.id, {
-                onSuccess: () => {
-                  toast.success("New link made; the old one no longer works");
-                  onClose();
-                },
-                onError: (error) => toast.error(error.message),
-              })
-            }
-          >
-            Reset link
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <SheetAlertDialog open={open} onClose={onClose}>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Reset the link to {documentLabel(doc.number, doc.revision)}?</AlertDialogTitle>
+        <AlertDialogDescription>
+          Links already sent stop working, for example one sent to the wrong person. Send the new link to
+          whoever should still have it.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Keep it</AlertDialogCancel>
+        <Button
+          variant="destructive"
+          disabled={reset.isPending}
+          onClick={() =>
+            reset.mutate(doc.id, {
+              onSuccess: () => {
+                toast.success("New link made; the old one no longer works");
+                onClose();
+              },
+              onError: (error) => toast.error(error.message),
+            })
+          }
+        >
+          Reset link
+        </Button>
+      </AlertDialogFooter>
+    </SheetAlertDialog>
   );
 }
 
@@ -340,7 +345,7 @@ function revisionsSection(doc: DocumentView, revisions: Array<DocumentRevision>)
 }
 
 /** View opens the real PDF in a new tab; Download saves it with a proper name. */
-function usePdfActions(pdf: DocumentPdfProps): Array<Action> {
+function usePdfActions(pdf: DocumentPdfProps): [view: Action, download: Action] {
   const { busy, open, download } = useDocumentPdf();
   return [
     { type: "button", label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => open(pdf) },
@@ -358,38 +363,36 @@ function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean
   const title = DOCUMENT_TYPES[doc.type].title.toLowerCase();
 
   return (
-    <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Cancel {documentLabel(doc.number, doc.revision)}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            The {title} is kept, marked cancelled, and its number is never reused. The session or
-            package it covered is free for a new {title}.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <Input placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
-        <AlertDialogFooter>
-          <AlertDialogCancel>Keep it</AlertDialogCancel>
-          <Button
-            variant="destructive"
-            disabled={cancel.isPending}
-            onClick={() =>
-              cancel.mutate(
-                { id: doc.id, reason },
-                {
-                  onSuccess: () => {
-                    toast.success(`${documentLabel(doc.number, doc.revision)} cancelled`);
-                    onClose();
-                  },
-                  onError: (error) => toast.error(error.message),
+    <SheetAlertDialog open={open} onClose={onClose}>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Cancel {documentLabel(doc.number, doc.revision)}?</AlertDialogTitle>
+        <AlertDialogDescription>
+          The {title} is kept, marked cancelled, and its number is never reused. The session or
+          package it covered is free for a new {title}.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <Input placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <AlertDialogFooter>
+        <AlertDialogCancel>Keep it</AlertDialogCancel>
+        <Button
+          variant="destructive"
+          disabled={cancel.isPending}
+          onClick={() =>
+            cancel.mutate(
+              { id: doc.id, reason },
+              {
+                onSuccess: () => {
+                  toast.success(`${documentLabel(doc.number, doc.revision)} cancelled`);
+                  onClose();
                 },
-              )
-            }
-          >
-            Cancel {title}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+                onError: (error) => toast.error(error.message),
+              },
+            )
+          }
+        >
+          Cancel {title}
+        </Button>
+      </AlertDialogFooter>
+    </SheetAlertDialog>
   );
 }
