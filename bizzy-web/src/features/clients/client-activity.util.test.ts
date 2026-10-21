@@ -1,10 +1,7 @@
-import { isLapsed, last12Months, totals } from "./client-activity.util";
-import type { ClientView } from "./clients.types";
+import { last12Months, monthsSinceLastSession, totals } from "./client-activity.util";
 import type { ActivityView } from "~/features/activity/activity.types";
 
 const now = new Date(2026, 9, 11);
-
-const client: ClientView = { id: "c", name: "Jane", aliases: [], feeRates: [], homeVisits: false };
 
 const jane: ActivityView = {
   clientId: "c",
@@ -25,19 +22,12 @@ describe("client activity", () => {
     expect(last12Months(jane, now)).toMatchObject({ sessions: 5, earnedCents: 42500 });
   });
 
-  test("lapsed after the threshold", () => {
-    expect(isLapsed(client, jane, 3, now)).toBe(true);
-    expect(isLapsed(client, jane, 6, now)).toBe(false);
+  test("months since the last session", () => {
+    expect(monthsSinceLastSession(jane, now)).toBe(5);
+    expect(monthsSinceLastSession(undefined, now)).toBeUndefined();
   });
 
-  test("not lapsed when booked or recently contacted", () => {
-    expect(isLapsed(client, { ...jane, nextBookedAt: new Date(2026, 9, 20).toISOString() }, 3, now)).toBe(false);
-    expect(isLapsed({ ...client, lastContactedAt: new Date(2026, 9, 1).toISOString() }, jane, 3, now)).toBe(false);
-    expect(isLapsed({ ...client, lastContactedAt: new Date(2026, 7, 1).toISOString() }, jane, 3, now)).toBe(true);
-  });
-
-  test("never lapsed without sessions", () => {
-    expect(isLapsed(client, undefined, 3, now)).toBe(false);
+  test("nothing without activity", () => {
     expect(totals(undefined).sessions).toBe(0);
   });
 });

@@ -4,7 +4,7 @@ import { ArrowLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import type { LinkOptions, LinkProps } from "@tanstack/react-router";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { Action, FoldWidth } from "~/components/shared/action-bar/action-bar.component";
 import { ActionBar } from "~/components/shared/action-bar/action-bar.component";
 import { Button } from "~/components/ui/button";
 import { useHeight } from "~/core/scroll-spy/scroll-spy.hook";
@@ -38,6 +38,8 @@ interface PageHeaderProps {
   moreActions?: ReadonlyArray<Action> | undefined;
   /** The rare ones, behind ⋯ on every screen, so a wide header stays a few buttons. */
   menuActions?: ReadonlyArray<Action> | undefined;
+  /** Where moreActions fold behind ⋯: below md unless a header has many (see ActionBar). */
+  foldBelow?: FoldWidth | undefined;
   /**
    * Notices about the whole page (Banners), stacked and kept in view under
    * the header; whatever sticks below (a contents list) sits under them. A
@@ -66,6 +68,7 @@ export function PageHeader({
   pager,
   moreActions,
   menuActions,
+  foldBelow,
   banners,
   toolbar,
 }: PageHeaderProps) {
@@ -82,7 +85,7 @@ export function PageHeader({
           <h1 className="truncate text-lg font-semibold">{title}</h1>
           {badges && <div className="flex shrink-0 items-center gap-1">{badges}</div>}
         </div>
-        <ActionBar actions={actions} more={moreActions} menu={menuActions} />
+        <ActionBar actions={actions} more={moreActions} menu={menuActions} foldBelow={foldBelow} />
         {pager && (
           <div className={cn("flex shrink-0 items-center", hasActions && "border-l pl-1.5")}>{pager}</div>
         )}

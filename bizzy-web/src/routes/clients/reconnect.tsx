@@ -21,5 +21,5 @@ export const Route = createFileRoute("/clients/reconnect")({
 function ReconnectRoute() {
   const { q, lapse } = Route.useSearch();
   const filter = { text: q ?? "", when: undefined, chips: { [LAPSE_FACET]: [lapse ?? LAPSE_MONTHS[0]] } };
-  return <ClientsPage filter={filter} onFilterChange={useClientsNavigate(filter)} />;
+  return <ClientsPage view="reconnect" filter={filter} onFilterChange={useClientsNavigate("reconnect", filter)} />;
 }

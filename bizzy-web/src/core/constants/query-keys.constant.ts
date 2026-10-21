@@ -13,7 +13,6 @@ export const SessionKeys = {
   range: (from: string, to: string) => [...SessionKeys.all, "range", from, to] as const,
   search: (request: object) => [...SessionKeys.all, "search", request] as const,
   detail: (id: string) => [...SessionKeys.all, "detail", id] as const,
-  client: (clientId: string) => [...SessionKeys.all, "client", clientId] as const,
   preview: (request: object) => [...SessionKeys.all, "preview", request] as const,
 };
 
@@ -30,8 +29,12 @@ export const ConflictKeys = {
 export const FollowUpKeys = {
   all: ["followUps"] as const,
   search: (request: object) => [...FollowUpKeys.all, "search", request] as const,
-  client: (clientId: string) => [...FollowUpKeys.all, "client", clientId] as const,
   session: (sessionId: string) => [...FollowUpKeys.all, "session", sessionId] as const,
+};
+
+export const TimelineKeys = {
+  all: ["timeline"] as const,
+  search: (request: object) => [...TimelineKeys.all, "search", request] as const,
 };
 
 export const TodoKeys = {
@@ -101,5 +104,6 @@ export const BILLING_KEYS = [
   ClientKeys.all,
   ActivityKeys.all,
   DocumentKeys.all,
+  TimelineKeys.all,
   SyncKeys.all,
 ] as const;

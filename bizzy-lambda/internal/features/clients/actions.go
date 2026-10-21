@@ -74,21 +74,6 @@ func Delete(tx *txn.Tx, id string, owners ...Owner) error {
 	return Clients.Delete(tx, id)
 }
 
-// MarkContacted records that the user got back to the client, or clears
-// it, to undo a mis-tap.
-func MarkContacted(tx *txn.Tx, id string, contacted bool) (*Client, error) {
-	c, err := Clients.Get(tx, id)
-	if err != nil {
-		return nil, err
-	}
-	c.LastContactedAt = nil
-	if contacted {
-		at := tx.Now().UTC()
-		c.LastContactedAt = &at
-	}
-	return c, nil
-}
-
 // apply makes the changes f asks, each step checking its own rules.
 func apply(tx *txn.Tx, c *Client, f Fields) error {
 	if f.Name != nil {

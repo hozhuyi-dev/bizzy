@@ -31,7 +31,8 @@ type Summary struct {
 	ShareToken string `json:"shareToken,omitempty"`
 }
 
-func summaryOf(d *Document) Summary {
+// SummaryOf is a document as lists show it.
+func SummaryOf(d *Document) Summary {
 	s := Summary{
 		ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, ClientID: d.ClientID,
 		Revising: d.Status == StatusIssued && d.Draft != nil, ShareToken: d.ShareToken,
@@ -81,7 +82,7 @@ func viewOf(tx *txn.Tx, d *Document) (*View, error) {
 		return nil, nil
 	}
 	v := &View{
-		Summary: summaryOf(d), Content: d.Content, Draft: d.Draft, CreatedAt: d.CreatedAt,
+		Summary: SummaryOf(d), Content: d.Content, Draft: d.Draft, CreatedAt: d.CreatedAt,
 		IssuedAt: d.IssuedAt, CancelledAt: d.CancelledAt, CancelReason: d.CancelReason, Revisions: []Revision{},
 	}
 	if d.Draft != nil && !d.Issued() {
@@ -159,6 +160,18 @@ type moveLinesRequest struct {
 	LineIDs []string `json:"lineIds"`
 }
 
+type combineRequest struct {
+	// IDs are the drafts to put together; the first keeps them.
+	IDs []string `json:"ids"`
+}
+
+type placeRequest struct {
+	Type Type `json:"type"`
+	// Into is the draft to put them on; "" for a new one.
+	Into  string   `json:"into"`
+	Items []Source `json:"items"`
+}
+
 type shareRequest struct {
 	IDs []string `json:"ids"`
 }
@@ -204,7 +217,7 @@ func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
 				if d.Type != in.Type || !listing.OneOf(in.ClientIDs, d.ClientID) || !listing.OneOf(in.Statuses, d.Status) {
 					return Summary{}, false, nil
 				}
-				s := summaryOf(d)
+				s := SummaryOf(d)
 				client, err := clients.Clients.Get(tx, d.ClientID)
 				if err != nil {
 					return Summary{}, false, err
@@ -258,6 +271,27 @@ func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
 	r.Mutation("documents.moveLines", router.Typed(func(ctx context.Context, in moveLinesRequest) (any, error) {
 		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) { return nil, MoveLines(tx, in.From, in.To, in.LineIDs) })
 	}))
+	r.Mutation("documents.combine", router.Typed(func(ctx context.Context, in combineRequest) (any, error) {
+		return step(ctx, func(tx *txn.Tx) (*Document, error) { return Combine(tx, in.IDs) })
+	}))
+	r.Mutation("documents.place", router.Typed(func(ctx context.Context, in placeRequest) (any, error) {
+		if _, ok := Types[in.Type]; !ok {
+			return nil, apperr.Invalid("Unknown document type %q.", in.Type)
+		}
+		if len(in.Items) == 0 {
+			return nil, apperr.Invalid("Choose what to put on it.")
+		}
+		return step(ctx, func(tx *txn.Tx) (d *Document, err error) {
+			into := in.Into
+			for _, src := range in.Items {
+				if d, err = Place(tx, src, in.Type, into); err != nil {
+					return nil, err
+				}
+				into = d.ID
+			}
+			return d, nil
+		})
+	}))
 	r.Mutation("documents.share", router.Typed(func(ctx context.Context, in shareRequest) (any, error) {
 		if len(in.IDs) == 0 {
 			return nil, apperr.Invalid("Choose what to share.")
@@ -272,7 +306,7 @@ func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
 func summaries(all []*Document) []Summary {
 	out := []Summary{}
 	for _, d := range all {
-		out = append(out, summaryOf(d))
+		out = append(out, SummaryOf(d))
 	}
 	return out
 }

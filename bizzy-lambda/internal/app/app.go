@@ -26,6 +26,7 @@ import (
 	"bizzy-lambda/internal/features/reset"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
+	"bizzy-lambda/internal/features/timeline"
 	"bizzy-lambda/internal/features/todo"
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/router"
@@ -115,6 +116,7 @@ func New(d Deps) *App {
 	conflicts.Routes(r, run)
 	todo.Routes(r, run, sessions.CreditsUsed)
 	activity.Routes(r, run)
+	timeline.Routes(r, run)
 	googlesync.Routes(r, sync)
 	if d.Google != nil {
 		googleconnect.Routes(r, run, d.Google)

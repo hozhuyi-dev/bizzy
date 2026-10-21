@@ -42,6 +42,17 @@ var Invariants = []txn.Invariant{
 		},
 	},
 	{
+		ID: "documents-cover-something", Why: "A live document is for at least one session or package: none is left on its own",
+		On: Documents.Name,
+		Broken: func(tx *txn.Tx, id string) ([]string, error) {
+			d, ok, err := Documents.Find(tx, id)
+			if err != nil || !ok || d.Counting() == nil || covers(d.Counting().Lines) {
+				return nil, err
+			}
+			return []string{fmt.Sprintf("%s %s covers nothing", d.Type, id)}, nil
+		},
+	},
+	{
 		ID: "links-point-at-their-lines", Why: "An item's link is to a live document covering it, and says rightly whether it is owed",
 		On: Links.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {

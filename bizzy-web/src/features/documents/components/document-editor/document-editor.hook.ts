@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -17,7 +18,10 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
   const save = DocumentsMutation.useSaveDraft();
   const issue = DocumentsMutation.useIssue();
   const discard = DocumentsMutation.useDiscardDraft();
+  const move = DocumentsMutation.useMoveLines();
   const navigate = useNavigate();
+  // Adding sessions to it, in a dialog.
+  const [adding, setAdding] = useState(false);
   const nextRevision = doc.number ? (doc.revision ?? 0) + 1 : undefined;
 
   const form = useForm({ defaultValues: toFormValues(draft) });
@@ -38,7 +42,24 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
     nextRevision,
     saving: save.isPending,
     issuing: issue.isPending,
-    busy: save.isPending || issue.isPending || discard.isPending,
+    busy: save.isPending || issue.isPending || discard.isPending || move.isPending,
+    adding,
+    setAdding,
+    /**
+     * Whether its lines can move between drafts: never issued, and saved,
+     * as moving one starts the editor afresh from what is stored.
+     */
+    canMove: doc.status === "draft" && !hasChanges,
+
+    /** Puts a line on a draft of its own, from one that covers other things too. */
+    moveOut: (lineId: string) =>
+      move.mutate(
+        { from: doc.id, lineIds: [lineId] },
+        {
+          onSuccess: () => toast.success(`Moved to a ${DOCUMENT_TYPES[doc.type].title.toLowerCase()} of its own`),
+          onError: (error) => toast.error(error.message),
+        },
+      ),
 
     save: async () => {
       try {

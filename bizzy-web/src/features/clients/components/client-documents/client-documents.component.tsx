@@ -1,123 +1,125 @@
-import { useState } from "react";
-import { CopyIcon, MessageCircleIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useTable } from "@tanstack/react-table";
+import { CopyIcon, MergeIcon, MessageCircleIcon } from "lucide-react";
+import { toast } from "sonner";
+import { ClientDocumentCard, createClientDocumentColumns } from "../../client-documents.columns";
+import type { RowSelectionState } from "@tanstack/react-table";
 import type { ClientView } from "../../clients.types";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import type { DocumentSummary } from "~/features/documents/documents.types";
+import { DocumentsMutation } from "~/features/documents/documents.mutation";
 import { DocumentsQuery } from "~/features/documents/documents.query";
-import { DocumentStatusBadge } from "~/features/documents/documents.columns";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
-import { documentLabel, documentRoute } from "~/features/documents/documents.util";
+import { documentLink } from "~/features/documents/documents.columns";
 import { useSendDocuments } from "~/features/whatsapp/whatsapp.hook";
-import { Loading } from "~/components/shared/quip/quip.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
-import { formatCents } from "~/core/utils/money.util";
-import { formatDate } from "~/core/utils/date.util";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { DataTable } from "~/components/shared/data-table/data-table.component";
+import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
+import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
+import { QUIPS } from "~/core/constants/quips.constant";
+
+const COLUMNS = createClientDocumentColumns();
 
 /**
- * Every document for the client, of any type, newest first. She ticks the
- * issued ones to send and they go in one WhatsApp message, each with its
- * link (the app on her phone, WhatsApp Web on her computer); Copy message
- * gives the same text to paste anywhere.
+ * The client's documents section: every invoice and receipt, newest first,
+ * drafts last. She ticks issued ones to send in one WhatsApp message (or
+ * copy it), or drafts of one type to put on one document; the section's
+ * actions do either. A new client has none.
  */
-export function ClientDocuments({ client }: { client: ClientView }) {
-  const docs = DocumentsQuery.useByClient(client.id);
+export function useClientDocumentsSection(client: ClientView | undefined): PageSection | undefined {
+  const docs = DocumentsQuery.useByClient(client?.id ?? "");
+  const [selection, setSelection] = useState<RowSelectionState>({});
   const { send, copy, busy } = useSendDocuments();
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const combine = DocumentsMutation.useCombine();
 
-  if (docs.isPending) return <Loading />;
-  if (docs.error) {
-    return (
+  const data = useMemo(() => docs.data ?? [], [docs.data]);
+  const table = useTable({
+    features: dataTableFeatures,
+    columns: COLUMNS,
+    data,
+    getRowId: (doc) => doc.id,
+    enableRowSelection: (row) => row.original.status !== "cancelled",
+    state: { rowSelection: selection },
+    onRowSelectionChange: setSelection,
+  });
+
+  if (!client) return undefined;
+  const chosen = data.filter((doc) => selection[doc.id]);
+  const to = { name: client.name, phone: client.contact?.phone };
+  const together = combinable(chosen);
+  const sendable = chosen.length > 0 && chosen.every((doc) => doc.status === "issued");
+
+  const actions: Array<Action> = [
+    {
+      type: "button",
+      label: together ? `Put on one ${DOCUMENT_TYPES[together].title.toLowerCase()}` : "Put together",
+      icon: MergeIcon,
+      disabled: !together || combine.isPending,
+      onClick: () =>
+        combine.mutate(
+          chosen.map((doc) => doc.id),
+          {
+            onSuccess: () => {
+              toast.success(`Put ${chosen.length} on one ${together ? DOCUMENT_TYPES[together].title.toLowerCase() : "document"}`);
+              setSelection({});
+            },
+            onError: toastRefusal,
+          },
+        ),
+    },
+    {
+      type: "button",
+      label: "Copy message",
+      icon: CopyIcon,
+      disabled: !sendable || busy,
+      onClick: () => copy(to, chosen),
+    },
+    {
+      type: "button",
+      label: "Send on WhatsApp",
+      icon: MessageCircleIcon,
+      disabled: !sendable || busy,
+      onClick: () => send(to, chosen),
+    },
+  ];
+
+  return {
+    id: "documents",
+    title: "Documents",
+    description:
+      chosen.length > 0
+        ? `${chosen.length} ticked. Send issued ones; put drafts of one kind on one document.`
+        : "Tick issued ones to send, or drafts to put on one document.",
+    more: data.length > 0 ? actions : undefined,
+    bare: true,
+    content: docs.isPending ? (
+      <Loading />
+    ) : docs.error ? (
       <p role="alert" className="text-sm text-destructive">
         {docs.error.message}
       </p>
-    );
-  }
-  if (docs.data.length === 0) {
-    return <p className="text-sm text-muted-foreground">No invoices or receipts yet. Make them from a session.</p>;
-  }
-
-  const sendable = docs.data.filter((doc) => doc.status === "issued");
-  const chosen = sendable.filter((doc) => selected.has(doc.id));
-  const allChosen = sendable.length > 0 && chosen.length === sendable.length;
-  const to = { name: client.name, phone: client.contact?.phone };
-
-  const toggle = (id: string, on: boolean) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-
-  return (
-    <div className="flex flex-col gap-3">
-      <ul className="flex flex-col divide-y text-sm">
-        {docs.data.map((doc) => (
-          <DocumentRow
-            key={doc.id}
-            doc={doc}
-            selectable={doc.status === "issued"}
-            checked={selected.has(doc.id)}
-            onCheckedChange={(on) => toggle(doc.id, on)}
+    ) : (
+      <DataTable
+        table={table}
+        rowLink={(doc) => documentLink(doc)}
+        empty={<EmptyState quips={QUIPS.timeline}>No invoices or receipts yet. They're drafted with each session.</EmptyState>}
+        renderCard={(row) => (
+          <ClientDocumentCard
+            doc={row.original}
+            selectable={row.getCanSelect()}
+            selected={row.getIsSelected()}
+            onSelectedChange={(on) => row.toggleSelected(on)}
           />
-        ))}
-      </ul>
-
-      {sendable.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelected(allChosen ? new Set() : new Set(sendable.map((doc) => doc.id)))}
-          >
-            {allChosen ? "Clear" : "Select all"}
-          </Button>
-          <span className="flex-1 text-sm text-muted-foreground">
-            {chosen.length > 0 ? `${chosen.length} selected` : "Tick what to send."}
-          </span>
-          <Button variant="outline" size="sm" disabled={chosen.length === 0 || busy} onClick={() => copy(to, chosen)}>
-            <CopyIcon /> Copy message
-          </Button>
-          <Button size="sm" disabled={chosen.length === 0 || busy} onClick={() => send(to, chosen)}>
-            <MessageCircleIcon /> Send on WhatsApp
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface DocumentRowProps {
-  doc: DocumentSummary;
-  /** Only issued documents can be sent; drafts and cancelled are listed. */
-  selectable: boolean;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}
-
-function DocumentRow({ doc, selectable, checked, onCheckedChange }: DocumentRowProps) {
-  const id = `send-${doc.id}`;
-  return (
-    <li className="flex items-center gap-3 py-2">
-      <Checkbox
-        id={id}
-        aria-label={`Send ${documentLabel(doc.number, doc.revision)}`}
-        disabled={!selectable}
-        checked={selectable && checked}
-        onCheckedChange={onCheckedChange}
+        )}
       />
-      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-        <span>
-          <span className="text-muted-foreground">{DOCUMENT_TYPES[doc.type].title} </span>
-          <TextLink to={documentRoute(doc.type)} params={{ id: doc.id }}>
-            {documentLabel(doc.number, doc.revision)}
-          </TextLink>
-          {doc.date && <span className="text-muted-foreground"> · {formatDate(doc.date)}</span>}
-        </span>
-        {doc.status !== "issued" && <DocumentStatusBadge status={doc.status} />}
-      </span>
-      <span className="whitespace-nowrap">{formatCents(doc.totalCents)}</span>
-    </li>
-  );
+    ),
+  };
+}
+
+/** The type ticked drafts can be put together as: two or more, all drafts never issued, of one type. */
+function combinable(docs: ReadonlyArray<DocumentSummary>) {
+  const [first] = docs;
+  if (!first || docs.length < 2) return undefined;
+  return docs.every((doc) => doc.status === "draft" && doc.type === first.type) ? first.type : undefined;
 }

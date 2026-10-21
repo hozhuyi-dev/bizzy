@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/txn"
@@ -34,6 +35,14 @@ var Links = txn.Kind[Link]{
 }
 
 func linkID(src Source, t Type) string { return src.Key() + "#" + string(t) }
+
+// LinkSource is the item and type a Link's id names, for the rules of
+// other features checked when a link changes.
+func LinkSource(id string) (Source, Type, bool) {
+	key, t, ok := strings.Cut(id, "#")
+	kind, itemID, found := strings.Cut(key, ":")
+	return Source{Kind: SourceKind(kind), ID: itemID}, Type(t), ok && found
+}
 
 // covering is the live document of a type that covers an item, and its
 // line; nil when there is none.
@@ -421,7 +430,7 @@ func draftFor(tx *txn.Tx, t Type, clientID, into string) (*Document, error) {
 }
 
 // takeLine takes an item's line off a document not issued, deleting a
-// draft left empty.
+// draft left covering nothing, with any lines the user added to it.
 func takeLine(tx *txn.Tx, d *Document, src Source) (Line, error) {
 	var taken Line
 	d.Draft.Lines = slices.DeleteFunc(d.Draft.Lines, func(l Line) bool {
@@ -432,7 +441,7 @@ func takeLine(tx *txn.Tx, d *Document, src Source) (Line, error) {
 		return false
 	})
 	d.Draft.TotalCents = d.Draft.Total()
-	if len(d.Draft.Lines) == 0 {
+	if !covers(d.Draft.Lines) {
 		if err := Documents.Delete(tx, d.ID); err != nil {
 			return taken, err
 		}

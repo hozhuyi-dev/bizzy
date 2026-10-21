@@ -13,12 +13,6 @@ export const FollowUpsQuery = {
     return usePages(FollowUpKeys.search(request), (after) => FollowUpsService.search({ ...request, after }));
   },
 
-  useByClient: (clientId: string) =>
-    useQuery({
-      queryKey: FollowUpKeys.client(clientId),
-      queryFn: () => FollowUpsService.listByClient(clientId),
-    }),
-
   useBySession: (sessionId: string) =>
     useQuery({
       queryKey: FollowUpKeys.session(sessionId),

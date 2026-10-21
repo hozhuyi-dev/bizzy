@@ -1,9 +1,10 @@
-/** A lapsed client stays off Reconnect this long after she contacts them. */
-export const CONTACT_SNOOZE_DAYS = 30;
-
-/** The lapse windows Reconnect offers, in months; the first is the default. */
+/** The lapse windows Reconnect offers, in months; the first is the default. Mirrors activity.LapseMonths. */
 export const LAPSE_MONTHS = ["3", "6", "12"] as const;
 export type LapseMonths = (typeof LAPSE_MONTHS)[number];
 
-/** The chip that makes the list Reconnect: no session in that many months. */
+/** Reconnect's chip: lapsed for over that many months. */
 export const LAPSE_FACET = "lapse";
+
+/** All clients' chips: where each client stands. */
+export const STANDING_FACETS = ["booked", "owes", "credits", "followUp"] as const;
+export type StandingFacet = (typeof STANDING_FACETS)[number];

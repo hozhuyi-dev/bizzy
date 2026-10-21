@@ -77,6 +77,24 @@ func Delete(tx *txn.Tx, id string) error {
 	return FollowUps.Delete(tx, id)
 }
 
+// ReachedOutSummary is what a follow-up made by ReachedOut says.
+const ReachedOutSummary = "Reached out"
+
+// ReachedOut records that the user got back to the client today: a
+// follow-up for today, done already. Done follow-ups are the record of
+// contact (see activity); deleting it undoes a mis-tap.
+func ReachedOut(tx *txn.Tx, clientID string) (*FollowUp, error) {
+	summary := ReachedOutSummary
+	today := tx.Now().In(tx.Location()).Format(time.DateOnly)
+	fu, err := Create(tx, Fields{ClientID: &clientID, When: &When{Date: today}, Summary: &summary}, "")
+	if err != nil {
+		return nil, err
+	}
+	at := tx.Now().UTC()
+	fu.DoneAt = &at
+	return fu, nil
+}
+
 // SetDone marks a follow-up done, or not done again.
 func SetDone(tx *txn.Tx, id string, done bool) (*FollowUp, error) {
 	fu, err := FollowUps.Get(tx, id)

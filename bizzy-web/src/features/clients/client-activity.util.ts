@@ -1,5 +1,4 @@
-import { CONTACT_SNOOZE_DAYS } from "./clients.constant";
-import type { ActivityTotals, ClientView } from "./clients.types";
+import type { ActivityTotals } from "./clients.types";
 import type { ActivityView, MonthActivity } from "~/features/activity/activity.types";
 import { addMonths, monthKey, monthsBetween } from "~/core/utils/date.util";
 
@@ -46,19 +45,4 @@ export function last12Months(activity: ActivityView | undefined, now = new Date(
 export function monthsSinceLastSession(activity: ActivityView | undefined, now = new Date()): number | undefined {
   if (!activity?.lastSessionAt) return undefined;
   return monthsBetween(new Date(activity.lastSessionAt), now);
-}
-
-/**
- * A lapsed client had sessions, has none in `months`, has nothing booked,
- * and was not contacted recently.
- */
-export function isLapsed(client: ClientView, activity: ActivityView | undefined, months: number, now = new Date()): boolean {
-  const since = monthsSinceLastSession(activity, now);
-  if (since === undefined || since < months) return false;
-  if (activity?.nextBookedAt && new Date(activity.nextBookedAt) > now) return false;
-  if (client.lastContactedAt) {
-    const days = (now.getTime() - new Date(client.lastContactedAt).getTime()) / 86_400_000;
-    if (days < CONTACT_SNOOZE_DAYS) return false;
-  }
-  return true;
 }

@@ -30,9 +30,6 @@ type Client struct {
 	// Contact is the linked Google contact, where the client's details
 	// live, with a copy of them.
 	Contact *Contact `json:"contact,omitempty"`
-	// LastContactedAt is when the user last got back to the client, which
-	// keeps them off the lapsed list for a while.
-	LastContactedAt *time.Time `json:"lastContactedAt,omitempty"`
 }
 
 var Clients = txn.Kind[Client]{

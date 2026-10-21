@@ -16,7 +16,6 @@ export const SessionsService = {
   /** A page of the sessions found, latest first. */
   search: (request: SearchSessionsRequest) => invoke<Page<SessionHit>>("sessions.search", request),
   /** A client's sessions, newest first. */
-  listByClient: (clientId: string) => invoke<Array<SessionView>>("sessions.listByClient", { clientId }),
   get: (id: string) => invoke<SessionFullView>("sessions.get", { id }),
   /** What would pay for a booking with no fee entered, exactly as saving it would choose. */
   preview: (request: PreviewSessionRequest) => invoke<CoverView>("sessions.preview", request),

@@ -33,13 +33,6 @@ export const SessionsQuery = {
       queryFn: () => SessionsService.list(from, to),
     }),
 
-  /** A client's sessions, newest first. */
-  useByClient: (clientId: string) =>
-    useQuery({
-      queryKey: SessionKeys.client(clientId),
-      queryFn: () => SessionsService.listByClient(clientId),
-    }),
-
   /** What would pay for a booking; keeps the last answer while the form changes. */
   usePreview: (request: PreviewSessionRequest | undefined) =>
     useQuery({

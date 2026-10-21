@@ -16,6 +16,8 @@ interface NewSessionDialogProps {
   open: boolean;
   /** Where the session's page goes back to, once it opens. */
   returnTo?: SessionReturnTo | undefined;
+  /** The client it is for, chosen already (from their page). */
+  clientId?: string | undefined;
   onClose: () => void;
 }
 
@@ -24,15 +26,15 @@ interface NewSessionDialogProps {
  * from, with Open in the toast; one that already happened goes straight to
  * its page, for its notes and payment.
  */
-export function NewSessionDialog({ open, returnTo, onClose }: NewSessionDialogProps) {
+export function NewSessionDialog({ open, returnTo, clientId, onClose }: NewSessionDialogProps) {
   return (
     <SheetDialog open={open} onClose={onClose}>
-      {open && <NewSession returnTo={returnTo} onClose={onClose} />}
+      {open && <NewSession returnTo={returnTo} clientId={clientId} onClose={onClose} />}
     </SheetDialog>
   );
 }
 
-function NewSession({ returnTo, onClose }: Omit<NewSessionDialogProps, "open">) {
+function NewSession({ returnTo, clientId, onClose }: Omit<NewSessionDialogProps, "open">) {
   const navigate = useNavigate();
   const open = (id: string) =>
     void navigate({ to: "/sessions/$id", params: { id }, search: { from: returnTo }, ignoreBlocker: true });
@@ -54,7 +56,7 @@ function NewSession({ returnTo, onClose }: Omit<NewSessionDialogProps, "open">) 
         <DialogTitle>New session</DialogTitle>
         <DialogDescription>Added to your calendar.</DialogDescription>
       </DialogHeader>
-      <BookingForm initial={newSessionDraft()} submitLabel="Add session" onSubmit={(draft) => save.submit(draft)} onCancel={onClose} />
+      <BookingForm initial={{ ...newSessionDraft(), clientId: clientId ?? "" }} submitLabel="Add session" onSubmit={(draft) => save.submit(draft)} onCancel={onClose} />
     </>
   );
 }

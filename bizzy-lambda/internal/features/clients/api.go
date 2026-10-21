@@ -10,13 +10,12 @@ import (
 
 // View is a client as the app shows it.
 type View struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Aliases         []string   `json:"aliases"`
-	FeeRates        []FeeRate  `json:"feeRates"`
-	HomeVisits      bool       `json:"homeVisits"`
-	Contact         *Contact   `json:"contact,omitempty"`
-	LastContactedAt *time.Time `json:"lastContactedAt,omitempty"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Aliases    []string  `json:"aliases"`
+	FeeRates   []FeeRate `json:"feeRates"`
+	HomeVisits bool      `json:"homeVisits"`
+	Contact    *Contact  `json:"contact,omitempty"`
 	// FeeTodayCents is the hourly fee a session without one would be
 	// charged today; nil when no fee is set.
 	FeeTodayCents *int64 `json:"feeTodayCents,omitempty"`
@@ -25,7 +24,7 @@ type View struct {
 func viewOf(tx *txn.Tx, c *Client) View {
 	v := View{
 		ID: c.ID, Name: c.Name, Aliases: c.Aliases, FeeRates: c.FeeRates, HomeVisits: c.HomeVisits,
-		Contact: c.Contact, LastContactedAt: c.LastContactedAt,
+		Contact:       c.Contact,
 		FeeTodayCents: c.FeeOn(tx.Now().In(tx.Location()).Format(time.DateOnly)),
 	}
 	if v.Aliases == nil {
@@ -55,12 +54,6 @@ type saveRequest struct {
 	Fields
 	// Contact is the contact to link; nil leaves it as it is.
 	Contact *contactRequest `json:"contact"`
-}
-
-type contactedRequest struct {
-	ID string `json:"id"`
-	// Contacted false clears the mark, to undo a mis-tap.
-	Contacted bool `json:"contacted"`
 }
 
 // Routes registers the clients' actions. owners are the kinds of items a
@@ -136,14 +129,5 @@ func Routes(r *router.Router, run *txn.Runner, link Linker, owners ...Owner) {
 	}))
 	r.Mutation("clients.delete", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
 		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) { return nil, Delete(tx, in.ID, owners...) })
-	}))
-	r.Mutation("clients.markContacted", router.Typed(func(ctx context.Context, in contactedRequest) (any, error) {
-		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) {
-			c, err := MarkContacted(tx, in.ID, in.Contacted)
-			if err != nil {
-				return nil, err
-			}
-			return viewOf(tx, c), nil
-		})
 	}))
 }

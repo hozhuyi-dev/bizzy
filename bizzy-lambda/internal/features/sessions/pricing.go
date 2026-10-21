@@ -190,14 +190,13 @@ func Preview(tx *txn.Tx, clientID string, span Span, sessionID string, buysPacka
 }
 
 // charge puts the session's fee for minutes of it on its invoice line, or
-// a new line: on the draft invoice of the package bought in it, so they
-// go together.
+// a new line on the draft invoiceInto picks.
 func charge(tx *txn.Tx, s *Session, cents int64, typed bool, minutes int) error {
 	cfg, err := settings.Get(tx)
 	if err != nil {
 		return err
 	}
-	into, err := draftInvoice(tx, documents.PackageSource(boughtID(tx, s.ID)))
+	into, err := invoiceInto(tx, s)
 	if err != nil {
 		return err
 	}
@@ -234,6 +233,15 @@ func Fee(tx *txn.Tx, s *Session) (int64, bool, error) {
 		return 0, false, err
 	}
 	return line.AmountCents, line.Typed, nil
+}
+
+// invoiceInto is the draft invoice a session's fee goes on when it has no
+// line yet: the one the package bought in it is on, so they go together;
+// "" for a new one. It is the one place this is chosen, so invoicing by
+// the month puts the session on its client's draft for its month here
+// (documents' Period), and Redate moves it with documents.Place.
+func invoiceInto(tx *txn.Tx, s *Session) (string, error) {
+	return draftInvoice(tx, documents.PackageSource(boughtID(tx, s.ID)))
 }
 
 // draftInvoice is the never-issued invoice an item is on, for what is

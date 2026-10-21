@@ -13,14 +13,16 @@ import (
 // it, are held by sessions, which see both.
 var Invariants = []txn.Invariant{
 	{
-		ID: "packages-are-invoiced", Why: "A package is always on an invoice, which says its price",
-		On: Packages.Name,
+		ID: "packages-are-invoiced", Why: invoicedWhy,
+		On: Packages.Name, Broken: invoiced,
+	},
+	{
+		// A commit that changes only documents is checked from their side.
+		ID: "packages-are-invoiced", Why: invoicedWhy,
+		On: documents.Links.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {
-			if _, ok, err := Packages.Find(tx, id); err != nil || !ok {
-				return nil, err
-			}
-			if _, charged, err := documents.Charged(tx, documents.PackageSource(id)); err != nil || !charged {
-				return []string{"package " + id + " is on no invoice"}, err
+			if src, t, ok := documents.LinkSource(id); ok && t == documents.TypeInvoice && src.Kind == documents.SourcePackage {
+				return invoiced(tx, src.ID)
 			}
 			return nil, nil
 		},
@@ -78,4 +80,17 @@ var Invariants = []txn.Invariant{
 			return out, nil
 		},
 	},
+}
+
+const invoicedWhy = "A package is always on an invoice, which says its price"
+
+// invoiced is what breaks a package being on an invoice.
+func invoiced(tx *txn.Tx, id string) ([]string, error) {
+	if _, ok, err := Packages.Find(tx, id); err != nil || !ok {
+		return nil, err
+	}
+	if _, charged, err := documents.Charged(tx, documents.PackageSource(id)); err != nil || !charged {
+		return []string{"package " + id + " is on no invoice"}, err
+	}
+	return nil, nil
 }

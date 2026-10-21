@@ -1,9 +1,7 @@
 package sessions
 
 import (
-	"cmp"
 	"context"
-	"slices"
 	"time"
 
 	"bizzy-lambda/internal/features/attachments"
@@ -208,10 +206,6 @@ type listRequest struct {
 	To   time.Time `json:"to"`
 }
 
-type clientRequest struct {
-	ClientID string `json:"clientId"`
-}
-
 // searchRequest finds sessions by words in the client's name, the summary
 // or the notes, and by days, clients, place and what is left to do; an
 // empty filter takes every value.
@@ -291,24 +285,13 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 				if !listing.OneOf(in.ClientIDs, s.ClientID) || !listing.OneOf(in.Locations, s.Location) {
 					return Hit{}, false, nil
 				}
-				excerpt, found, err := search(tx, s, words)
+				excerpt, found, err := Search(tx, s, words)
 				if err != nil || !found {
 					return Hit{}, false, err
 				}
 				v, err := ViewOf(tx, s)
 				return Hit{View: v, Excerpt: excerpt}, err == nil && listing.AnyOf(in.Todo, v.Todo), err
 			})
-		})
-	}))
-	// sessions.listByClient lists a client's sessions, newest first.
-	r.Query("sessions.listByClient", router.Typed(func(ctx context.Context, in clientRequest) (any, error) {
-		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
-			ss, err := Sessions.OfClient(tx, in.ClientID)
-			if err != nil {
-				return nil, err
-			}
-			slices.SortStableFunc(ss, func(a, b *Session) int { return cmp.Compare(b.Start.Unix(), a.Start.Unix()) })
-			return viewsOf(tx, ss)
 		})
 	}))
 	r.Query("sessions.get", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
@@ -357,10 +340,10 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 	}))
 }
 
-// search reports whether every word is in the session's client's names,
+// Search reports whether every word is in the session's client's names,
 // its summary or its notes, and the excerpt of the notes that has them
 // when they were needed. The notes are read only then: they are long.
-func search(tx *txn.Tx, s *Session, words listing.Words) (excerpt string, found bool, err error) {
+func Search(tx *txn.Tx, s *Session, words listing.Words) (excerpt string, found bool, err error) {
 	if len(words) == 0 {
 		return "", true, nil
 	}

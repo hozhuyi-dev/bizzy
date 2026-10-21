@@ -52,7 +52,7 @@ export function ListRow({ title, meta, detail, detailTitle, actions, open, onOpe
           {detail}
         </div>
       </div>
-      {actions && <div className={ACTIONS}>{actions}</div>}
+      {actions && <div className={ROW_ACTIONS}>{actions}</div>}
     </div>
   );
 }
@@ -64,9 +64,12 @@ const TAPPABLE = [
   "before:absolute before:-inset-x-(--card-spacing) before:-inset-y-3 before:-z-10 before:transition-colors hover:before:bg-muted/30",
 ].join(" ");
 
-// On a phone: every control 40px high, those with words sharing the row,
-// icon-only ones (with an aria-label) square.
-const ACTIONS = [
+/**
+ * A row's buttons: on a phone every control 40px high, those with words
+ * sharing the row, icon-only ones (with an aria-label) square. For any row
+ * of things to do (a timeline's item too), so buttons are one size.
+ */
+export const ROW_ACTIONS = [
   "flex items-center gap-1.5 sm:shrink-0 sm:justify-end",
   "max-sm:[&_[data-slot=button]]:h-10 max-sm:[&_[data-slot=dropdown-menu-trigger]]:h-10 max-sm:[&_[data-slot=input]]:h-10",
   "max-sm:[&>[data-slot=button]:not([aria-label])]:flex-1 max-sm:[&>[data-slot=dropdown-menu-trigger]:not([aria-label])]:flex-1",

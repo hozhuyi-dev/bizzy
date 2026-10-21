@@ -63,31 +63,19 @@ var Invariants = []txn.Invariant{
 		},
 	},
 	{
-		ID: "paid-for", Why: "Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more",
-		On: Sessions.Name,
-		Broken: each(func(tx *txn.Tx, s *Session) ([]string, error) {
-			_, line, err := documents.Invoice(tx, s.Source())
-			if err != nil {
-				return nil, err
-			}
-			for _, c := range s.Credits {
-				if c.Minutes <= 0 || c.Minutes%Step != 0 {
-					return []string{fmt.Sprintf("session %s uses %d minutes of package %s", s.ID, c.Minutes, c.PackageID)}, nil
-				}
-			}
-			credited := s.CreditMinutes()
-			switch {
-			case credited > s.Billable():
-				return []string{fmt.Sprintf("session %s is charged %d minutes and credits pay %d", s.ID, s.Billable(), credited)}, nil
-			case credited > 0 && line != nil && line.Typed:
-				return []string{"session " + s.ID + " uses credits and a fee typed for it"}, nil
-			case credited == s.Billable() && line != nil:
-				return []string{"session " + s.ID + " is paid for by credits and invoiced"}, nil
-			case credited < s.Billable() && line == nil:
-				return []string{"session " + s.ID + " is paid for in part, or not at all"}, nil
+		ID: "paid-for", Why: paidForWhy,
+		On: Sessions.Name, Broken: each(paidFor),
+	},
+	{
+		// A commit that changes only documents is checked from their side.
+		ID: "paid-for", Why: paidForWhy,
+		On: documents.Links.Name,
+		Broken: func(tx *txn.Tx, id string) ([]string, error) {
+			if src, t, ok := documents.LinkSource(id); ok && t == documents.TypeInvoice && src.Kind == documents.SourceSession {
+				return each(paidFor)(tx, src.ID)
 			}
 			return nil, nil
-		}),
+		},
 	},
 	{
 		ID: "credits-of-own-package", Why: "Credits pay for a session from packages of its own client, each once",
@@ -252,6 +240,33 @@ var Invariants = []txn.Invariant{
 			return nil, nil
 		},
 	},
+}
+
+const paidForWhy = "Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more"
+
+// paidFor is what breaks a session being paid for (see paidForWhy).
+func paidFor(tx *txn.Tx, s *Session) ([]string, error) {
+	_, line, err := documents.Invoice(tx, s.Source())
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range s.Credits {
+		if c.Minutes <= 0 || c.Minutes%Step != 0 {
+			return []string{fmt.Sprintf("session %s uses %d minutes of package %s", s.ID, c.Minutes, c.PackageID)}, nil
+		}
+	}
+	credited := s.CreditMinutes()
+	switch {
+	case credited > s.Billable():
+		return []string{fmt.Sprintf("session %s is charged %d minutes and credits pay %d", s.ID, s.Billable(), credited)}, nil
+	case credited > 0 && line != nil && line.Typed:
+		return []string{"session " + s.ID + " uses credits and a fee typed for it"}, nil
+	case credited == s.Billable() && line != nil:
+		return []string{"session " + s.ID + " is paid for by credits and invoiced"}, nil
+	case credited < s.Billable() && line == nil:
+		return []string{"session " + s.ID + " is paid for in part, or not at all"}, nil
+	}
+	return nil, nil
 }
 
 // boughtFollows is what breaks a package bought in a session following it.

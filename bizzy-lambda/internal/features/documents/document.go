@@ -97,6 +97,11 @@ type Document struct {
 	// ShareToken opens the issued content without signing in (see
 	// share.go). Set on the first issue.
 	ShareToken string `json:"shareToken,omitempty"`
+	// Period is the month (YYYY-MM) a draft invoice gathers a client's
+	// sessions for, when they are invoiced by the month; "" when each is
+	// invoiced on its own, or put together by hand. Nothing sets it yet:
+	// see sessions' invoiceInto.
+	Period string `json:"period,omitempty"`
 }
 
 // Documents are filed by client, and by type and date for monthly lists.

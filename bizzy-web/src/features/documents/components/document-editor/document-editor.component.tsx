@@ -1,5 +1,6 @@
-import { EyeIcon, PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
+import { EyeIcon, ListPlusIcon, PlusIcon, SaveIcon, SplitIcon, Trash2Icon } from "lucide-react";
 import { DOCUMENT_TYPES } from "../../documents.constant";
+import { AddSessionsDialog } from "../add-sessions-dialog/add-sessions-dialog.component";
 import type { DocumentEditorState } from "./document-editor.hook";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
@@ -79,6 +80,8 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
   const spec = DOCUMENT_TYPES[doc.type];
   const title = spec.title.toLowerCase();
   const total = values.lines.reduce((sum, line) => sum + (parseCents(line.amount) ?? 0), 0);
+  // How many sessions and packages it covers: one alone can't move to a draft of its own.
+  const covered = values.lines.filter((line) => line.source).length;
 
   return [
     {
@@ -143,10 +146,25 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
     {
       id: "lines",
       title: "Lines",
+      // A draft invoice gathers more sessions from the drafts they are on.
+      more:
+        doc.type === "invoice" && doc.status === "draft"
+          ? [
+              {
+                type: "button",
+                label: "Add sessions",
+                icon: ListPlusIcon,
+                disabled: !editor.canMove || editor.busy,
+                onClick: () => editor.setAdding(true),
+              },
+            ]
+          : undefined,
+      description: editor.hasChanges && doc.status === "draft" ? "Save the draft to add or move sessions." : undefined,
       content: (
         <form.Field name="lines" mode="array">
           {(linesField) => (
             <div className="flex flex-col gap-3">
+              <AddSessionsDialog doc={doc} open={editor.adding} onClose={() => editor.setAdding(false)} />
               {linesField.state.value.map((line, i) => (
                 <div key={i} className="flex flex-col gap-1 border-b pb-3">
                   <div className="grid items-end gap-2 md:grid-cols-[minmax(0,1fr)_11rem_8rem_auto]">
@@ -183,21 +201,45 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                         </Field>
                       )}
                     </form.Field>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Remove line"
-                      disabled={linesField.state.value.length === 1 || locked.lines !== undefined}
-                      onClick={() => linesField.removeValue(i)}
-                    >
-                      <Trash2Icon />
-                    </Button>
+                    <div className="flex items-center">
+                      {line.source && line.id && covered > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Move to its own ${title}`}
+                          title={`Move to its own ${title}`}
+                          disabled={!editor.canMove || editor.busy}
+                          onClick={() => editor.moveOut(line.id)}
+                        >
+                          <SplitIcon />
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Remove line"
+                        // What an invoice charges stays on one: it moves, or goes with what it covers.
+                        title={line.source && doc.type === "invoice" ? `It stays on an invoice: move it to its own instead` : undefined}
+                        disabled={
+                          linesField.state.value.length === 1 ||
+                          locked.lines !== undefined ||
+                          (line.source !== undefined && doc.type === "invoice")
+                        }
+                        onClick={() => linesField.removeValue(i)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </div>
                   </div>
                   {line.source && (
                     <span className="text-xs text-muted-foreground">
                       Covers this {line.source.kind}: its date and amount follow it (the fee, or on a receipt what
-                      was paid) until issued. Removing the line releases it when issued.
+                      was paid) until issued.{" "}
+                      {doc.type === "invoice"
+                        ? "It stays on an invoice: move it to one of its own, or add it to another."
+                        : "Removing the line undoes its payment."}
                     </span>
                   )}
                 </div>

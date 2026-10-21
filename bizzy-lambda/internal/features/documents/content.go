@@ -138,6 +138,12 @@ func sameSource(a, b *Source) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
 }
 
+// covers reports whether lines cover an item: a live document always
+// does, as it is for its sessions or packages.
+func covers(lines []Line) bool {
+	return slices.ContainsFunc(lines, func(l Line) bool { return l.Source != nil })
+}
+
 // SourceLines indexes the lines that cover an item by what they cover.
 func SourceLines(lines []Line) map[Source]Line {
 	out := map[Source]Line{}

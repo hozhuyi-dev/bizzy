@@ -3,6 +3,7 @@ package documents
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
@@ -62,6 +63,10 @@ func SaveDraft(tx *txn.Tx, id string, in Content) (*Document, error) {
 	}
 	// What a receipt received, and how, is the payment's to change.
 	next.Payment, next.PaidBy = d.Draft.Payment, d.Draft.PaidBy
+	if !covers(next.Lines) {
+		return nil, apperr.Refused(fmt.Sprintf("A %s is for a session or package: keep a line for one, or discard the draft.", strings.ToLower(Types[d.Type].Title)),
+			apperr.Remedy{Action: "documents.discardDraft", Target: d.ID, Label: "Discard the draft"})
+	}
 	if d.Issued() {
 		if what := Legal(*d.Content, next); what != "" {
 			return nil, stayIssued(d, what)
@@ -207,53 +212,119 @@ func Cancel(tx *txn.Tx, id, reason string) (*Document, error) {
 // MoveLines moves lines from one draft to another of the same client and
 // type, neither issued, or to a new one: to put a month of sessions on one
 // invoice, or a package on its own. Receipts move only between drafts of
-// the same payment. A draft left empty goes.
+// the same payment. A draft left covering nothing goes, its other lines
+// with the ones moved; a new one must cover something.
 func MoveLines(tx *txn.Tx, fromID, toID string, lineIDs []string) error {
+	_, err := moveLines(tx, fromID, toID, lineIDs)
+	return err
+}
+
+// moveLines is MoveLines, returning the draft the lines went to.
+func moveLines(tx *txn.Tx, fromID, toID string, lineIDs []string) (*Document, error) {
 	from, err := Documents.Get(tx, fromID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(lineIDs) == 0 {
-		return apperr.Invalid("Choose the lines to move.")
+		return nil, apperr.Invalid("Choose the lines to move.")
 	}
 	if from.Status != StatusDraft {
-		return notAtStep("Lines move only between drafts not issued yet.")
+		return nil, notAtStep("Lines move only between drafts not issued yet.")
 	}
 	var to *Document
 	if toID == "" {
 		if to, err = newDraft(tx, from.Type, from.ClientID); err != nil {
-			return err
+			return nil, err
 		}
 		setPayment(to.Draft, from.Draft.Payment)
 	} else if to, err = Documents.Get(tx, toID); err != nil {
-		return err
+		return nil, err
 	}
 	switch {
 	case to.ID == from.ID:
-		return apperr.Invalid("Choose another draft.")
+		return nil, apperr.Invalid("Choose another draft.")
 	case to.Status != StatusDraft:
-		return notAtStep("Lines move only between drafts not issued yet.")
+		return nil, notAtStep("Lines move only between drafts not issued yet.")
 	case to.Type != from.Type || to.ClientID != from.ClientID:
-		return notAtStep("Lines move only between drafts of the same kind, for the same client.")
+		return nil, notAtStep("Lines move only between drafts of the same kind, for the same client.")
 	case !samePayment(to.Draft.Payment, from.Draft.Payment):
-		return notAtStep("These receipts record different payments.")
+		return nil, notAtStep("These receipts record different payments.")
 	}
 	for _, id := range lineIDs {
 		i := slices.IndexFunc(from.Draft.Lines, func(l Line) bool { return l.ID == id })
 		if i < 0 {
-			return apperr.Invalid("That line isn't on this draft any more.")
+			return nil, apperr.Invalid("That line isn't on this draft any more.")
 		}
 		to.Draft.Lines = append(to.Draft.Lines, from.Draft.Lines[i])
 		from.Draft.Lines = slices.Delete(from.Draft.Lines, i, i+1)
 	}
-	from.Draft.TotalCents, to.Draft.TotalCents = from.Draft.Total(), to.Draft.Total()
-	if len(from.Draft.Lines) == 0 {
+	if !covers(to.Draft.Lines) {
+		return nil, apperr.Refused("A new draft is for a session or package: move a line for one with these.")
+	}
+	if !covers(from.Draft.Lines) {
+		to.Draft.Lines = append(to.Draft.Lines, from.Draft.Lines...)
 		if err := Documents.Delete(tx, from.ID); err != nil {
-			return err
+			return nil, err
 		}
 	}
+	from.Draft.TotalCents, to.Draft.TotalCents = from.Draft.Total(), to.Draft.Total()
 	if err := relink(tx, to); err != nil {
-		return err
+		return nil, err
 	}
-	return relink(tx, from)
+	return to, relink(tx, from)
+}
+
+// Place puts the line of a type covering an item on the draft into, or a
+// new one when into is "", from the draft it is on (see MoveLines): to add
+// sessions to an invoice, and the one way an item's line changes drafts.
+// Refused while an issued document covers it.
+func Place(tx *txn.Tx, src Source, t Type, into string) (*Document, error) {
+	from, line, err := covering(tx, src, t)
+	switch {
+	case err != nil:
+		return nil, err
+	case from == nil:
+		return nil, apperr.Refused(fmt.Sprintf("No %s covers it.", strings.ToLower(Types[t].Title)))
+	case from.Issued():
+		return nil, refuseIssued(from)
+	case from.ID == into:
+		return from, nil
+	}
+	return moveLines(tx, from.ID, into, []string{line.ID})
+}
+
+// Combine puts every line of the drafts ids[1:] on the draft ids[0], and
+// they go: a client's sessions on one invoice, or receipts of one payment
+// on one receipt.
+func Combine(tx *txn.Tx, ids []string) (*Document, error) {
+	var unique []string
+	for _, id := range ids {
+		if !slices.Contains(unique, id) {
+			unique = append(unique, id)
+		}
+	}
+	ids = unique
+	if len(ids) < 2 {
+		return nil, apperr.Invalid("Choose at least two drafts to put together.")
+	}
+	for _, id := range ids[1:] {
+		d, err := Documents.Get(tx, id)
+		if err != nil {
+			return nil, err
+		}
+		if d.Issued() {
+			return nil, refuseIssued(d)
+		}
+		if d.Draft == nil {
+			return nil, notAtStep("Only drafts not issued yet are put together.")
+		}
+		var lineIDs []string
+		for _, l := range d.Draft.Lines {
+			lineIDs = append(lineIDs, l.ID)
+		}
+		if _, err := moveLines(tx, id, ids[0], lineIDs); err != nil {
+			return nil, err
+		}
+	}
+	return Documents.Get(tx, ids[0])
 }

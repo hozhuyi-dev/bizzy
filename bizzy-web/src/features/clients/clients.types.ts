@@ -1,6 +1,7 @@
-import type { LapseMonths } from "./clients.constant";
+import type { LapseMonths, StandingFacet } from "./clients.constant";
 import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactSummaryValue } from "~/features/contacts/contacts.types";
+import type { FilterSearch } from "~/core/list/filter.types";
 
 // Mirrors bizzy-lambda/internal/features/clients/api.go and client.go.
 
@@ -17,7 +18,6 @@ export interface ClientView {
   homeVisits: boolean;
   /** The linked Google contact, where the client's details live. */
   contact?: ClientContact;
-  lastContactedAt?: string;
   /** The hourly fee a session without one would be charged today; unset when no fee is set. */
   feeTodayCents?: number;
 }
@@ -83,6 +83,16 @@ export interface ClientRow {
   revenue12Cents: number;
   lifetimeCents: number;
   sessions12: number;
+  owedCents: number;
+  creditsLeftMinutes: number;
+  next: ClientNext | undefined;
+  lastContactedAt: string | undefined;
+}
+
+/** What is next with a client: the session booked, else the follow-up due (which may be past). */
+export interface ClientNext {
+  kind: "session" | "followUp";
+  at: string;
 }
 
 /** Everyone, or the lapsed clients worth getting back in touch with. */
@@ -90,12 +100,10 @@ export type ClientsFilter = "all" | "reconnect";
 
 /**
  * All clients' or Reconnect's filter, as a client's page keeps it to step
- * through: the words, and the lapse that makes it Reconnect.
+ * through: the words and All clients' chips, or the lapse that makes it
+ * Reconnect.
  */
-export interface ClientsListSearch {
-  q?: string | undefined;
-  lapse?: LapseMonths | undefined;
-}
+export type ClientsListSearch = FilterSearch<StandingFacet> & { lapse?: LapseMonths | undefined };
 
 /** A contact chosen for the client, with whatever details are known. */
 export interface ChosenContact extends ContactSummaryValue {

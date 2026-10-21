@@ -16,6 +16,11 @@ export interface PageSection {
   description?: ReactNode;
   /** Beside the title, e.g. a section's own Save. */
   actions?: ReadonlyArray<Action> | undefined;
+  /**
+   * Beside the title on a wide screen, behind ⋯ below lg: the section
+   * shares its width with the contents list.
+   */
+  more?: ReadonlyArray<Action> | undefined;
   content: ReactNode;
   /** Content that brings its own surface (a receipt's paper) skips the card. */
   bare?: boolean;
@@ -125,7 +130,7 @@ function Contents({
  * whatever actions sit beside it, and every title lands in the same place.
  */
 function SectionBlock({ section }: { section: PageSection }) {
-  const { id, title, description, actions, content, bare } = section;
+  const { id, title, description, actions, more, content, bare } = section;
   return (
     <section
       id={id}
@@ -137,7 +142,7 @@ function SectionBlock({ section }: { section: PageSection }) {
           <h2 id={`${id}-title`} className="truncate text-base font-semibold">
             {title}
           </h2>
-          <ActionBar actions={actions} size="sm" />
+          <ActionBar actions={actions} more={more} size="sm" foldBelow="lg" />
         </div>
         {description && <p className="max-w-prose text-sm text-muted-foreground">{description}</p>}
       </div>

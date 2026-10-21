@@ -73,10 +73,6 @@ type searchRequest struct {
 	ClientIDs []string `json:"clientIds"`
 }
 
-type clientRequest struct {
-	ClientID string `json:"clientId"`
-}
-
 type sessionRequest struct {
 	SessionID string `json:"sessionId"`
 }
@@ -94,6 +90,10 @@ type updateRequest struct {
 
 type idRequest struct {
 	ID string `json:"id"`
+}
+
+type reachedOutRequest struct {
+	ClientID string `json:"clientId"`
 }
 
 type doneRequest struct {
@@ -141,15 +141,6 @@ func Routes(r *router.Router, run *txn.Runner) {
 			})
 		})
 	}))
-	r.Query("followUps.listByClient", router.Typed(func(ctx context.Context, in clientRequest) (any, error) {
-		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
-			all, err := FollowUps.OfClient(tx, in.ClientID)
-			if err != nil {
-				return nil, err
-			}
-			return viewsOf(tx, all)
-		})
-	}))
 	r.Query("followUps.listBySession", router.Typed(func(ctx context.Context, in sessionRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
 			all, err := FollowUps.WithRef(tx, in.SessionID)
@@ -164,6 +155,9 @@ func Routes(r *router.Router, run *txn.Runner) {
 	}))
 	r.Mutation("followUps.update", router.Typed(func(ctx context.Context, in updateRequest) (any, error) {
 		return one(ctx, func(tx *txn.Tx) (*FollowUp, error) { return Update(tx, in.ID, in.Fields) })
+	}))
+	r.Mutation("followUps.reachedOut", router.Typed(func(ctx context.Context, in reachedOutRequest) (any, error) {
+		return one(ctx, func(tx *txn.Tx) (*FollowUp, error) { return ReachedOut(tx, in.ClientID) })
 	}))
 	r.Mutation("followUps.setDone", router.Typed(func(ctx context.Context, in doneRequest) (any, error) {
 		return one(ctx, func(tx *txn.Tx) (*FollowUp, error) { return SetDone(tx, in.ID, in.Done) })

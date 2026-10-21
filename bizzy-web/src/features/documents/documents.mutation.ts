@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DocumentsService } from "./documents.service";
-import type { DocumentContent, DocumentView } from "./documents.types";
+import type { DocumentContent, DocumentSource, DocumentType, DocumentView } from "./documents.types";
 import { DocumentKeys } from "~/core/constants/query-keys.constant";
 import { invalidateBilling } from "~/core/utils/query.util";
 
@@ -42,6 +42,12 @@ export const DocumentsMutation = {
       onSuccess: () => invalidateBilling(queryClient),
     });
   },
+  useCombine: () => useDocumentMutation((ids: Array<string>) => DocumentsService.combine(ids)),
+  usePlace: () =>
+    useDocumentMutation(
+      ({ type, into, items }: { type: DocumentType; into?: string | undefined; items: Array<DocumentSource> }) =>
+        DocumentsService.place(type, into, items),
+    ),
   /** Share tokens by id; only writes for documents issued before links. */
   useShare: () => {
     const queryClient = useQueryClient();

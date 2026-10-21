@@ -59,9 +59,6 @@ var clientActions = []Action{
 	{Name: "clients.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.call(t, "clients.delete", map[string]any{"id": pick(t, w, "client", clients.Clients.All).ID})
 	}},
-	{Name: "clients.markContacted", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "clients.markContacted", map[string]any{"id": pick(t, w, "client", clients.Clients.All).ID, "contacted": rapid.Bool().Draw(t, "contacted")})
-	}},
 	{Name: "contacts.create", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		given, family, _ := strings.Cut(rapid.SampledFrom(names).Draw(t, "name"), " ")
 		w.call(t, "contacts.create", map[string]any{"givenName": given, "familyName": family, "phone": "013"})
@@ -280,6 +277,23 @@ var moneyActions = []Action{
 		}
 		w.call(t, "documents.moveLines", in)
 	}},
+	{Name: "documents.combine", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		into := pick(t, w, "draft", drafts)
+		other := pick(t, w, "document", documents.Documents.All)
+		w.call(t, "documents.combine", map[string]any{"ids": []string{into.ID, other.ID}})
+	}},
+	{Name: "documents.place", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		into := ""
+		if rapid.Bool().Draw(t, "onto a draft?") {
+			into = pick(t, w, "draft", drafts).ID
+		}
+		item := map[string]any{"kind": "package", "id": pick(t, w, "package", packages.Packages.All).ID}
+		if rapid.Bool().Draw(t, "a session?") {
+			item = map[string]any{"kind": "session", "id": pick(t, w, "session", sessions.Sessions.All).ID}
+		}
+		kind := rapid.SampledFrom([]string{"invoice", "receipt"}).Draw(t, "type")
+		w.call(t, "documents.place", map[string]any{"type": kind, "into": into, "items": []map[string]any{item}})
+	}},
 	{Name: "documents.share", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.call(t, "documents.share", map[string]any{"ids": []string{pick(t, w, "document", documents.Documents.All).ID}})
 	}},
@@ -320,6 +334,9 @@ var followUpActions = []Action{
 	}},
 	{Name: "followUps.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.call(t, "followUps.delete", map[string]any{"id": pick(t, w, "follow-up", followups.FollowUps.All).ID})
+	}},
+	{Name: "followUps.reachedOut", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		w.call(t, "followUps.reachedOut", map[string]any{"clientId": clientID(t, w)})
 	}},
 	{Name: "followUps.setDone", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		fu := pick(t, w, "follow-up", followups.FollowUps.All)

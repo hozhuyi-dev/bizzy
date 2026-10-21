@@ -8,6 +8,4 @@ export const ClientsService = {
   /** A patch: only what is set changes. */
   update: (id: string, fields: ClientFields) => invoke<ClientView>("clients.update", { id, ...fields }),
   delete: (id: string) => invoke<null>("clients.delete", { id }),
-  markContacted: (id: string, contacted: boolean) =>
-    invoke<ClientView>("clients.markContacted", { id, contacted }),
 };

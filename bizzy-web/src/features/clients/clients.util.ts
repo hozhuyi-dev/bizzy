@@ -1,11 +1,12 @@
 import { last12Months, monthsSinceLastSession, totals } from "./client-activity.util";
-import { LAPSE_FACET, LAPSE_MONTHS } from "./clients.constant";
-import type { LapseMonths } from "./clients.constant";
-import type { ChosenContact, ClientRow, ClientView, ClientsListSearch } from "./clients.types";
+import { LAPSE_FACET, LAPSE_MONTHS, STANDING_FACETS } from "./clients.constant";
+import type { LapseMonths, StandingFacet } from "./clients.constant";
+import type { ChosenContact, ClientNext, ClientRow, ClientView, ClientsFilter, ClientsListSearch } from "./clients.types";
 import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactDetails, ContactView } from "~/features/contacts/contacts.types";
 import type { Facet, ListFilter } from "~/core/list/filter.types";
-import { oneOf, textParam } from "~/core/utils/search.util";
+import { filterUrl } from "~/core/list/filter.util";
+import { oneOf } from "~/core/utils/search.util";
 
 /** The client an item is for, when it has one and it still exists. */
 export function clientOf(clientsById: ReadonlyMap<string, ClientView>, clientId: string | undefined): ClientView | undefined {
@@ -22,7 +23,18 @@ export function toClientRow(client: ClientView, activity: ActivityView | undefin
     revenue12Cents: year.receivedCents,
     lifetimeCents: totals(activity).receivedCents,
     sessions12: year.sessions,
+    owedCents: activity?.owedCents ?? 0,
+    creditsLeftMinutes: activity?.creditsLeftMinutes ?? 0,
+    next: nextOf(activity),
+    lastContactedAt: activity?.lastContactedAt,
   };
+}
+
+/** What is next with a client: the session booked, else the follow-up due. */
+function nextOf(activity: ActivityView | undefined): ClientNext | undefined {
+  if (activity?.nextBookedAt) return { kind: "session", at: activity.nextBookedAt };
+  if (activity?.nextFollowUpAt) return { kind: "followUp", at: activity.nextFollowUpAt };
+  return undefined;
 }
 
 /** The client's other calendar names, leaving out one that is just their name. */
@@ -42,18 +54,41 @@ export function clientFacet(clients: ReadonlyArray<ClientView>): Facet {
   };
 }
 
-/** Reconnect, as a chip: clients with no session in so many months. */
+/** Reconnect's chip: clients lapsed for so many months. */
 export function lapseFacet(): Facet {
   return {
     key: LAPSE_FACET,
-    label: "Last session",
+    label: "Lapsed for",
     single: true,
-    options: LAPSE_MONTHS.map((months) => ({ value: months, label: `Over ${months} months ago` })),
+    options: LAPSE_MONTHS.map((months) => ({ value: months, label: `Over ${months} months` })),
   };
 }
 
-/** What the clients lists can be narrowed by besides words, made once: its options never change. */
-export const CLIENT_FACETS: ReadonlyArray<Facet> = [lapseFacet()];
+const STANDING_OPTIONS: Record<StandingFacet, Facet> = {
+  booked: {
+    key: "booked",
+    label: "Booked",
+    single: true,
+    options: [
+      { value: "yes", label: "Booked" },
+      { value: "no", label: "Not booked" },
+    ],
+  },
+  owes: { key: "owes", label: "Owes", single: true, options: [{ value: "yes", label: "Owes money", keywords: ["unpaid"] }] },
+  credits: { key: "credits", label: "Credits", single: true, options: [{ value: "yes", label: "Has credits", keywords: ["package"] }] },
+  followUp: { key: "followUp", label: "Follow-up", single: true, options: [{ value: "yes", label: "Open follow-up" }] },
+};
+
+/** What All clients is narrowed by besides words, made once: its options never change. */
+export const CLIENT_FACETS: ReadonlyArray<Facet> = STANDING_FACETS.map((key) => STANDING_OPTIONS[key]);
+
+/** What Reconnect is narrowed by besides words. */
+export const RECONNECT_FACETS: ReadonlyArray<Facet> = [lapseFacet()];
+
+/** A clients list's facets: its own view's. */
+export function facetsOf(view: ClientsFilter): ReadonlyArray<Facet> {
+  return view === "reconnect" ? RECONNECT_FACETS : CLIENT_FACETS;
+}
 
 /** The lapse a filter's chip asks for, if any: the list is Reconnect then. */
 export function lapseOf(filter: ListFilter): LapseMonths | undefined {
@@ -61,25 +96,47 @@ export function lapseOf(filter: ListFilter): LapseMonths | undefined {
   return LAPSE_MONTHS.find((months) => months === lapse);
 }
 
-/** The list a client's page steps through, from its URL: the words, and the lapse of Reconnect. */
+/** Whether a client is where a filter's chips say: lapsed that long, booked, owing, and so on. */
+export function matchesChips(row: ClientRow, chips: ListFilter["chips"]): boolean {
+  const lapse = LAPSE_MONTHS.find((months) => months === chips[LAPSE_FACET]?.[0]);
+  if (lapse && (row.activity?.lapsedMonths ?? 0) < Number(lapse)) return false;
+  const chip = (key: StandingFacet) => chips[key]?.[0];
+  const booked = chip("booked");
+  if (booked && Boolean(row.activity?.nextBookedAt) !== (booked === "yes")) return false;
+  if (chip("owes") && row.owedCents <= 0) return false;
+  if (chip("credits") && row.creditsLeftMinutes <= 0) return false;
+  if (chip("followUp") && !row.activity?.openFollowUps) return false;
+  return true;
+}
+
+/** All clients' filter both ways with its URL. */
+export const clientsUrl = filterUrl(STANDING_FACETS);
+
+/** The list a client's page steps through, from its URL: All clients' words and chips, or Reconnect's lapse. */
 export function validateClientsListSearch(search: Record<string, unknown>): ClientsListSearch {
   // Numbers in the URL parse as numbers.
-  return { q: textParam(search.q), lapse: oneOf(String(search.lapse), LAPSE_MONTHS) };
+  return { ...clientsUrl.validate(search), lapse: oneOf(String(search.lapse), LAPSE_MONTHS) };
 }
 
-/** The clients list's filter as a client's page keeps it. */
+/** A clients list's filter as a client's page keeps it. */
 export function clientsListSearch(filter: ListFilter): ClientsListSearch {
-  return { q: filter.text.trim() || undefined, lapse: lapseOf(filter) };
+  return { ...clientsUrl.toSearch(filter), lapse: lapseOf(filter) };
 }
 
-/** The filter a client's page keeps: All clients, or Reconnect with its lapse. */
+/** The filter a client's page keeps: All clients' words and chips, or Reconnect with its lapse. */
 export function clientsListFilter(search: ClientsListSearch): ListFilter {
-  return { text: search.q ?? "", when: undefined, chips: search.lapse ? { [LAPSE_FACET]: [search.lapse] } : {} };
+  const filter = clientsUrl.toFilter(search);
+  return search.lapse ? { ...filter, chips: { ...filter.chips, [LAPSE_FACET]: [search.lapse] } } : filter;
+}
+
+/** Reconnect's filter keeps a lapse: taking its chip off goes back to the shortest. */
+export function withLapse(filter: ListFilter): ListFilter {
+  return lapseOf(filter) ? filter : { ...filter, chips: { ...filter.chips, [LAPSE_FACET]: [LAPSE_MONTHS[0]] } };
 }
 
 /**
- * Where a clients filter is, and its name: Reconnect with a Last session
- * chip (so the nav shows it), All clients without.
+ * Where a clients filter is, and its name: Reconnect with a lapse (so the
+ * nav shows it), All clients with its chips without.
  */
 export function clientsListLink(filter: ListFilter) {
   const lapse = lapseOf(filter);
@@ -88,7 +145,7 @@ export function clientsListLink(filter: ListFilter) {
     const search = { q, lapse: lapse === LAPSE_MONTHS[0] ? undefined : lapse };
     return { to: "/clients/reconnect", label: "Reconnect", search } as const;
   }
-  return { to: "/clients", label: "Clients", search: { q } } as const;
+  return { to: "/clients", label: "Clients", search: clientsUrl.toSearch(filter) } as const;
 }
 
 /** Says when the client's Google contact needs the user's attention. */

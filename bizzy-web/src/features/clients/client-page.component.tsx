@@ -1,40 +1,42 @@
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
-import { CircleAlertIcon, MessageCircleIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { totals } from "./client-activity.util";
-import { LastSeen, clientLink } from "./clients.columns";
+import { BellPlusIcon, CalendarPlusIcon, CircleAlertIcon, MessageCircleIcon, PlusIcon, Trash2Icon, WalletIcon } from "lucide-react";
+import { clientLink } from "./clients.columns";
 import { feeAmountError, feeStartError, toClientFields, toClientValues } from "./clients.form";
 import { useSaveClient } from "./clients.hook";
 import { ClientsQuery } from "./clients.query";
 import { ClientContact } from "./components/client-contact/client-contact.component";
-import { ClientDocuments } from "./components/client-documents/client-documents.component";
-import { ClientFollowUps } from "./components/client-follow-ups/client-follow-ups.component";
+import { useClientDocumentsSection } from "./components/client-documents/client-documents.component";
+import { ClientOverview } from "./components/client-overview/client-overview.component";
+import { ClientPackages } from "./components/client-packages/client-packages.component";
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
+import { DeleteClientDialog } from "./components/delete-client-dialog/delete-client-dialog.component";
+import { RecordPaymentDialog } from "./components/record-payment-dialog/record-payment-dialog.component";
 import { CLIENTS_LIST } from "./clients.list";
-import { clientsListLink, clientsListSearch, contactProblem, toClientRow } from "./clients.util";
+import { clientsListLink, clientsListSearch, contactProblem } from "./clients.util";
 import type { ReactNode } from "react";
 import type { ChosenContact, ClientView } from "./clients.types";
+import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { ActivityQuery } from "~/features/activity/activity.query";
-import { PackagesQuery } from "~/features/packages/packages.query";
-import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
+import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { ListPager } from "~/components/shared/list-pager/list-pager.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { formatDate, formatHours, todayISO } from "~/core/utils/date.util";
-import { formatCents } from "~/core/utils/money.util";
+import { todayISO } from "~/core/utils/date.util";
 import { fieldErrors } from "~/core/utils/form.util";
 import { NO_FILTER } from "~/core/list/filter.util";
 
@@ -60,9 +62,10 @@ export type ClientPageProps =
     };
 
 /**
- * A client's own page: their profile and Google contact, then their story:
- * activity, a timeline of their sessions with her notes, follow-ups,
- * packages and documents.
+ * A client's own page: where they stand and what is coming, their story
+ * (sessions as its backbone, with what came of each), their documents and
+ * packages, then their profile and Google contact. What she does with them
+ * is in the header.
  */
 export function ClientPage(props: ClientPageProps) {
   const clients = ClientsQuery.useList();
@@ -155,8 +158,14 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
   const whatsapp = useWhatsApp();
   const phone = client?.contact?.phone;
   const problem = client && contactProblem(client);
+  const owed = ActivityQuery.useByClient().get(client?.id ?? "")?.owedCents ?? 0;
+  const documents = useClientDocumentsSection(client);
+  const [booking, setBooking] = useState(false);
+  const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  const sections: Array<PageSection> = [
+  const details: Array<PageSection> = [
     {
       id: "profile",
       title: "Profile",
@@ -328,34 +337,56 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
         </Field>
       ),
     },
-    ...(client
-      ? [
-          { id: "activity", title: "Activity", content: <Activity client={client} /> },
-          { id: "timeline", title: "Sessions", content: <ClientTimeline client={client} /> },
-          { id: "follow-ups", title: "Follow-ups", content: <ClientFollowUps client={client} /> },
-          { id: "packages", title: "Packages", content: <ClientPackages clientId={client.id} /> },
-          { id: "documents", title: "Documents", content: <ClientDocuments client={client} /> },
-        ]
-      : []),
   ];
+  // A client's story first; a new one is only its details.
+  const sections: Array<PageSection> = client
+    ? [
+        { id: "overview", title: "Overview", content: <ClientOverview client={client} />, bare: true },
+        { id: "timeline", title: "Timeline", content: <ClientTimeline client={client} />, bare: true },
+        ...(documents ? [documents] : []),
+        { id: "packages", title: "Packages", content: <ClientPackages client={client} /> },
+        ...details,
+      ]
+    : details;
+
+  const submit: Action = {
+    type: "submit",
+    form: FORM_ID,
+    label: isSubmitting ? "Saving…" : client ? "Save" : "Add client",
+    style: "primary",
+    disabled: isSubmitting,
+  };
+  // What she does with them: behind ⋯ until the header has room beside the
+  // pager. Only Save stays out, while the details have changes to keep.
+  const actions: Array<Action> = !client || hasChanges ? [submit] : [];
+  const more: Array<Action> = client
+    ? [
+        ...(owed > 0 ? [{ type: "button", label: "Record payment", icon: WalletIcon, onClick: () => setPaying(true) } satisfies Action] : []),
+        { type: "button", label: "Follow-up", icon: BellPlusIcon, onClick: () => setFollowUp({ mode: "new", clientId: client.id }) },
+        ...(whatsapp.canMessage(phone)
+          ? [{ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) } satisfies Action]
+          : []),
+        {
+          type: "button",
+          label: "Book session",
+          icon: CalendarPlusIcon,
+          style: hasChanges ? "secondary" : "primary",
+          onClick: () => setBooking(true),
+        },
+      ]
+    : [];
 
   return (
     <>
       <PageHeader
         {...header}
         title={client?.name ?? "New client"}
-        actions={[
-          {
-            type: "submit",
-            form: FORM_ID,
-            label: isSubmitting ? "Saving…" : client ? "Save" : "Add client",
-            style: "primary",
-            disabled: isSubmitting,
-          },
-        ]}
-        moreActions={
-          whatsapp.canMessage(phone)
-            ? [{ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) }]
+        actions={actions}
+        moreActions={more}
+        foldBelow="lg"
+        menuActions={
+          client
+            ? [{ type: "button", label: "Delete client", icon: Trash2Icon, style: "destructive", onClick: () => setDeleting(true) }]
             : undefined
         }
         banners={
@@ -380,74 +411,19 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
       />
       <SectionLayout sections={sections} />
       <UnsavedChangesPrompt when={hasChanges} />
+      {client && (
+        <>
+          <NewSessionDialog open={booking} clientId={client.id} onClose={() => setBooking(false)} />
+          <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
+          <RecordPaymentDialog client={client} open={paying} onClose={() => setPaying(false)} />
+          <DeleteClientDialog
+            client={client}
+            open={deleting}
+            onClose={() => setDeleting(false)}
+            onDeleted={() => void navigate({ ...clientsListLink(NO_FILTER), ignoreBlocker: true })}
+          />
+        </>
+      )}
     </>
-  );
-}
-
-function Activity({ client }: { client: ClientView }) {
-  const activity = ActivityQuery.useByClient().get(client.id);
-  const row = toClientRow(client, activity);
-  return (
-    <dl className="grid gap-4 text-sm sm:grid-cols-3">
-      <div className="flex flex-col gap-0.5 sm:col-span-3">
-        <dt className="text-xs text-muted-foreground">Last session</dt>
-        <dd>
-          <LastSeen row={row} />
-        </dd>
-      </div>
-      <div className="flex flex-col gap-0.5">
-        <dt className="text-xs text-muted-foreground">Last 12 months</dt>
-        <dd>
-          {formatCents(row.revenue12Cents)}
-          <span className="text-muted-foreground"> · {row.sessions12} sessions</span>
-        </dd>
-      </div>
-      <div className="flex flex-col gap-0.5">
-        <dt className="text-xs text-muted-foreground">Lifetime</dt>
-        <dd>
-          {formatCents(row.lifetimeCents)}
-          <span className="text-muted-foreground"> · {totals(activity).sessions} sessions</span>
-        </dd>
-      </div>
-      <div className="flex flex-col gap-0.5">
-        <dt className="text-xs text-muted-foreground">Last contacted</dt>
-        <dd>{client.lastContactedAt ? formatDate(client.lastContactedAt) : "—"}</dd>
-      </div>
-    </dl>
-  );
-}
-
-function ClientPackages({ clientId }: { clientId: string }) {
-  const packages = PackagesQuery.useList(true);
-  if (packages.isPending) return <Loading />;
-  const own = (packages.data ?? []).filter((pkg) => pkg.clientId === clientId);
-  if (own.length === 0) {
-    return <p className="text-sm text-muted-foreground">No packages. Write 10x85 after their name in the calendar.</p>;
-  }
-  return (
-    <ul className="flex flex-col divide-y text-sm">
-      {own.map((pkg) => (
-        <li key={pkg.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-          <span>
-            {formatHours(pkg.hours)} for {formatCents(pkg.priceCents)}
-            <span className="text-muted-foreground"> · bought {formatDate(pkg.purchasedAt)}</span>
-          </span>
-          <span className="flex items-center gap-3">
-            <span className={pkg.creditsLeft > 0 ? undefined : "text-muted-foreground"}>
-              {formatHours(pkg.creditsLeft)} of {formatHours(pkg.hours)} left
-            </span>
-            {coveringDocuments(pkg).length > 0 ? (
-              coveringDocuments(pkg).map(({ type, ref, issued }) => (
-                <TextLink key={type} to={documentRoute(type)} params={{ id: ref.id }}>
-                  {refLabel(type, ref, issued)}
-                </TextLink>
-              ))
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </span>
-        </li>
-      ))}
-    </ul>
   );
 }

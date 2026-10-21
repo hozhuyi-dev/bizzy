@@ -1,6 +1,8 @@
 import type {
   DocumentContent,
+  DocumentSource,
   DocumentSummary,
+  DocumentType,
   DocumentView,
   SearchDocumentsRequest,
   SharedDocumentView,
@@ -27,6 +29,17 @@ export const DocumentsService = {
    */
   moveLines: (from: string, to: string | undefined, lineIds: Array<string>) =>
     invoke<null>("documents.moveLines", { from, to: to ?? "", lineIds }),
+  /**
+   * Puts every line of the drafts after the first on the first, and they
+   * go: a client's sessions on one invoice.
+   */
+  combine: (ids: Array<string>) => invoke<DocumentView | null>("documents.combine", { ids }),
+  /**
+   * Puts the lines of a type covering items on the draft into (undefined:
+   * a new one), from the drafts they are on: to add sessions to an invoice.
+   */
+  place: (type: DocumentType, into: string | undefined, items: Array<DocumentSource>) =>
+    invoke<DocumentView | null>("documents.place", { type, into: into ?? "", items }),
   /** Null when a never-issued draft goes: a receipt, with its payment. */
   discardDraft: (id: string) => invoke<DocumentView | null>("documents.discardDraft", { id }),
   cancel: (id: string, reason: string) => invoke<DocumentView | null>("documents.cancel", { id, reason }),

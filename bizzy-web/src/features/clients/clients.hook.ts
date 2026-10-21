@@ -1,12 +1,11 @@
 import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { isLapsed } from "./client-activity.util";
 import { feesChanged } from "./clients.form";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
-import { clientsListLink, lapseOf, toClientRow } from "./clients.util";
-import type { ClientFields, ClientRow, ClientView } from "./clients.types";
+import { clientsListLink, matchesChips, toClientRow, withLapse } from "./clients.util";
+import type { ClientFields, ClientRow, ClientView, ClientsFilter } from "./clients.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { toastWithQuip } from "~/components/shared/quip/quip-toast";
@@ -51,25 +50,34 @@ export function useSaveClient(
 }
 
 /**
- * Goes where a clients filter is: Reconnect with a Last session chip (so
- * the nav shows it), All clients without. Typing replaces the entry.
+ * Goes where a view's filter is: Reconnect keeps a lapse (taking its chip
+ * off goes back to the shortest), All clients its chips. Typing replaces
+ * the entry.
  */
-export function useClientsNavigate(filter: ListFilter): (next: ListFilter) => void {
+export function useClientsNavigate(view: ClientsFilter, filter: ListFilter): (next: ListFilter) => void {
   const navigate = useNavigate();
-  return (next) => void navigate({ ...clientsListLink(next), replace: next.text !== filter.text });
+  return (next) =>
+    void navigate({
+      ...clientsListLink(view === "reconnect" ? withLapse(next) : next),
+      replace: next.text !== filter.text,
+    });
 }
 
 /**
- * The clients a filter's Last session chip keeps, with their activity:
- * every client without one. The words are searched by the table.
+ * The clients a filter's chips keep, with their activity: lapsed that
+ * long, booked, owing and so on, as the API says each one stands. The
+ * words are searched by the table.
  */
 export function useClientRows(filter: ListFilter): Array<ClientRow> {
   const clients = ClientsQuery.useList();
   const activityByClient = ActivityQuery.useByClient();
-  const lapse = lapseOf(filter);
+  // Routes make a new filter each render: the chips, as text, say when it changed.
+  const chips = JSON.stringify(filter.chips);
   return useMemo(() => {
     const now = new Date();
-    const all = (clients.data ?? []).map((client) => toClientRow(client, activityByClient.get(client.id), now));
-    return lapse ? all.filter((row) => isLapsed(row.client, row.activity, Number(lapse), now)) : all;
-  }, [clients.data, activityByClient, lapse]);
+    const kept: ListFilter["chips"] = JSON.parse(chips);
+    return (clients.data ?? [])
+      .map((client) => toClientRow(client, activityByClient.get(client.id), now))
+      .filter((row) => matchesChips(row, kept));
+  }, [clients.data, activityByClient, chips]);
 }

@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClientsService } from "./clients.service";
 import type { ClientFields } from "./clients.types";
-import { ClientKeys } from "~/core/constants/query-keys.constant";
 import { invalidateBilling } from "~/core/utils/query.util";
 
 export const ClientsMutation = {
@@ -23,12 +22,12 @@ export const ClientsMutation = {
     });
   },
 
-  useMarkContacted: () => {
+  /** Only a client with nothing recorded goes. */
+  useDelete: () => {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: ({ id, contacted }: { id: string; contacted: boolean }) =>
-        ClientsService.markContacted(id, contacted),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ClientKeys.all }),
+      mutationFn: (id: string) => ClientsService.delete(id),
+      onSuccess: () => invalidateBilling(queryClient),
     });
   },
 };

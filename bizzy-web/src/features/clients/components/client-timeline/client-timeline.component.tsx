@@ -1,73 +1,102 @@
-import { FileTextIcon, ReceiptIcon } from "lucide-react";
+import { useState } from "react";
+import { ChevronUpIcon } from "lucide-react";
 import type { ClientView } from "../../clients.types";
-import { SessionsQuery } from "~/features/sessions/sessions.query";
-import { stageBadges } from "~/features/sessions/session-stage.util";
-import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
+import type { FollowUpTarget, FollowUpView } from "~/features/follow-ups/follow-ups.types";
+import type { TimelineEntry } from "~/features/timeline/timeline.types";
+import type { ListFilter } from "~/core/list/filter.types";
+import { TimelineQuery } from "~/features/timeline/timeline.query";
+import { TIMELINE_FACETS, entryKey } from "~/features/timeline/timeline.util";
+import { TimelineEntryItem } from "~/features/timeline/components/timeline-entry/timeline-entry.component";
+import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { Badge } from "~/components/ui/badge";
-import { formatSessionTime } from "~/core/utils/date.util";
+import { Timeline, TimelineGroup, TimelineNow } from "~/components/shared/timeline/timeline.component";
+import { Button } from "~/components/ui/button";
+import { Card, CardContent } from "~/components/ui/card";
+import { NO_FILTER, isNarrowed, pageItems } from "~/core/list/filter.util";
+import { formatMonth, monthKey } from "~/core/utils/date.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
+/** How many of what is coming show before the rest are asked for: the nearest. */
+const UPCOMING_SHOWN = 3;
+
 /**
- * The client's sessions, newest first, each with what was written about it
- * and the documents on it: the story of their care.
+ * The client's story, newest first along one rail: what is coming above
+ * Now (sessions booked, follow-ups waiting), what happened below it, by
+ * month, a page at a time. Each session carries what came of it as chips;
+ * what belongs to no one session has its own entry.
  */
 export function ClientTimeline({ client }: { client: ClientView }) {
-  const timeline = SessionsQuery.useByClient(client.id);
+  const [filter, setFilter] = useState<ListFilter>(NO_FILTER);
+  const pages = TimelineQuery.useSearch(client.id, filter);
+  const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
+  const [allUpcoming, setAllUpcoming] = useState(false);
 
-  if (timeline.isPending) return <Loading />;
-  if (timeline.error) {
-    return (
+  const upcoming = pages.data?.pages[0]?.upcoming ?? [];
+  const past = pageItems(pages.data);
+  const hidden = allUpcoming ? 0 : Math.max(upcoming.length - UPCOMING_SHOWN, 0);
+  const onEditFollowUp = (f: FollowUpView) => setFollowUp({ mode: "edit", followUp: f });
+
+  let body;
+  if (pages.isPending) body = <Loading />;
+  else if (pages.error) {
+    body = (
       <p role="alert" className="text-sm text-destructive">
-        {timeline.error.message}
+        {pages.error.message}
       </p>
     );
-  }
-  const sessions = timeline.data;
-  if (sessions.length === 0) {
-    return <EmptyState quips={QUIPS.timeline}>Sessions with {client.name} show up here, with your notes.</EmptyState>;
+  } else if (upcoming.length === 0 && past.length === 0 && !pages.hasNextPage) {
+    body = isNarrowed(filter) ? (
+      <EmptyState quips={QUIPS.search}>Nothing in {client.name}'s timeline matches.</EmptyState>
+    ) : (
+      <EmptyState quips={QUIPS.timeline}>Sessions with {client.name} show up here, with your notes.</EmptyState>
+    );
+  } else {
+    body = (
+      <Card>
+        <CardContent>
+          {hidden > 0 && (
+            <Button variant="ghost" size="sm" className="mb-1 ml-8" onClick={() => setAllUpcoming(true)}>
+              <ChevronUpIcon /> {hidden} more coming up
+            </Button>
+          )}
+          <Timeline label={`${client.name}'s timeline`}>
+            {upcoming.slice(hidden).map((entry) => (
+              <TimelineEntryItem key={entryKey(entry)} entry={entry} upcoming onEditFollowUp={onEditFollowUp} />
+            ))}
+            {upcoming.length > 0 && <TimelineNow />}
+            {byMonth(past).map(([month, entries]) => (
+              <TimelineGroup key={month} label={formatMonth(month)}>
+                {entries.map((entry) => (
+                  <TimelineEntryItem key={entryKey(entry)} entry={entry} onEditFollowUp={onEditFollowUp} />
+                ))}
+              </TimelineGroup>
+            ))}
+          </Timeline>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <ol className="relative flex flex-col gap-5 border-l pl-5">
-        {sessions.map((session) => (
-          <li key={session.id} className="relative">
-            <span
-              aria-hidden="true"
-              className="absolute top-1.5 -left-[1.6rem] size-2.5 rounded-full border-2 border-background bg-muted-foreground"
-            />
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <TextLink to="/sessions/$id" params={{ id: session.id }} className="text-sm">
-                {formatSessionTime(session.start)}
-              </TextLink>
-              {stageBadges(session).map((badge) => (
-                <Badge key={badge.label} variant={badge.tone}>
-                  {badge.label}
-                </Badge>
-              ))}
-            </div>
-            {session.record.summary ? (
-              <p className="mt-1 text-sm">{session.record.summary}</p>
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground italic">No notes</p>
-            )}
-            {coveringDocuments(session).length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-3 text-xs">
-                {coveringDocuments(session).map(({ type, ref, issued }) => {
-                  const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
-                  return (
-                    <TextLink key={type} to={documentRoute(type)} params={{ id: ref.id }} className="inline-flex items-center gap-1 font-normal">
-                      <Icon className="size-3" aria-hidden="true" /> {refLabel(type, ref, issued)}
-                    </TextLink>
-                  );
-                })}
-              </div>
-            )}
-          </li>
-        ))}
-      </ol>
+      <FilterBar label={`Search ${client.name}'s timeline`} value={filter} onChange={setFilter} facets={TIMELINE_FACETS} />
+      {body}
+      <LoadMore pages={pages} found={past.length > 0} />
+      <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
     </div>
   );
+}
+
+/** Entries, newest first, in runs of the same month ("2026-10"). */
+function byMonth(entries: ReadonlyArray<TimelineEntry>): Array<[string, Array<TimelineEntry>]> {
+  const out: Array<[string, Array<TimelineEntry>]> = [];
+  for (const entry of entries) {
+    const month = monthKey(new Date(entry.at));
+    const last = out.at(-1);
+    if (last?.[0] === month) last[1].push(entry);
+    else out.push([month, [entry]]);
+  }
+  return out;
 }

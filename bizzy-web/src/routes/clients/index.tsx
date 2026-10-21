@@ -1,19 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
+import type { FilterSearch } from "~/core/list/filter.types";
+import type { StandingFacet } from "~/features/clients/clients.constant";
 import { ClientsPage } from "~/features/clients/clients-page.component";
 import { useClientsNavigate } from "~/features/clients/clients.hook";
-import { textParam } from "~/core/utils/search.util";
+import { clientsUrl } from "~/features/clients/clients.util";
 
-export interface ClientsSearch {
-  q?: string | undefined;
-}
+export type ClientsSearch = FilterSearch<StandingFacet>;
 
 export const Route = createFileRoute("/clients/")({
-  validateSearch: (search: Record<string, unknown>): ClientsSearch => ({ q: textParam(search.q) }),
+  validateSearch: (search: Record<string, unknown>): ClientsSearch => clientsUrl.validate(search),
   component: ClientsRoute,
 });
 
 function ClientsRoute() {
-  const { q } = Route.useSearch();
-  const filter = { text: q ?? "", when: undefined, chips: {} };
-  return <ClientsPage filter={filter} onFilterChange={useClientsNavigate(filter)} />;
+  const filter = clientsUrl.toFilter(Route.useSearch());
+  return <ClientsPage view="all" filter={filter} onFilterChange={useClientsNavigate("all", filter)} />;
 }

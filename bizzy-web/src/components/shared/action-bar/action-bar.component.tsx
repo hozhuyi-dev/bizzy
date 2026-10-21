@@ -60,7 +60,7 @@ const VARIANTS = {
 interface ActionBarProps {
   /** Always in view. Put the primary one last, nearest the edge. */
   actions?: ReadonlyArray<Action> | undefined;
-  /** Before them on wider screens, behind ⋯ on a phone. */
+  /** Before them on wider screens, behind ⋯ on a phone (below `foldBelow`). */
   more?: ReadonlyArray<Action> | undefined;
   /** Behind ⋯ on every screen, after `more`: the rare ones (Reset link, Cancel). */
   menu?: ReadonlyArray<Action> | undefined;
@@ -70,7 +70,22 @@ interface ActionBarProps {
   className?: string | undefined;
   /** On every button, e.g. to size them down from a breakpoint. */
   buttonClassName?: string | undefined;
+  /**
+   * The width below which `more` folds behind ⋯: md (a phone) unless said;
+   * lg for a bar that shares its row with much else (a header with a pager,
+   * a section beside its contents).
+   */
+  foldBelow?: FoldWidth | undefined;
 }
+
+export type FoldWidth = "md" | "lg";
+
+// Whole class names, so Tailwind sees them: `more` shown inline from the
+// width, the ⋯ holding it below the width, and the ⋯ of `menu` alone from it.
+const FOLDS = {
+  md: { inline: "hidden md:inline-flex", folded: "md:hidden", wide: "hidden md:inline-flex" },
+  lg: { inline: "hidden lg:inline-flex", folded: "lg:hidden", wide: "hidden lg:inline-flex" },
+} as const satisfies Record<FoldWidth, Record<string, string>>;
 
 /**
  * A row of actions, from their descriptions: page headers, section headings,
@@ -85,8 +100,10 @@ export function ActionBar({
   defaultStyle = "secondary",
   className,
   buttonClassName,
+  foldBelow = "md",
 }: ActionBarProps) {
   if (actions.length === 0 && more.length === 0 && menu.length === 0) return null;
+  const fold = FOLDS[foldBelow];
   return (
     <div className={cn("flex shrink-0 items-center gap-2", className)}>
       {more.map((action) => (
@@ -95,7 +112,7 @@ export function ActionBar({
           action={action}
           size={size}
           defaultStyle={defaultStyle}
-          className={cn("hidden md:inline-flex", buttonClassName)}
+          className={cn(fold.inline, buttonClassName)}
         />
       ))}
       {actions.map((action) => (
@@ -108,8 +125,8 @@ export function ActionBar({
         />
       ))}
       {/* One ⋯ either way: with `more` in it on a phone, without on wider screens. */}
-      <ActionMenu actions={[...more, ...menu]} size={size} className="md:hidden" />
-      <ActionMenu actions={menu} size={size} className="hidden md:inline-flex" />
+      <ActionMenu actions={[...more, ...menu]} size={size} className={fold.folded} />
+      <ActionMenu actions={menu} size={size} className={fold.wide} />
     </div>
   );
 }

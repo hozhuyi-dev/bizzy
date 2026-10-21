@@ -29,7 +29,6 @@ A client: name, calendar names, usual hourly fees and place, and a copy of their
 | feeRates | `[]clients.FeeRate` |
 | homeVisits | `bool` |
 | contact | `*clients.Contact` |
-| lastContactedAt | `*time.Time` |
 
 Checked on every change to one:
 
@@ -84,6 +83,7 @@ An invoice or receipt: its issued content, and the draft being edited.
 | cancelledAt | `*time.Time` |
 | cancelReason | `string` |
 | shareToken | `string` |
+| period | `string` |
 
 | Index | For it |
 |---|---|
@@ -94,6 +94,7 @@ An invoice or receipt: its issued content, and the draft being edited.
 Checked on every change to one:
 
 - **one-live-document-of-each-type**: An item is on at most one live invoice and one live receipt, once, and its Link says which
+- **documents-cover-something**: A live document is for at least one session or package: none is left on its own
 - **paid-in-full**: What a receipt says was received for an item is what its invoice charges, and something is charged
 - **documents-are-a-clients**: Every document is for one of the clients, who isn't deleted while it is
 - **lifecycle**: A draft has no number; an issued or cancelled one has its number, revision and link; a cancelled one isn't being edited
@@ -121,6 +122,8 @@ Checked on every change to one:
 
 - **links-point-at-their-lines**: An item's link is to a live document covering it, and says rightly whether it is owed
 - **paid-in-full**: What a receipt says was received for an item is what its invoice charges, and something is charged
+- **packages-are-invoiced**: A package is always on an invoice, which says its price
+- **paid-for**: Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more
 
 ### DOCREV
 
