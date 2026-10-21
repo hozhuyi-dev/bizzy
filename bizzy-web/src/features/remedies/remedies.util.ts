@@ -1,4 +1,4 @@
-import type { Remedy } from "~/core/lambda/lambda.types";
+import type { Remedy, Verdict } from "~/core/lambda/lambda.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { PayItem } from "~/features/payments/payments.types";
 
@@ -119,4 +119,12 @@ export function payItemOf(target: string): PayItem | undefined {
   const [kind, id] = target.split(":");
   if ((kind === "session" || kind === "package") && id) return { kind, id };
   return undefined;
+}
+
+/**
+ * A field's lock says what one of the fields above it already says: its
+ * LockedHint only points back (`again`), so a form says each reason once.
+ */
+export function saidAbove(lock: Verdict | undefined, ...above: ReadonlyArray<Verdict | undefined>): boolean {
+  return lock !== undefined && above.some((other) => other?.why === lock.why);
 }

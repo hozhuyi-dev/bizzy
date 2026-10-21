@@ -4,6 +4,7 @@ import type { DocumentLink, DocumentType } from "~/features/documents/documents.
 import type { PackageView } from "~/features/packages/packages.types";
 import { coveringDocuments } from "~/features/documents/documents.util";
 import { formatHours } from "~/core/utils/date.util";
+import { formatCents } from "~/core/utils/money.util";
 
 /**
  * How a session reads in lists and on its page. What it is (what is left to
@@ -44,19 +45,47 @@ export function recordText(record: RecordView): string | undefined {
   return parts.filter(Boolean).join(" · ") || undefined;
 }
 
-/** "1 h on credits · + 10 h package": what pays for it besides its fee, and the package it buys. */
-export function coverText(session: SessionView): string | undefined {
-  const credited = session.credits.reduce((sum, credit) => sum + credit.hours, 0);
-  const parts = [
-    credited > 0 ? `${formatHours(credited)} on credits` : undefined,
-    session.bought ? `+ ${formatHours(session.bought.hours)} package` : undefined,
-  ];
-  return parts.filter(Boolean).join(" · ") || undefined;
+/**
+ * "10 h package · 1 h used here", "RM 95 fee + 10 h package", "1 h from 5 h
+ * package": what its amount is made of, and which packages' credits pay for
+ * it (`packagesById`, as far as they are loaded).
+ */
+export function coverText(session: SessionView, packagesById: ReadonlyMap<string, PackageView>): string | undefined {
+  const { bought } = session;
+  const parts: Array<string> = [];
+  if (bought) {
+    const fee = session.invoice && session.feeCents > 0 ? `${formatCents(session.feeCents)} fee + ` : "";
+    parts.push(`${fee}${formatHours(bought.hours)} package`);
+    const usedHere = session.credits.find((credit) => credit.packageId === bought.id);
+    if (usedHere) parts.push(`${formatHours(usedHere.hours)} used here`);
+  }
+  for (const { packageId, hours } of session.credits) {
+    if (packageId === bought?.id) continue;
+    const pkg = packagesById.get(packageId);
+    parts.push(pkg ? `${formatHours(hours)} from ${formatHours(pkg.hours)} package` : `${formatHours(hours)} on credits`);
+  }
+  return parts.join(" · ") || undefined;
 }
 
-/** What the session costs: its fee, or nothing of its own when package credits pay it all. */
+/**
+ * What is billed in the session: its fee (none when package credits pay it
+ * all) and the package bought in it; nothing when it bills neither.
+ */
 export function sessionAmount(session: SessionView): number | undefined {
-  return session.invoice ? session.feeCents : undefined;
+  if (!session.invoice && !session.bought) return undefined;
+  return (session.invoice ? session.feeCents : 0) + (session.bought?.priceCents ?? 0);
+}
+
+/**
+ * The invoices of packages bought before the session whose credits pay for
+ * it, each once: where its money was billed.
+ */
+export function creditInvoices(session: SessionView, packagesById: ReadonlyMap<string, PackageView>): Array<DocumentLink> {
+  const docs = session.credits.flatMap(({ packageId }) => {
+    const invoice = packageId === session.bought?.id ? undefined : packagesById.get(packageId)?.invoice;
+    return invoice ? [{ type: "invoice" as const, ref: invoice, issued: Boolean(invoice.number) }] : [];
+  });
+  return docs.filter((doc, i) => docs.findIndex((d) => d.ref.id === doc.ref.id) === i);
 }
 
 /** The packages whose credits pay for the session, with the hours each pays, as far as they are loaded. */

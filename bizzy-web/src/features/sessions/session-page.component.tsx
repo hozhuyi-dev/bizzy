@@ -35,6 +35,7 @@ import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { clientOf } from "~/features/clients/clients.util";
+import { formatDate } from "~/core/utils/date.util";
 
 /**
  * `settle`: the calendar edit it was opened to settle, by changing its
@@ -153,7 +154,13 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
     <>
       <PageHeader
         parent={parent}
-        title={client?.name ?? session.clientName}
+        title={
+          // The day tells a client's sessions apart; it truncates first on a phone.
+          <>
+            {client?.name ?? session.clientName}
+            <span className="font-normal text-muted-foreground"> · {formatDate(session.start)}</span>
+          </>
+        }
         pager={pager}
         moreActions={more}
         menuActions={menu}

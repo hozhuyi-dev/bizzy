@@ -1,5 +1,13 @@
-import { CheckIcon } from "lucide-react";
-import { allSessionDocuments, coverText, lengthAndPlace, recordText, sessionAmount, stageBadges } from "./session-stage.util";
+import { CheckIcon, PackageIcon } from "lucide-react";
+import {
+  allSessionDocuments,
+  coverText,
+  creditInvoices,
+  lengthAndPlace,
+  recordText,
+  sessionAmount,
+  stageBadges,
+} from "./session-stage.util";
 import { SESSION_PLACES } from "./sessions.constant";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { SessionHit, SessionSearch, SessionView } from "./sessions.types";
@@ -76,20 +84,36 @@ function SessionStage({ session }: { session: SessionView }) {
   );
 }
 
-/** Its fee, or Prepaid when credits pay it all; under it what credits pay and the package it buys. */
-function SessionAmount({ session }: { session: SessionView }) {
+/** What is billed in it, marked when that includes a package bought in it; Prepaid when credits pay it all. */
+function AmountValue({ session }: { session: SessionView }) {
   const amount = sessionAmount(session);
+  if (amount === undefined) return <span className="text-muted-foreground">Prepaid</span>;
   return (
-    <CellText sub={coverText(session)}>
-      {amount === undefined ? <span className="text-muted-foreground">Prepaid</span> : formatCents(amount)}
+    <span className="inline-flex items-center gap-1">
+      {session.bought && <PackageIcon aria-hidden className="size-3.5 text-muted-foreground" />}
+      {formatCents(amount)}
+    </span>
+  );
+}
+
+/** What is billed in it; under it what that is made of and which packages' credits pay for it. */
+function SessionAmount({ session, handlers }: { session: SessionView; handlers: SessionHandlers }) {
+  return (
+    <CellText sub={coverText(session, handlers.packagesById)}>
+      <AmountValue session={session} />
     </CellText>
   );
 }
 
-/** The invoices and receipts covering the session and the package its title bought. */
+/**
+ * The invoices and receipts covering the session and the package its title
+ * bought; then, quieter, the invoices of packages bought before it whose
+ * credits pay for it.
+ */
 function SessionDocuments({ session, handlers }: { session: SessionView; handlers: SessionHandlers }) {
   const docs = allSessionDocuments(session, boughtOf(session, handlers));
-  if (docs.length === 0) return <CellEmpty />;
+  const via = creditInvoices(session, handlers.packagesById);
+  if (docs.length === 0 && via.length === 0) return <CellEmpty />;
   return (
     <span className="flex items-center gap-2">
       {docs.map(({ type, ref, issued }) => (
@@ -97,8 +121,29 @@ function SessionDocuments({ session, handlers }: { session: SessionView; handler
           {refLabel(type, ref, issued)}
         </TextLink>
       ))}
+      {via.length > 0 && (
+        <span className="flex items-center gap-1 text-sm text-muted-foreground">
+          via
+          {via.map(({ type, ref, issued }) => (
+            <TextLink
+              key={ref.id}
+              to={documentRoute(type)}
+              params={{ id: ref.id }}
+              className="font-normal text-muted-foreground decoration-muted-foreground/30"
+            >
+              {refLabel(type, ref, issued)}
+            </TextLink>
+          ))}
+        </span>
+      )}
     </span>
   );
+}
+
+/** Every document label the Documents column shows, for searching it. */
+function documentLabels(session: SessionView, handlers: SessionHandlers): Array<string> {
+  const docs = [...allSessionDocuments(session, boughtOf(session, handlers)), ...creditInvoices(session, handlers.packagesById)];
+  return docs.map(({ type, ref, issued }) => refLabel(type, ref, issued));
 }
 
 function boughtOf(session: SessionView, handlers: SessionHandlers): PackageView | undefined {
@@ -116,7 +161,6 @@ export function sessionActions(session: SessionView, handlers: SessionHandlers):
 
 /** The phone layout of a row: who and where it stands, when and where, the summary; then Confirm and Open. */
 export function SessionCard({ session, handlers }: { session: SessionHit; handlers: SessionHandlers }) {
-  const amount = sessionAmount(session);
   return (
     <DataCard
       title={
@@ -125,7 +169,7 @@ export function SessionCard({ session, handlers }: { session: SessionHit; handle
           <SessionStage session={session} />
         </>
       }
-      value={amount === undefined ? <span className="text-muted-foreground">Prepaid</span> : formatCents(amount)}
+      value={<AmountValue session={session} />}
       meta={`${formatSessionTime(session.start)} · ${lengthAndPlace(session)}`}
       detail={session.excerpt ? <span className="italic">{session.excerpt}</span> : session.record.summary}
       detailTitle={session.excerpt ?? (session.record.summary || undefined)}
@@ -187,17 +231,14 @@ export function createSessionColumns(handlers: SessionHandlers) {
           return amount === undefined ? "Prepaid" : formatCents(amount);
         },
       },
-      cell: ({ row }) => <SessionAmount session={row.original} />,
+      cell: ({ row }) => <SessionAmount session={row.original} handlers={handlers} />,
     }),
     helper.display({
       id: "documents",
       header: "Documents",
       meta: {
         from: "xl",
-        search: (session: SessionView) =>
-          allSessionDocuments(session, boughtOf(session, handlers)).map(({ type, ref, issued }) =>
-            refLabel(type, ref, issued),
-          ),
+        search: (session: SessionView) => documentLabels(session, handlers),
       },
       cell: ({ row }) => <SessionDocuments session={row.original} handlers={handlers} />,
     }),

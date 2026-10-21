@@ -11,6 +11,7 @@ import { Textarea } from "~/components/ui/textarea";
 import { formatCents, parseCents } from "~/core/utils/money.util";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
+import { saidAbove } from "~/features/remedies/remedies.util";
 
 // The methods she takes; she can still type something else.
 const PAID_BY_SUGGESTIONS = PAYMENT_METHODS.map((method) => method.label);
@@ -218,7 +219,10 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                 </span>
               </div>
               {/* One hint for both: its lines and their amounts stay together. */}
-              <LockedHint lock={locked.lines ?? locked["lines.amountCents"]} />
+              <LockedHint
+                lock={locked.lines ?? locked["lines.amountCents"]}
+                again={saidAbove(locked.lines ?? locked["lines.amountCents"], locked.date)}
+              />
             </div>
           )}
         </form.Field>
@@ -242,7 +246,14 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
           <form.Field name="issuer.registrationNo">
             {(field) => <TextInput field={field} label="Registration no." lock={locked["issuer.registrationNo"]} />}
           </form.Field>
-          <LockedHint lock={locked["issuer.name"] ?? locked["issuer.registrationNo"]} />
+          <LockedHint
+            lock={locked["issuer.name"] ?? locked["issuer.registrationNo"]}
+            again={saidAbove(
+              locked["issuer.name"] ?? locked["issuer.registrationNo"],
+              locked.date,
+              locked.lines ?? locked["lines.amountCents"],
+            )}
+          />
           <form.Field name="issuer.address">
             {(field) => <TextInput field={field} label="Address" multiline />}
           </form.Field>

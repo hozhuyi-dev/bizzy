@@ -3,6 +3,7 @@ import {
   allSessionDocuments,
   coverText,
   coveringCredits,
+  creditInvoices,
   documentItems,
   lengthAndPlace,
   recordText,
@@ -92,6 +93,13 @@ describe("documentItems", () => {
     expect(documentItems(partly)).toEqual([{ source: { kind: "session", id: "s1" }, label: "Session fee", amountCents: 4750 }]);
     expect(sessionAmount(partly)).toBe(4750);
   });
+
+  test("a package bought in it is billed with it", () => {
+    const { invoice: _, ...rest } = session();
+    const bought = { id: "p1", hours: 10, priceCents: 85000, paid: false };
+    expect(sessionAmount({ ...rest, credits: [{ packageId: "p1", hours: 1 }], feeCents: 0, bought })).toBe(85000);
+    expect(sessionAmount(session({ bought }))).toBe(94500);
+  });
 });
 
 describe("coveringCredits", () => {
@@ -99,6 +107,18 @@ describe("coveringCredits", () => {
     const covered = session({ credits: [{ packageId: "p1", hours: 0.5 }, { packageId: "p2", hours: 1 }] });
     expect(coveringCredits(covered, [pkg()])).toEqual([{ pkg: pkg(), hours: 0.5 }]);
     expect(coveringCredits(covered, undefined)).toEqual([]);
+  });
+});
+
+describe("creditInvoices", () => {
+  test("the invoices of older packages paying for it, each once, not the one bought in it", () => {
+    const older = pkg({ id: "p0", invoice: { id: "d0", number: "INV260001" } });
+    const byId = new Map([older, pkg()].map((p) => [p.id, p]));
+    const covered = session({
+      credits: [{ packageId: "p0", hours: 0.5 }, { packageId: "p0", hours: 0.5 }, { packageId: "p1", hours: 0.5 }],
+      bought: { id: "p1", hours: 10, priceCents: 85000, paid: false },
+    });
+    expect(creditInvoices(covered, byId)).toEqual([{ type: "invoice", ref: { id: "d0", number: "INV260001" }, issued: true }]);
   });
 });
 
@@ -143,10 +163,16 @@ describe("list lines", () => {
   });
 
   test("what credits pay and the package bought", () => {
-    expect(coverText(session())).toBeUndefined();
-    expect(
-      coverText(session({ credits: [{ packageId: "p0", hours: 0.5 }, { packageId: "p1", hours: 0.5 }] })),
-    ).toBe("1 h on credits");
-    expect(coverText(session({ bought: { id: "p1", hours: 10, priceCents: 85000, paid: false } }))).toBe("+ 10 h package");
+    const byId = new Map([[pkg({ id: "p0", hours: 5 }).id, pkg({ id: "p0", hours: 5 })]]);
+    const bought = { id: "p1", hours: 10, priceCents: 85000, paid: false };
+    expect(coverText(session(), byId)).toBeUndefined();
+    expect(coverText(session({ credits: [{ packageId: "p0", hours: 0.5 }, { packageId: "p9", hours: 0.5 }] }), byId)).toBe(
+      "0.5 h from 5 h package · 0.5 h on credits",
+    );
+    expect(coverText(session({ bought }), byId)).toMatch(/^RM\s?95\.00 fee \+ 10 h package$/);
+    const { invoice: _, ...rest } = session();
+    expect(coverText({ ...rest, credits: [{ packageId: "p1", hours: 1 }], feeCents: 0, bought }, byId)).toBe(
+      "10 h package · 1 h used here",
+    );
   });
 });

@@ -10,9 +10,9 @@ import { Button } from "~/components/ui/button";
 
 /**
  * Its follow-ups, `undefined` while they load: to do now once one is
- * overdue, ahead while any is open, done once all are. Adding one, or the
- * next visit, is in the page's header; `onAdd` (without a client, none) is
- * the way in from an empty list too.
+ * overdue, ahead while any is open, done once all are. The next visit isn't
+ * linked to it, so it isn't here. Adding one is in the page's header;
+ * `onAdd` (without a client, none) is the way in from an empty list too.
  */
 export function followUpsStep(
   session: SessionView,
@@ -27,7 +27,7 @@ export function followUpsStep(
   const [late] = overdue;
 
   let state: StepState = "optional";
-  let meta = "Reminders and the next visit";
+  let meta = "Reminders about this session";
   if (late) {
     state = "current";
     meta = overdue.length === 1 ? `Overdue since ${formatDue(late)}` : `${overdue.length} overdue, since ${formatDue(late)}`;

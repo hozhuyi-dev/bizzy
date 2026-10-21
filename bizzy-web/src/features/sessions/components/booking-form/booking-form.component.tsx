@@ -8,6 +8,7 @@ import type { Locks } from "~/core/lambda/lambda.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
+import { saidAbove } from "~/features/remedies/remedies.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Button } from "~/components/ui/button";
@@ -233,7 +234,7 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
               <FieldContent>
                 <FieldLabel htmlFor={field.name}>Not confirmed</FieldLabel>
                 <FieldDescription>Goes on your to-do list a few days before, to confirm with the client.</FieldDescription>
-                <LockedHint lock={locked.tentative} />
+                <LockedHint lock={locked.tentative} again={saidAbove(locked.tentative, locked.clientId)} />
               </FieldContent>
             </Field>
           )}
@@ -267,7 +268,7 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
                 className="max-w-40"
               />
               {locked.fee ? (
-                <LockedHint lock={locked.fee} />
+                <LockedHint lock={locked.fee} again={saidAbove(locked.fee, locked.clientId, locked.tentative)} />
               ) : (
                 <form.Subscribe selector={(state) => state.values}>
                   {(values) => <FieldDescription>{describeCover(values)}</FieldDescription>}
@@ -364,7 +365,10 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
             )}
           </form.Field>
         </div>
-        <LockedHint lock={locked.package} />
+        <LockedHint
+          lock={locked.package}
+          again={saidAbove(locked.package, locked.clientId, locked.tentative, locked.fee)}
+        />
         <form.Subscribe selector={(state) => state.values}>
           {(values) => {
             const pkg = toSessionDraft(values).package;

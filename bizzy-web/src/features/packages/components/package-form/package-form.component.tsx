@@ -5,6 +5,7 @@ import { usePackageSave } from "../../packages-save.hook";
 import type { PackageView } from "../../packages.types";
 import { fieldErrors } from "~/core/utils/form.util";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
+import { saidAbove } from "~/features/remedies/remedies.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
@@ -118,7 +119,7 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
-                <LockedHint lock={locked.hours} />
+                <LockedHint lock={locked.hours} again={saidAbove(locked.hours, locked.clientId)} />
                 <FieldError errors={fieldErrors(field.state.meta.errors)} />
               </Field>
             )}
@@ -141,7 +142,7 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
-                <LockedHint lock={locked.priceCents} />
+                <LockedHint lock={locked.priceCents} again={saidAbove(locked.priceCents, locked.clientId, locked.hours)} />
                 <FieldError errors={fieldErrors(field.state.meta.errors)} />
               </Field>
             )}
@@ -173,7 +174,10 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
                 className="max-w-44"
               />
               <FieldDescription>Credits cover sessions from this day on.</FieldDescription>
-              <LockedHint lock={locked.purchasedAt} />
+              <LockedHint
+                lock={locked.purchasedAt}
+                again={saidAbove(locked.purchasedAt, locked.clientId, locked.hours, locked.priceCents)}
+              />
             </Field>
           )}
         </form.Field>
