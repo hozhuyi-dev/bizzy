@@ -1,15 +1,25 @@
-import { SESSION_PLACES } from "./sessions.constant";
+import { SESSION_FACETS, SESSION_PLACES } from "./sessions.constant";
 import { REASON_BADGES } from "./session-stage.util";
-import type { SearchSessionsRequest, SessionLocation, SessionReason, SessionSearch } from "./sessions.types";
+import type { SearchSessionsRequest, SessionLocation, SessionReason, SessionSearch, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { Facet, ListFilter } from "~/core/filter/filter.types";
+import type { Facet, ListFilter } from "~/core/list/filter.types";
+import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
-import { listRequest } from "~/core/filter/filter.util";
+import { filterUrl, listRequest } from "~/core/list/filter.util";
+import { monthKey } from "~/core/utils/date.util";
 import { oneOf, textParam } from "~/core/utils/search.util";
 
-/** The search a session's page takes: where it was opened from, and for what. */
+/** The sessions list's filter in its URL: this month unless it says otherwise. */
+export const sessionsUrl = filterUrl(SESSION_FACETS, () => monthKey(new Date()));
+
+/** The search a session's page takes: the list it steps through, where it was opened from, and for what. */
 export function validateSessionSearch(search: Record<string, unknown>): SessionSearch {
-  return { from: oneOf(search.from, ["home"] as const), settle: textParam(search.settle) };
+  return { ...sessionsUrl.validate(search), from: oneOf(search.from, ["home"] as const), settle: textParam(search.settle) };
+}
+
+/** Where a session sits in the sessions list: by its start. */
+export function sessionPlace(session: SessionView): Place {
+  return { at: Date.parse(session.start), id: session.id };
 }
 
 /** What the sessions list can be narrowed by (SESSION_FACETS). */

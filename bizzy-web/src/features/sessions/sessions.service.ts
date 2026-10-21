@@ -7,7 +7,7 @@ import type {
   SessionHit,
   SessionView,
 } from "./sessions.types";
-import type { Page } from "~/core/filter/filter.types";
+import type { Page } from "~/core/list/filter.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const SessionsService = {

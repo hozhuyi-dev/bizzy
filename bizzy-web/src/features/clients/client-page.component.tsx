@@ -3,7 +3,7 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, MessageCircleIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { totals } from "./client-activity.util";
-import { LastSeen } from "./clients.columns";
+import { LastSeen, clientLink } from "./clients.columns";
 import { feeAmountError, feeStartError, toClientFields, toClientValues } from "./clients.form";
 import { useSaveClient } from "./clients.hook";
 import { ClientsQuery } from "./clients.query";
@@ -11,15 +11,19 @@ import { ClientContact } from "./components/client-contact/client-contact.compon
 import { ClientDocuments } from "./components/client-documents/client-documents.component";
 import { ClientFollowUps } from "./components/client-follow-ups/client-follow-ups.component";
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
-import { contactProblem, toClientRow } from "./clients.util";
+import { CLIENTS_LIST } from "./clients.list";
+import { clientsListLink, clientsListSearch, contactProblem, toClientRow } from "./clients.util";
+import type { ReactNode } from "react";
 import type { ChosenContact, ClientView } from "./clients.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import type { ListFilter } from "~/core/list/filter.types";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
 import { Banner } from "~/components/shared/banner/banner.component";
+import { ListPager } from "~/components/shared/list-pager/list-pager.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
@@ -32,14 +36,22 @@ import { Input } from "~/components/ui/input";
 import { formatDate, formatHours, todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { fieldErrors } from "~/core/utils/form.util";
+import { NO_FILTER } from "~/core/list/filter.util";
 
 const FORM_ID = "client-form";
 
-const parent = { to: "/clients", label: "Clients" } as const;
-
-/** `settle`: the calendar edit it was opened to settle; once saved, back to the to-do list. */
+/**
+ * `settle`: the calendar edit it was opened to settle; once saved, back to
+ * the to-do list. `filter`: All clients or Reconnect, to step through.
+ */
 export type ClientPageProps =
-  | { mode: "edit"; id: string; settle?: string | undefined }
+  | {
+      mode: "edit";
+      id: string;
+      settle?: string | undefined;
+      filter: ListFilter;
+      onFilterChange: (filter: ListFilter) => void;
+    }
   | {
       mode: "new";
       /** Prefills, e.g. from an unmatched calendar name. */
@@ -57,14 +69,28 @@ export function ClientPage(props: ClientPageProps) {
 
   if (props.mode === "new") {
     return (
-      <ClientEditor initialName={props.initialName} settle={props.settle} />
+      <ClientEditor initialName={props.initialName} settle={props.settle} header={{ parent: clientsListLink(NO_FILTER) }} />
     );
   }
+
+  const { id, filter, onFilterChange } = props;
+  const header: ClientHeader = {
+    parent: clientsListLink(filter),
+    pager: (
+      <ListPager
+        list={CLIENTS_LIST}
+        filter={filter}
+        current={{ id }}
+        itemLink={(next) => clientLink(next, clientsListSearch(filter))}
+        panel={{ onApply: onFilterChange, listLink: clientsListLink }}
+      />
+    ),
+  };
 
   if (clients.isPending) {
     return (
       <>
-        <PageHeader parent={parent} title="…" />
+        <PageHeader {...header} title="…" />
         <Loading />
       </>
     );
@@ -73,7 +99,7 @@ export function ClientPage(props: ClientPageProps) {
   if (!client) {
     return (
       <>
-        <PageHeader parent={parent} title="Not available" />
+        <PageHeader {...header} title="Not available" />
         <p role="alert" className="text-sm text-destructive">
           {clients.error?.message ?? "This client doesn't exist, or was removed."}
         </p>
@@ -81,16 +107,23 @@ export function ClientPage(props: ClientPageProps) {
     );
   }
   // Keyed so a different client starts the form afresh.
-  return <ClientEditor key={client.id} client={client} settle={props.settle} />;
+  return <ClientEditor key={client.id} client={client} settle={props.settle} header={header} />;
+}
+
+/** The header's way back and, for a client, its pager: the same while they load. */
+interface ClientHeader {
+  parent: ReturnType<typeof clientsListLink>;
+  pager?: ReactNode;
 }
 
 interface ClientEditorProps {
   client?: ClientView | undefined;
   initialName?: string | undefined;
   settle?: string | undefined;
+  header: ClientHeader;
 }
 
-function ClientEditor({ client, initialName, settle }: ClientEditorProps) {
+function ClientEditor({ client, initialName, settle, header }: ClientEditorProps) {
   const navigate = useNavigate();
   const [contact, setContact] = useState<ChosenContact | null>(client?.contact ?? null);
   const [contactRequired, setContactRequired] = useState(false);
@@ -309,7 +342,7 @@ function ClientEditor({ client, initialName, settle }: ClientEditorProps) {
   return (
     <>
       <PageHeader
-        parent={parent}
+        {...header}
         title={client?.name ?? "New client"}
         actions={[
           {

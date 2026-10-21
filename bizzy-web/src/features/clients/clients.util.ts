@@ -1,10 +1,11 @@
 import { last12Months, monthsSinceLastSession, totals } from "./client-activity.util";
 import { LAPSE_FACET, LAPSE_MONTHS } from "./clients.constant";
 import type { LapseMonths } from "./clients.constant";
-import type { ChosenContact, ClientRow, ClientView } from "./clients.types";
+import type { ChosenContact, ClientRow, ClientView, ClientsListSearch } from "./clients.types";
 import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactDetails, ContactView } from "~/features/contacts/contacts.types";
-import type { Facet, ListFilter } from "~/core/filter/filter.types";
+import type { Facet, ListFilter } from "~/core/list/filter.types";
+import { oneOf, textParam } from "~/core/utils/search.util";
 
 /** The client an item is for, when it has one and it still exists. */
 export function clientOf(clientsById: ReadonlyMap<string, ClientView>, clientId: string | undefined): ClientView | undefined {
@@ -51,10 +52,43 @@ export function lapseFacet(): Facet {
   };
 }
 
+/** What the clients lists can be narrowed by besides words, made once: its options never change. */
+export const CLIENT_FACETS: ReadonlyArray<Facet> = [lapseFacet()];
+
 /** The lapse a filter's chip asks for, if any: the list is Reconnect then. */
 export function lapseOf(filter: ListFilter): LapseMonths | undefined {
   const lapse = filter.chips[LAPSE_FACET]?.[0];
   return LAPSE_MONTHS.find((months) => months === lapse);
+}
+
+/** The list a client's page steps through, from its URL: the words, and the lapse of Reconnect. */
+export function validateClientsListSearch(search: Record<string, unknown>): ClientsListSearch {
+  // Numbers in the URL parse as numbers.
+  return { q: textParam(search.q), lapse: oneOf(String(search.lapse), LAPSE_MONTHS) };
+}
+
+/** The clients list's filter as a client's page keeps it. */
+export function clientsListSearch(filter: ListFilter): ClientsListSearch {
+  return { q: filter.text.trim() || undefined, lapse: lapseOf(filter) };
+}
+
+/** The filter a client's page keeps: All clients, or Reconnect with its lapse. */
+export function clientsListFilter(search: ClientsListSearch): ListFilter {
+  return { text: search.q ?? "", when: undefined, chips: search.lapse ? { [LAPSE_FACET]: [search.lapse] } : {} };
+}
+
+/**
+ * Where a clients filter is, and its name: Reconnect with a Last session
+ * chip (so the nav shows it), All clients without.
+ */
+export function clientsListLink(filter: ListFilter) {
+  const lapse = lapseOf(filter);
+  const q = filter.text.trim() || undefined;
+  if (lapse) {
+    const search = { q, lapse: lapse === LAPSE_MONTHS[0] ? undefined : lapse };
+    return { to: "/clients/reconnect", label: "Reconnect", search } as const;
+  }
+  return { to: "/clients", label: "Clients", search: { q } } as const;
 }
 
 /** Says when the client's Google contact needs the user's attention. */

@@ -1,3 +1,4 @@
+import type { LapseMonths } from "./clients.constant";
 import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactSummaryValue } from "~/features/contacts/contacts.types";
 
@@ -86,6 +87,15 @@ export interface ClientRow {
 
 /** Everyone, or the lapsed clients worth getting back in touch with. */
 export type ClientsFilter = "all" | "reconnect";
+
+/**
+ * All clients' or Reconnect's filter, as a client's page keeps it to step
+ * through: the words, and the lapse that makes it Reconnect.
+ */
+export interface ClientsListSearch {
+  q?: string | undefined;
+  lapse?: LapseMonths | undefined;
+}
 
 /** A contact chosen for the client, with whatever details are known. */
 export interface ChosenContact extends ContactSummaryValue {

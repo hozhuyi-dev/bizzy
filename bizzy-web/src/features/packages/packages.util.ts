@@ -1,6 +1,6 @@
 import type { PackageView, PackagesFilter } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { Facet, ListFilter } from "~/core/filter/filter.types";
+import type { Facet, ListFilter } from "~/core/list/filter.types";
 import type { Payable } from "~/features/payments/payments.types";
 import { clientFacet } from "~/features/clients/clients.util";
 import { methodShortLabel } from "~/features/payments/payments.util";

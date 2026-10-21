@@ -191,3 +191,18 @@ export function toSearch<TKey extends string>(
   }
   return out as FilterSearch<TKey>;
 }
+
+/**
+ * A list's filter both ways between it and the URL, with the days the list
+ * shows unless the URL says otherwise. The list's route and its items'
+ * routes share it, so an item's page steps through the list it came from.
+ */
+export function filterUrl<TKey extends string>(facets: ReadonlyArray<TKey>, defaultWhen?: () => When) {
+  return {
+    validate: (search: Record<string, unknown>): FilterSearch<TKey> => filterSearch(search, facets),
+    toFilter: (search: FilterSearch<TKey>): ListFilter => toFilter(search, facets, defaultWhen?.()),
+    toSearch: (filter: ListFilter): FilterSearch<TKey> => toSearch(filter, facets, defaultWhen?.()),
+  };
+}
+
+export type FilterUrl<TKey extends string> = ReturnType<typeof filterUrl<TKey>>;

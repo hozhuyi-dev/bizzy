@@ -1,5 +1,5 @@
 import { applySuggestion, chipsOf, removeChip, suggest } from "./filter-bar.util";
-import type { Facet, ListFilter } from "~/core/filter/filter.types";
+import type { Facet, ListFilter } from "~/core/list/filter.types";
 
 const now = new Date(2026, 9, 20, 10);
 

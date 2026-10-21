@@ -1,7 +1,7 @@
 import { PaperclipIcon } from "lucide-react";
 import { linesCategories, linesSummary } from "./expenses.util";
 import type { LinkOptions } from "@tanstack/react-router";
-import type { CatalogueView, ExpenseView } from "./expenses.types";
+import type { CatalogueView, ExpenseView, ExpensesSearch } from "./expenses.types";
 import { Badge } from "~/components/ui/badge";
 import { CellEmpty, CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
@@ -23,12 +23,13 @@ function ExpenseReceipt({ expense }: { expense: ExpenseView }) {
   );
 }
 
-function ExpenseLink({ expense }: { expense: ExpenseView }) {
-  return <RowLink {...expenseLink(expense)}>{formatDate(expense.date)}</RowLink>;
+function ExpenseLink({ expense, search }: { expense: ExpenseView; search: ExpensesSearch | undefined }) {
+  return <RowLink {...expenseLink(expense.id, search)}>{formatDate(expense.date)}</RowLink>;
 }
 
-export function expenseLink(expense: ExpenseView): LinkOptions {
-  return { to: "/expenses/$id", params: { id: expense.id } };
+/** The expense's page, with the list it steps through. */
+export function expenseLink(id: string, search?: ExpensesSearch): LinkOptions {
+  return { to: "/expenses/$id", params: { id }, search: search ?? {} };
 }
 
 /** "Supplies · bought for the clinic": the categories and the notes, under what was bought. */
@@ -37,7 +38,13 @@ function aboutText(expense: ExpenseView, catalogue: CatalogueView | undefined): 
 }
 
 /** The phone layout of a row: when and where, the total, what was bought, its categories and notes. */
-export function ExpenseCard({ expense, catalogue }: { expense: ExpenseView; catalogue: CatalogueView | undefined }) {
+interface ExpenseCardProps {
+  expense: ExpenseView;
+  catalogue: CatalogueView | undefined;
+  search?: ExpensesSearch | undefined;
+}
+
+export function ExpenseCard({ expense, catalogue, search }: ExpenseCardProps) {
   return (
     <DataCard
       title={
@@ -51,19 +58,20 @@ export function ExpenseCard({ expense, catalogue }: { expense: ExpenseView; cata
       meta={linesSummary(expense)}
       detail={aboutText(expense, catalogue)}
       detailTitle={expense.notes}
-      open={expenseLink(expense)}
+      open={expenseLink(expense.id, search)}
     />
   );
 }
 
 /** Columns that name categories from the catalogue, as far as it is loaded. */
-export function createExpenseColumns(catalogue: CatalogueView | undefined) {
+/** The table's columns; `search` is the list's filter, for each expense's page to step through. */
+export function createExpenseColumns(catalogue: CatalogueView | undefined, search: ExpensesSearch | undefined) {
   return helper.columns([
     helper.accessor("date", {
       header: "Date",
       sortFn: "basic",
       meta: { search: (expense: ExpenseView) => formatDate(expense.date) },
-      cell: ({ row }) => <ExpenseLink expense={row.original} />,
+      cell: ({ row }) => <ExpenseLink expense={row.original} search={search} />,
     }),
     helper.accessor((expense) => expense.vendor ?? "", {
       id: "vendor",

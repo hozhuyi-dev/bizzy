@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { groupOf, matchesFilter, nextTodoSession, progressOf, withSession } from "./todo.util";
+import { groupOf, matchesFilter, progressOf, todoSessionIds, withSession } from "./todo.util";
 import type { TodoView } from "./todo.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
@@ -42,12 +42,10 @@ describe("to-do list", () => {
     expect(matchesFilter(conflict, "record")).toBe(false);
   });
 
-  test("the next session wraps round and skips follow-ups", () => {
+  test("its sessions, in order, each once, without follow-ups", () => {
     const items = [sessionItem("a", "", ["record"]), followUp, conflict, sessionItem("b", "", ["collect"])];
-    expect(nextTodoSession(items, "a")).toBe("b");
-    expect(nextTodoSession(items, "b")).toBe("a");
-    expect(nextTodoSession(items, "gone")).toBe("a");
-    expect(nextTodoSession([sessionItem("a", "", ["record"])], "a")).toBeUndefined();
+    expect(todoSessionIds(items)).toEqual(["a", "b"]);
+    expect(todoSessionIds([...items, sessionItem("a", "", ["collect"])])).toEqual(["a", "b"]);
   });
 });
 

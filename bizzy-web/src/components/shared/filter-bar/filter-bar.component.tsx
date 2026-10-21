@@ -4,11 +4,11 @@ import { cn } from "cn";
 import { applySuggestion, chipsOf, removeChip, suggest } from "./filter-bar.util";
 import type { ReactNode } from "react";
 import type { Suggestion } from "./filter-bar.util";
-import type { Facet, ListFilter } from "~/core/filter/filter.types";
+import type { Facet, ListFilter } from "~/core/list/filter.types";
 import { useQuip } from "~/components/shared/quip/quip.hook";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import { formatWhen, stepWhen, whenDays } from "~/core/filter/filter.util";
+import { formatWhen, stepWhen, whenDays } from "~/core/list/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 /** How long typing pauses before the words are searched. */
@@ -23,6 +23,10 @@ interface FilterBarProps {
   facets?: ReadonlyArray<Facet> | undefined;
   /** Offers days to filter by: typed ("oct", "last month") or picked. */
   dates?: boolean | undefined;
+  /** The chips under the box at every width, for a narrow panel. */
+  stacked?: boolean | undefined;
+  /** How long typing pauses before the words go up; 0 for a draft that is applied later. */
+  textDelay?: number | undefined;
   className?: string | undefined;
 }
 
@@ -37,7 +41,16 @@ interface FilterBarProps {
  * (so only the first one moves the list, and only once). The newest chip
  * scrolls into view; Clear all stays put at the end.
  */
-export function FilterBar({ value, onChange, label, facets = [], dates = false, className }: FilterBarProps) {
+export function FilterBar({
+  value,
+  onChange,
+  label,
+  facets = [],
+  dates = false,
+  stacked = false,
+  textDelay = TEXT_DELAY,
+  className,
+}: FilterBarProps) {
   const placeholder = useQuip(QUIPS.searchPlaceholder);
   const listId = useId();
   const container = useRef<HTMLDivElement>(null);
@@ -62,9 +75,9 @@ export function FilterBar({ value, onChange, label, facets = [], dates = false, 
   const sendLater = useEffectEvent(sendText);
   useEffect(() => {
     if (draft === value.text) return;
-    const timer = setTimeout(() => sendLater(draft), TEXT_DELAY);
+    const timer = setTimeout(() => sendLater(draft), textDelay);
     return () => clearTimeout(timer);
-  }, [draft, value.text]);
+  }, [draft, value.text, textDelay]);
 
   const groups = useMemo(() => suggest(draft, value, facets, dates), [draft, value, facets, dates]);
   const options = groups.flatMap((group) => group.items);
@@ -103,12 +116,12 @@ export function FilterBar({ value, onChange, label, facets = [], dates = false, 
   return (
     <div
       ref={container}
-      className={cn("relative flex w-full flex-col gap-2 sm:flex-row sm:items-center", className)}
+      className={cn("relative flex w-full flex-col gap-2", !stacked && "sm:flex-row sm:items-center", className)}
       onBlur={(event) => {
         if (!container.current?.contains(event.relatedTarget)) close();
       }}
     >
-      <div className="relative sm:w-80 sm:shrink-0">
+      <div className={cn("relative", !stacked && "sm:w-80 sm:shrink-0")}>
         <SearchIcon
           aria-hidden="true"
           className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
@@ -233,7 +246,7 @@ export function FilterBar({ value, onChange, label, facets = [], dates = false, 
       </div>
 
       {chipCount > 0 && (
-        <div className="flex min-w-0 items-center gap-1.5 sm:flex-1">
+        <div className={cn("flex min-w-0 items-center gap-1.5", !stacked && "sm:flex-1")}>
           <div
             ref={scroller}
             className="-my-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"

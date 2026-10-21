@@ -1,6 +1,6 @@
-import type { Facet, ListFilter, When } from "~/core/filter/filter.types";
+import type { Facet, ListFilter, When } from "~/core/list/filter.types";
 import { searchItems, toFields } from "~/components/shared/data-table/data-table-search.util";
-import { formatWhen, parseWhen, presetWhens } from "~/core/filter/filter.util";
+import { formatWhen, parseWhen, presetWhens } from "~/core/list/filter.util";
 
 /** What the dropdown offers: a chip, some days, or picking days. */
 export type Suggestion =

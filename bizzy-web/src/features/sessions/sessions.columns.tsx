@@ -2,7 +2,7 @@ import { CheckIcon } from "lucide-react";
 import { allSessionDocuments, coverText, lengthAndPlace, recordText, sessionAmount, stageBadges } from "./session-stage.util";
 import { SESSION_PLACES } from "./sessions.constant";
 import type { LinkOptions } from "@tanstack/react-router";
-import type { SessionHit, SessionReturnTo, SessionView } from "./sessions.types";
+import type { SessionHit, SessionSearch, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
@@ -18,8 +18,8 @@ import { formatSessionTime } from "~/core/utils/date.util";
 import { clientOf } from "~/features/clients/clients.util";
 
 export interface SessionHandlers {
-  /** Where the table is, for the session page to go back to. */
-  from?: SessionReturnTo | undefined;
+  /** Where the table is and what it shows, for the session page to step through and go back to. */
+  search?: SessionSearch | undefined;
   clientsById: ReadonlyMap<string, ClientView>;
   packagesById: ReadonlyMap<string, PackageView>;
   onConfirm: (session: SessionView) => void;
@@ -28,8 +28,8 @@ export interface SessionHandlers {
 const helper = createDataTableColumnHelper<SessionHit>();
 
 /** The session's page, remembering where the list is to go back to. */
-export function sessionLink(session: SessionView, from: SessionReturnTo | undefined): LinkOptions {
-  return { to: "/sessions/$id", params: { id: session.id }, search: { from } };
+export function sessionLink(id: string, search: SessionSearch | undefined): LinkOptions {
+  return { to: "/sessions/$id", params: { id }, search: search ?? {} };
 }
 
 function clientNameOf(session: SessionView, handlers: SessionHandlers): string {
@@ -130,7 +130,7 @@ export function SessionCard({ session, handlers }: { session: SessionHit; handle
       detail={session.excerpt ? <span className="italic">{session.excerpt}</span> : session.record.summary}
       detailTitle={session.excerpt ?? (session.record.summary || undefined)}
       actions={sessionActions(session, handlers)}
-      open={sessionLink(session, handlers.from)}
+      open={sessionLink(session.id, handlers.search)}
     />
   );
 }
@@ -146,7 +146,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
       // The way into the session by keyboard; the whole row opens it too.
       cell: ({ row }) => (
         <CellText sub={lengthAndPlace(row.original)}>
-          <RowLink {...sessionLink(row.original, handlers.from)} className="font-normal">
+          <RowLink {...sessionLink(row.original.id, handlers.search)} className="font-normal">
             {formatSessionTime(row.original.start)}
           </RowLink>
         </CellText>

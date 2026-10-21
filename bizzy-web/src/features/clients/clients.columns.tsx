@@ -1,7 +1,7 @@
 import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
 import { contactProblem, extraAliases } from "./clients.util";
 import type { LinkOptions } from "@tanstack/react-router";
-import type { ClientRow, ClientView } from "./clients.types";
+import type { ClientRow, ClientView, ClientsFilter, ClientsListSearch } from "./clients.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { RowActionSet } from "~/components/shared/row-actions/row-actions.component";
 import { whatsappNumber } from "~/features/whatsapp/whatsapp.util";
@@ -46,12 +46,18 @@ function ClientNote({ client }: { client: ClientView }) {
   return aliases.length > 0 ? `Also ${aliases.join(", ")}` : undefined;
 }
 
-export function clientLink(client: ClientView): LinkOptions {
-  return { to: "/clients/$id", params: { id: client.id } };
+/** The client's page, with the list it steps through. */
+export function clientLink(id: string, search?: ClientsListSearch): LinkOptions {
+  return { to: "/clients/$id", params: { id }, search: search ?? {} };
 }
 
-function ClientLink({ client }: { client: ClientView }) {
-  return <RowLink {...clientLink(client)}>{client.name}</RowLink>;
+function ClientLink({ client, search }: { client: ClientView; search: ClientsListSearch | undefined }) {
+  return <RowLink {...clientLink(client.id, search)}>{client.name}</RowLink>;
+}
+
+/** How a view sorts until she picks a column: lapsed clients are worked through most valuable first. */
+export function clientSorting(view: ClientsFilter) {
+  return view === "reconnect" ? [{ id: "lifetimeCents", desc: true }] : [{ id: "name", desc: false }];
 }
 
 interface ClientActions {
@@ -74,7 +80,7 @@ export function clientActions(client: ClientView, { onWhatsApp, onContacted, onR
 }
 
 /** The phone layout of a table row: the same fields and actions. */
-export function ClientCard({ row, ...handlers }: { row: ClientRow } & ClientActions) {
+export function ClientCard({ row, search, ...handlers }: { row: ClientRow; search?: ClientsListSearch | undefined } & ClientActions) {
   const { client } = row;
   const problem = contactProblem(client);
   const since = sinceText(row);
@@ -94,12 +100,13 @@ export function ClientCard({ row, ...handlers }: { row: ClientRow } & ClientActi
       }
       detail={`${formatCents(row.revenue12Cents)} in 12 months (${row.sessions12}×) · ${formatCents(row.lifetimeCents)} in all`}
       {...clientActions(client, handlers)}
-      open={clientLink(client)}
+      open={clientLink(client.id, search)}
     />
   );
 }
 
-export function createClientColumns(handlers: ClientActions) {
+/** The table's columns; `search` is the list's filter, for each client's page to step through. */
+export function createClientColumns(handlers: ClientActions, search?: ClientsListSearch) {
   return helper.columns([
     helper.accessor((row) => row.client.name, {
       id: "name",
@@ -111,7 +118,7 @@ export function createClientColumns(handlers: ClientActions) {
       },
       cell: ({ row }) => (
         <CellText sub={<ClientNote client={row.original.client} />}>
-          <ClientLink client={row.original.client} />
+          <ClientLink client={row.original.client} search={search} />
         </CellText>
       ),
     }),

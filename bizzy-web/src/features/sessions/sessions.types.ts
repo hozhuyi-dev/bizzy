@@ -1,7 +1,8 @@
 import type { DocumentRef, DocumentSource } from "~/features/documents/documents.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { Paid } from "~/features/payments/payments.types";
-import type { ListRequest } from "~/core/filter/filter.types";
+import type { SESSION_FACETS } from "./sessions.constant";
+import type { FilterSearch, ListRequest } from "~/core/list/filter.types";
 import type { Verdict } from "~/core/lambda/lambda.types";
 
 // Mirrors bizzy-lambda/internal/features/sessions/api.go.
@@ -155,7 +156,11 @@ export interface SessionDraft {
 /** Where a session was opened from, to go back there. */
 export type SessionReturnTo = "home";
 
-export interface SessionSearch {
+/** The sessions list's filter, as its URL keeps it. */
+export type SessionsSearch = FilterSearch<(typeof SESSION_FACETS)[number]>;
+
+/** A session page's search: the list it steps through, and where it was opened from. */
+export interface SessionSearch extends SessionsSearch {
   /** Where to go back to once saved. */
   from?: SessionReturnTo | undefined;
   /** The calendar edit it was opened to settle: once its booking is saved, back to the to-do list. */

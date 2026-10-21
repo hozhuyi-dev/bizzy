@@ -2,9 +2,9 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
 import { searchSessionsRequest } from "./sessions.util";
 import type { PreviewSessionRequest } from "./sessions.types";
-import type { ListFilter } from "~/core/filter/filter.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import { SessionKeys } from "~/core/constants/query-keys.constant";
-import { usePages } from "~/core/filter/filter.hook";
+import { usePages } from "~/core/list/filter.hook";
 
 export const SessionsQuery = {
   /**

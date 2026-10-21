@@ -1,5 +1,5 @@
 import type { CreateFollowUpRequest, FollowUpFields, FollowUpView, SearchFollowUpsRequest } from "./follow-ups.types";
-import type { Page } from "~/core/filter/filter.types";
+import type { Page } from "~/core/list/filter.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const FollowUpsService = {

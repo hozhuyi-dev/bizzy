@@ -2,13 +2,13 @@ import { useCallback, useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
-import { isLapsed } from "./client-activity.util";
-import { ClientCard, clientLink, createClientColumns } from "./clients.columns";
+import { ClientCard, clientLink, clientSorting, createClientColumns } from "./clients.columns";
+import { useClientRows } from "./clients.hook";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
-import { lapseFacet, lapseOf, toClientRow } from "./clients.util";
-import type { ClientRow, ClientView, ClientsFilter } from "./clients.types";
-import type { ListFilter } from "~/core/filter/filter.types";
+import { CLIENT_FACETS, clientsListSearch, lapseOf } from "./clients.util";
+import type { ClientRow, ClientView, ClientsFilter, ClientsListSearch } from "./clients.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
@@ -21,9 +21,6 @@ import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { toastWithQuip } from "~/components/shared/quip/quip-toast";
-
-// One facet, made once: its options never change.
-const FACETS = [lapseFacet()];
 
 interface ClientsPageProps {
   /** Words, and the Last session chip that makes the list Reconnect. */
@@ -38,22 +35,18 @@ interface ClientsPageProps {
  */
 export function ClientsPage({ filter, onFilterChange }: ClientsPageProps) {
   const clients = ClientsQuery.useList();
-  const activityByClient = ActivityQuery.useByClient();
+  const rows = useClientRows(filter);
   const lapse = lapseOf(filter);
   const view: ClientsFilter = lapse ? "reconnect" : "all";
-
-  const rows = useMemo(() => {
-    const now = new Date();
-    const all = (clients.data ?? []).map((client) => toClientRow(client, activityByClient.get(client.id), now));
-    return lapse ? all.filter((row) => isLapsed(row.client, row.activity, Number(lapse), now)) : all;
-  }, [clients.data, activityByClient, lapse]);
+  // Each client's page steps through this list.
+  const search = useMemo(() => clientsListSearch(filter), [filter]);
 
   return (
     <>
       <PageHeader
         title={lapse ? "Reconnect" : "All clients"}
         actions={[{ type: "link", label: "New client", icon: PlusIcon, style: "primary", link: { to: "/clients/new" } }]}
-        toolbar={<FilterBar label="Search clients" value={filter} onChange={onFilterChange} facets={FACETS} />}
+        toolbar={<FilterBar label="Search clients" value={filter} onChange={onFilterChange} facets={CLIENT_FACETS} />}
       />
 
       {queryMatch(clients, {
@@ -64,7 +57,7 @@ export function ClientsPage({ filter, onFilterChange }: ClientsPageProps) {
           </p>
         ),
         // Keyed by view: each view starts from its own sort order.
-        success: () => <ClientsTable key={view} view={view} rows={rows} search={filter.text} />,
+        success: () => <ClientsTable key={view} view={view} rows={rows} query={filter.text} search={search} />,
       })}
     </>
   );
@@ -73,10 +66,12 @@ export function ClientsPage({ filter, onFilterChange }: ClientsPageProps) {
 interface ClientsTableProps {
   view: ClientsFilter;
   rows: Array<ClientRow>;
-  search: string;
+  /** The words searched in the table. */
+  query: string;
+  search: ClientsListSearch;
 }
 
-function ClientsTable({ view, rows, search }: ClientsTableProps) {
+function ClientsTable({ view, rows, query, search }: ClientsTableProps) {
   const { mutate: mark } = ClientsMutation.useMarkContacted();
   const reconnect = view === "reconnect";
   const [remind, setRemind] = useState<FollowUpTarget | null>(null);
@@ -106,25 +101,22 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
     () => (reconnect ? { onWhatsApp, onContacted, onRemind } : { onWhatsApp }),
     [onWhatsApp, onContacted, onRemind, reconnect],
   );
-  const columns = useMemo(() => createClientColumns(handlers), [handlers]);
+  const columns = useMemo(() => createClientColumns(handlers, search), [handlers, search]);
 
   const table = useTable({
     features: dataTableFeatures,
     columns,
     data: rows,
     getRowId: (row) => row.client.id,
-    // Lapsed clients are worked through most valuable first.
-    initialState: {
-      sorting: reconnect ? [{ id: "lifetimeCents", desc: true }] : [{ id: "name", desc: false }],
-    },
+    initialState: { sorting: clientSorting(view) },
   });
 
   return (
     <>
       <DataTable
         table={table}
-        query={search}
-        rowLink={(row) => clientLink(row.client)}
+        query={query}
+        rowLink={(row) => clientLink(row.client.id, search)}
         empty={
           reconnect ? (
             <EmptyState quips={QUIPS.clientsReconnect}>Nobody to get back in touch with right now.</EmptyState>
@@ -132,7 +124,7 @@ function ClientsTable({ view, rows, search }: ClientsTableProps) {
             <EmptyState quips={QUIPS.clients}>No clients yet. Add one, or link an unmatched calendar entry.</EmptyState>
           )
         }
-        renderCard={(row) => <ClientCard row={row.original} {...handlers} />}
+        renderCard={(row) => <ClientCard row={row.original} search={search} {...handlers} />}
       />
       <FollowUpDialog target={remind} onClose={() => setRemind(null)} />
     </>

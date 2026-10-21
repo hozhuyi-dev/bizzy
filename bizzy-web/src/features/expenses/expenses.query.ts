@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { ExpensesService } from "./expenses.service";
 import { searchExpensesRequest, yearRange } from "./expenses.util";
-import type { ListFilter } from "~/core/filter/filter.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import { ExpenseKeys } from "~/core/constants/query-keys.constant";
-import { usePages } from "~/core/filter/filter.hook";
+import { usePages } from "~/core/list/filter.hook";
 
 export const ExpensesQuery = {
   /** One calendar year's expenses, oldest first. */

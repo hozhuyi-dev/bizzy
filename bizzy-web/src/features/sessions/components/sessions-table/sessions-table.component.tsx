@@ -4,7 +4,7 @@ import { SessionCard, createSessionColumns, sessionLink } from "../../sessions.c
 import { useConfirmBooking } from "../../sessions-booking.hook";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
-import type { SessionHit, SessionReturnTo } from "../../sessions.types";
+import type { SessionHit, SessionSearch } from "../../sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
@@ -17,14 +17,15 @@ interface SessionsTableProps {
   /** Shown when there are no sessions; usually an EmptyState. */
   empty: ReactNode;
   /** Where the table is, for a session's page to go back to. */
-  from?: SessionReturnTo | undefined;
+  /** The session page's search: the list it steps through. */
+  search?: SessionSearch | undefined;
 }
 
 /**
  * Sessions with the quick fix the user can make to them: confirm. Each
  * links to its page, where everything else is.
  */
-export function SessionsTable({ sessions, empty, from }: SessionsTableProps) {
+export function SessionsTable({ sessions, empty, search }: SessionsTableProps) {
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   const booking = useConfirmBooking();
@@ -37,12 +38,12 @@ export function SessionsTable({ sessions, empty, from }: SessionsTableProps) {
 
   const handlers = useMemo<SessionHandlers>(
     () => ({
-      from,
+      search,
       clientsById,
       packagesById,
       onConfirm: (session) => void confirm(session.id).catch(toastRefusal),
     }),
-    [from, clientsById, packagesById, confirm],
+    [search, clientsById, packagesById, confirm],
   );
 
   const columns = useMemo(() => createSessionColumns(handlers), [handlers]);
@@ -61,7 +62,7 @@ export function SessionsTable({ sessions, empty, from }: SessionsTableProps) {
     <DataTable
       table={table}
       empty={empty}
-      rowLink={(session) => sessionLink(session, from)}
+      rowLink={(session) => sessionLink(session.id, search)}
       renderCard={(row) => <SessionCard session={row.original} handlers={handlers} />}
     />
   );

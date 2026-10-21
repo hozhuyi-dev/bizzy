@@ -1,10 +1,27 @@
-import { DOCUMENT_STATUS, DOCUMENT_TYPES } from "./documents.constant";
-import type { DocumentLink, DocumentRef, DocumentStatus, DocumentType, SearchDocumentsRequest } from "./documents.types";
+import { DOCUMENT_FACETS, DOCUMENT_STATUS, DOCUMENT_TYPES } from "./documents.constant";
+import type {
+  DocumentLink,
+  DocumentRef,
+  DocumentStatus,
+  DocumentSummary,
+  DocumentType,
+  SearchDocumentsRequest,
+} from "./documents.types";
 import type { Paid } from "~/features/payments/payments.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { Facet, ListFilter } from "~/core/filter/filter.types";
+import type { Facet, ListFilter } from "~/core/list/filter.types";
+import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
-import { listRequest } from "~/core/filter/filter.util";
+import { filterUrl, listRequest } from "~/core/list/filter.util";
+import { monthKey } from "~/core/utils/date.util";
+
+/** The invoices and receipts lists' filter in their URLs: this month unless it says otherwise. */
+export const documentsUrl = filterUrl(DOCUMENT_FACETS, () => monthKey(new Date()));
+
+/** Where a document sits in its list: by its date; a draft without one, last. */
+export function documentPlace(doc: DocumentSummary): Place {
+  return { at: doc.date ? Date.parse(doc.date) : -Infinity, id: doc.id };
+}
 
 /** The route of one document's page. */
 export function documentRoute(type: DocumentType) {

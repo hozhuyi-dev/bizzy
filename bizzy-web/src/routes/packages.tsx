@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { ListFilter } from "~/core/filter/filter.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import { PackagesPage } from "~/features/packages/packages-page.component";
 import { packagesView } from "~/features/packages/packages.util";
 import { oneOf, textParam } from "~/core/utils/search.util";

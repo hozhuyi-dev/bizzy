@@ -5,7 +5,7 @@ import type {
   SearchDocumentsRequest,
   SharedDocumentView,
 } from "./documents.types";
-import type { Page } from "~/core/filter/filter.types";
+import type { Page } from "~/core/list/filter.types";
 import type { ApiResponse } from "~/core/lambda/lambda.types";
 import { ApiError, invoke } from "~/core/lambda/lambda.client";
 

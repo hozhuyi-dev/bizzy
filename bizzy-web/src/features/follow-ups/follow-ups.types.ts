@@ -1,4 +1,4 @@
-import type { ListRequest } from "~/core/filter/filter.types";
+import type { ListRequest } from "~/core/list/filter.types";
 
 // Mirrors bizzy-lambda/internal/features/followups/api.go.
 

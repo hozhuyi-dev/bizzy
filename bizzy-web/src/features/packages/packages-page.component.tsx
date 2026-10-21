@@ -10,7 +10,7 @@ import { PackagesMutation } from "./packages.mutation";
 import { PackagesQuery } from "./packages.query";
 import type { PackageHandlers } from "./packages.columns";
 import type { PackageView } from "./packages.types";
-import type { ListFilter } from "~/core/filter/filter.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";

@@ -5,7 +5,7 @@ import { FollowUpDialog } from "./components/follow-up-dialog/follow-up-dialog.c
 import { FollowUpsTable } from "./components/follow-ups-table/follow-ups-table.component";
 import { FollowUpsQuery } from "./follow-ups.query";
 import type { FollowUpList, FollowUpTarget, FollowUpView } from "./follow-ups.types";
-import type { ListFilter } from "~/core/filter/filter.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { clientFacet } from "~/features/clients/clients.util";
 import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
@@ -13,7 +13,7 @@ import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
 import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { isNarrowed, pageItems } from "~/core/filter/filter.util";
+import { isNarrowed, pageItems } from "~/core/list/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 interface FollowUpsPageProps {

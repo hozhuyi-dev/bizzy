@@ -1,11 +1,14 @@
+import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { LAPSE_MONTHS } from "./clients.constant";
+import { isLapsed } from "./client-activity.util";
 import { feesChanged } from "./clients.form";
 import { ClientsMutation } from "./clients.mutation";
-import { lapseOf } from "./clients.util";
-import type { ClientFields, ClientView } from "./clients.types";
-import type { ListFilter } from "~/core/filter/filter.types";
+import { ClientsQuery } from "./clients.query";
+import { clientsListLink, lapseOf, toClientRow } from "./clients.util";
+import type { ClientFields, ClientRow, ClientView } from "./clients.types";
+import type { ListFilter } from "~/core/list/filter.types";
+import { ActivityQuery } from "~/features/activity/activity.query";
 import { toastWithQuip } from "~/components/shared/quip/quip-toast";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -53,14 +56,20 @@ export function useSaveClient(
  */
 export function useClientsNavigate(filter: ListFilter): (next: ListFilter) => void {
   const navigate = useNavigate();
-  return (next) => {
-    const lapse = lapseOf(next);
-    const q = next.text.trim() || undefined;
-    const replace = next.text !== filter.text;
-    if (lapse) {
-      void navigate({ to: "/clients/reconnect", search: { q, lapse: lapse === LAPSE_MONTHS[0] ? undefined : lapse }, replace });
-    } else {
-      void navigate({ to: "/clients", search: { q }, replace });
-    }
-  };
+  return (next) => void navigate({ ...clientsListLink(next), replace: next.text !== filter.text });
+}
+
+/**
+ * The clients a filter's Last session chip keeps, with their activity:
+ * every client without one. The words are searched by the table.
+ */
+export function useClientRows(filter: ListFilter): Array<ClientRow> {
+  const clients = ClientsQuery.useList();
+  const activityByClient = ActivityQuery.useByClient();
+  const lapse = lapseOf(filter);
+  return useMemo(() => {
+    const now = new Date();
+    const all = (clients.data ?? []).map((client) => toClientRow(client, activityByClient.get(client.id), now));
+    return lapse ? all.filter((row) => isLapsed(row.client, row.activity, Number(lapse), now)) : all;
+  }, [clients.data, activityByClient, lapse]);
 }

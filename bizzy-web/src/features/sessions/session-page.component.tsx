@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRightIcon, CalendarX2Icon, CircleAlertIcon, LockIcon, Trash2Icon } from "lucide-react";
+import { CalendarX2Icon, CircleAlertIcon, LockIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { useBookingSave } from "./sessions-booking.hook";
 import { BookingForm } from "./components/booking-form/booking-form.component";
 import { bookingStep } from "./components/booking-step/booking-step.component";
+import { SessionPager } from "./components/session-pager/session-pager.component";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
 import { documentsStep } from "./components/documents-step/documents-step.component";
 import { followUpsStep } from "./components/follow-ups-step/follow-ups-step.component";
@@ -16,13 +17,16 @@ import { recordStep } from "./components/record-step/record-step.component";
 import { allSessionDocuments, boughtIn, coveringCredits } from "./session-stage.util";
 import { newSessionDraft } from "./sessions.form";
 import { useSessionMessageActions } from "./sessions.hook";
+import { sessionsUrl } from "./sessions.util";
 import { SessionsQuery } from "./sessions.query";
+import type { ReactNode } from "react";
 import type { PipelineStep } from "./components/pipeline-layout/pipeline-layout.component";
 import type { SessionDraft, SessionFullView, SessionReturnTo } from "./sessions.types";
 import type { DocumentLink } from "~/features/documents/documents.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ConflictActions } from "~/features/conflicts/components/conflict-actions/conflict-actions.component";
 import { ConflictsQuery } from "~/features/conflicts/conflicts.query";
@@ -31,8 +35,6 @@ import { conflictKind } from "~/features/conflicts/conflicts.util";
 import { documentRoute, refLabel } from "~/features/documents/documents.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { TodoQuery } from "~/features/todo/todo.query";
-import { nextTodoSession } from "~/features/todo/todo.util";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
@@ -45,12 +47,24 @@ import { QUIPS } from "~/core/constants/quips.constant";
 
 export type SessionPageProps = { returnTo?: SessionReturnTo | undefined } & (
   | { mode: "new" }
-  /** `settle`: the calendar edit it was opened to settle, by changing its booking. */
-  | { mode: "edit"; id: string; settle?: string | undefined }
+  /**
+   * `settle`: the calendar edit it was opened to settle, by changing its
+   * booking. `filter`: the sessions list it steps through (unless opened
+   * from Home, which steps through the to-do list).
+   */
+  | {
+      mode: "edit";
+      id: string;
+      settle?: string | undefined;
+      filter: ListFilter;
+      onFilterChange: (filter: ListFilter) => void;
+    }
 );
 
-function parentOf(returnTo: SessionReturnTo | undefined) {
-  return returnTo === "home" ? ({ to: "/", label: "Home" } as const) : ({ to: "/sessions", label: "Sessions" } as const);
+/** Home, or the sessions list with the filter it was left at. */
+function parentOf(returnTo: SessionReturnTo | undefined, filter?: ListFilter) {
+  if (returnTo === "home") return { to: "/", label: "Home" } as const;
+  return { to: "/sessions", label: "Sessions", search: filter ? sessionsUrl.toSearch(filter) : {} } as const;
 }
 
 /**
@@ -60,7 +74,7 @@ function parentOf(returnTo: SessionReturnTo | undefined) {
  */
 export function SessionPage(props: SessionPageProps) {
   if (props.mode === "new") return <NewSession returnTo={props.returnTo} />;
-  return <ExistingSession id={props.id} returnTo={props.returnTo} settle={props.settle} />;
+  return <ExistingSession {...props} />;
 }
 
 function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
@@ -101,20 +115,20 @@ function NewSession({ returnTo }: { returnTo: SessionReturnTo | undefined }) {
   );
 }
 
-interface ExistingSessionProps {
-  id: string;
-  returnTo: SessionReturnTo | undefined;
-  settle: string | undefined;
-}
+type ExistingSessionProps = Extract<SessionPageProps, { mode: "edit" }>;
 
-function ExistingSession({ id, returnTo, settle }: ExistingSessionProps) {
+function ExistingSession({ id, returnTo, settle, filter, onFilterChange }: ExistingSessionProps) {
   const detail = SessionsQuery.useDetail(id);
-  const parent = parentOf(returnTo);
+  const parent = parentOf(returnTo, filter);
+  // Steps on while the next one loads, so the header stays put.
+  const pager = (
+    <SessionPager id={id} session={detail.data} returnTo={returnTo} filter={filter} onFilterChange={onFilterChange} />
+  );
 
   if (detail.isPending) {
     return (
       <>
-        <PageHeader parent={parent} title="…" />
+        <PageHeader parent={parent} title="…" pager={pager} />
         <Loading />
       </>
     );
@@ -122,27 +136,28 @@ function ExistingSession({ id, returnTo, settle }: ExistingSessionProps) {
   if (detail.error) {
     return (
       <>
-        <PageHeader parent={parent} title="Not available" />
+        <PageHeader parent={parent} title="Not available" pager={pager} />
         <p role="alert" className="text-sm text-destructive">
           {detail.error.message}
         </p>
       </>
     );
   }
-  return <SessionPipeline session={detail.data} returnTo={returnTo} settle={settle} />;
+  return <SessionPipeline session={detail.data} returnTo={returnTo} settle={settle} filter={filter} pager={pager} />;
 }
 
 interface SessionPipelineProps {
   session: SessionFullView;
   returnTo: SessionReturnTo | undefined;
   settle: string | undefined;
+  filter: ListFilter;
+  pager: ReactNode;
 }
 
-function SessionPipeline({ session, returnTo, settle }: SessionPipelineProps) {
+function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPipelineProps) {
   const navigate = useNavigate();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
-  const todo = TodoQuery.useList();
   const record = useRecordDraft(session, session.notes);
   const conflicts = ConflictsQuery.useByTarget(session.id);
   const [deleting, setDeleting] = useState(false);
@@ -150,7 +165,7 @@ function SessionPipeline({ session, returnTo, settle }: SessionPipelineProps) {
   const [nextVisit, setNextVisit] = useState<SessionDraft | null>(null);
   const settled = useSettleReturn(settle);
 
-  const parent = parentOf(returnTo);
+  const parent = parentOf(returnTo, filter);
   const client = clientOf(clientsById, session.clientId);
   const bought = boughtIn(session, packages.data);
   const covering = coveringCredits(session, packages.data);
@@ -158,10 +173,8 @@ function SessionPipeline({ session, returnTo, settle }: SessionPipelineProps) {
   // An issued document stays as it says: an edit that would change it is
   // refused, with cancelling it as the remedy.
   const issued = documents.filter((doc) => doc.issued);
-  const next = nextTodoSession(todo.data, session.id);
   // Only after deleting it, so an open booking edit is moot.
-  const leave = () =>
-    void navigate(returnTo === "home" ? { to: "/", ignoreBlocker: true } : { to: "/sessions", ignoreBlocker: true });
+  const leave = () => void navigate({ ...parent, ignoreBlocker: true });
   const waiting = conflicts.data ?? [];
 
   const messages = useSessionMessageActions(session, client, documents);
@@ -190,20 +203,7 @@ function SessionPipeline({ session, returnTo, settle }: SessionPipelineProps) {
       <PageHeader
         parent={parent}
         title={client?.name ?? session.clientName}
-        actions={
-          next
-            ? [
-                {
-                  type: "link",
-                  label: "Next to-do",
-                  icon: ArrowRightIcon,
-                  iconAfter: true,
-                  iconOnlyOnPhone: true,
-                  link: { to: "/sessions/$id", params: { id: next }, search: { from: returnTo ?? "home" } },
-                },
-              ]
-            : undefined
-        }
+        pager={pager}
         moreActions={more}
         banners={
           (waiting.length > 0 || issued.length > 0) && (

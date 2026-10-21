@@ -3,12 +3,12 @@ import { useRouter } from "@tanstack/react-router";
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { cn } from "cn";
 import { opensRow } from "./data-table-row.util";
-import { searchItems, toFields } from "./data-table-search.util";
+import { shownRows } from "./data-table-search.util";
 import type { MouseEvent, ReactNode, RefObject } from "react";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { ReactTable, Row, RowData } from "@tanstack/react-table";
 import type { DataTableFeatures } from "./data-table.config";
-import type { DataTableColumnMeta, SearchText } from "./data-table.types";
+import type { DataTableColumnMeta } from "./data-table.types";
 import { EmptyState } from "~/components/shared/quip/quip.component";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -51,7 +51,7 @@ export function DataTable<TData extends RowData>({
   const tableElement = useRef<HTMLTableElement>(null);
   const tooWide = useTooWide(container, tableElement);
   const allRows = table.getRowModel().rows;
-  const rows = query.trim() ? searchItems(allRows, query, rowFields) : allRows;
+  const rows = shownRows(table, query);
   const emptyState =
     allRows.length > 0 ? <EmptyState quips={QUIPS.search}>No matches for “{query.trim()}”.</EmptyState> : emptyContent;
 
@@ -202,18 +202,6 @@ function SortArrow({ direction, active }: { direction: false | "asc" | "desc"; a
           : "opacity-0 group-hover/sort:opacity-40 group-focus-visible/sort:opacity-40",
       )}
     />
-  );
-}
-
-/** Each column's searchable text for a row: its search function, else its text value. */
-function rowFields<TData extends RowData>(row: Row<DataTableFeatures, TData>): Array<string> {
-  return toFields(
-    row.getAllCells().map((cell): SearchText => {
-      const search = cell.column.columnDef.meta?.search as ((row: TData) => SearchText) | undefined;
-      if (search) return search(row.original);
-      const value = cell.getValue();
-      return typeof value === "string" ? value : undefined;
-    }),
   );
 }
 

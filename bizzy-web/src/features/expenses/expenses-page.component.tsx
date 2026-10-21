@@ -4,9 +4,9 @@ import { PlusIcon } from "lucide-react";
 import { cn } from "cn";
 import { ExpenseCard, createExpenseColumns, expenseLink } from "./expenses.columns";
 import { ExpensesQuery } from "./expenses.query";
-import { expenseFacets, totalsByCategory } from "./expenses.util";
+import { expenseFacets, expensesUrl, totalsByCategory } from "./expenses.util";
 import type { ExpenseTotals } from "./expenses.types";
-import type { ListFilter, When } from "~/core/filter/filter.types";
+import type { ListFilter, When } from "~/core/list/filter.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { monthTotals } from "~/features/insights/insights-metrics.util";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
@@ -17,7 +17,7 @@ import { PageHeader } from "~/components/shared/page-header/page-header.componen
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
-import { formatWhen, isNarrowed, pageItems, whenDays } from "~/core/filter/filter.util";
+import { formatWhen, isNarrowed, pageItems, whenDays } from "~/core/list/filter.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -35,7 +35,9 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
   const expenses = ExpensesQuery.useSearch(filter);
   const catalogue = ExpensesQuery.useCatalogue();
   const facets = useMemo(() => expenseFacets(catalogue.data), [catalogue.data]);
-  const columns = useMemo(() => createExpenseColumns(catalogue.data), [catalogue.data]);
+  // Each expense's page steps through this list.
+  const search = useMemo(() => expensesUrl.toSearch(filter), [filter]);
+  const columns = useMemo(() => createExpenseColumns(catalogue.data, search), [catalogue.data, search]);
   const data = useMemo(() => pageItems(expenses.data), [expenses.data]);
   const totals = expenses.data?.pages[0]?.totals;
 
@@ -74,7 +76,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
           <div>
             <DataTable
               table={table}
-              rowLink={expenseLink}
+              rowLink={(expense) => expenseLink(expense.id, search)}
               empty={
                 isNarrowed(filter) || expenses.hasNextPage ? (
                   <EmptyState quips={QUIPS.search}>No expenses found{expenses.hasNextPage ? " yet" : ""}.</EmptyState>
@@ -84,7 +86,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
                   </EmptyState>
                 )
               }
-              renderCard={(row) => <ExpenseCard expense={row.original} catalogue={catalogue.data} />}
+              renderCard={(row) => <ExpenseCard expense={row.original} catalogue={catalogue.data} search={search} />}
             />
             <LoadMore pages={expenses} found={data.length > 0} />
           </div>

@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { FilterSearch } from "~/core/filter/filter.types";
+import type { FilterSearch } from "~/core/list/filter.types";
 import { FollowUpsPage } from "~/features/follow-ups/follow-ups-page.component";
 import { FOLLOW_UP_FACETS } from "~/features/follow-ups/follow-ups.constant";
-import { filterSearch, toFilter, toSearch } from "~/core/filter/filter.util";
+import { filterSearch, toFilter, toSearch } from "~/core/list/filter.util";
 
 export type DoneFollowUpsSearch = FilterSearch<(typeof FOLLOW_UP_FACETS)[number]>;
 

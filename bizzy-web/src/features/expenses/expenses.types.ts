@@ -1,6 +1,10 @@
-import type { ListRequest, Page } from "~/core/filter/filter.types";
+import type { EXPENSE_FACETS } from "./expenses.constant";
+import type { FilterSearch, ListRequest, Page } from "~/core/list/filter.types";
 
 // Mirrors bizzy-lambda/internal/features/expenses/api.go and expense.go.
+
+/** The expenses list's filter, as its URL keeps it; an expense's page takes it too. */
+export type ExpensesSearch = FilterSearch<(typeof EXPENSE_FACETS)[number]>;
 
 /** One item on a receipt. Name and category are the item's as the line was written. */
 export interface ExpenseLine {

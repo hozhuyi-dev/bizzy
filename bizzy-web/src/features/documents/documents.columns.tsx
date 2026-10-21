@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { DOCUMENT_STATUS } from "./documents.constant";
 import { documentLabel, documentRoute, shareUrl } from "./documents.util";
 import type { LinkOptions } from "@tanstack/react-router";
-import type { DocumentStatus, DocumentSummary } from "./documents.types";
+import type { DocumentStatus, DocumentSummary, DocumentsSearch } from "./documents.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import { Badge } from "~/components/ui/badge";
 import { CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
@@ -22,12 +22,13 @@ export function DocumentStatusBadge({ status, revising }: { status: DocumentStat
   );
 }
 
-function DocumentLink({ doc }: { doc: DocumentSummary }) {
-  return <RowLink {...documentLink(doc)}>{documentLabel(doc.number, doc.revision)}</RowLink>;
+function DocumentLink({ doc, search }: { doc: DocumentSummary; search: DocumentsSearch | undefined }) {
+  return <RowLink {...documentLink(doc, search)}>{documentLabel(doc.number, doc.revision)}</RowLink>;
 }
 
-export function documentLink(doc: DocumentSummary): LinkOptions {
-  return { to: documentRoute(doc.type), params: { id: doc.id } };
+/** The document's page, with the list it steps through. */
+export function documentLink(doc: Pick<DocumentSummary, "id" | "type">, search?: DocumentsSearch): LinkOptions {
+  return { to: documentRoute(doc.type), params: { id: doc.id }, search: search ?? {} };
 }
 
 /** A draft takes the day it is issued. */
@@ -58,52 +59,54 @@ export function documentActions(doc: DocumentSummary): Array<Action> {
 
 const helper = createDataTableColumnHelper<DocumentSummary>();
 
-export const documentColumns = helper.columns([
-  helper.accessor((doc) => doc.number ?? "", {
-    id: "number",
-    header: "No.",
-    sortFn: "alphanumeric",
-    meta: { search: (doc: DocumentSummary) => documentLabel(doc.number, doc.revision) },
-    cell: ({ row }) => <DocumentLink doc={row.original} />,
-  }),
-  helper.accessor((doc) => doc.date ?? "", {
-    id: "date",
-    header: "Date",
-    sortFn: "alphanumeric",
-    meta: { search: (doc: DocumentSummary) => (doc.date ? formatDate(doc.date) : undefined) },
-    cell: ({ row }) =>
-      row.original.date ? formatDate(row.original.date) : <span className="text-muted-foreground">{dateText(row.original)}</span>,
-  }),
-  helper.accessor("recipientName", {
-    header: "For",
-    sortFn: "alphanumeric",
-    meta: { width: "grow" },
-    cell: ({ getValue }) => <CellText title={getValue()}>{getValue()}</CellText>,
-  }),
-  helper.accessor("status", {
-    header: "Status",
-    sortFn: "alphanumeric",
-    meta: {
-      search: (doc: DocumentSummary) => [DOCUMENT_STATUS[doc.status].label, doc.revising ? "Revising" : undefined],
-    },
-    cell: ({ row }) => <DocumentStatusBadge status={row.original.status} revising={row.original.revising} />,
-  }),
-  helper.accessor("totalCents", {
-    header: "Total",
-    sortFn: "basic",
-    meta: { align: "end", search: (doc: DocumentSummary) => formatCents(doc.totalCents) },
-    cell: ({ getValue }) => formatCents(getValue()),
-  }),
-  helper.display({
-    id: "actions",
-    header: () => <span className="sr-only">Actions</span>,
-    meta: { width: "fit" },
-    cell: ({ row }) => <RowActionButtons actions={documentActions(row.original)} />,
-  }),
-]);
+/** The table's columns; `search` is the list's filter, for each document's page to step through. */
+export const createDocumentColumns = (search: DocumentsSearch | undefined) =>
+  helper.columns([
+    helper.accessor((doc) => doc.number ?? "", {
+      id: "number",
+      header: "No.",
+      sortFn: "alphanumeric",
+      meta: { search: (doc: DocumentSummary) => documentLabel(doc.number, doc.revision) },
+      cell: ({ row }) => <DocumentLink doc={row.original} search={search} />,
+    }),
+    helper.accessor((doc) => doc.date ?? "", {
+      id: "date",
+      header: "Date",
+      sortFn: "alphanumeric",
+      meta: { search: (doc: DocumentSummary) => (doc.date ? formatDate(doc.date) : undefined) },
+      cell: ({ row }) =>
+        row.original.date ? formatDate(row.original.date) : <span className="text-muted-foreground">{dateText(row.original)}</span>,
+    }),
+    helper.accessor("recipientName", {
+      header: "For",
+      sortFn: "alphanumeric",
+      meta: { width: "grow" },
+      cell: ({ getValue }) => <CellText title={getValue()}>{getValue()}</CellText>,
+    }),
+    helper.accessor("status", {
+      header: "Status",
+      sortFn: "alphanumeric",
+      meta: {
+        search: (doc: DocumentSummary) => [DOCUMENT_STATUS[doc.status].label, doc.revising ? "Revising" : undefined],
+      },
+      cell: ({ row }) => <DocumentStatusBadge status={row.original.status} revising={row.original.revising} />,
+    }),
+    helper.accessor("totalCents", {
+      header: "Total",
+      sortFn: "basic",
+      meta: { align: "end", search: (doc: DocumentSummary) => formatCents(doc.totalCents) },
+      cell: ({ getValue }) => formatCents(getValue()),
+    }),
+    helper.display({
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      meta: { width: "fit" },
+      cell: ({ row }) => <RowActionButtons actions={documentActions(row.original)} />,
+    }),
+  ]);
 
 /** The phone layout of a table row. */
-export function DocumentCard({ doc }: { doc: DocumentSummary }) {
+export function DocumentCard({ doc, search }: { doc: DocumentSummary; search?: DocumentsSearch | undefined }) {
   return (
     <DataCard
       title={
@@ -116,7 +119,7 @@ export function DocumentCard({ doc }: { doc: DocumentSummary }) {
       meta={doc.recipientName}
       detail={dateText(doc)}
       actions={documentActions(doc)}
-      open={documentLink(doc)}
+      open={documentLink(doc, search)}
     />
   );
 }

@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
 import { cn } from "cn";
-import { DocumentCard, documentColumns, documentLink } from "./documents.columns";
+import { DocumentCard, createDocumentColumns, documentLink } from "./documents.columns";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { DocumentsQuery } from "./documents.query";
-import { documentFacets } from "./documents.util";
+import { documentFacets, documentsUrl } from "./documents.util";
 import type { DocumentType } from "./documents.types";
-import type { ListFilter } from "~/core/filter/filter.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { DataTable } from "~/components/shared/data-table/data-table.component";
 import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
@@ -14,7 +14,7 @@ import { LoadMore } from "~/components/shared/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
 import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { formatWhen, isNarrowed, pageItems } from "~/core/filter/filter.util";
+import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -36,10 +36,13 @@ export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPagePro
   const facets = useMemo(() => documentFacets(clients.data ?? []), [clients.data]);
   const documents = DocumentsQuery.useSearch(type, filter);
   const data = useMemo(() => pageItems(documents.data), [documents.data]);
+  // Each document's page steps through this list.
+  const search = useMemo(() => documentsUrl.toSearch(filter), [filter]);
+  const columns = useMemo(() => createDocumentColumns(search), [search]);
 
   const table = useTable({
     features: dataTableFeatures,
-    columns: documentColumns,
+    columns,
     data,
     getRowId: (doc) => doc.id,
     // Read a page at a time, latest first: sorting a page would only sort
@@ -72,7 +75,7 @@ export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPagePro
           <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
             <DataTable
               table={table}
-              rowLink={documentLink}
+              rowLink={(doc) => documentLink(doc, search)}
               empty={
                 isNarrowed(filter) || documents.hasNextPage ? (
                   <EmptyState quips={QUIPS.search}>
@@ -87,7 +90,7 @@ export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPagePro
                   </EmptyState>
                 )
               }
-              renderCard={(row) => <DocumentCard doc={row.original} />}
+              renderCard={(row) => <DocumentCard doc={row.original} search={search} />}
             />
             <LoadMore pages={documents} found={data.length > 0} />
           </div>

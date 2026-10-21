@@ -17,16 +17,20 @@ import {
 } from "./components/document-editor/document-editor.component";
 import { useDocumentEditor } from "./components/document-editor/document-editor.hook";
 import { DocumentSheet } from "./components/document-sheet/document-sheet.component";
-import { DocumentStatusBadge } from "./documents.columns";
+import { DocumentStatusBadge, documentLink } from "./documents.columns";
 import { DocumentsMutation } from "./documents.mutation";
 import { DocumentsQuery } from "./documents.query";
-import { documentLabel, shareUrl  } from "./documents.util";
+import { documentLabel, documentPlace, documentsUrl, shareUrl } from "./documents.util";
+import { DOCUMENT_LISTS } from "./documents.list";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { useDocumentPdf } from "./documents.hook";
+import type { ReactNode } from "react";
 import type { DocumentContent, DocumentPdfProps, DocumentRevision, DocumentType, DocumentView } from "./documents.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { ListFilter } from "~/core/list/filter.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
 import { Banner } from "~/components/shared/banner/banner.component";
+import { ListPager } from "~/components/shared/list-pager/list-pager.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
@@ -50,26 +54,49 @@ import { ClientsQuery } from "~/features/clients/clients.query";
 import { useSendDocuments } from "~/features/whatsapp/whatsapp.hook";
 import { clientOf } from "~/features/clients/clients.util";
 
-/** The breadcrumb, which already says what kind of document this is. */
-function parentOf(type: DocumentType) {
+/** The breadcrumb, which already says what kind of document this is: its list, with the filter it was left at. */
+function parentOf(type: DocumentType, filter: ListFilter) {
   const spec = DOCUMENT_TYPES[type];
-  return { to: spec.path, label: spec.plural } as const;
+  return { to: spec.path, label: spec.plural, search: documentsUrl.toSearch(filter) } as const;
 }
 
-export function DocumentPage({ id, type }: { id: string; type: DocumentType }) {
+interface DocumentPageProps {
+  id: string;
+  type: DocumentType;
+  /** The list it steps through. */
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
+}
+
+export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageProps) {
   const detail = DocumentsQuery.useDetail(id);
-  const parent = parentOf(type);
+  const parent = parentOf(type, filter);
+  const header = {
+    parent,
+    pager: (
+      <ListPager
+        list={DOCUMENT_LISTS[type]}
+        filter={filter}
+        current={{ id, place: detail.data && documentPlace(detail.data) }}
+        itemLink={(next) => documentLink({ id: next, type }, documentsUrl.toSearch(filter))}
+        panel={{
+          onApply: onFilterChange,
+          listLink: (next) => ({ to: DOCUMENT_TYPES[type].path, search: documentsUrl.toSearch(next) }),
+        }}
+      />
+    ),
+  };
 
   return queryMatch(detail, {
     pending: () => (
       <>
-        <PageHeader parent={parent} title="…" />
+        <PageHeader {...header} title="…" />
         <Loading />
       </>
     ),
     error: (error) => (
       <>
-        <PageHeader parent={parent} title="Not available" />
+        <PageHeader {...header} title="Not available" />
         <p role="alert" className="text-sm text-destructive">
           {error.message}
         </p>
@@ -78,28 +105,34 @@ export function DocumentPage({ id, type }: { id: string; type: DocumentType }) {
     success: (doc) => {
       if (doc.draft) {
         // Remount on every save so the form restarts from what was stored.
-        return <DraftDocument key={detail.dataUpdatedAt} doc={doc} draft={doc.draft} revisions={doc.revisions} />;
+        return <DraftDocument key={detail.dataUpdatedAt} doc={doc} draft={doc.draft} revisions={doc.revisions} header={header} />;
       }
-      return doc.content ? <IssuedDocument doc={doc} content={doc.content} revisions={doc.revisions} /> : null;
+      return doc.content ? <IssuedDocument doc={doc} content={doc.content} revisions={doc.revisions} header={header} /> : null;
     },
   });
+}
+
+/** The header's way back and pager, the same while the document loads. */
+interface DocumentHeader {
+  parent: ReturnType<typeof parentOf>;
+  pager: ReactNode;
 }
 
 interface DraftDocumentProps {
   doc: DocumentView;
   draft: DocumentContent;
   revisions: Array<DocumentRevision>;
+  header: DocumentHeader;
 }
 
-function DraftDocument({ doc, draft, revisions }: DraftDocumentProps) {
+function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
   const editor = useDocumentEditor(doc, draft);
-  const parent = parentOf(doc.type);
   const history = revisionsSection(doc, revisions);
 
   return (
     <>
       <PageHeader
-        parent={parent}
+        {...header}
         title={documentLabel(doc.number, doc.revision)}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
         actions={[documentIssueAction(editor)]}
@@ -125,11 +158,11 @@ interface IssuedDocumentProps {
   doc: DocumentView;
   content: DocumentContent;
   revisions: Array<DocumentRevision>;
+  header: DocumentHeader;
 }
 
-function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
+function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps) {
   const history = revisionsSection(doc, revisions);
-  const parent = parentOf(doc.type);
   const revise = DocumentsMutation.useRevise();
   const [cancelling, setCancelling] = useState(false);
   const cancelled = doc.status === "cancelled";
@@ -146,7 +179,7 @@ function IssuedDocument({ doc, content, revisions }: IssuedDocumentProps) {
   return (
     <>
       <PageHeader
-        parent={parent}
+        {...header}
         title={documentLabel(doc.number, doc.revision)}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
         // An issued receipt is mostly viewed; revising is rare, so nothing

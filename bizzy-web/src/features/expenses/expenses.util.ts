@@ -1,6 +1,16 @@
+import { EXPENSE_FACETS } from "./expenses.constant";
 import type { CatalogueView, CategoryTotal, ExpenseView, SearchExpensesRequest } from "./expenses.types";
-import type { Facet, ListFilter } from "~/core/filter/filter.types";
-import { listRequest } from "~/core/filter/filter.util";
+import type { Facet, ListFilter } from "~/core/list/filter.types";
+import type { Place } from "~/core/list/pager.types";
+import { filterUrl, listRequest } from "~/core/list/filter.util";
+
+/** The expenses list's filter in its URL: this year, the tax year, unless it says otherwise. */
+export const expensesUrl = filterUrl(EXPENSE_FACETS, () => String(new Date().getFullYear()));
+
+/** Where an expense sits in the expenses list: by its day. */
+export function expensePlace(expense: ExpenseView): Place {
+  return { at: Date.parse(expense.date), id: expense.id };
+}
 
 /** A calendar year as days, both included: the tax year in Malaysia. */
 export function yearRange(year: number): { from: string; to: string } {

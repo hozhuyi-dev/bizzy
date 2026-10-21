@@ -1,8 +1,9 @@
 import { Link, useLocation } from "@tanstack/react-router";
+import { cn } from "cn";
 import { ArrowLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import type { LinkProps } from "@tanstack/react-router";
+import type { LinkOptions, LinkProps } from "@tanstack/react-router";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import { ActionBar } from "~/components/shared/action-bar/action-bar.component";
 import { Button } from "~/components/ui/button";
@@ -10,10 +11,16 @@ import { useHeight } from "~/core/scroll-spy/scroll-spy.hook";
 import { setBannersHeight } from "~/core/scroll-spy/scroll-spy.util";
 import { moduleOf } from "~/features/nav-bar/nav-bar.util";
 
+interface Parent {
+  to: NonNullable<LinkProps["to"]>;
+  label: string;
+  search?: LinkOptions["search"];
+}
+
 interface PageHeaderProps {
   title: ReactNode;
-  /** The list this page sits under, linked before the title as a breadcrumb. */
-  parent?: { to: NonNullable<LinkProps["to"]>; label: string };
+  /** The list this page sits under, linked before the title as a breadcrumb; with its filter, when it has one. */
+  parent?: Parent;
   /** Next to the title: status badges. */
   badges?: ReactNode;
   /**
@@ -21,6 +28,12 @@ interface PageHeaderProps {
    * one button, styled primary, so it fits beside the title on a phone.
    */
   actions?: ReadonlyArray<Action> | undefined;
+  /**
+   * Steps through the list the page is one of (a ListPager): last, at the
+   * edge, so it stays in one place from page to page while the actions
+   * before it come and go.
+   */
+  pager?: ReactNode;
   /** Everything else: buttons on wider screens, behind ⋯ on a phone. */
   moreActions?: ReadonlyArray<Action> | undefined;
   /**
@@ -43,9 +56,10 @@ interface PageHeaderProps {
  * actions stay in reach on long tables, with the banners under it; the
  * toolbar scrolls with the page.
  */
-export function PageHeader({ title, parent, badges, actions, moreActions, banners, toolbar }: PageHeaderProps) {
+export function PageHeader({ title, parent, badges, actions, pager, moreActions, banners, toolbar }: PageHeaderProps) {
   const { pathname } = useLocation();
   const module = parent ? undefined : moduleOf(pathname);
+  const hasActions = (actions?.length ?? 0) > 0 || (moreActions?.length ?? 0) > 0;
 
   return (
     <>
@@ -57,6 +71,9 @@ export function PageHeader({ title, parent, badges, actions, moreActions, banner
           {badges && <div className="flex shrink-0 items-center gap-1">{badges}</div>}
         </div>
         <ActionBar actions={actions} more={moreActions} />
+        {pager && (
+          <div className={cn("flex shrink-0 items-center", hasActions && "border-l pl-1.5")}>{pager}</div>
+        )}
       </header>
       {banners && <Banners>{banners}</Banners>}
       {toolbar && <div className="mb-4 flex flex-wrap items-center justify-between gap-2">{toolbar}</div>}
@@ -65,7 +82,8 @@ export function PageHeader({ title, parent, badges, actions, moreActions, banner
 }
 
 /** The way back: the list's name on wider screens, an arrow on a phone. */
-function ParentLink({ to, label }: { to: NonNullable<LinkProps["to"]>; label: string }) {
+function ParentLink({ to, label, search }: Parent) {
+  const link = { to, search } as LinkOptions;
   return (
     <>
       <Button
@@ -73,13 +91,13 @@ function ParentLink({ to, label }: { to: NonNullable<LinkProps["to"]>; label: st
         size="icon-sm"
         className="-ml-1.5 sm:hidden"
         aria-label={`Back to ${label}`}
-        render={<Link to={to} />}
+        render={<Link {...link} />}
         nativeButton={false}
       >
         <ArrowLeftIcon />
       </Button>
       <Link
-        to={to}
+        {...link}
         className="hidden shrink-0 rounded-md text-lg font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:inline"
       >
         {label}

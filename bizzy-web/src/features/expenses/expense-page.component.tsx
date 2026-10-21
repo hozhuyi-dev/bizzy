@@ -4,13 +4,18 @@ import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { EMPTY_LINE, amountError, toExpenseFields, toExpenseValues, totalOf, withName } from "./expenses.form";
+import { expenseLink } from "./expenses.columns";
+import { EXPENSES_LIST } from "./expenses.list";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
-import { vendorsOf } from "./expenses.util";
+import { expensePlace, expensesUrl, vendorsOf } from "./expenses.util";
+import type { ReactNode } from "react";
 import type { CatalogueView, ExpenseView } from "./expenses.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import type { ListFilter } from "~/core/list/filter.types";
 import { AttachmentList } from "~/features/attachments/components/attachment-list/attachment-list.component";
 import { Banner } from "~/components/shared/banner/banner.component";
+import { ListPager } from "~/components/shared/list-pager/list-pager.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
 import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
@@ -34,21 +39,52 @@ import { fieldErrors } from "~/core/utils/form.util";
 
 const FORM_ID = "expense-form";
 
-const parent = { to: "/expenses", label: "Expenses" } as const;
+/** The expenses list, with the filter it was left at. */
+function parentOf(filter: ListFilter | undefined) {
+  return { to: "/expenses", label: "Expenses", search: filter ? expensesUrl.toSearch(filter) : {} } as const;
+}
 
-export type ExpensePageProps = { mode: "new" } | { mode: "edit"; id: string };
+/** `filter`: the expenses list an expense's page steps through. */
+export type ExpensePageProps =
+  | { mode: "new" }
+  | { mode: "edit"; id: string; filter: ListFilter; onFilterChange: (filter: ListFilter) => void };
+
+/** The header's way back and, for an expense, its pager: the same while it loads. */
+interface ExpenseHeader {
+  parent: ReturnType<typeof parentOf>;
+  pager?: ReactNode;
+}
 
 /** One receipt: where and when, what was on it, and the receipt itself. */
 export function ExpensePage(props: ExpensePageProps) {
   const catalogue = ExpensesQuery.useCatalogue();
   const expense = ExpensesQuery.useDetail(props.mode === "edit" ? props.id : undefined);
 
+  const header: ExpenseHeader =
+    props.mode === "edit"
+      ? {
+          parent: parentOf(props.filter),
+          pager: (
+            <ListPager
+              list={EXPENSES_LIST}
+              filter={props.filter}
+              current={{ id: props.id, place: expense.data && expensePlace(expense.data) }}
+              itemLink={(next) => expenseLink(next, expensesUrl.toSearch(props.filter))}
+              panel={{
+                onApply: props.onFilterChange,
+                listLink: (next) => ({ to: "/expenses", search: expensesUrl.toSearch(next) }),
+              }}
+            />
+          ),
+        }
+      : { parent: parentOf(undefined) };
+
   const pending = catalogue.isPending || (props.mode === "edit" && expense.isPending);
   const error = catalogue.error ?? (props.mode === "edit" ? expense.error : null);
   if (pending || error || !catalogue.data) {
     return (
       <>
-        <PageHeader parent={parent} title={error ? "Not available" : "…"} />
+        <PageHeader {...header} title={error ? "Not available" : "…"} />
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error.message}
@@ -60,15 +96,18 @@ export function ExpensePage(props: ExpensePageProps) {
     );
   }
   const current = props.mode === "edit" ? expense.data : undefined;
-  return <ExpenseEditor key={current?.id ?? "new"} expense={current ?? undefined} catalogue={catalogue.data} />;
+  return (
+    <ExpenseEditor key={current?.id ?? "new"} expense={current ?? undefined} catalogue={catalogue.data} header={header} />
+  );
 }
 
 interface ExpenseEditorProps {
   expense: ExpenseView | undefined;
   catalogue: CatalogueView;
+  header: ExpenseHeader;
 }
 
-function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
+function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
   const create = ExpensesMutation.useCreate();
   const update = ExpensesMutation.useUpdate();
   const remove = ExpensesMutation.useDelete();
@@ -317,7 +356,7 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
   return (
     <>
       <PageHeader
-        parent={parent}
+        {...header}
         title={expense ? (expense.vendor ?? "Expense") : "New expense"}
         actions={[
           {
@@ -368,7 +407,7 @@ function ExpenseEditor({ expense, catalogue }: ExpenseEditorProps) {
                 remove.mutate(expense.id, {
                   onSuccess: () => {
                     toast.success("Expense deleted");
-                    void navigate({ to: "/expenses", ignoreBlocker: true });
+                    void navigate({ ...header.parent, ignoreBlocker: true });
                   },
                   onError: (error) => toast.error(error.message),
                   onSettled: () => setDeleting(false),

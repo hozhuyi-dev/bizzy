@@ -44,16 +44,11 @@ export function todoKey(item: TodoView): string {
 }
 
 /**
- * The session to open after this one: the next session on the to-do list,
- * wrapping round, so the user can work through it in one go.
+ * The sessions on the list, in its order, each once: what a session opened
+ * from Home steps through, so the user can work through it in one go.
  */
-export function nextTodoSession(items: ReadonlyArray<TodoView> | undefined, current: string): string | undefined {
-  const sessions = (items ?? []).flatMap((item) => (item.kind === "session" ? [item.session.id] : []));
-  const others = sessions.filter((id) => id !== current);
-  if (others.length === 0) return undefined;
-  const at = sessions.indexOf(current);
-  if (at < 0) return others[0];
-  return sessions.slice(at + 1).find((id) => id !== current) ?? others[0];
+export function todoSessionIds(items: ReadonlyArray<TodoView>): Array<string> {
+  return [...new Set(items.flatMap((item) => (item.kind === "session" ? [item.session.id] : [])))];
 }
 
 /** The list's order, as the API sends it: oldest first, then by kind. */
