@@ -5,6 +5,7 @@ import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialo
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { FollowUpsQuery } from "~/features/follow-ups/follow-ups.query";
 import { Loading } from "~/components/shared/quip/quip.component";
+import { RowList, RowListItem } from "~/components/shared/row-list/row-list.component";
 import { Button } from "~/components/ui/button";
 
 /** The client's follow-ups, latest first, done or not. */
@@ -27,13 +28,13 @@ export function ClientFollowUps({ client }: { client: ClientView }) {
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">No follow-ups with {client.name}.</p>
       ) : (
-        <ul className="flex flex-col divide-y">
+        <RowList>
           {items.map((followUp) => (
-            <li key={followUp.id} className="py-3 first:pt-0 last:pb-0">
+            <RowListItem key={followUp.id}>
               <FollowUpRow followUp={followUp} hideClient onEdit={(f) => setTarget({ mode: "edit", followUp: f })} />
-            </li>
+            </RowListItem>
           ))}
-        </ul>
+        </RowList>
       )}
       <div>
         <Button variant="outline" size="sm" onClick={() => setTarget({ mode: "new", clientId: client.id })}>

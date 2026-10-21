@@ -31,8 +31,11 @@ export function useHeight<T extends HTMLElement>() {
  * once and stays so while the page scrolls there, so the sections passed on
  * the way don't flicker through the list (or swing the phone's row). Reading
  * resumes once the page has been still a moment, wherever it stopped.
+ *
+ * `phoneGap`: what sticks under the headers on a phone, plus air, for a
+ * row of links taller than SectionLayout's.
  */
-export function useActiveSection(sectionIds: ReadonlyArray<string>) {
+export function useActiveSection(sectionIds: ReadonlyArray<string>, phoneGap = PHONE_GAP) {
   const [active, setActive] = useState(sectionIds[0]);
   const ids = sectionIds.join(" ");
   const jumping = useRef(false);
@@ -62,7 +65,7 @@ export function useActiveSection(sectionIds: ReadonlyArray<string>) {
     const list = ids.split(" ");
     // A handful of sections: measuring on every scroll event is cheap.
     const read = () => {
-      const offset = headersHeight() + (window.matchMedia("(min-width: 48rem)").matches ? DESKTOP_GAP : PHONE_GAP);
+      const offset = headersHeight() + (window.matchMedia("(min-width: 48rem)").matches ? DESKTOP_GAP : phoneGap);
       const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
       let current = list[0];
       for (const id of list) {
@@ -81,7 +84,7 @@ export function useActiveSection(sectionIds: ReadonlyArray<string>) {
       window.removeEventListener("resize", read);
       window.clearTimeout(settle.current);
     };
-  }, [ids, holdUntilStill]);
+  }, [ids, phoneGap, holdUntilStill]);
 
   return [active, jumpTo] as const;
 }

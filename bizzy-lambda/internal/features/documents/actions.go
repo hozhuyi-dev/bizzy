@@ -16,6 +16,13 @@ import (
 
 func notAtStep(message string) error { return apperr.Refused(message) }
 
+// stayIssued is the refusal for changing what has legal weight on an
+// issued document (see Legal): what names it.
+func stayIssued(d *Document, what string) error {
+	return apperr.Refused(fmt.Sprintf("%s is issued, so %s can't change: cancel it first.", d.Number, what),
+		apperr.Remedy{Action: "documents.cancel", Target: d.ID, Label: "Cancel " + d.Number})
+}
+
 // SaveDraft replaces what a draft says. Before the first issue anything
 // may change, and an amount the user changes on an invoice is the fee they
 // typed; a revision may only correct what has no legal weight (see
@@ -57,8 +64,7 @@ func SaveDraft(tx *txn.Tx, id string, in Content) (*Document, error) {
 	next.Payment, next.PaidBy = d.Draft.Payment, d.Draft.PaidBy
 	if d.Issued() {
 		if what := Legal(*d.Content, next); what != "" {
-			return nil, apperr.Refused(fmt.Sprintf("%s is issued: %s stays as issued. Cancel it to change that.", d.Number, what),
-				apperr.Remedy{Action: "documents.cancel", Target: d.ID, Label: "Cancel " + d.Number})
+			return nil, stayIssued(d, what)
 		}
 	}
 	d.Draft = &next
@@ -106,7 +112,7 @@ func Issue(tx *txn.Tx, id string, checks ...Check) (*Document, error) {
 	content.TotalCents = content.Total()
 	if d.Issued() {
 		if what := Legal(*d.Content, content); what != "" {
-			return nil, apperr.Refused(fmt.Sprintf("%s is issued: %s stays as issued. Cancel it to change that.", d.Number, what))
+			return nil, stayIssued(d, what)
 		}
 		next := *d.Revision + 1
 		d.Revision = &next

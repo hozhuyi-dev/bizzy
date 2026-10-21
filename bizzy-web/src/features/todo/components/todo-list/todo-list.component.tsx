@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ArrowRightIcon, BanknoteIcon, CalendarX2Icon, CheckIcon, ChevronDownIcon, NotebookPenIcon, PencilLineIcon, SparklesIcon, XIcon } from "lucide-react";
-import { cn } from "cn";
 import { TODO_FILTERS, TODO_GROUPS } from "../../todo.constant";
 import { byTodoOrder, groupOf, matchesFilter, progressOf, todoKey } from "../../todo.util";
 import type { TodoFilter, TodoView } from "../../todo.types";
@@ -40,6 +39,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { InlineField } from "~/components/shared/inline-action/inline-action.component";
 import { ListRow } from "~/components/shared/list-row/list-row.component";
+import { RowList, RowListItem } from "~/components/shared/row-list/row-list.component";
 import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { EmptyState } from "~/components/shared/quip/quip.component";
@@ -55,7 +55,7 @@ const REASONS: Record<SessionReason | "calendar", { label: string; tone: "waitin
   calendar: { label: "Calendar", tone: "attention" },
 };
 
-/** How long a row done takes to fold away; the CSS below matches it. */
+/** How long a row done takes to fold away; RowListItem's transition matches it. */
 const LEAVE_MS = 300;
 
 /**
@@ -151,36 +151,24 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
             </h3>
             <Card>
               <CardContent>
-                <ul className="flex flex-col divide-y">
+                <RowList>
                   {inGroup.map(({ item, gone }) => (
-                    <li
-                      key={todoKey(item)}
-                      inert={gone}
-                      className={cn(
-                        "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
-                        "first:[&>div>div]:pt-0 last:[&>div>div]:pb-0",
-                        gone ? "grid-rows-[0fr] border-transparent opacity-0" : "grid-rows-[1fr]",
+                    <RowListItem key={todoKey(item)} gone={gone}>
+                      {item.kind === "session" && (
+                        <SessionTodo session={item.session} onCancel={setCancelling} onPayOther={setPaying} />
                       )}
-                    >
-                      <div className="min-h-0 overflow-hidden">
-                        <div className="py-3">
-                          {item.kind === "session" && (
-                            <SessionTodo session={item.session} onCancel={setCancelling} onPayOther={setPaying} />
-                          )}
-                          {item.kind === "package" && <PackageTodo pkg={item.package} onPayOther={setPaying} />}
-                          {item.kind === "followUp" && (
-                            <FollowUpRow
-                              followUp={item.followUp}
-                              showKind
-                              onEdit={(followUp) => setEditingFollowUp({ mode: "edit", followUp })}
-                            />
-                          )}
-                          {item.kind === "conflict" && <ConflictTodo conflict={item.conflict} />}
-                        </div>
-                      </div>
-                    </li>
+                      {item.kind === "package" && <PackageTodo pkg={item.package} onPayOther={setPaying} />}
+                      {item.kind === "followUp" && (
+                        <FollowUpRow
+                          followUp={item.followUp}
+                          showKind
+                          onEdit={(followUp) => setEditingFollowUp({ mode: "edit", followUp })}
+                        />
+                      )}
+                      {item.kind === "conflict" && <ConflictTodo conflict={item.conflict} />}
+                    </RowListItem>
                   ))}
-                </ul>
+                </RowList>
               </CardContent>
             </Card>
           </section>
@@ -284,6 +272,7 @@ function SessionTodo({ session, onCancel, onPayOther }: SessionTodoProps) {
       }
       detail={session.record.summary}
       detailTitle={session.record.summary}
+      open={{ to: "/sessions/$id", params: { id: session.id }, search: { from: "home" } }}
       actions={
         writing ? (
           <SummaryField session={session} onDone={() => setWriting(false)} />
@@ -460,6 +449,7 @@ function PackageTodo({ pkg, onPayOther }: { pkg: PackageView; onPayOther: (payab
       meta={`Package of ${formatHours(pkg.hours)} · bought ${formatDate(pkg.purchasedAt)} · ${formatCents(pkg.owedCents)} due`}
       detail={pkg.note}
       detailTitle={pkg.note}
+      open={{ to: "/packages" }}
       actions={
         <>
           {payables.length > 0 && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}

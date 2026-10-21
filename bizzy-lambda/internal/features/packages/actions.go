@@ -48,12 +48,53 @@ func Update(tx *txn.Tx, id string, f Fields, used Usage) (*Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p.BoughtIn != "" && (f.ClientID != nil && *f.ClientID != p.ClientID || f.PurchasedAt != nil && !f.PurchasedAt.Equal(p.PurchasedAt)) {
-		return nil, apperr.Refused("It was bought in a session: change that session instead, or keep it as a package on its own.",
-			apperr.Remedy{Action: "sessions.update", Target: p.BoughtIn, Label: "Change the session"},
-			apperr.Remedy{Action: "packages.makeStandalone", Target: p.ID, Label: "Keep it as a package on its own"})
+	if f.ClientID != nil && *f.ClientID != p.ClientID || f.PurchasedAt != nil && !f.PurchasedAt.Equal(p.PurchasedAt) {
+		if err := CanMoveBought(p); err != nil {
+			return nil, err
+		}
 	}
 	return p, apply(tx, p, f, used, "")
+}
+
+// CanMoveBought is the refusal for changing the client or day of a
+// package: not one bought in a session, which has the session's.
+func CanMoveBought(p *Package) error {
+	if p.BoughtIn == "" {
+		return nil
+	}
+	return apperr.Refused("It was bought in a session: change that session instead, or keep it as a package on its own.",
+		apperr.Remedy{Action: "sessions.update", Target: p.BoughtIn, Label: "Change the session"},
+		apperr.Remedy{Action: "packages.makeStandalone", Target: p.ID, Label: "Keep it as a package on its own"})
+}
+
+// CanReassign is the refusal for moving a package to another client: no
+// session uses its credits, and no issued document covers it.
+func CanReassign(tx *txn.Tx, p *Package, used Usage) error {
+	if n, err := used(tx, p.ID); err != nil {
+		return err
+	} else if n > 0 {
+		return apperr.Refused(fmt.Sprintf("Sessions use %s of this package's credits, so it stays their client's.", Hours(n)))
+	}
+	return documents.CanChange(tx, documents.PackageSource(p.ID), documents.TypeInvoice, documents.TypeReceipt)
+}
+
+// CanResize is the refusal for changing how many hours a package has: no
+// issued invoice is for it.
+func CanResize(tx *txn.Tx, p *Package) error {
+	if inv, _, err := documents.Invoice(tx, documents.PackageSource(p.ID)); err != nil {
+		return err
+	} else if inv != nil && inv.Issued() {
+		return apperr.Refused(fmt.Sprintf("%s is issued for a package of %s. Cancel it first, then change the package.", inv.Number, Hours(p.Hours*60)),
+			apperr.Remedy{Action: "documents.cancel", Target: inv.ID, Label: "Cancel " + inv.Number})
+	}
+	return nil
+}
+
+// CanReprice is the refusal for changing a package's price: no issued
+// invoice charges it, and no issued receipt records what was paid for it
+// (the payment would no longer match).
+func CanReprice(tx *txn.Tx, p *Package) error {
+	return documents.CanChange(tx, documents.PackageSource(p.ID), documents.TypeInvoice, documents.TypeReceipt)
 }
 
 // Bought is a package bought in a session, as its booking says it.
@@ -134,10 +175,8 @@ func apply(tx *txn.Tx, p *Package, f Fields, used Usage, into string) error {
 		if _, err := clients.Clients.Get(tx, *f.ClientID); err != nil {
 			return err
 		}
-		if n, err := used(tx, p.ID); err != nil {
+		if err := CanReassign(tx, p, used); err != nil {
 			return err
-		} else if n > 0 {
-			return apperr.Refused(fmt.Sprintf("Sessions use %s of this package's credits, so it stays their client's.", Hours(n)))
 		}
 		if err := documents.MoveToClient(tx, src, *f.ClientID, map[documents.Type]string{}); err != nil {
 			return err
@@ -153,11 +192,8 @@ func apply(tx *txn.Tx, p *Package, f Fields, used Usage, into string) error {
 		} else if *f.Hours*60 < n {
 			return apperr.Refused(fmt.Sprintf("Sessions use %s of its credits already.", Hours(n)))
 		}
-		if inv, _, err := documents.Invoice(tx, src); err != nil {
+		if err := CanResize(tx, p); err != nil {
 			return err
-		} else if !isNew && inv.Issued() {
-			return apperr.Refused(fmt.Sprintf("%s is issued for a package of %s. Cancel it first, then change the package.", inv.Number, Hours(p.Hours*60)),
-				apperr.Remedy{Action: "documents.cancel", Target: inv.ID, Label: "Cancel " + inv.Number})
 		}
 		if !isNew {
 			if err := documents.Redescribe(tx, src, Description(cfg, p.Hours), Description(cfg, *f.Hours)); err != nil {

@@ -41,3 +41,12 @@ export interface Verdict {
   why?: string;
   remedies?: Array<Remedy>;
 }
+
+/**
+ * The fields an update can't change now, by their path in its request
+ * ("clientId"; "lines.amountCents" for every line's), each with why and
+ * what would free it; mirrors apperr.Locks. Edit views carry them
+ * (`locked`): a form disables those fields and says why (LockedHint). One
+ * left out may change.
+ */
+export type Locks = Partial<Record<string, Verdict>>;

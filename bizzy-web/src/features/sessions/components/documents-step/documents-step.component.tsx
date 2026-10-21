@@ -1,28 +1,50 @@
-import { FileTextIcon, ReceiptIcon, StampIcon } from "lucide-react";
-import { toast } from "sonner";
 import { allSessionDocuments, documentItems, sessionDocuments } from "../../session-stage.util";
 import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
 import type { SessionView } from "../../sessions.types";
 import type { DocumentLink, DocumentType } from "~/features/documents/documents.types";
 import type { PackageView } from "~/features/packages/packages.types";
+import { DocumentRow } from "~/features/documents/components/document-row/document-row.component";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
-import { DocumentsMutation } from "~/features/documents/documents.mutation";
-import { documentLabel, documentRoute, refLabel } from "~/features/documents/documents.util";
-import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { Button } from "~/components/ui/button";
+import { refLabel } from "~/features/documents/documents.util";
+import { methodLabel } from "~/features/payments/payments.util";
+import { RowList, RowListItem } from "~/components/shared/row-list/row-list.component";
+import { formatDate } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
 export function documentsStep(session: SessionView, bought: PackageView | undefined): PipelineStep {
-  const issued = allSessionDocuments(session, bought).filter((doc) => doc.issued);
+  const docs = allSessionDocuments(session, bought);
+  // Package credits pay it all: nothing to invoice, so nothing to receipt.
+  if (docs.length === 0 && session.feeCents === 0 && session.credits.length > 0) {
+    return {
+      id: "documents",
+      title: "Documents",
+      state: "none",
+      meta: "Not needed: a package covers it",
+      content: (
+        <p className="text-sm text-muted-foreground">
+          Nothing to invoice or receipt: package credits pay for this session. The package's own invoice and receipt
+          are with it, on Packages.
+        </p>
+      ),
+    };
+  }
   return {
     id: "documents",
     title: "Documents",
-    state: issued.length > 0 ? "done" : "optional",
-    meta:
-      issued.length > 0 ? issued.map(({ type, ref }) => refLabel(type, ref, true)).join(", ") : "Invoice and receipt, if asked",
+    state: docs.some((doc) => doc.issued) ? "done" : "optional",
+    meta: summary(docs),
+    count: docs.length,
     content: <DocumentsStep session={session} bought={bought} />,
   };
+}
+
+/** Each one by its number once issued, or as a draft: "INV-0012 · receipt in draft". */
+function summary(docs: ReadonlyArray<DocumentLink>): string {
+  if (docs.length === 0) return "Invoice and receipt, if asked";
+  const text = docs
+    .map(({ type, ref, issued }) => (issued ? refLabel(type, ref, true) : `${DOCUMENT_TYPES[type].title.toLowerCase()} in draft`))
+    .join(" · ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 const EMPTY: Record<DocumentType, string> = {
@@ -37,59 +59,39 @@ const EMPTY: Record<DocumentType, string> = {
  */
 function DocumentsStep({ session, bought }: { session: SessionView; bought: PackageView | undefined }) {
   const items = documentItems(session);
+  const charged = items.reduce((sum, item) => sum + item.amountCents, 0);
+  const charges = items.map((item) => `${item.label} ${formatCents(item.amountCents)}`).join(" · ");
+
   return (
-    <ul className="flex flex-col divide-y text-sm">
+    <RowList label="Documents">
       {(["invoice", "receipt"] as const).map((type) => {
         const docs = sessionDocuments(type, session, bought);
-        const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
-        return (
-          <li key={type} className="flex flex-col gap-2 py-2 first:pt-0 last:pb-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-              <span className="font-medium">{DOCUMENT_TYPES[type].title}</span>
-              {docs.length === 0 && <span className="text-xs text-muted-foreground">{EMPTY[type]}</span>}
-            </div>
-            {docs.map((doc) => (
-              <DocumentRow key={doc.ref.id} doc={doc} />
-            ))}
-            {type === "invoice" && items.length > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {items.map((item) => `${item.label} ${formatCents(item.amountCents)}`).join(" · ")}
-              </span>
+        if (docs.length === 0) {
+          return (
+            <RowListItem key={type}>
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{DOCUMENT_TYPES[type].title}</span> · {EMPTY[type]}
+              </p>
+            </RowListItem>
+          );
+        }
+        return docs.map((doc) => (
+          <RowListItem key={doc.ref.id}>
+            {type === "invoice" ? (
+              <DocumentRow doc={doc} meta={`Invoice · ${formatCents(charged)}`} detail={charges || undefined} />
+            ) : (
+              <DocumentRow doc={doc} meta={receiptMeta(doc, session, bought)} />
             )}
-          </li>
-        );
+          </RowListItem>
+        ));
       })}
-    </ul>
+    </RowList>
   );
 }
 
-function DocumentRow({ doc }: { doc: DocumentLink }) {
-  const issue = DocumentsMutation.useIssue();
-  const { type, ref, issued } = doc;
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <TextLink to={documentRoute(type)} params={{ id: ref.id }}>
-        {refLabel(type, ref, issued)}
-      </TextLink>
-      {!issued && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={issue.isPending}
-          onClick={() =>
-            issue.mutate(ref.id, {
-              onSuccess: (view) => {
-                if (view?.number) toast.success(`Issued ${documentLabel(view.number, view.revision)}`);
-              },
-              onError: toastRefusal,
-            })
-          }
-        >
-          <StampIcon /> Issue
-        </Button>
-      )}
-    </div>
-  );
+/** What the receipt records: "Receipt · $80 · PayNow · 12 Oct". */
+function receiptMeta(doc: DocumentLink, session: SessionView, bought: PackageView | undefined): string {
+  const paid = [session.paid, bought?.paid].find((p) => p?.receiptId === doc.ref.id);
+  if (!paid) return "Receipt";
+  return `Receipt · ${formatCents(paid.amountCents)} · ${methodLabel(paid.method)} · ${formatDate(paid.paidOn)}`;
 }

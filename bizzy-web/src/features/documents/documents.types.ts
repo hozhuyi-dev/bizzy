@@ -1,6 +1,7 @@
 import type { PaymentMethod } from "~/features/payments/payments.types";
 import type { DOCUMENT_FACETS } from "./documents.constant";
 import type { FilterSearch, ListRequest } from "~/core/list/filter.types";
+import type { Locks } from "~/core/lambda/lambda.types";
 
 // Mirrors bizzy-lambda/internal/features/documents/api.go and document.go.
 // Documents are where money lives: a session's fee is its invoice's line,
@@ -116,6 +117,8 @@ export interface DocumentView extends DocumentSummary {
   cancelledAt?: string;
   cancelReason?: string;
   revisions: Array<DocumentRevision>;
+  /** What its draft can't change: on a revision, what has legal weight. */
+  locked: Locks;
 }
 
 /** What a share link shows: the issued content only; mirrors documents.SharedView. */

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -31,6 +32,22 @@ type View struct {
 	Paid        *documents.Paid `json:"paid,omitempty"`
 	OwedCents   int64           `json:"owedCents"`
 	Todo        []Reason        `json:"todo"`
+	// Locked is what its update can't change now (see Locks).
+	Locked apperr.Locks `json:"locked"`
+}
+
+// Locks are what an update to a package can't change now.
+func Locks(tx *txn.Tx, p *Package, used Usage) (apperr.Locks, error) {
+	reassign := CanMoveBought(p)
+	if reassign == nil {
+		reassign = CanReassign(tx, p, used)
+	}
+	return apperr.LocksOf(map[string]error{
+		"clientId":    reassign,
+		"purchasedAt": CanMoveBought(p),
+		"hours":       CanResize(tx, p),
+		"priceCents":  CanReprice(tx, p),
+	})
 }
 
 // ViewOf is a package as of now: what it costs and was paid, its credits,
@@ -59,7 +76,9 @@ func ViewOf(tx *txn.Tx, p *Package, used Usage) (View, error) {
 		v.OwedCents = v.PriceCents
 	}
 	v.Todo = p.Todo(v.OwedCents, tx.Now())
-	return v, nil
+	// The credits used, counted above, rather than counted again.
+	v.Locked, err = Locks(tx, p, func(*txn.Tx, string) (int, error) { return n, nil })
+	return v, err
 }
 
 type listRequest struct {

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CalendarX2Icon, LockIcon, Trash2Icon } from "lucide-react";
-import { toast } from "sonner";
+import { CalendarPlusIcon, CalendarX2Icon, PlusIcon, Trash2Icon } from "lucide-react";
 import { bookingStep } from "./components/booking-step/booking-step.component";
 import { SessionPager } from "./components/session-pager/session-pager.component";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
@@ -12,14 +11,14 @@ import { paymentStep } from "./components/payment-step/payment-step.component";
 import { PipelineLayout } from "./components/pipeline-layout/pipeline-layout.component";
 import { useRecordDraft } from "./components/record-editor/record-editor.hook";
 import { recordStep } from "./components/record-step/record-step.component";
-import { allSessionDocuments, boughtIn, coveringCredits } from "./session-stage.util";
-import { useSessionMessageActions } from "./sessions.hook";
+import { boughtIn, coveringCredits } from "./session-stage.util";
+import { draftOf } from "./sessions.form";
+import { useAskToPayAction } from "./sessions.hook";
 import { sessionsUrl } from "./sessions.util";
 import { SessionsQuery } from "./sessions.query";
 import type { ReactNode } from "react";
 import type { PipelineStep } from "./components/pipeline-layout/pipeline-layout.component";
 import type { SessionDraft, SessionFullView, SessionReturnTo } from "./sessions.types";
-import type { DocumentLink } from "~/features/documents/documents.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
@@ -29,13 +28,12 @@ import { ConflictActions } from "~/features/conflicts/components/conflict-action
 import { ConflictsQuery } from "~/features/conflicts/conflicts.query";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { conflictKind } from "~/features/conflicts/conflicts.util";
-import { documentRoute, refLabel } from "~/features/documents/documents.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { FollowUpsQuery } from "~/features/follow-ups/follow-ups.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { Banner } from "~/components/shared/banner/banner.component";
 import { PageHeader } from "~/components/shared/page-header/page-header.component";
 import { Loading } from "~/components/shared/quip/quip.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
 import { clientOf } from "~/features/clients/clients.util";
 
 /**
@@ -105,6 +103,7 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
   const packages = PackagesQuery.useList(true);
   const record = useRecordDraft(session, session.notes);
   const conflicts = ConflictsQuery.useByTarget(session.id);
+  const followUps = FollowUpsQuery.useBySession(session.id);
   const [deleting, setDeleting] = useState(false);
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
   const [nextVisit, setNextVisit] = useState<SessionDraft | null>(null);
@@ -114,17 +113,24 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
   const client = clientOf(clientsById, session.clientId);
   const bought = boughtIn(session, packages.data);
   const covering = coveringCredits(session, packages.data);
-  const documents = allSessionDocuments(session, bought);
-  // An issued document stays as it says: an edit that would change it is
-  // refused, with cancelling it as the remedy.
-  const issued = documents.filter((doc) => doc.issued);
   // Only after deleting it, so an open booking edit is moot.
   const leave = () => void navigate({ ...parent, ignoreBlocker: true });
   const waiting = conflicts.data ?? [];
 
-  const messages = useSessionMessageActions(session, client, documents);
+  const askToPay = useAskToPayAction(session, client);
+  const addFollowUp = client && (() => setFollowUp({ mode: "new", clientId: client.id, sessionId: session.id }));
+  // Whatever step it is at, so in the header rather than by a step.
   const more: Array<Action> = [
-    ...messages,
+    ...(askToPay ? [askToPay] : []),
+    ...(addFollowUp
+      ? ([
+          { type: "button", label: "Next visit", icon: CalendarPlusIcon, onClick: () => setNextVisit(draftOf(session)) },
+          { type: "button", label: "Follow-up", icon: PlusIcon, onClick: addFollowUp },
+        ] satisfies Array<Action>)
+      : []),
+  ];
+  // Rare, and undone only by booking it again.
+  const menu: Array<Action> = [
     {
       type: "button",
       label: "Delete",
@@ -140,7 +146,7 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
     recordStep(session, record),
     paymentStep(session, covering, bought),
     documentsStep(session, bought),
-    followUpsStep(session, client, setFollowUp, setNextVisit),
+    followUpsStep(session, followUps.data, addFollowUp, (f) => setFollowUp({ mode: "edit", followUp: f })),
   ];
 
   return (
@@ -150,18 +156,13 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
         title={client?.name ?? session.clientName}
         pager={pager}
         moreActions={more}
+        menuActions={menu}
         banners={
-          (waiting.length > 0 || issued.length > 0) && (
+          waiting.length > 0 && (
             <>
               {waiting.map((conflict) => (
                 <ConflictBanner key={conflict.eventId} conflict={conflict} />
               ))}
-              {issued.length > 0 && (
-                <Banner tone="neutral" icon={LockIcon} title="On an issued document.">
-                  What {documentLinks(issued)} says stays as it is: its client, fee and payment change only once it is
-                  cancelled.
-                </Banner>
-              )}
             </>
           )
         }
@@ -196,15 +197,4 @@ function ConflictBanner({ conflict }: { conflict: ConflictView }) {
       </span>
     </Banner>
   );
-}
-
-function documentLinks(documents: ReadonlyArray<DocumentLink>) {
-  return documents.map(({ type, ref, issued }, i) => (
-    <span key={ref.id}>
-      {i > 0 && " and "}
-      <TextLink to={documentRoute(type)} params={{ id: ref.id }}>
-        {refLabel(type, ref, issued)}
-      </TextLink>
-    </span>
-  ));
 }

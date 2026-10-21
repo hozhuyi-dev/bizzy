@@ -4,6 +4,7 @@ import { toPackageFields, toPackageValues } from "../../packages.form";
 import { usePackageSave } from "../../packages-save.hook";
 import type { PackageView } from "../../packages.types";
 import { fieldErrors } from "~/core/utils/form.util";
+import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
@@ -28,13 +29,15 @@ interface PackageFormProps {
 }
 
 /**
- * A package's client, hours, price and day. One bought in a session
- * stays that session's client's and day: change the session for those.
+ * A package's client, hours, price and day. What its update can't change
+ * now (one bought in a session keeps the session's client and day) is
+ * disabled, saying why.
  */
 export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) {
   const clients = ClientsQuery.useList();
   const save = usePackageSave(pkg, onDone, quiet);
   const [error, setError] = useState<string | null>(null);
+  const locked = pkg?.locked ?? {};
 
   const form = useForm({
     defaultValues: toPackageValues(pkg, clientId),
@@ -71,7 +74,12 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
           {(field) => (
             <Field data-invalid={field.state.meta.errors.length > 0}>
               <FieldLabel>Client</FieldLabel>
-              <Select items={items} value={field.state.value} onValueChange={(value) => field.handleChange(value ?? "")}>
+              <Select
+                items={items}
+                value={field.state.value}
+                disabled={locked.clientId !== undefined}
+                onValueChange={(value) => field.handleChange(value ?? "")}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a client" />
                 </SelectTrigger>
@@ -83,6 +91,7 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
                   ))}
                 </SelectContent>
               </Select>
+              <LockedHint lock={locked.clientId} />
               <FieldError errors={fieldErrors(field.state.meta.errors)} />
             </Field>
           )}
@@ -105,9 +114,11 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
                   id={field.name}
                   inputMode="numeric"
                   value={field.state.value}
+                  disabled={locked.hours !== undefined}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
+                <LockedHint lock={locked.hours} />
                 <FieldError errors={fieldErrors(field.state.meta.errors)} />
               </Field>
             )}
@@ -126,9 +137,11 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
                   id={field.name}
                   inputMode="decimal"
                   value={field.state.value}
+                  disabled={locked.priceCents !== undefined}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
+                <LockedHint lock={locked.priceCents} />
                 <FieldError errors={fieldErrors(field.state.meta.errors)} />
               </Field>
             )}
@@ -155,10 +168,12 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
                 id={field.name}
                 type="date"
                 value={field.state.value}
+                disabled={locked.purchasedAt !== undefined}
                 onChange={(e) => field.handleChange(e.target.value)}
                 className="max-w-44"
               />
               <FieldDescription>Credits cover sessions from this day on.</FieldDescription>
+              <LockedHint lock={locked.purchasedAt} />
             </Field>
           )}
         </form.Field>

@@ -1,27 +1,22 @@
 import { cn } from "cn";
-import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CircleIcon } from "lucide-react";
+import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CircleIcon, CircleMinusIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
-import { ActionBar } from "~/components/shared/action-bar/action-bar.component";
 import { Card, CardContent } from "~/components/ui/card";
 import { useActiveSection, useCenteredCurrent } from "~/core/scroll-spy/scroll-spy.hook";
 
-/** Where a step stands: done, the one to do now, still ahead, or optional and untouched. */
-export type StepState = "done" | "current" | "todo" | "optional";
+/** Where a step stands: done, the one to do now, still ahead, optional and untouched, or not needed at all. */
+export type StepState = "done" | "current" | "todo" | "optional" | "none";
 
 export interface PipelineStep {
   /** The anchor; unique on the page. */
   id: string;
-  /** Short: it sits in the rail, and as a chip on a phone. */
+  /** Short: it sits in the rail, and under a dot on a phone. */
   title: string;
   state: StepState;
-  /**
-   * What happened at this step, in the rail under the title: dates and a
-   * one-line summary. On a phone, under the section heading instead.
-   */
+  /** What happened at this step, in the rail under the title (wider screens): dates and a one-line summary. */
   meta?: ReactNode;
-  /** Beside the section heading. */
-  actions?: ReadonlyArray<Action> | undefined;
+  /** How many things it holds (documents, open follow-ups), beside its title; none at 0. */
+  count?: number | undefined;
   content: ReactNode;
 }
 
@@ -34,6 +29,7 @@ const ICONS: Record<StepState, typeof CircleIcon> = {
   current: CircleDotIcon,
   todo: CircleIcon,
   optional: CircleDashedIcon,
+  none: CircleMinusIcon,
 };
 
 const STATE_LABELS: Record<StepState, string> = {
@@ -41,27 +37,35 @@ const STATE_LABELS: Record<StepState, string> = {
   current: "To do now",
   todo: "Not yet",
   optional: "Optional",
+  none: "Not needed",
 };
+
+// The phone's timeline (h-13) sticks under the headers, plus air.
+const PHONE_GAP = 52 + 16;
 
 /**
  * A session's page: a rail of its steps, each with where it stands, its
  * dates and a summary, beside the steps' forms. The rail is the only place
  * that shows progress, so the forms carry no status of their own. It sticks
- * beside the forms on wider screens and becomes a row of step chips under
- * the header on a phone, where each step's details move under its heading.
+ * beside the forms on wider screens; on a phone it becomes a timeline under
+ * the header (dots joined by a line, titles below), and the summaries go,
+ * the forms below saying the same.
  *
  * Kept apart from SectionLayout (whose contents list is plain links) so the
  * two can grow on their own; they share only the scroll measuring.
  */
 export function PipelineLayout({ steps }: PipelineLayoutProps) {
-  const [active, jumpTo] = useActiveSection(steps.map((step) => step.id));
+  const [active, jumpTo] = useActiveSection(
+    steps.map((step) => step.id),
+    PHONE_GAP,
+  );
 
   return (
     <div className="flex flex-col gap-4 md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-10">
       <Rail steps={steps} active={active} onJump={jumpTo} />
       {/* The last step is at least a screen tall, less the sticky bars and the
           main's pb-6, so its heading reaches the top like the others. */}
-      <div className="flex min-w-0 flex-col gap-10 *:last:min-h-[calc(100dvh-var(--sticky-top)-5.25rem)] md:*:last:min-h-[calc(100dvh-var(--sticky-top)-2.5rem)]">
+      <div className="flex min-w-0 flex-col gap-10 *:last:min-h-[calc(100dvh-var(--sticky-top)-5.75rem)] md:*:last:min-h-[calc(100dvh-var(--sticky-top)-2.5rem)]">
         {steps.map((step) => (
           <StepSection key={step.id} step={step} />
         ))}
@@ -79,7 +83,7 @@ function StepIcon({ state, className }: { state: StepState; className?: string }
         "size-4 shrink-0",
         state === "done" && "text-status-done-foreground",
         state === "current" && "text-foreground",
-        (state === "todo" || state === "optional") && "text-muted-foreground",
+        (state === "todo" || state === "optional" || state === "none") && "text-muted-foreground",
         className,
       )}
     />
@@ -99,70 +103,106 @@ function Rail({ steps, active, onJump }: RailProps) {
       ref={ref}
       aria-label="Steps"
       className={cn(
-        // Phones: a sticky, sideways-scrolling row of step chips.
-        "sticky top-(--sticky-top) z-10 -mx-4 -mt-4 flex h-11 items-center gap-1 overflow-x-auto border-b bg-background px-4 scrollbar-none",
+        // Phones: a sticky timeline, sideways-scrolling once it doesn't fit.
+        "sticky top-(--sticky-top) z-10 -mx-4 -mt-4 flex h-13 overflow-x-auto border-b bg-background px-1 scrollbar-none",
         // Wider: a sticky column of steps with their details.
-        "md:top-[calc(var(--sticky-top)+1rem)] md:mx-0 md:mt-0 md:h-auto md:flex-col md:items-stretch md:gap-0 md:overflow-visible md:border-b-0 md:bg-transparent md:px-0",
+        "md:top-[calc(var(--sticky-top)+1rem)] md:mx-0 md:mt-0 md:h-auto md:flex-col md:overflow-visible md:border-b-0 md:bg-transparent md:px-0",
       )}
     >
-      {steps.map((step, i) => (
-        <a
-          key={step.id}
-          href={`#${step.id}`}
-          aria-current={active === step.id ? "location" : undefined}
-          onClick={(event) => {
-            event.preventDefault();
-            onJump(step.id);
-          }}
-          className={cn(
-            "group relative flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
-            "aria-[current]:bg-muted aria-[current]:text-foreground",
-            "md:items-start md:gap-2.5 md:px-2 md:py-2 md:whitespace-normal",
-          )}
-        >
-          {/* The line joining a step to the next, dashed before an optional one. */}
-          {i < steps.length - 1 && (
+      {steps.map((step, i) => {
+        const next = steps[i + 1];
+        // The line on to the next step: done once this one is, dashed before an optional or unneeded one.
+        const line =
+          next &&
+          cn(
+            (next.state === "optional" || next.state === "none") && "border-dashed",
+            step.state === "done" && "border-status-done-foreground/40",
+          );
+        const count = step.count || undefined;
+        return (
+          <a
+            key={step.id}
+            href={`#${step.id}`}
+            aria-current={active === step.id ? "location" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              onJump(step.id);
+            }}
+            className={cn(
+              "group relative flex min-w-18 flex-1 flex-col items-center gap-1 pt-2 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+              "aria-[current]:text-foreground md:aria-[current]:bg-muted",
+              "md:min-w-0 md:flex-none md:flex-row md:items-start md:gap-2.5 md:rounded-md md:p-2 md:text-sm",
+            )}
+          >
+            {line !== undefined && (
+              <>
+                {/* Phones: across to the next dot, short of both. */}
+                <span
+                  aria-hidden="true"
+                  className={cn("absolute top-4 left-[calc(50%+0.75rem)] w-[calc(100%-1.5rem)] border-t md:hidden", line)}
+                />
+                {/* Wider: down to the next step's icon. */}
+                <span
+                  aria-hidden="true"
+                  className={cn("absolute top-7 -bottom-3 left-4 hidden border-l md:block", line)}
+                />
+              </>
+            )}
+            <span className="relative md:mt-0.5">
+              <StepIcon state={step.state} />
+              {count !== undefined && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-1.5 -right-3 h-3.5 min-w-3.5 rounded-full bg-muted px-1 text-center text-[0.625rem] leading-3.5 font-medium text-foreground tabular-nums md:hidden"
+                >
+                  {count}
+                </span>
+              )}
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span
+                className={cn(
+                  "flex items-center gap-1.5 whitespace-nowrap group-aria-[current]:font-medium md:font-medium",
+                  step.state === "current" && "text-foreground",
+                )}
+              >
+                {step.title}
+                {count !== undefined && (
+                  <span className="hidden rounded-full bg-muted px-1.5 text-xs font-normal text-muted-foreground tabular-nums md:inline">
+                    {count}
+                  </span>
+                )}
+                <span className="sr-only">
+                  : {STATE_LABELS[step.state]}
+                  {count !== undefined && `, ${count}`}
+                </span>
+              </span>
+              {step.meta && <span className="hidden text-xs leading-snug text-muted-foreground md:block">{step.meta}</span>}
+            </span>
+            {/* Phones: under the step being read. */}
             <span
               aria-hidden="true"
-              className={cn(
-                "absolute top-7 bottom-[-0.75rem] left-[1rem] hidden border-l md:block",
-                steps[i + 1]?.state === "optional" && "border-dashed",
-              )}
+              className="absolute bottom-0 hidden h-0.5 w-8 rounded-full bg-foreground group-aria-[current]:block md:group-aria-[current]:hidden"
             />
-          )}
-          <StepIcon state={step.state} className="md:mt-0.5" />
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className={cn("font-medium", step.state === "current" && "text-foreground")}>
-              {step.title}
-              <span className="sr-only">: {STATE_LABELS[step.state]}</span>
-            </span>
-            {step.meta && <span className="hidden text-xs leading-snug text-muted-foreground md:block">{step.meta}</span>}
-          </span>
-        </a>
-      ))}
+          </a>
+        );
+      })}
     </nav>
   );
 }
 
 function StepSection({ step }: { step: PipelineStep }) {
-  const { id, title, meta, actions, content } = step;
+  const { id, title, content } = step;
   return (
     <section
       id={id}
       aria-labelledby={`${id}-title`}
-      className="flex scroll-mt-[calc(var(--sticky-top)+3.75rem)] flex-col gap-3 md:scroll-mt-[calc(var(--sticky-top)+1rem)]"
+      className="flex scroll-mt-[calc(var(--sticky-top)+4.25rem)] flex-col gap-3 md:scroll-mt-[calc(var(--sticky-top)+1rem)]"
     >
-      {/* The heading's row is the title's height, whatever actions sit beside it. */}
-      <div className="flex flex-col gap-0.5">
-        <div className="flex h-6 items-center justify-between gap-2">
-          <h2 id={`${id}-title`} className="flex min-w-0 items-center gap-2 text-base font-semibold">
-            <StepIcon state={step.state} className="md:hidden" />
-            <span className="truncate">{title}</span>
-          </h2>
-          <ActionBar actions={actions} size="sm" />
-        </div>
-        {meta && <p className="text-sm text-muted-foreground md:hidden">{meta}</p>}
-      </div>
+      <h2 id={`${id}-title`} className="flex h-6 min-w-0 items-center gap-2 text-base font-semibold">
+        <StepIcon state={step.state} className="md:hidden" />
+        <span className="truncate">{title}</span>
+      </h2>
       <Card>
         <CardContent className="flex flex-col gap-4">{content}</CardContent>
       </Card>

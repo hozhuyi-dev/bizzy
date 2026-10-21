@@ -4,8 +4,10 @@ import { sessionTime, toBookingValues, toSessionDraft } from "../../sessions.for
 import { SessionsQuery } from "../../sessions.query";
 import type { BookingValues, PriceIs } from "../../sessions.form";
 import type { CoverView, PreviewSessionRequest, SessionDraft, SessionView } from "../../sessions.types";
+import type { Locks } from "~/core/lambda/lambda.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
+import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Button } from "~/components/ui/button";
@@ -28,6 +30,8 @@ interface BookingFormProps {
   initial: SessionDraft;
   /** The session being edited; omitted for a new one. */
   session?: SessionView | undefined;
+  /** What its update can't change now: those fields are disabled, saying why. */
+  locked?: Locks | undefined;
   submitLabel: string;
   /**
    * Resolves once saved; a refusal is shown with its remedies and leaves
@@ -44,7 +48,7 @@ interface BookingFormProps {
  * always reads back as this booking. Laid out for a dialog: its buttons sit
  * in the dialog's footer.
  */
-export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel }: BookingFormProps) {
+export function BookingForm({ initial, session, locked = {}, submitLabel, onSubmit, onCancel }: BookingFormProps) {
   const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
@@ -126,6 +130,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel 
               <Select
                 items={items}
                 value={field.state.value}
+                disabled={locked.clientId !== undefined}
                 onValueChange={(value) => field.handleChange(value ?? "")}
               >
                 <SelectTrigger className="w-full">
@@ -139,6 +144,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel 
                   ))}
                 </SelectContent>
               </Select>
+              <LockedHint lock={locked.clientId} />
               <FieldError errors={fieldErrors(field.state.meta.errors)} />
             </Field>
           )}
@@ -221,11 +227,13 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel 
               <Checkbox
                 id={field.name}
                 checked={field.state.value}
+                disabled={locked.tentative !== undefined}
                 onCheckedChange={(checked) => field.handleChange(checked)}
               />
               <FieldContent>
                 <FieldLabel htmlFor={field.name}>Not confirmed</FieldLabel>
                 <FieldDescription>Goes on your to-do list a few days before, to confirm with the client.</FieldDescription>
+                <LockedHint lock={locked.tentative} />
               </FieldContent>
             </Field>
           )}
@@ -253,13 +261,18 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel 
                 id={field.name}
                 inputMode="decimal"
                 value={field.state.value}
+                disabled={locked.fee !== undefined}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
                 className="max-w-40"
               />
-              <form.Subscribe selector={(state) => state.values}>
-                {(values) => <FieldDescription>{describeCover(values)}</FieldDescription>}
-              </form.Subscribe>
+              {locked.fee ? (
+                <LockedHint lock={locked.fee} />
+              ) : (
+                <form.Subscribe selector={(state) => state.values}>
+                  {(values) => <FieldDescription>{describeCover(values)}</FieldDescription>}
+                </form.Subscribe>
+              )}
               <FieldError errors={fieldErrors(field.state.meta.errors)} />
             </Field>
           )}
@@ -287,7 +300,8 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel 
                   id={field.name}
                   inputMode="numeric"
                   placeholder="Hours"
-                    value={field.state.value}
+                  value={field.state.value}
+                  disabled={locked.package !== undefined}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
@@ -315,7 +329,8 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel 
                 <Input
                   id={field.name}
                   inputMode="decimal"
-                    value={field.state.value}
+                  value={field.state.value}
+                  disabled={locked.package !== undefined}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
@@ -331,6 +346,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel 
                 <Select
                   items={PRICE_IS_ITEMS}
                   value={field.state.value}
+                  disabled={locked.package !== undefined}
                     onValueChange={(value) => value && field.handleChange(value)}
                 >
                   <SelectTrigger className="w-full" aria-label="The price is">
@@ -348,6 +364,7 @@ export function BookingForm({ initial, session, submitLabel, onSubmit, onCancel 
             )}
           </form.Field>
         </div>
+        <LockedHint lock={locked.package} />
         <form.Subscribe selector={(state) => state.values}>
           {(values) => {
             const pkg = toSessionDraft(values).package;

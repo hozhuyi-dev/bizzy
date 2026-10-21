@@ -1,5 +1,6 @@
 import type { DocumentRef } from "~/features/documents/documents.types";
 import type { Paid, PaymentInput } from "~/features/payments/payments.types";
+import type { Locks } from "~/core/lambda/lambda.types";
 
 // Mirrors bizzy-lambda/internal/features/packages/api.go.
 
@@ -26,6 +27,8 @@ export interface PackageView {
   /** Its price while not received. */
   owedCents: number;
   todo: Array<PackageReason>;
+  /** What its update can't change now. */
+  locked: Locks;
 }
 
 /**

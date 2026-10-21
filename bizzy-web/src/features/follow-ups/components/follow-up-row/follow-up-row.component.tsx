@@ -25,7 +25,8 @@ interface FollowUpRowProps {
 
 /**
  * One follow-up, laid out like every to-do row (ListRow): who and what,
- * when below, and Done and Edit (or a link to Follow-ups).
+ * when below, and Done and Edit (or a link to Follow-ups), which a click
+ * anywhere on the row does too.
  */
 export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, showKind }: FollowUpRowProps) {
   const clientsById = ClientsQuery.useById();
@@ -75,6 +76,8 @@ export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, 
         </>
       }
       detailTitle={[shownSummary, followUp.notes].filter(Boolean).join(" · ") || undefined}
+      onOpen={onEdit && (() => onEdit(followUp))}
+      open={onEdit ? undefined : { to: "/follow-ups" }}
       actions={
         <>
           {done ? (

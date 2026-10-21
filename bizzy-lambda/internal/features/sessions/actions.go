@@ -145,6 +145,9 @@ func reassign(tx *txn.Tx, s *Session, clientID *string, isNew bool) (bool, error
 		return false, err
 	}
 	if !isNew {
+		if err := CanReassign(tx, s); err != nil {
+			return false, err
+		}
 		into := map[documents.Type]string{}
 		for _, src := range []documents.Source{s.Source(), documents.PackageSource(boughtID(tx, s.ID))} {
 			if src.ID == "" {
@@ -189,16 +192,8 @@ func reschedule(tx *txn.Tx, s *Session, to Span) error {
 func setTentative(tx *txn.Tx, s *Session, tentative bool) error {
 	switch {
 	case tentative && !s.Tentative:
-		if inv, _, err := documents.Invoice(tx, s.Source()); err != nil {
+		if err := CanUnconfirm(tx, s); err != nil {
 			return err
-		} else if inv != nil && inv.Issued() {
-			return apperr.Refused(fmt.Sprintf("%s is issued for this session, so it stays confirmed. Cancel the invoice first.", inv.Number),
-				apperr.Remedy{Action: "documents.cancel", Target: inv.ID, Label: "Cancel " + inv.Number})
-		}
-		if paid, err := documents.Received(tx, s.Source()); err != nil {
-			return err
-		} else if paid != nil {
-			return apperr.Refused("A payment is recorded for it, so it stays confirmed. Undo the payment first.")
 		}
 		s.Tentative, s.ConfirmedAt = true, nil
 	case !tentative && (s.Tentative || s.ConfirmedAt == nil):
@@ -295,6 +290,50 @@ func CanDelete(tx *txn.Tx, s *Session) error {
 			apperr.Remedy{Action: "documents.cancel", Target: inv.ID, Label: "Cancel " + inv.Number})
 	}
 	return nil
+}
+
+// CanReassign is the refusal for moving a session to another client: no
+// issued document covers it, or the package bought in it.
+func CanReassign(tx *txn.Tx, s *Session) error {
+	for _, src := range []documents.Source{s.Source(), documents.PackageSource(boughtID(tx, s.ID))} {
+		if err := documents.CanChange(tx, src, documents.TypeInvoice, documents.TypeReceipt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CanUnconfirm is the refusal for making a confirmed session tentative
+// again: no issued invoice charges it, and no payment is recorded for it.
+func CanUnconfirm(tx *txn.Tx, s *Session) error {
+	if s.Tentative {
+		return nil
+	}
+	if inv, _, err := documents.Invoice(tx, s.Source()); err != nil {
+		return err
+	} else if inv != nil && inv.Issued() {
+		return apperr.Refused(fmt.Sprintf("%s is issued for this session, so it stays confirmed. Cancel the invoice first.", inv.Number),
+			apperr.Remedy{Action: "documents.cancel", Target: inv.ID, Label: "Cancel " + inv.Number})
+	}
+	if paid, err := documents.Received(tx, s.Source()); err != nil {
+		return err
+	} else if paid != nil {
+		return apperr.Refused("A payment is recorded for it, so it stays confirmed. Undo the payment first.")
+	}
+	return nil
+}
+
+// CanReprice is the refusal for changing a session's fee: no issued
+// invoice charges it, and no issued receipt records what was paid for it
+// (the payment would no longer match).
+func CanReprice(tx *txn.Tx, s *Session) error {
+	return documents.CanChange(tx, s.Source(), documents.TypeInvoice, documents.TypeReceipt)
+}
+
+// CanRebuy is the refusal for changing the package bought in a session:
+// no issued invoice charges it.
+func CanRebuy(tx *txn.Tx, s *Session) error {
+	return documents.CanChange(tx, documents.PackageSource(boughtID(tx, s.ID)), documents.TypeInvoice)
 }
 
 // CanPay is the refusal for recording a payment for a session: it is

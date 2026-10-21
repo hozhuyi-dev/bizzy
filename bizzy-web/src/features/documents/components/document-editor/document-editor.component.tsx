@@ -3,12 +3,14 @@ import { DOCUMENT_TYPES } from "../../documents.constant";
 import type { DocumentEditorState } from "./document-editor.hook";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import type { Verdict } from "~/core/lambda/lambda.types";
 import { Button } from "~/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { formatCents, parseCents } from "~/core/utils/money.util";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
+import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 
 // The methods she takes; she can still type something else.
 const PAID_BY_SUGGESTIONS = PAYMENT_METHODS.map((method) => method.label);
@@ -71,6 +73,8 @@ export function documentEditorActions(editor: DocumentEditorState): { more: Arra
  */
 export function documentEditorSections(editor: DocumentEditorState): Array<PageSection> {
   const { form, values, doc } = editor;
+  // On a revision, what has legal weight: disabled, saying why.
+  const { locked } = doc;
   const spec = DOCUMENT_TYPES[doc.type];
   const title = spec.title.toLowerCase();
   const total = values.lines.reduce((sum, line) => sum + (parseCents(line.amount) ?? 0), 0);
@@ -89,8 +93,10 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                   id={field.name}
                   type="date"
                   value={field.state.value}
+                  disabled={locked.date !== undefined}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
+                <LockedHint lock={locked.date} />
               </Field>
             )}
           </form.Field>
@@ -169,6 +175,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                             inputMode="decimal"
                             className="text-right"
                             readOnly={line.source !== undefined}
+                            disabled={locked["lines.amountCents"] !== undefined}
                             value={field.state.value}
                             onChange={(e) => field.handleChange(e.target.value)}
                           />
@@ -180,7 +187,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                       variant="ghost"
                       size="icon"
                       aria-label="Remove line"
-                      disabled={linesField.state.value.length === 1}
+                      disabled={linesField.state.value.length === 1 || locked.lines !== undefined}
                       onClick={() => linesField.removeValue(i)}
                     >
                       <Trash2Icon />
@@ -199,6 +206,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={locked.lines !== undefined}
                   onClick={() =>
                     linesField.pushValue({ id: "", description: "", date: values.date, amount: "", source: undefined })
                   }
@@ -209,6 +217,8 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                   {spec.paid ? "Total paid" : "Total"} <b className="text-base">{formatCents(total)}</b>
                 </span>
               </div>
+              {/* One hint for both: its lines and their amounts stay together. */}
+              <LockedHint lock={locked.lines ?? locked["lines.amountCents"]} />
             </div>
           )}
         </form.Field>
@@ -226,10 +236,13 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       description: `Copied from Settings when the draft was made. Changes here only affect this ${title}.`,
       content: (
         <FieldGroup>
-          <form.Field name="issuer.name">{(field) => <TextInput field={field} label="Business name" />}</form.Field>
-          <form.Field name="issuer.registrationNo">
-            {(field) => <TextInput field={field} label="Registration no." />}
+          <form.Field name="issuer.name">
+            {(field) => <TextInput field={field} label="Business name" lock={locked["issuer.name"]} />}
           </form.Field>
+          <form.Field name="issuer.registrationNo">
+            {(field) => <TextInput field={field} label="Registration no." lock={locked["issuer.registrationNo"]} />}
+          </form.Field>
+          <LockedHint lock={locked["issuer.name"] ?? locked["issuer.registrationNo"]} />
           <form.Field name="issuer.address">
             {(field) => <TextInput field={field} label="Address" multiline />}
           </form.Field>
@@ -251,7 +264,15 @@ interface TextFieldApi {
   handleBlur: () => void;
 }
 
-function TextInput({ field, label, multiline }: { field: TextFieldApi; label: string; multiline?: boolean }) {
+interface TextInputProps {
+  field: TextFieldApi;
+  label: string;
+  multiline?: boolean;
+  /** Why it can't change now: disabled (the caller says why, once for a group). */
+  lock?: Verdict | undefined;
+}
+
+function TextInput({ field, label, multiline, lock }: TextInputProps) {
   return (
     <Field>
       <FieldLabel htmlFor={field.name}>{label}</FieldLabel>
@@ -267,6 +288,7 @@ function TextInput({ field, label, multiline }: { field: TextFieldApi; label: st
         <Input
           id={field.name}
           value={field.state.value}
+          disabled={lock !== undefined}
           onBlur={field.handleBlur}
           onChange={(e) => field.handleChange(e.target.value)}
         />

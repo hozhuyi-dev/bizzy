@@ -372,6 +372,24 @@ func undoPayment(src Source) apperr.Remedy {
 	}
 }
 
+// CanChange is the refusal for changing what an item's documents of these
+// types say: none of them is issued.
+func CanChange(tx *txn.Tx, src Source, types ...Type) error {
+	if src.ID == "" {
+		return nil
+	}
+	for _, t := range types {
+		d, _, err := covering(tx, src, t)
+		if err != nil {
+			return err
+		}
+		if d != nil && d.Issued() {
+			return refuseIssued(d)
+		}
+	}
+	return nil
+}
+
 // refuseIssued is the refusal for changing what an issued document says.
 func refuseIssued(d *Document) error {
 	return apperr.Refused(fmt.Sprintf("%s is issued, and this would change what it says. Cancel it first, then try again.", d.Number),

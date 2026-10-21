@@ -98,10 +98,22 @@ type Can struct {
 	Delete      apperr.Verdict `json:"delete"`
 }
 
-// FullView is a session with its notes, for its page.
+// FullView is a session with its notes, and what its update can't
+// change, for its page.
 type FullView struct {
 	View
-	Notes string `json:"notes"`
+	Notes  string       `json:"notes"`
+	Locked apperr.Locks `json:"locked"`
+}
+
+// Locks are what an update to a session can't change now.
+func Locks(tx *txn.Tx, s *Session) (apperr.Locks, error) {
+	return apperr.LocksOf(map[string]error{
+		"clientId":  CanReassign(tx, s),
+		"tentative": CanUnconfirm(tx, s),
+		"fee":       CanReprice(tx, s),
+		"package":   CanRebuy(tx, s),
+	})
 }
 
 // CoverView is what would pay for a session being booked: the credits of
@@ -310,7 +322,11 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 				return FullView{}, err
 			}
 			notes, err := NotesOf(tx, s.ID)
-			return FullView{View: v, Notes: notes}, err
+			if err != nil {
+				return FullView{}, err
+			}
+			locked, err := Locks(tx, s)
+			return FullView{View: v, Notes: notes, Locked: locked}, err
 		})
 	}))
 	r.Query("sessions.preview", router.Typed(func(ctx context.Context, in previewRequest) (any, error) {

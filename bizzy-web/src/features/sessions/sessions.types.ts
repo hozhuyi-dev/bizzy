@@ -3,7 +3,7 @@ import type { PackageView } from "~/features/packages/packages.types";
 import type { Paid } from "~/features/payments/payments.types";
 import type { SESSION_FACETS } from "./sessions.constant";
 import type { FilterSearch, ListRequest } from "~/core/list/filter.types";
-import type { Verdict } from "~/core/lambda/lambda.types";
+import type { Locks, Verdict } from "~/core/lambda/lambda.types";
 
 // Mirrors bizzy-lambda/internal/features/sessions/api.go.
 
@@ -89,9 +89,10 @@ export interface SearchSessionsRequest extends ListRequest {
   todo: Array<SessionReason>;
 }
 
-/** A session with its notes, for its page; mirrors sessions.FullView. */
+/** A session with its notes, and what its update can't change, for its page; mirrors sessions.FullView. */
 export interface SessionFullView extends SessionView {
   notes: string;
+  locked: Locks;
 }
 
 /**

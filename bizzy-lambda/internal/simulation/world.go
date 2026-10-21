@@ -8,7 +8,7 @@
 // with JSON as the app does, the user editing the calendar directly, and
 // time passing. The checks (checks.go) are every feature's invariants over
 // everything stored, that a refused action changes nothing, that a view's
-// verdicts are what the API does, that the app never brings on a
+// verdicts and locks are what the API does, that the app never brings on a
 // conflict, and that once synced the calendar shows bizzy as it is.
 //
 // A new feature adds an action per router mutation (a test enforces it),
@@ -23,6 +23,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"reflect"
+	"strings"
 	"time"
 
 	"pgregory.net/rapid"
@@ -128,6 +130,55 @@ func (w *World) callAsViewed(t *rapid.T, action string, payload any, viewed appe
 	case !viewed.OK && refused == nil:
 		t.Fatalf("%s: the view said %q, the API took it", action, viewed.Why)
 	}
+}
+
+// callAsLocked calls an update whose view locked some of its fields: one
+// that changes a locked field must be refused (one that changes none may
+// still be, for something else). changed are the fields payload changes;
+// each lock must name a field of input, what the update takes, by its
+// JSON path.
+func (w *World) callAsLocked(t *rapid.T, action string, payload any, locked apperr.Locks, input any, changed ...string) {
+	t.Helper()
+	for field := range locked {
+		if !hasField(reflect.TypeOf(input), strings.Split(field, ".")) {
+			t.Fatalf("%s: its view locks %q, which it doesn't take", action, field)
+		}
+	}
+	if _, refused := w.call(t, action, payload); refused != nil {
+		return
+	}
+	for _, field := range changed {
+		if lock, ok := locked[field]; ok {
+			t.Fatalf("%s: the view locked %s (%q), the API changed it", action, field, lock.Why)
+		}
+	}
+}
+
+// hasField says whether a type has the field at a JSON path, through
+// pointers, slices and embedded structs.
+func hasField(typ reflect.Type, path []string) bool {
+	for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice {
+		typ = typ.Elem()
+	}
+	if len(path) == 0 {
+		return true
+	}
+	if typ.Kind() != reflect.Struct {
+		return false
+	}
+	for i := range typ.NumField() {
+		f := typ.Field(i)
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		switch {
+		case f.Anonymous && name == "":
+			if hasField(f.Type, path) {
+				return true
+			}
+		case name == path[0]:
+			return hasField(f.Type, path[1:])
+		}
+	}
+	return false
 }
 
 // dump is everything stored: the table, both calendars, the file store

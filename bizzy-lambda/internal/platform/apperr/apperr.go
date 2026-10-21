@@ -92,3 +92,26 @@ func VerdictOf(err error) (Verdict, error) {
 	}
 	return Verdict{}, err
 }
+
+// Locks are the fields an update can't change now, by their path in its
+// JSON ("clientId"; "lines.amountCents" for every line's), each with why
+// and what would free it. A view carries them (`locked`), from the checks
+// its update makes, so a form disables just those fields and says why. A
+// field left out may change, though the update may still be refused for
+// something else (an overlap).
+type Locks map[string]Verdict
+
+// LocksOf runs each field's check: a refusal locks it.
+func LocksOf(checks map[string]error) (Locks, error) {
+	out := Locks{}
+	for field, check := range checks {
+		v, err := VerdictOf(check)
+		if err != nil {
+			return nil, err
+		}
+		if !v.OK {
+			out[field] = v
+		}
+	}
+	return out, nil
+}

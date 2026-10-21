@@ -3,7 +3,7 @@ import { CalendarX2Icon } from "lucide-react";
 import { BookingForm } from "../booking-form/booking-form.component";
 import { useBookingSave } from "../../sessions-booking.hook";
 import { draftOf, newSessionDraft } from "../../sessions.form";
-import type { SessionReturnTo, SessionView } from "../../sessions.types";
+import type { SessionFullView, SessionReturnTo } from "../../sessions.types";
 import { ConflictsQuery } from "~/features/conflicts/conflicts.query";
 import { conflictKind } from "~/features/conflicts/conflicts.util";
 import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
@@ -60,7 +60,8 @@ function NewSession({ returnTo, onClose }: Omit<NewSessionDialogProps, "open">) 
 }
 
 interface EditBookingDialogProps {
-  session: SessionView;
+  /** With what its update can't change (`locked`), shown on the form. */
+  session: SessionFullView;
   open: boolean;
   onClose: () => void;
   /** Once saved, with what the toast says; left out, it is toasted here. */
@@ -114,6 +115,7 @@ function EditBooking({ session, onClose, onSaved }: Omit<EditBookingDialogProps,
         key={JSON.stringify(draft)}
         initial={draft}
         session={session}
+        locked={session.locked}
         submitLabel="Save booking"
         onSubmit={(next, updatePayment) => save.submit(next, updatePayment)}
         onCancel={onClose}

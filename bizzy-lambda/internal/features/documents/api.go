@@ -57,6 +57,23 @@ type View struct {
 	CancelledAt  *time.Time `json:"cancelledAt,omitempty"`
 	CancelReason string     `json:"cancelReason,omitempty"`
 	Revisions    []Revision `json:"revisions"`
+	// Locked is what its draft can't change (see Locks).
+	Locked apperr.Locks `json:"locked"`
+}
+
+// Locks are what a revision of an issued document can't change: what has
+// legal weight (see Legal). Its total follows its amounts.
+func Locks(d *Document) (apperr.Locks, error) {
+	if d.Draft == nil || !d.Issued() {
+		return apperr.Locks{}, nil
+	}
+	return apperr.LocksOf(map[string]error{
+		"date":                  stayIssued(d, "its date"),
+		"issuer.name":           stayIssued(d, "the business that issued it"),
+		"issuer.registrationNo": stayIssued(d, "the business that issued it"),
+		"lines":                 stayIssued(d, "its lines and their amounts"),
+		"lines.amountCents":     stayIssued(d, "its lines and their amounts"),
+	})
 }
 
 func viewOf(tx *txn.Tx, d *Document) (*View, error) {
@@ -79,6 +96,11 @@ func viewOf(tx *txn.Tx, d *Document) (*View, error) {
 		filled := Fill(*d.Draft, cfg, *client)
 		v.Draft = &filled
 	}
+	locked, err := Locks(d)
+	if err != nil {
+		return nil, err
+	}
+	v.Locked = locked
 	revs, err := Revisions.WithRef(tx, d.ID)
 	for _, r := range revs {
 		v.Revisions = append(v.Revisions, *r)

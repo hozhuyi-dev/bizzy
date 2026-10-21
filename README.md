@@ -7,7 +7,7 @@ Back-office for a one-person physio practice: sessions, packages, invoices and r
 1. **bizzy is the truth; Google Calendar is a command surface.** A calendar edit is read as the same command the app would send and decided by the same rules. Every event in the chosen calendar is bizzy's: a session, a follow-up (`!`), or refused. Refused edits wait on the to-do list with remedies, one of which always puts bizzy's version back (for an event that shows nothing of bizzy's, that deletes it). Google Contacts stays the truth for contact details. The app keeps a read-only copy.
 2. **Documents own money.** A fee is its invoice line and a payment its receipt line. Drafts are made with every booking and payment, and stay editable until issued. Issued documents are immutable apart from non-legal corrections. Anything else goes through cancelling (later, credit/debit notes).
 3. **The app never reaches an invalid state.** Every change is an action that checks its own rules before anything is written. A refusal changes nothing and offers the remedies that would let it through. Invariants are checked again before every commit.
-4. **No business rule in the web app.** The API returns views with state, rules, to-do items and `can` verdicts. The web only renders them.
+4. **No business rule in the web app.** The API returns views with state, rules, to-do items, `can` verdicts and `locked` fields. The web only renders them.
 5. **Every rule is tested by use.** A property-based simulation drives every action, the calendar and the clock in random order and checks every invariant after every step.
 
 Conventions: new identifiers say "user", never "her". Only `development` is deployed, so breaking schema changes need no migration: redeploy or **Settings → Reset**.
@@ -78,17 +78,20 @@ flowchart TD
 | Route input | `createRequest`, `idRequest`, … (private to `api.go`) | `XxxRequest` |
 | Route output | `View` (never the stored entity) | Response DTO / view model |
 | Routes | `Routes(r, run)` | Controller |
+| Whether an action would be taken | `Can<Action>(tx, item) error` → the view's `Can` | Policy / authorization handler |
+| Fields an update can't change now | `Locks(tx, item)` → the edit view's `Locked` | Read-only field metadata |
 | Rules that always hold | `Invariants` | Domain invariants |
 | Wiring | `app.New` | DI container / `Program.cs` |
 
 **Layout:**
 
-- `internal/features/<feature>/`: `api.go` (routes, views, requests), the entity file (model, `txn.Kind`, to-do), `actions.go`, `invariants.go`, and a file per other job (`translate.go`, `push.go`). Features import only what they build on; `app` passes in the reverse (`clients.Owner`). [app/dependencies_test.go](bizzy-lambda/internal/app/dependencies_test.go) enforces it.
+- `internal/features/<feature>/`: `api.go` (routes, views, requests, `Locks`), the entity file (model, `txn.Kind`, to-do), `actions.go` (actions and their `Can…` checks), `invariants.go`, and a file per other job (`translate.go`, `push.go`). Features import only what they build on; `app` passes in the reverse (`clients.Owner`). [app/dependencies_test.go](bizzy-lambda/internal/app/dependencies_test.go) enforces it.
 - `internal/platform/`: `router`, `apperr`, `txn`, `table` (storage interface, in-memory version, shared contract), `listing` (searching a long list a page at a time), `dynamo`, `blobstore` (S3), `googleauth`, `ssm`. Imports no feature.
 - **Long lists are searched, not loaded**: a `<feature>.search` query takes a `listing.Request` (words, days, the page to start after) and its own filters, narrows the read with an index (`txn.List`: by time, client, tag or open), filters the rest in Go, and returns a `listing.Page`, latest first. A page ends when full or after looking at `listing.Budget` items. Filters run in the Lambda, not as DynamoDB filter expressions, which bill every item read anyway and can't see what a view works out.
 - `internal/calendar`: Google Calendar events, title syntax and client, with no knowledge of features.
 - `internal/testutil`: `testapp` (the whole app on the memory table, with fakes of Google Calendar, Contacts and S3).
 - `internal/simulation`: a rapid state machine over `testapp`, with one action per mutation (enforced) plus calendar edits and clock moves. After each step it checks every invariant, that a refusal changed nothing, that each view's `can` matches the API, and that once synced the calendar shows bizzy.
+- **Refusals are written once**, as a `Can…` check the action calls. A view turns them into verdicts (`apperr.VerdictOf`) and field locks (`apperr.LocksOf`, keyed by the field's JSON path), which the simulation holds to what the API does (`callAsViewed`, `callAsLocked`). The action's refusal stays the last word.
 - **Storage**: one partition per kind (`PK` = `SESSION`, `SK` = id), the item's JSON in `data`, and five LSIs (time, client, open, tag, ref) filled through `txn.Meta`. [SCHEMA.md](bizzy-lambda/SCHEMA.md) is generated from the code; a test fails when it is stale.
 - **A new feature** adds those four files, three lines in `app/app.go` (routes, invariants, kinds), a row in `dependencies_test.go`, a `Doc` per kind (then `-update` SCHEMA.md), and a simulation action per mutation.
 
@@ -101,6 +104,7 @@ Entry point: [src/main.tsx](bizzy-web/src/main.tsx) → `router.tsx` → `src/ro
 - Components reach data only through `query`, `mutation` and `hook`, never a `service`.
 - A feature's `types` mirror its `api.go`: a route's output is `<Entity>View` (`SessionView`), what a create or update sets is `<Entity>Fields` (sent as a patch on update: only what changed), and any other input is `<Action><Entity>Request`. The service calls each action by its API name.
 - `core/` holds shared infrastructure, `components/shared/` the app's shared components, and `components/ui/` the generated shadcn components (left untouched).
+- Forms disable what the view's `locked` names, with a `LockedHint` (its why and remedies) under the field.
 - Every list page has one `FilterBar`: words, plus chips from the page's facets (a client, a stage, a month). The filter (`core/filter`) lives in the URL. Lists that grow without end (sessions, documents, follow-ups, expenses) send it to their `search` route and read pages with `usePages`. Lists loaded whole anyway (clients, packages) filter in the browser.
 - Tests mirror the file they test: `x.util.ts` → `x.util.test.ts`.
 

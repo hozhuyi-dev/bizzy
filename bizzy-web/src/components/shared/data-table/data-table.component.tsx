@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "@tanstack/react-router";
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { cn } from "cn";
-import { opensRow } from "./data-table-row.util";
+import { useOpenRow } from "./data-table-row.hook";
 import { shownRows } from "./data-table-search.util";
-import type { MouseEvent, ReactNode, RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { ReactTable, Row, RowData } from "@tanstack/react-table";
 import type { DataTableFeatures } from "./data-table.config";
@@ -46,7 +45,6 @@ export function DataTable<TData extends RowData>({
   rowLink,
   onRowOpen,
 }: DataTableProps<TData>) {
-  const router = useRouter();
   const container = useRef<HTMLDivElement>(null);
   const tableElement = useRef<HTMLTableElement>(null);
   const tooWide = useTooWide(container, tableElement);
@@ -55,21 +53,7 @@ export function DataTable<TData extends RowData>({
   const emptyState =
     allRows.length > 0 ? <EmptyState quips={QUIPS.search}>No matches for “{query.trim()}”.</EmptyState> : emptyContent;
 
-  /**
-   * A click on the row that isn't on something of its own (see opensRow)
-   * opens the row's page; with Ctrl or ⌘, in a new tab. The row's first
-   * link stays the way there by keyboard.
-   */
-  const openRow = (event: MouseEvent<HTMLTableRowElement>, data: TData) => {
-    if (!opensRow(event.target as Element, event.currentTarget, window.getSelection()?.toString() ?? "")) return;
-    if (!rowLink) {
-      onRowOpen?.(data);
-      return;
-    }
-    const link = rowLink(data);
-    if (event.ctrlKey || event.metaKey) window.open(router.buildLocation(link).href, "_blank", "noopener");
-    else void router.navigate(link);
-  };
+  const openRow = useOpenRow();
 
   return (
     <>
@@ -129,7 +113,11 @@ export function DataTable<TData extends RowData>({
                 key={row.id}
                 data-state={row.getIsSelected() ? "selected" : undefined}
                 className={cn("h-14 hover:bg-muted/30", (rowLink || onRowOpen) && "cursor-pointer")}
-                onClick={rowLink || onRowOpen ? (event) => openRow(event, row.original) : undefined}
+                onClick={
+                  rowLink || onRowOpen
+                    ? (event) => openRow(event, rowLink?.(row.original), () => onRowOpen?.(row.original))
+                    : undefined
+                }
               >
                 {row.getAllCells().map((cell) => (
                   <TableCell key={cell.id} className={cn(CELL, columnClass(cell.column.columnDef.meta))}>

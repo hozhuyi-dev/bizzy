@@ -16,6 +16,7 @@ import (
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/txn"
 )
 
@@ -107,7 +108,8 @@ var sessionActions = []Action{
 			in["time"] = span(t, w)
 		}
 		addSessionFields(t, in, false)
-		w.call(t, "sessions.update", in)
+		locked := read(t, w, func(tx *txn.Tx) (apperr.Locks, error) { return sessions.Locks(tx, s) })
+		w.callAsLocked(t, "sessions.update", in, locked, sessions.Fields{}, sessionChanges(sessionView(t, w, s), in)...)
 	}},
 	{Name: "sessions.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		s := pick(t, w, "session", sessions.Sessions.All)
@@ -183,7 +185,8 @@ var moneyActions = []Action{
 			in["note"] = "Gift"
 		}
 		in["updatePayment"] = rapid.Bool().Draw(t, "update the payment?")
-		w.call(t, "packages.update", in)
+		v := read(t, w, func(tx *txn.Tx) (packages.View, error) { return packages.ViewOf(tx, p, sessions.CreditsUsed) })
+		w.callAsLocked(t, "packages.update", in, v.Locked, packages.Fields{}, packageChanges(v, in)...)
 	}},
 	{Name: "packages.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.call(t, "packages.delete", map[string]any{"id": pick(t, w, "package", packages.Packages.All).ID})
@@ -220,10 +223,15 @@ var moneyActions = []Action{
 		var c documents.Content
 		b, _ := json.Marshal(d.Draft)
 		_ = json.Unmarshal(b, &c)
+		locked := read(t, w, func(*txn.Tx) (apperr.Locks, error) { return documents.Locks(d) })
+		var changed []string
 		switch rapid.SampledFrom([]string{"amount", "description", "name", "date", "notes", "drop a line", "add a line"}).Draw(t, "change") {
 		case "amount":
 			if len(c.Lines) > 0 {
 				c.Lines[0].AmountCents = rapid.SampledFrom([]int64{0, 5000, 9500}).Draw(t, "amount")
+				if c.Lines[0].AmountCents != d.Draft.Lines[0].AmountCents {
+					changed = append(changed, "lines.amountCents")
+				}
 			}
 		case "description":
 			if len(c.Lines) > 0 {
@@ -233,16 +241,21 @@ var moneyActions = []Action{
 			c.Recipient.Name = "Jane S."
 		case "date":
 			c.Date = "2026-10-15"
+			if c.Date != d.Draft.Date {
+				changed = append(changed, "date")
+			}
 		case "notes":
 			c.Notes = "Thank you"
 		case "drop a line":
 			if len(c.Lines) > 0 {
 				c.Lines = c.Lines[1:]
+				changed = append(changed, "lines")
 			}
 		case "add a line":
 			c.Lines = append(c.Lines, documents.Line{Description: "Tape", AmountCents: 1500})
+			changed = append(changed, "lines")
 		}
-		w.call(t, "documents.saveDraft", map[string]any{"id": d.ID, "content": c})
+		w.callAsLocked(t, "documents.saveDraft", map[string]any{"id": d.ID, "content": c}, locked, documents.Content{}, changed...)
 	}},
 	{Name: "documents.issue", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.call(t, "documents.issue", map[string]any{"id": pick(t, w, "draft", drafts).ID})
@@ -417,6 +430,47 @@ var syncActions = []Action{
 }
 
 // sessionView is a session as the app shows it.
+// sessionChanges are the fields an update of a session changes.
+func sessionChanges(v sessions.View, in map[string]any) []string {
+	var out []string
+	if id, ok := in["clientId"]; ok && id != v.ClientID {
+		out = append(out, "clientId")
+	}
+	if tentative, ok := in["tentative"]; ok && tentative != v.Tentative {
+		out = append(out, "tentative")
+	}
+	if fee, ok := in["fee"].(map[string]any); ok && fee["cents"] != nil && fee["cents"] != v.FeeCents {
+		out = append(out, "fee")
+	}
+	if pkg, ok := in["package"].(map[string]any); ok {
+		bought, _ := pkg["bought"].(map[string]any)
+		switch {
+		case bought == nil && v.Bought != nil,
+			bought != nil && (v.Bought == nil || bought["hours"] != v.Bought.Hours || bought["priceCents"] != v.Bought.PriceCents):
+			out = append(out, "package")
+		}
+	}
+	return out
+}
+
+// packageChanges are the fields an update of a package changes.
+func packageChanges(v packages.View, in map[string]any) []string {
+	var out []string
+	if id, ok := in["clientId"]; ok && id != v.ClientID {
+		out = append(out, "clientId")
+	}
+	if hours, ok := in["hours"]; ok && hours != v.Hours {
+		out = append(out, "hours")
+	}
+	if price, ok := in["priceCents"]; ok && price != v.PriceCents {
+		out = append(out, "priceCents")
+	}
+	if at, ok := in["purchasedAt"].(time.Time); ok && !at.Equal(v.PurchasedAt) {
+		out = append(out, "purchasedAt")
+	}
+	return out
+}
+
 func sessionView(t *rapid.T, w *World, s *sessions.Session) sessions.View {
 	return read(t, w, func(tx *txn.Tx) (sessions.View, error) { return sessions.ViewOf(tx, s) })
 }

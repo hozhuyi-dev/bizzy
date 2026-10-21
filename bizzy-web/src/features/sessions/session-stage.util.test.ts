@@ -57,6 +57,7 @@ function pkg(overrides: Partial<PackageView> = {}): PackageView {
     invoice: { id: "d1" },
     owedCents: 85000,
     todo: [],
+    locked: {},
     ...overrides,
   };
 }

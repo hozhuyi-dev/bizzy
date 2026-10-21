@@ -4,7 +4,7 @@ import { EditBookingDialog } from "../booking-dialog/booking-dialog.component";
 import { hasHappened, sessionMinutes } from "../../session-stage.util";
 import { useConfirmBooking } from "../../sessions-booking.hook";
 import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
-import type { SessionView } from "../../sessions.types";
+import type { SessionFullView } from "../../sessions.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { Button } from "~/components/ui/button";
 import { formatDate, formatSessionTime } from "~/core/utils/date.util";
@@ -26,7 +26,7 @@ function Lines({ children }: { children: Array<string | false | undefined> }) {
  * `settled`, when the page was opened to settle a calendar edit by changing
  * this booking: it starts open, and once saved goes back to the to-do list.
  */
-export function bookingStep(session: SessionView, onCancel: () => void, settled?: (done: string) => void): PipelineStep {
+export function bookingStep(session: SessionFullView, onCancel: () => void, settled?: (done: string) => void): PipelineStep {
   const happened = hasHappened(session);
   return {
     id: "booking",
@@ -45,7 +45,7 @@ export function bookingStep(session: SessionView, onCancel: () => void, settled?
 }
 
 interface BookingStepProps {
-  session: SessionView;
+  session: SessionFullView;
   onCancel: () => void;
   settled?: ((done: string) => void) | undefined;
 }
@@ -82,6 +82,7 @@ function BookingStep({ session, onCancel, settled }: BookingStepProps) {
           {session.location === "visit" ? "Home visit" : "Your place"}
           {session.credits.length > 0 && <> · package credit</>}
           {session.invoice && <> · {formatCents(session.feeCents)}</>}
+          {!session.tentative && session.confirmedAt && <> · confirmed {formatDate(session.confirmedAt)}</>}
         </span>
         <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
           <PencilIcon /> Edit booking
