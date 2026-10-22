@@ -28,6 +28,7 @@ import (
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/features/timeline"
 	"bizzy-lambda/internal/features/todo"
+	"bizzy-lambda/internal/migrations"
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/table"
@@ -85,7 +86,10 @@ func Kinds() []txn.AnyKind {
 }
 
 func New(d Deps) *App {
-	run := &txn.Runner{Table: d.Table, Invariants: Invariants(), Location: d.Location, Now: d.Now, NewID: d.NewID}
+	run := &txn.Runner{
+		Table: d.Table, Invariants: Invariants(), Location: d.Location, Now: d.Now, NewID: d.NewID,
+		Schema: migrations.Version,
+	}
 	if d.Calendar == nil {
 		d.Calendar = googleconnect.Calendar(run, d.Google)
 	}

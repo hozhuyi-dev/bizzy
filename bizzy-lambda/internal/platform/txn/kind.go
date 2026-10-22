@@ -1,6 +1,7 @@
 package txn
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/base64"
 	"encoding/json"
@@ -318,6 +319,27 @@ func (k Kind[T]) IDs(tx *Tx) ([]string, error) {
 // KindName is the partition, which names the kind in Changes and
 // Invariants.
 func (k Kind[T]) KindName() string { return k.Name }
+
+// Rewrite is a stored item as this code would write it: decoded strictly
+// as T (a field T doesn't have is an error), encoded again, and filed by
+// Meta. Reads expect exactly that (see Tx.changes), so after a change to
+// T or Meta every item is rewritten: migrations write items as JSON, and
+// platform/migrate rewrites them all with this once they have run.
+func (k Kind[T]) Rewrite(it table.Item) (table.Item, error) {
+	v := new(T)
+	dec := json.NewDecoder(bytes.NewReader(it.Data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return it, fmt.Errorf("%s %s doesn't read as the code reads it: %w", it.PK, it.SK, err)
+	}
+	m := k.Meta(v)
+	if m.ID != it.SK {
+		return it, fmt.Errorf("%s %s says its id is %q", it.PK, it.SK, m.ID)
+	}
+	data, err := json.Marshal(v)
+	it.Data, it.Indexes = data, m.indexes()
+	return it, err
+}
 
 func (k Kind[T]) entry(v *T, original []byte) *entry {
 	return &entry{kind: k.Name, value: v, original: original, meta: func() Meta { return k.Meta(v) }}

@@ -243,14 +243,24 @@ describe("api", () => {
     }
   });
 
-  test("has the api, public and quarterly job functions; the app runs the sync, a rule the job", () => {
-    api.resourceCountIs("AWS::Lambda::Function", 3);
+  test("has the api, public, quarterly job and migrate functions; the app runs the sync, a rule the job", () => {
+    api.resourceCountIs("AWS::Lambda::Function", 4);
     api.resourceCountIs("AWS::Scheduler::Schedule", 0);
     api.resourceCountIs("AWS::Events::Rule", 1);
     // 03:00 in Kuala Lumpur on the first day of each quarter.
     api.hasResourceProperties("AWS::Events::Rule", {
       ScheduleExpression: "cron(0 19 L 3,6,9,12 ? *)",
     });
+  });
+
+  test("backs the table up before migrating only in production", () => {
+    const backup = (template: Template) =>
+      template.hasResourceProperties("AWS::Lambda::Function", {
+        FunctionName: Match.stringLikeRegexp("-migrate$"),
+        Environment: { Variables: Match.objectLike({ BACKUP: "true" }) },
+      });
+    expect(() => backup(api)).toThrow();
+    backup(synth("production").api);
   });
 
   test("serves share links publicly, GET only", () => {

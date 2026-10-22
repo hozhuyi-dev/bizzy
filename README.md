@@ -10,7 +10,7 @@ Back-office for a one-person physio practice: sessions, packages, invoices and r
 4. **No business rule in the web app.** The API returns views with state, rules, to-do items, `can` verdicts and `locked` fields. The web only renders them.
 5. **Every rule is tested by use.** A property-based simulation drives every action, the calendar and the clock in random order and checks every invariant after every step.
 
-Conventions: new identifiers say "user", never "her". Only `development` is deployed, so breaking schema changes need no migration: redeploy or **Settings → Reset**.
+Conventions: new identifiers say "user", never "her". Every change to how items are stored is a migration (see [Migrations](#migrations)). **Settings → Reset** (development and staging) only starts over.
 
 ## Tech stack
 
@@ -26,7 +26,7 @@ Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets identity-pool credentia
 
 ```
 bizzy-infra/    bin/bizzy-infra.ts → lib/{auth,data,api,web}-stack.ts, constructs in lib/common/
-bizzy-lambda/   cmd/{api,public,job-quarterly}/main.go, internal/{app,features,platform,calendar,simulation,testutil}/
+bizzy-lambda/   cmd/{api,public,job-quarterly,migrate}/main.go, internal/{app,features,migrations,platform,calendar,simulation,testutil}/
 bizzy-web/      src/main.tsx, src/routes/ (file routes), src/features/<feature>/
 scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs
 ```
@@ -37,7 +37,7 @@ Entry point: [bin/bizzy-infra.ts](bizzy-infra/bin/bizzy-infra.ts). It reads `.en
 
 - **auth**: Cognito user pool (Google IdP) and identity pool, with role mapping to `ALLOWED_EMAIL`.
 - **data**: the DynamoDB table (5 generic LSIs, created up front) and the attachments bucket (versioned with 35-day noncurrent expiry in production).
-- **api**: the `api`, `public` (share links, Function URL, `GetItem` only) and `job-quarterly` (EventBridge) Go Lambdas.
+- **api**: the `api`, `public` (share links, Function URL, `GetItem` only), `job-quarterly` (EventBridge) and `migrate` (run by deploys) Go Lambdas.
 - **web**: S3 and CloudFront hosting the SPA.
 
 ### bizzy-lambda
@@ -86,7 +86,7 @@ flowchart TD
 **Layout:**
 
 - `internal/features/<feature>/`: `api.go` (routes, views, requests, `Locks`), the entity file (model, `txn.Kind`, to-do), `actions.go` (actions and their `Can…` checks), `invariants.go`, and a file per other job (`translate.go`, `push.go`). Features import only what they build on; `app` passes in the reverse (`clients.Owner`). [app/dependencies_test.go](bizzy-lambda/internal/app/dependencies_test.go) enforces it.
-- `internal/platform/`: `router`, `apperr`, `txn`, `table` (storage interface, in-memory version, shared contract), `listing` (searching a long list a page at a time), `dynamo`, `blobstore` (S3), `googleauth`, `ssm`. Imports no feature.
+- `internal/platform/`: `router`, `apperr`, `txn`, `table` (storage interface, in-memory version, shared contract), `listing` (searching a long list a page at a time), `migrate` (runs migrations), `dynamo`, `blobstore` (S3), `googleauth`, `ssm`. Imports no feature.
 - **Long lists are searched, not loaded**: a `<feature>.search` query takes a `listing.Request` (words, days, the page to start after) and its own filters, narrows the read with an index (`txn.List`: by time, client, tag or open), filters the rest in Go, and returns a `listing.Page`, latest first. A page ends when full or after looking at `listing.Budget` items. Filters run in the Lambda, not as DynamoDB filter expressions, which bill every item read anyway and can't see what a view works out.
 - **A list across kinds** (`timeline.search`) pages one kind, its backbone (a client's sessions), and takes the other kinds within the stretch of time each page spans, so every item comes once; its cursor carries both. What is coming has no pages: it comes whole with the first.
 - `internal/calendar`: Google Calendar events, title syntax and client, with no knowledge of features.
@@ -95,6 +95,14 @@ flowchart TD
 - **Refusals are written once**, as a `Can…` check the action calls. A view turns them into verdicts (`apperr.VerdictOf`) and field locks (`apperr.LocksOf`, keyed by the field's JSON path), which the simulation holds to what the API does (`callAsViewed`, `callAsLocked`). The action's refusal stays the last word.
 - **Storage**: one partition per kind (`PK` = `SESSION`, `SK` = id), the item's JSON in `data`, and five LSIs (time, client, open, tag, ref) filled through `txn.Meta`. [SCHEMA.md](bizzy-lambda/SCHEMA.md) is generated from the code; a test fails when it is stale.
 - **A new feature** adds those four files, three lines in `app/app.go` (routes, invariants, kinds), a row in `dependencies_test.go`, a `Doc` per kind (then `-update` SCHEMA.md), and a simulation action per mutation.
+
+#### Migrations
+
+The SQL migrations of the table. The code serves only a table at its own version (`migrations.Version`, kept in the `SCHEMA` item), so it always reads items in the shape it writes them.
+
+- **Every change to a stored type or a `Meta`** needs one. `TestSchema` refuses to `-update` SCHEMA.md until there is one. One with no `Up` is enough when no item needs changing by hand: every run rewrites every item as the code writes it.
+- **Writing one**: `internal/migrations/NNN_<what>.go`, appended to `All` (never reorder or change a deployed one). It works on the stored JSON (`migrate.EachItem`), never on a feature's types, and imports only `platform`. Running it twice must change nothing. Give it `testdata/NNN/{before,after}.json`.
+- **Deploying**: CI dry-runs the migrations on an in-memory copy of the table, deploys, then invokes `cmd/migrate`. The run backs the table up (production), raises the fence (every request gets `unavailable`, "being updated"), runs the pending migrations, then reviews every item: it must decode strictly as its type. The run then rewrites them, checks every invariant, and lowers the fence. Any failure leaves the fence up until a fixed migration runs.
 
 ### bizzy-web
 
@@ -119,13 +127,14 @@ Requires Node 24, pnpm 10, Go (see `go.mod`) and the AWS CLI. The local frontend
 3. `pnpm install && pnpm aws:login && pnpm dev:deploy`
 4. `pnpm web:dev`, open http://localhost:4200, and connect a **test** Google account in Settings.
 
-Staging (`main`) and production (`production`) deploy from GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)). They need `cdk bootstrap`, an OIDC role, and GitHub environments with the variables and secrets listed in that workflow. None of these exist yet.
+Staging (`main`) and production (`production`) deploy from GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)). They need `cdk bootstrap`, an OIDC role, and GitHub environments with the variables and secrets listed in that workflow. The role also reads the table and invokes the `migrate` function. None of these exist yet.
 
 ## Commands
 
 ```sh
-pnpm dev:deploy        # deploy development stacks + write bizzy-web/.env.development
-pnpm lambda:deploy     # hotswap development Lambdas after Go changes
+pnpm dev:deploy        # deploy development stacks, migrate, write bizzy-web/.env.development
+pnpm lambda:deploy     # hotswap development Lambdas after Go changes, then migrate
+pnpm lambda:migrate:dry  # what the next deploy's migrations would do (writes nothing)
 pnpm web:dev           # http://localhost:4200
 pnpm web:env           # rewrite the web env only
 pnpm cdk:diff

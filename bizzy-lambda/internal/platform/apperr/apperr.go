@@ -22,6 +22,9 @@ const (
 	// CodeDisconnected means Google access is missing or was revoked; the
 	// app sends the user to Settings to connect again.
 	CodeDisconnected Code = "disconnected"
+	// CodeUnavailable means bizzy can't serve anything for a moment: a
+	// deploy is migrating the data. Trying again shortly works.
+	CodeUnavailable Code = "unavailable"
 )
 
 type Error struct {
@@ -68,6 +71,10 @@ func Conflict(format string, args ...any) *Error {
 
 func Disconnected(format string, args ...any) *Error {
 	return &Error{Code: CodeDisconnected, Message: fmt.Sprintf(format, args...)}
+}
+
+func Unavailable(format string, args ...any) *Error {
+	return &Error{Code: CodeUnavailable, Message: fmt.Sprintf(format, args...)}
 }
 
 // Verdict is what an action would say now: allowed, or why not and what

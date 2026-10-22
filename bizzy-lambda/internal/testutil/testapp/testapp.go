@@ -14,6 +14,8 @@ import (
 	"bizzy-lambda/internal/app"
 	"bizzy-lambda/internal/calendar"
 	"bizzy-lambda/internal/features/contacts"
+	"bizzy-lambda/internal/migrations"
+	"bizzy-lambda/internal/platform/migrate"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/table"
 	"bizzy-lambda/internal/testutil/fakecal"
@@ -51,6 +53,10 @@ func New() *App {
 		Now:        func() time.Time { return a.Now },
 		NewID:      func() string { ids++; return fmt.Sprintf("id%03d", ids) },
 	})
+	// As a deploy does: the code serves only a table at its version.
+	if _, err := migrate.Run(context.Background(), migrate.Options{Runner: a.Runner, Kinds: app.Kinds(), Migrations: migrations.All}); err != nil {
+		panic(err)
+	}
 	return a
 }
 

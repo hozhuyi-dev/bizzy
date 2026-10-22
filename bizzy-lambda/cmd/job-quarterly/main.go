@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"bizzy-lambda/internal/features/attachments"
+	"bizzy-lambda/internal/migrations"
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/platform/txn"
@@ -50,7 +51,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	run := &txn.Runner{Table: tb, Location: time.UTC, Now: time.Now, NewID: func() string { return "" }}
+	run := &txn.Runner{Table: tb, Location: time.UTC, Now: time.Now, NewID: func() string { return "" }, Schema: migrations.Version}
 
 	tasks := []task{
 		{name: "sweep", run: func(ctx context.Context) error {

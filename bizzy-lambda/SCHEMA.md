@@ -15,6 +15,10 @@ One table (see `internal/platform/table`). Every item has `PK` = its kind, `SK` 
 
 Every commit also moves one counter (`PK COMMIT`, `SK COUNTER`), which makes commits happen one at a time (see `internal/platform/txn`).
 
+One item (`PK SCHEMA`, `SK VERSION`) holds how many migrations the items have been through, and the fence while they run (see `internal/platform/migrate`).
+
+Schema version (migrations in `internal/migrations`): 0
+
 ## Kinds
 
 ### CLIENT

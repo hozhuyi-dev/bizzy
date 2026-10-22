@@ -163,6 +163,25 @@ export class ApiStack extends cdk.Stack {
       targets: [new LambdaFunction(quarterly.function)],
     });
 
+    // Brings the table to the schema the deployed code reads (see
+    // bizzy-lambda/cmd/migrate). Deploys invoke it right after updating the
+    // functions (scripts/migrate.mjs); production's table is backed up first.
+    const migrate = new GoFunction(this, "Migrate", {
+      projectName: projectName,
+      environment: environment,
+      command: "migrate",
+      timeout: Duration.minutes(15),
+      environmentVariables: {
+        TABLE_NAME: table.tableName,
+        TIME_ZONE: syncTimeZone,
+        BACKUP: String(environment === "production"),
+      },
+    });
+    table.grantReadWriteData(migrate.function);
+    migrate.function.addToRolePolicy(
+      new PolicyStatement({ actions: ["dynamodb:CreateBackup"], resources: [table.tableArn] }),
+    );
+
     // The one thing reachable without signing in, so it is its own function
     // with its own role: it can read single items from the table and nothing
     // else, whatever its code does.

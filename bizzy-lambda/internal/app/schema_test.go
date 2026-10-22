@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
 	"bizzy-lambda/internal/app"
+	"bizzy-lambda/internal/migrations"
 )
 
 var update = flag.Bool("update", false, "rewrite SCHEMA.md")
@@ -15,11 +17,17 @@ var update = flag.Bool("update", false, "rewrite SCHEMA.md")
 // TestSchema renders the DynamoDB schema from the code (every kind, its
 // stored fields, its indexes and the invariants that tie the kinds
 // together) and checks bizzy-lambda/SCHEMA.md says it. Run with -update to
-// rewrite it; the diff is the schema change.
+// rewrite it; the diff is the schema change. It refuses to while a kind's
+// stored fields changed with no new migration.
 func TestSchema(t *testing.T) {
 	got := schema(t)
 	const path = "../../SCHEMA.md"
 	if *update {
+		if old, err := os.ReadFile(path); err == nil {
+			if kind := changedWithoutMigration(string(old), got); kind != "" {
+				t.Fatalf("%s's stored fields changed with no migration: add one to internal/migrations (one with no Up will do if no item needs changing by hand), then -update again", kind)
+			}
+		}
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -46,6 +54,8 @@ func schema(t *testing.T) string {
 	b.WriteString("| LSI4 | `<tag>#<time>` | by tag (`Kind.Tagged`) |\n")
 	b.WriteString("| LSI5 | `<ref>` | by what they refer to (`Kind.WithRef`) |\n\n")
 	b.WriteString("Every commit also moves one counter (`PK COMMIT`, `SK COUNTER`), which makes commits happen one at a time (see `internal/platform/txn`).\n\n")
+	b.WriteString("One item (`PK SCHEMA`, `SK VERSION`) holds how many migrations the items have been through, and the fence while they run (see `internal/platform/migrate`).\n\n")
+	fmt.Fprintf(&b, "%s %d\n\n", versionLabel, migrations.Version)
 
 	invariants := app.Invariants()
 	b.WriteString("## Kinds\n")
@@ -67,7 +77,7 @@ func schema(t *testing.T) string {
 			}
 		}
 		if len(filed) > 0 {
-			b.WriteString("\n| Index | For it |\n|---|---|\n" + strings.Join(filed, "\n") + "\n")
+			fmt.Fprintf(&b, "\n| Index | For it |\n|---|---|\n%s\n", strings.Join(filed, "\n"))
 		}
 		var rules []string
 		for _, inv := range invariants {
@@ -76,8 +86,54 @@ func schema(t *testing.T) string {
 			}
 		}
 		if len(rules) > 0 {
-			b.WriteString("\nChecked on every change to one:\n\n" + strings.Join(rules, "\n") + "\n")
+			fmt.Fprintf(&b, "\nChecked on every change to one:\n\n%s\n", strings.Join(rules, "\n"))
 		}
 	}
 	return b.String()
+}
+
+// versionLabel starts the line of SCHEMA.md that gives migrations.Version.
+const versionLabel = "Schema version (migrations in `internal/migrations`):"
+
+// changedWithoutMigration is a kind whose stored fields differ between two
+// renderings of the schema at the same version; "" when there is none. A
+// new kind needs no migration: nothing of it is stored yet.
+func changedWithoutMigration(old, now string) string {
+	if versionOf(old) != versionOf(now) {
+		return ""
+	}
+	before, after := storedFields(old), storedFields(now)
+	for kind, fields := range before {
+		if after[kind] != fields {
+			return kind
+		}
+	}
+	return ""
+}
+
+func versionOf(schema string) string {
+	for _, line := range strings.Split(schema, "\n") {
+		if strings.HasPrefix(line, versionLabel) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
+}
+
+// fieldRow is a row of a kind's field table: "| name | `type` |".
+var fieldRow = regexp.MustCompile("^\\| \\S+ \\| `[^`]*` \\|$")
+
+// storedFields are each kind's field rows in a rendering of the schema.
+func storedFields(schema string) map[string]string {
+	out := map[string]string{}
+	kind := ""
+	for _, line := range strings.Split(strings.ReplaceAll(schema, "\r\n", "\n"), "\n") {
+		switch {
+		case strings.HasPrefix(line, "### "):
+			kind = strings.TrimPrefix(line, "### ")
+		case kind != "" && fieldRow.MatchString(line):
+			out[kind] += line + "\n"
+		}
+	}
+	return out
 }

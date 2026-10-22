@@ -40,6 +40,8 @@ var features = map[string][]string{
 //   - platform imports only platform: it knows nothing of bizzy;
 //   - calendar imports only platform: it knows Google, not the features;
 //   - a feature imports platform and what its row in features allows;
+//   - migrations import only platform: they work on stored JSON, never on
+//     a feature's types;
 //   - only app, testutil and simulation import app; only simulation and
 //     tests import testutil.
 func TestDependenciesPointInward(t *testing.T) {
@@ -92,6 +94,8 @@ func forbidden(pkg, dep string) string {
 		return "platform knows nothing of bizzy"
 	case pkg == "calendar":
 		return "calendar knows Google, not the features"
+	case pkg == "migrations":
+		return "migrations work on stored JSON, never on a feature's types"
 	case top(pkg) == "features":
 		name := strings.TrimPrefix(pkg, "features/")
 		want := strings.TrimPrefix(dep, "features/")

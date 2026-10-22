@@ -299,3 +299,23 @@ func TestEachReadsAListAPageAtATime(t *testing.T) {
 		t.Error("Each ran in an action")
 	}
 }
+
+func TestARunnerServesOnlyATableAtItsSchema(t *testing.T) {
+	ctx := context.Background()
+	for _, s := range []txn.Schema{{Version: 1}, {Version: 0, Migrating: true}} {
+		r, mem := newRunner()
+		mem.Load(txn.SchemaItem(s))
+		read := func() error {
+			_, err := txn.Read(ctx, r, func(tx *txn.Tx) ([]*note, error) { return notes.All(tx) })
+			return err
+		}
+		var shown *apperr.Error
+		if err := read(); !errors.As(err, &shown) || shown.Code != apperr.CodeUnavailable {
+			t.Errorf("table at %+v: err = %v, want the app told it is being updated", s, err)
+		}
+		r.Migrator = true
+		if err := read(); err != nil {
+			t.Errorf("table at %+v: the migrator's runner was refused: %v", s, err)
+		}
+	}
+}

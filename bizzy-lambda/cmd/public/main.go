@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/migrations"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/platform/router"
@@ -30,7 +31,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	run := &txn.Runner{Table: tb, Location: time.UTC, Now: time.Now, NewID: func() string { return "" }}
+	run := &txn.Runner{Table: tb, Location: time.UTC, Now: time.Now, NewID: func() string { return "" }, Schema: migrations.Version}
 	lambda.Start(func(ctx context.Context, req events.LambdaFunctionURLRequest) (events.LambdaFunctionURLResponse, error) {
 		return serve(ctx, run, req)
 	})

@@ -62,6 +62,16 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # This checkout's migrations on a copy of the table, before anything is
+      # deployed: a migration that would fail stops the deploy here, while
+      # the app still runs.
+      - name: Dry-run migrations
+        run: node scripts/migrate.mjs --dry-run
+        env:
+          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
       - name: Deploy stacks
         run: pnpm -F bizzy-infra cdk:deploy:ci
         env:
@@ -75,6 +85,14 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           SYNC_TIME_ZONE: ${{ secrets.SYNC_TIME_ZONE }}
+
+      # The updated functions refuse the table until it is at their schema.
+      - name: Migrate
+        run: node scripts/migrate.mjs
+        env:
+          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
 
   web:
     needs: infra

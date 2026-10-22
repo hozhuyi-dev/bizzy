@@ -1,7 +1,8 @@
 // Package txn is how anything in bizzy changes. An action is a function of
 // a Tx; the Runner runs it in four steps:
 //
-//  1. Begin: note the commit counter (see platform/table).
+//  1. Begin: note the commit counter (see platform/table), and check the
+//     table is at the code's schema (see schema.go).
 //  2. Run the action. It reads and changes items through the Tx, which
 //     writes nothing yet; then the checks it left for Later. If it or one
 //     of them returns an error, nothing is written.
@@ -41,8 +42,9 @@ import (
 	"bizzy-lambda/internal/platform/table"
 )
 
-// commits is the counter every commit moves on.
-var commits = table.Key{PK: "COMMIT", SK: "COUNTER"}
+// Commits is the counter every commit moves on, the migrator's too (see
+// platform/migrate).
+var Commits = table.Key{PK: "COMMIT", SK: "COUNTER"}
 
 // maxAttempts bounds the reruns when other commits keep going first.
 const maxAttempts = 5
@@ -74,6 +76,13 @@ type Runner struct {
 	// Location is the user's time zone.
 	Location *time.Location
 	NewID    func() string
+	// Schema is the version of the stored items this code reads
+	// (migrations.Version): the Runner serves only a table at it (see
+	// schema.go).
+	Schema int
+	// Migrator serves the table at any version, even while migrating: the
+	// migrator's own Runner (see platform/migrate).
+	Migrator bool
 }
 
 // Quiet is the runner without its After hook, for what After itself
@@ -94,7 +103,7 @@ func Run[T any](ctx context.Context, r *Runner, action func(tx *Tx) (T, error)) 
 		}
 		out, changes, writes, err := prepare(tx, r, action)
 		if err == nil && len(changes) > 0 {
-			err = r.Table.Commit(ctx, commits, tx.counter, writes)
+			err = r.Table.Commit(ctx, Commits, tx.counter, writes)
 		} else {
 			err = r.settle(tx, err)
 		}
@@ -174,7 +183,7 @@ var errBusy = apperr.Conflict("Something else changed at the same moment. Try ag
 // it is if the counter hasn't moved since it began, and as ErrConflict if
 // it has, since then its reads may straddle another commit.
 func (r *Runner) settle(tx *Tx, err error) error {
-	counter, cerr := r.Table.Counter(tx.ctx, commits)
+	counter, cerr := r.Table.Counter(tx.ctx, Commits)
 	switch {
 	case cerr != nil:
 		return errors.Join(err, cerr)
@@ -185,8 +194,13 @@ func (r *Runner) settle(tx *Tx, err error) error {
 }
 
 func (r *Runner) begin(ctx context.Context) (*Tx, error) {
-	counter, err := r.Table.Counter(ctx, commits)
+	counter, err := r.Table.Counter(ctx, Commits)
 	if err != nil {
+		return nil, err
+	}
+	// After the counter: a migration that starts in between moves it, so
+	// this run's commit fails and its rerun meets the fence.
+	if err := r.checkSchema(ctx); err != nil {
 		return nil, err
 	}
 	return &Tx{
@@ -233,6 +247,7 @@ type AnyKind interface {
 	KindDoc() Doc
 	Fields() []Field
 	IDs(tx *Tx) ([]string, error)
+	Rewrite(it table.Item) (table.Item, error)
 }
 
 // CheckAll checks every invariant on every stored item of the kinds given:

@@ -1,11 +1,9 @@
 // Package reset starts a development or staging environment over against
-// the real calendar: it deletes everything but the Google connection, and
-// every attached file, then syncs the calendar back in. It is never registered in production, where
-// issued invoices and receipts must be kept.
-//
-// It also clears data written by an older version of bizzy, which the
-// current one can't read: after a breaking change to how items are stored,
-// a reset is the migration.
+// the real calendar: it deletes everything but the Google connection and
+// the schema version, and every attached file, then syncs the calendar
+// back in. It is never registered in production, where issued invoices and
+// receipts must be kept. Changes to how items are stored are migrations
+// (internal/migrations), not resets.
 package reset
 
 import (
@@ -20,6 +18,7 @@ import (
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/table"
+	"bizzy-lambda/internal/platform/txn"
 )
 
 // Allowed reports whether an environment may be reset. Anything not
@@ -40,7 +39,7 @@ type View struct {
 // Routes registers data.reset.
 func Routes(r *router.Router, tb table.Table, blobs blobstore.Store, sync *googlesync.Sync) {
 	r.Mutation("data.reset", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
-		deleted, err := tb.Wipe(ctx, googleconnect.Connections.Name)
+		deleted, err := tb.Wipe(ctx, googleconnect.Connections.Name, txn.SchemaKey.PK)
 		if err != nil {
 			return nil, err
 		}

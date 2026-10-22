@@ -122,6 +122,28 @@ func (t *Table) Query(ctx context.Context, q table.Query) ([]table.Item, error) 
 	return out, nil
 }
 
+func (t *Table) Scan(ctx context.Context) ([]table.Item, error) {
+	out := []table.Item{}
+	pages := dynamodb.NewScanPaginator(t.Client, &dynamodb.ScanInput{TableName: aws.String(t.Name), ConsistentRead: aws.Bool(true)})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, raw := range page.Items {
+			if _, counter := raw[attrCounter]; counter {
+				continue
+			}
+			it, err := itemOf(raw)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, it)
+		}
+	}
+	return out, nil
+}
+
 func (t *Table) Counter(ctx context.Context, key table.Key) (int64, error) {
 	out, err := t.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(t.Name), Key: keyOf(key), ConsistentRead: aws.Bool(true),

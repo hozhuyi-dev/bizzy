@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"bizzy-lambda/internal/platform/table"
@@ -164,6 +165,24 @@ func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 		}
 		if c, _ := tb.Counter(ctx, counter()); c != 0 || n < 3 {
 			t.Errorf("counter = %d, deleted %d; want the counter gone too", c, n)
+		}
+	})
+
+	t.Run("a scan reads every item, counters aside", func(t *testing.T) {
+		tb := open(t)
+		a := item("a", table.Indexes{Time: "2026-10-01"})
+		if err := tb.Commit(ctx, counter(), 0, []table.Write{put(a), put(item("b", table.Indexes{}))}); err != nil {
+			t.Fatal(err)
+		}
+		all, err := tb.Scan(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A shared table holds other tests' items too.
+		mine := slices.DeleteFunc(all, func(it table.Item) bool { return !strings.HasPrefix(it.PK, pk) })
+		slices.SortFunc(mine, func(x, y table.Item) int { return strings.Compare(x.SK, y.SK) })
+		if !slices.Equal(keys(mine), []string{"a", "b"}) || mine[0].Time != a.Time {
+			t.Fatalf("scan = %+v, want a and b with their index keys", mine)
 		}
 	})
 

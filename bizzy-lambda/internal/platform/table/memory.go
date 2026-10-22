@@ -58,6 +58,22 @@ func (m *Memory) Query(_ context.Context, q Query) ([]Item, error) {
 	return out, nil
 }
 
+func (m *Memory) Scan(context.Context) ([]Item, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Collect(maps.Values(m.items)), nil
+}
+
+// Load stores items as they are, outside any commit: a copy of another
+// table (see Scan).
+func (m *Memory) Load(items ...Item) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, it := range items {
+		m.items[it.Key] = it
+	}
+}
+
 func (m *Memory) Counter(_ context.Context, key Key) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

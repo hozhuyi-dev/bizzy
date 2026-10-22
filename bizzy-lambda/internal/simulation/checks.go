@@ -14,6 +14,8 @@ import (
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/migrations"
+	"bizzy-lambda/internal/platform/migrate"
 	"bizzy-lambda/internal/platform/txn"
 )
 
@@ -24,6 +26,7 @@ import (
 func check(t *rapid.T, w *World) {
 	t.Helper()
 	invariantsHold(t, w)
+	deployable(t, w)
 	filesAreThere(t, w)
 	if w.InSync {
 		calendarShowsBizzy(t, w)
@@ -39,6 +42,17 @@ func invariantsHold(t *rapid.T, w *World) {
 	}
 	if len(broken) > 0 {
 		t.Fatalf("invariants broken: %v", broken)
+	}
+}
+
+// deployable: a deploy's review passes over everything stored, so the
+// next deploy can migrate it: every item reads as the code reads it, and
+// is stored exactly as the code writes it (see platform/migrate).
+func deployable(t *rapid.T, w *World) {
+	t.Helper()
+	o := migrate.Options{Runner: w.Runner, Kinds: app.Kinds(), Migrations: migrations.All}
+	if _, err := migrate.Run(context.Background(), o); err != nil {
+		t.Fatalf("a deploy would fail: %v", err)
 	}
 }
 

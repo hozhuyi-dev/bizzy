@@ -156,6 +156,9 @@ type Table interface {
 	// Query reads the items a query matches, consistently, in index order
 	// (items with the same sort key in a fixed order of their own).
 	Query(ctx context.Context, q Query) ([]Item, error)
+	// Scan reads every item, in no order (counters aside): for copying the
+	// table, as a migration's dry run does (see platform/migrate).
+	Scan(ctx context.Context) ([]Item, error)
 	// Counter reads a counter's value; 0 before it was ever moved.
 	Counter(ctx context.Context, key Key) (int64, error)
 	// Commit moves a counter from `from` to from+1 and applies the writes,
