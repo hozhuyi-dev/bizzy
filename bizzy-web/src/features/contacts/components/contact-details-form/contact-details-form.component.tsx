@@ -6,7 +6,7 @@ import type { ContactDetails } from "../../contacts.types";
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Button } from "~/components/ui/button";
 import { DialogFooter } from "~/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 
@@ -79,7 +79,6 @@ export function ContactDetailsForm({ mode, initial, submitLabel, onSubmit, onCan
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
-              <FieldDescription>Printed on receipts.</FieldDescription>
             </Field>
           )}
         </form.Field>

@@ -1,5 +1,6 @@
 // Package blobstore is where files she attaches (photos, PDFs, scans)
-// live: outside DynamoDB, whose items are capped at 400 KB.
+// live, and the PDFs of issued documents: outside DynamoDB, whose items
+// are capped at 400 KB.
 //
 // One private S3 bucket per environment (see bizzy-infra's FileBucket). The
 // browser uploads and downloads directly with short-lived presigned URLs,
@@ -38,6 +39,13 @@ type Store interface {
 	DeletePrefix(ctx context.Context, prefix string) (int, error)
 	// List returns every file whose key starts with prefix.
 	List(ctx context.Context, prefix string) ([]Listed, error)
+	// Put stores a record the API writes itself (an issued document's
+	// PDF), never pending. Where the store keeps records (production), it
+	// can't be changed or deleted until its retention is over.
+	Put(ctx context.Context, key, contentType string, body []byte) error
+	// Get reads a file the API serves itself. ErrMissing when there is
+	// none.
+	Get(ctx context.Context, key string) ([]byte, error)
 }
 
 // Listed is one stored file, as a listing shows it.
@@ -81,3 +89,7 @@ func (Unavailable) Confirm(context.Context, string) (Object, error) { return Obj
 func (Unavailable) Delete(context.Context, ...string) error { return ErrUnavailable }
 
 func (Unavailable) DeletePrefix(context.Context, string) (int, error) { return 0, ErrUnavailable }
+
+func (Unavailable) Put(context.Context, string, string, []byte) error { return ErrUnavailable }
+
+func (Unavailable) Get(context.Context, string) ([]byte, error) { return nil, ErrUnavailable }

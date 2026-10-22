@@ -25,8 +25,10 @@ export interface Issuer {
   accountNo?: string;
 }
 
+/** Who it is for: name and IC or passport number are printed; the contact details are kept, not printed. */
 export interface Recipient {
   name: string;
+  idNo?: string;
   email?: string;
   phone?: string;
   address?: string;
@@ -59,7 +61,7 @@ export interface DocumentContent {
   lines: Array<DocumentLine>;
   /** On a receipt. */
   payment?: DocumentPayment;
-  /** The payment as printed ("Cash"). */
+  /** The payment's method as named ("Cash"); not printed. */
   paidBy?: string;
   notes?: string;
   totalCents: number;
@@ -119,6 +121,8 @@ export interface DocumentRevision {
   number: string;
   content: DocumentContent;
   issuedAt: string;
+  /** The SHA-256 of its PDF as issued and kept. */
+  pdfSha256: string;
 }
 
 /**
@@ -140,7 +144,7 @@ export interface DocumentView extends DocumentSummary {
   locked: Locks;
 }
 
-/** What a share link shows: the issued content only; mirrors documents.SharedView. */
+/** What a share link shows: the issued content and its PDF; mirrors documents.SharedView. */
 export interface SharedDocumentView {
   type: DocumentType;
   status: DocumentStatus;
@@ -148,6 +152,18 @@ export interface SharedDocumentView {
   revision?: number;
   content: DocumentContent;
   cancelledAt?: string;
+  pdf: DocumentFile;
+}
+
+/**
+ * A PDF the API printed; mirrors documents.File. An issued revision's is the
+ * file kept when it was issued (stamped CANCELLED once cancelled); a draft's
+ * is printed afresh, watermarked DRAFT.
+ */
+export interface DocumentFile {
+  name: string;
+  /** The PDF, base64. */
+  data: string;
 }
 
 /** A document a session or package is on; mirrors sessions.DocumentRef. */
@@ -168,26 +184,15 @@ export interface DocumentLink {
   issued: boolean;
 }
 
-/** What differs between document types in the app; see DOCUMENT_TYPES. */
+/** What differs between document types in the app; see DOCUMENT_TYPES. The API prints them (documents.Types). */
 export interface DocumentTypeSpec {
-  /** Printed at the top of the PDF. */
   title: string;
   /** Plural, for navigation and lists. */
   plural: string;
   /** Label for the party it is addressed to. */
   recipientLabel: string;
-  /** Whether it confirms a payment ("Paid by", "Total paid"); an invoice asks for one. */
-  paid: boolean;
+  /** Label for its total. */
+  totalLabel: string;
   /** Its list, under Documents. */
   path: "/invoices" | "/receipts";
-}
-
-/** One printed version of a document. */
-export interface DocumentPdfProps {
-  type: DocumentType;
-  number?: string | undefined;
-  revision?: number | undefined;
-  /** Printed across the page: a draft, or a cancelled document. */
-  watermark?: "DRAFT" | "CANCELLED" | undefined;
-  content: DocumentContent;
 }

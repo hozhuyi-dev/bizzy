@@ -1,9 +1,9 @@
 // Package reset starts a development or staging environment over against
 // the real calendar: it deletes everything but the Google connection and
-// the schema version, and every attached file, then syncs the calendar
-// back in. It is never registered in production, where issued invoices and
-// receipts must be kept. Changes to how items are stored are migrations
-// (internal/migrations), not resets.
+// the schema version, and every attached file and issued PDF, then syncs
+// the calendar back in. It is never registered in production, where issued
+// invoices and receipts must be kept. Once production holds data, changes
+// to how items are stored are migrations (internal/migrations), not resets.
 package reset
 
 import (
@@ -12,6 +12,7 @@ import (
 	"log/slog"
 
 	"bizzy-lambda/internal/features/attachments"
+	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/googleconnect"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/platform/apperr"
@@ -47,7 +48,11 @@ func Routes(r *router.Router, tb table.Table, blobs blobstore.Store, sync *googl
 		if err != nil {
 			return nil, err
 		}
-		out := View{Deleted: deleted + files}
+		pdfs, err := blobs.DeletePrefix(ctx, documents.PDFKeyPrefix)
+		if err != nil {
+			return nil, err
+		}
+		out := View{Deleted: deleted + files + pdfs}
 		synced, err := sync.Run(ctx)
 		if err != nil {
 			slog.ErrorContext(ctx, "sync after reset", "error", err)

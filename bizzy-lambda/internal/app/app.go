@@ -107,7 +107,7 @@ func New(d Deps) *App {
 		clients.Owner{What: "follow-ups", Has: followups.FollowUps.HasClient})
 	contacts.Routes(r, run, d.Contacts)
 	settings.Routes(r, run)
-	documents.Routes(r, run, sessions.CheckIssue)
+	documents.Routes(r, run, d.Blobs, sessions.CheckIssue)
 	packages.Routes(r, run, sessions.CreditsUsed)
 	sessions.Routes(r, run, d.Blobs)
 	payments.Routes(r, run)

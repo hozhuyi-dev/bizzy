@@ -16,6 +16,8 @@ type Fields struct {
 	Aliases    *[]string  `json:"aliases,omitempty"`
 	FeeRates   *[]FeeRate `json:"feeRates,omitempty"`
 	HomeVisits *bool      `json:"homeVisits,omitempty"`
+	// IDNo is their IC or passport number (see IDNo); "" clears it.
+	IDNo *string `json:"idNo,omitempty"`
 	// Contact links the client to a Google contact, read from Google by
 	// the route (see Routes); Unlink drops the link, to undo a wrong one.
 	Contact *Contact `json:"-"`
@@ -171,6 +173,13 @@ func apply(tx *txn.Tx, c *Client, f Fields) error {
 	}
 	if f.HomeVisits != nil {
 		c.HomeVisits = *f.HomeVisits
+	}
+	if f.IDNo != nil {
+		id, err := IDNo(*f.IDNo)
+		if err != nil {
+			return err
+		}
+		c.IDNo = id
 	}
 	switch {
 	case f.Contact != nil:

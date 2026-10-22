@@ -23,7 +23,7 @@ Schema version (migrations in `internal/migrations`): 0
 
 ### CLIENT
 
-A client: name, calendar names, usual hourly fees and place, a copy of their Google contact, and whether archived.
+A client: name, calendar names, usual hourly fees and place, IC or passport number, a copy of their Google contact, and whether archived.
 
 | Field | Type |
 |---|---|
@@ -32,6 +32,7 @@ A client: name, calendar names, usual hourly fees and place, a copy of their Goo
 | aliases | `[]string` |
 | feeRates | `[]clients.FeeRate` |
 | homeVisits | `bool` |
+| idNo | `string` |
 | contact | `*clients.Contact` |
 | archivedAt | `*time.Time` |
 
@@ -133,7 +134,7 @@ Checked on every change to one:
 
 ### DOCREV
 
-An issued revision, kept as issued: <documentId>#NN.
+An issued revision, kept as issued: <documentId>#NN. Its PDF is in the file store, at documents/<documentId>/NN.pdf.
 
 | Field | Type |
 |---|---|
@@ -142,6 +143,7 @@ An issued revision, kept as issued: <documentId>#NN.
 | number | `string` |
 | content | `documents.Content` |
 | issuedAt | `time.Time` |
+| pdfSha256 | `string` |
 
 | Index | For it |
 |---|---|

@@ -10,12 +10,8 @@ import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { formatCents, parseCents } from "~/core/utils/money.util";
-import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { saidAbove } from "~/features/remedies/remedies.util";
-
-// The methods she takes; she can still type something else.
-const PAID_BY_SUGGESTIONS = PAYMENT_METHODS.map((method) => method.label);
 
 /** Issue: what the page is for, so it stays in view on a phone. */
 export function documentIssueAction(editor: DocumentEditorState): Action {
@@ -107,26 +103,6 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
               </Field>
             )}
           </form.Field>
-          {spec.paid && (
-            <form.Field name="paidBy">
-              {(field) => (
-                <Field>
-                  <FieldLabel htmlFor={field.name}>Paid by</FieldLabel>
-                  <Input
-                    id={field.name}
-                    list="paid-by-suggestions"
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                  />
-                  <datalist id="paid-by-suggestions">
-                    {PAID_BY_SUGGESTIONS.map((option) => (
-                      <option key={option} value={option} />
-                    ))}
-                  </datalist>
-                </Field>
-              )}
-            </form.Field>
-          )}
         </div>
       ),
     },
@@ -135,13 +111,11 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       title: spec.recipientLabel,
       content: (
         <FieldGroup>
-          <form.Field name="recipient.name">{(field) => <TextInput field={field} label="Name" />}</form.Field>
-          <form.Field name="recipient.address">
-            {(field) => <TextInput field={field} label="Address" multiline />}
-          </form.Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <form.Field name="recipient.phone">{(field) => <TextInput field={field} label="Phone" />}</form.Field>
-            <form.Field name="recipient.email">{(field) => <TextInput field={field} label="Email" />}</form.Field>
+            <form.Field name="recipient.name">{(field) => <TextInput field={field} label="Name" />}</form.Field>
+            <form.Field name="recipient.idNo">
+              {(field) => <TextInput field={field} label="IC or passport no." />}
+            </form.Field>
           </div>
         </FieldGroup>
       ),
@@ -260,7 +234,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                   <PlusIcon /> Add line
                 </Button>
                 <span className="text-sm">
-                  {spec.paid ? "Total paid" : "Total"} <b className="text-base">{formatCents(total)}</b>
+                  {spec.totalLabel} <b className="text-base">{formatCents(total)}</b>
                 </span>
               </div>
               {/* One hint for both: its lines and their amounts stay together. */}

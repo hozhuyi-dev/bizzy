@@ -19,6 +19,7 @@ export interface ContentValues {
   lines: Array<LineValues>;
   /** A receipt's payment, as recorded: the payment's to change, not the editor's. */
   payment: DocumentPayment | undefined;
+  /** The payment's method as named; the API sets it from the payment. */
   paidBy: string;
   notes: string;
 }
@@ -39,6 +40,7 @@ export function toFormValues(content: DocumentContent): ContentValues {
     },
     recipient: {
       name: recipient.name,
+      idNo: recipient.idNo ?? "",
       email: recipient.email ?? "",
       phone: recipient.phone ?? "",
       address: recipient.address ?? "",
@@ -78,7 +80,7 @@ export function toContent(values: ContentValues): DocumentContent {
     ...(values.payment ? { payment: values.payment } : {}),
     ...(values.paidBy.trim() ? { paidBy: values.paidBy } : {}),
     ...(values.notes.trim() ? { notes: values.notes } : {}),
-    // The API recomputes this; it is here for the live preview.
+    // The API recomputes this.
     totalCents: lines.reduce((sum, line) => sum + line.amountCents, 0),
   };
 }

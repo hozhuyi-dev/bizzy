@@ -1,5 +1,5 @@
 // Package memblob is an in-memory blobstore.Store. A test plays the browser
-// by calling Put with what it would upload to a presigned URL.
+// by calling Upload with what it would upload to a presigned URL.
 package memblob
 
 import (
@@ -13,11 +13,13 @@ import (
 	"bizzy-lambda/internal/platform/blobstore"
 )
 
-// Blob is one stored file.
+// Blob is one stored file. Body is kept only for what the API writes
+// itself (Put); a browser's upload is only its size.
 type Blob struct {
 	Size        int64
 	ContentType string
 	Pending     bool
+	Body        []byte
 }
 
 type Store struct {
@@ -47,9 +49,9 @@ func (s *Store) PresignPut(_ context.Context, key, contentType string, size int6
 	return blobstore.Upload{URL: "memblob://" + key, Headers: map[string]string{"Content-Type": contentType}}, nil
 }
 
-// Put uploads to a presigned URL, as the browser does: only what was
+// Upload uploads to a presigned URL, as the browser does: only what was
 // presigned for the key.
-func (s *Store) Put(key string) error {
+func (s *Store) Upload(key string) error {
 	blob, ok := s.Presigned[key]
 	if !ok {
 		return fmt.Errorf("memblob: no upload presigned for %s", key)
@@ -71,6 +73,20 @@ func (s *Store) Confirm(_ context.Context, key string) (blobstore.Object, error)
 	blob.Pending = false
 	s.Blobs[key] = blob
 	return blobstore.Object{Size: blob.Size, ContentType: blob.ContentType}, nil
+}
+
+func (s *Store) Put(_ context.Context, key, contentType string, body []byte) error {
+	s.beforeWrite("blobs.put")
+	s.Blobs[key] = Blob{Size: int64(len(body)), ContentType: contentType, Body: slices.Clone(body)}
+	return nil
+}
+
+func (s *Store) Get(_ context.Context, key string) ([]byte, error) {
+	blob, ok := s.Blobs[key]
+	if !ok {
+		return nil, blobstore.ErrMissing
+	}
+	return slices.Clone(blob.Body), nil
 }
 
 func (s *Store) Delete(_ context.Context, keys ...string) error {

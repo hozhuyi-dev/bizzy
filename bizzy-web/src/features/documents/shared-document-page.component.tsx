@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { BanIcon, DownloadIcon } from "lucide-react";
-import { DocumentSheet } from "./components/document-sheet/document-sheet.component";
+import { DocumentPdfView } from "./components/document-pdf-view/document-pdf-view.component";
 import { DocumentsQuery } from "./documents.query";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { documentLabel } from "./documents.util";
@@ -12,8 +12,8 @@ import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
 
 /**
- * A document as her client sees it from a share link: the issued content and
- * a PDF to keep. Clients see this page, so it has none of the app around it
+ * A document as her client sees it from a share link: its PDF as issued, to
+ * read and keep. Clients see this page, so it has none of the app around it
  * and no playful copy.
  */
 export function SharedDocumentPage({ token }: { token: string }) {
@@ -44,7 +44,7 @@ export function SharedDocumentPage({ token }: { token: string }) {
 }
 
 function SharedDocument({ doc }: { doc: SharedDocumentView }) {
-  const { busy, download: downloadPdf } = useDocumentPdf({ errorMessage: "Couldn't make the PDF. Please try again." });
+  const { busy, download: downloadPdf } = useDocumentPdf({ errorMessage: "Couldn't save the PDF. Please try again." });
   const cancelled = doc.status === "cancelled";
   const title = DOCUMENT_TYPES[doc.type].title;
 
@@ -52,14 +52,7 @@ function SharedDocument({ doc }: { doc: SharedDocumentView }) {
     document.title = `${title} ${documentLabel(doc.number, doc.revision)} · ${doc.content.issuer.name}`;
   }, [title, doc]);
 
-  const download = () =>
-    downloadPdf({
-      type: doc.type,
-      number: doc.number,
-      revision: doc.revision,
-      watermark: cancelled ? "CANCELLED" : undefined,
-      content: doc.content,
-    });
+  const download = () => downloadPdf({ file: doc.pdf });
 
   return (
     <>
@@ -78,13 +71,7 @@ function SharedDocument({ doc }: { doc: SharedDocumentView }) {
           title={`This ${title.toLowerCase()} was cancelled${doc.cancelledAt ? ` on ${formatDate(doc.cancelledAt)}` : ""}.`}
         />
       )}
-      <DocumentSheet
-        type={doc.type}
-        content={doc.content}
-        number={doc.number}
-        revision={doc.revision}
-        cancelled={cancelled}
-      />
+      <DocumentPdfView file={doc.pdf} />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { feeStartError, feesChanged, toFeeRates } from "./clients.form";
+import { feeStartError, feesChanged, toClientFields, toClientValues, toFeeRates } from "./clients.form";
 import type { ClientView } from "./clients.types";
 
 const client = (feeRates: ClientView["feeRates"] = []): ClientView => ({
@@ -42,5 +42,15 @@ describe("feeStartError", () => {
     expect(feeStartError(fees, 1, "")).toBe("Choose the day it starts");
     expect(feeStartError(fees, 2, "2026-10-01")).toBe("Another fee starts that day");
     expect(feeStartError(fees, 2, "2026-11-01")).toBeUndefined();
+  });
+});
+
+describe("toClientFields", () => {
+  it("sends the IC or passport number only when it changed, and an empty one to clear it", () => {
+    const saved = { ...client(), idNo: "900101-14-5678" };
+    const values = toClientValues(saved, undefined);
+    expect(toClientFields(values, saved, undefined)).toEqual({});
+    expect(toClientFields({ ...values, idNo: " A1234567 " }, saved, undefined)).toEqual({ idNo: "A1234567" });
+    expect(toClientFields({ ...values, idNo: "" }, saved, undefined)).toEqual({ idNo: "" });
   });
 });

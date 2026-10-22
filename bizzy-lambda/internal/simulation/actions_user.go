@@ -401,7 +401,7 @@ var fileActions = []Action{
 		var ticket attachments.Ticket
 		_ = json.Unmarshal(data, &ticket)
 		if rapid.IntRange(0, 4).Draw(t, "upload?") > 0 {
-			_ = w.Blobs.Put(strings.TrimPrefix(ticket.Upload.URL, "memblob://"))
+			_ = w.Blobs.Upload(strings.TrimPrefix(ticket.Upload.URL, "memblob://"))
 		}
 		w.call(t, "attachments.confirm", map[string]any{"ownerKind": kind, "ownerId": owner, "id": ticket.ID, "name": "scan.pdf", "contentType": "application/pdf"})
 	}},

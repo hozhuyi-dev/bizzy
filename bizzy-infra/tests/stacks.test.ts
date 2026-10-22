@@ -181,6 +181,13 @@ describe("files", () => {
       }),
     });
   });
+
+  test("lets only production lock files", () => {
+    expect(JSON.stringify(synth("staging").data.findResources("AWS::S3::Bucket"))).not.toContain(
+      "ObjectLockEnabled",
+    );
+    synth("production").data.hasResourceProperties("AWS::S3::Bucket", { ObjectLockEnabled: true });
+  });
 });
 
 describe("api", () => {
@@ -225,22 +232,40 @@ describe("api", () => {
     }
   });
 
-  test("scopes the api's and the quarterly job's S3 access to attachment keys", () => {
-    type Policy = {
-      Properties: {
-        PolicyDocument: { Statement: Array<{ Action: unknown; Resource: unknown }> };
-      };
-    };
-    const statements = Object.values(api.findResources("AWS::IAM::Policy")).flatMap(
-      (policy) => (policy as Policy).Properties.PolicyDocument.Statement,
-    );
-    const s3 = statements.filter((s) => JSON.stringify(s.Action).includes("s3:"));
+  type Statement = { Action: unknown; Resource: unknown };
+  type Policy = { Properties: { PolicyDocument: { Statement: Array<Statement> } } };
+  const s3Statements = (template: Template) =>
+    Object.values(template.findResources("AWS::IAM::Policy"))
+      .flatMap((policy) => (policy as Policy).Properties.PolicyDocument.Statement)
+      .filter((s) => JSON.stringify(s.Action).includes("s3:"));
 
-    // The api's two statements, and the quarterly job's two.
-    expect(s3).toHaveLength(4);
+  test("scopes S3 access to attachment keys and issued PDFs", () => {
+    const s3 = s3Statements(api);
+    // The api's three, the public function's one, the quarterly job's two.
+    expect(s3).toHaveLength(6);
     for (const s of s3) {
-      expect(JSON.stringify(s)).toContain("attachments/*");
+      expect(JSON.stringify(s)).toMatch(/attachments\/\*|documents\/\*/);
     }
+  });
+
+  test("locks issued PDFs, and deletes them, only where it should", () => {
+    const pdfActions = (template: Template) =>
+      s3Statements(template)
+        .filter((s) => JSON.stringify(s.Resource).includes("documents/*") && JSON.stringify(s.Action).includes("PutObject"))
+        .flatMap((s) => s.Action as Array<string>);
+    expect(pdfActions(api)).toContain("s3:DeleteObject");
+
+    const production = synth("production").api;
+    expect(pdfActions(production)).toEqual(["s3:PutObject", "s3:GetObject", "s3:PutObjectRetention"]);
+    production.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: Match.stringLikeRegexp("-api$"),
+      Environment: { Variables: Match.objectLike({ RECORD_RETENTION_DAYS: "2557" }) },
+    });
+    expect(() =>
+      api.hasResourceProperties("AWS::Lambda::Function", {
+        Environment: { Variables: Match.objectLike({ RECORD_RETENTION_DAYS: Match.anyValue() }) },
+      }),
+    ).toThrow();
   });
 
   test("has the api, public, quarterly job and migrate functions; the app runs the sync, a rule the job", () => {
@@ -286,7 +311,7 @@ describe("api", () => {
     });
   });
 
-  test("lets the public function only get items", () => {
+  test("lets the public function only get items and issued PDFs", () => {
     const publicRole = Object.keys(api.findResources("AWS::IAM::Role")).find((id) =>
       id.startsWith("Public"),
     );
@@ -301,6 +326,7 @@ describe("api", () => {
       .flatMap((policy) => (policy as Policy).Properties.PolicyDocument.Statement);
 
     expect(publicRole).toBeDefined();
-    expect(statements.map((s) => s.Action)).toEqual(["dynamodb:GetItem"]);
+    expect(statements.map((s) => s.Action)).toEqual(["dynamodb:GetItem", "s3:GetObject"]);
+    expect(JSON.stringify(statements[1])).toContain("documents/*");
   });
 });

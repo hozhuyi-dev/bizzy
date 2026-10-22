@@ -2,6 +2,8 @@ package simulation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"maps"
 	"slices"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"bizzy-lambda/internal/app"
 	"bizzy-lambda/internal/calendar"
 	"bizzy-lambda/internal/features/attachments"
+	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/sessions"
@@ -58,11 +61,18 @@ func deployable(t *rapid.T, w *World) {
 
 // filesAreThere: every attachment's file is in the file store, kept (not
 // pending): the table is written before a file is deleted, never after.
+// Every issued revision's PDF is kept too, as issued.
 func filesAreThere(t *rapid.T, w *World) {
 	t.Helper()
 	for _, a := range read(t, w, attachments.Attachments.All) {
 		if blob, ok := w.Blobs.Blobs[a.Key]; !ok || blob.Pending {
 			t.Fatalf("attachment %s's file %s isn't kept", a.ID, a.Key)
+		}
+	}
+	for _, r := range read(t, w, documents.Revisions.All) {
+		blob, ok := w.Blobs.Blobs[documents.PDFKey(r)]
+		if sum := sha256.Sum256(blob.Body); !ok || hex.EncodeToString(sum[:]) != r.PDFSha256 {
+			t.Fatalf("%s's PDF isn't kept as issued", documents.Label(r.Number, r.Revision))
 		}
 	}
 }

@@ -1,8 +1,8 @@
 // Command public serves share links: GET <function URL>/<token> returns
-// the issued document the token opens, for whoever has the link (see
-// documents/share.go). It is the only thing reachable without signing in,
-// so it is its own function, which can read single items and nothing else
-// (see bizzy-infra api-stack).
+// the issued document the token opens and its PDF, for whoever has the
+// link (see documents/share.go). It is the only thing reachable without
+// signing in, so it is its own function, which can read single items and
+// issued PDFs, and nothing else (see bizzy-infra api-stack).
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/migrations"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
@@ -31,15 +33,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	blobs, err := blobstore.NewS3(context.Background(), os.Getenv("BUCKET_NAME"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	run := &txn.Runner{Table: tb, Location: time.UTC, Now: time.Now, NewID: func() string { return "" }, Schema: migrations.Version}
 	lambda.Start(func(ctx context.Context, req events.LambdaFunctionURLRequest) (events.LambdaFunctionURLResponse, error) {
-		return serve(ctx, run, req)
+		return serve(ctx, run, blobs, req)
 	})
 }
 
 // serve answers in the API's {data} / {error} shape, so the app reads both
 // the same way.
-func serve(ctx context.Context, run *txn.Runner, req events.LambdaFunctionURLRequest) (events.LambdaFunctionURLResponse, error) {
+func serve(ctx context.Context, run *txn.Runner, blobs blobstore.Store, req events.LambdaFunctionURLRequest) (events.LambdaFunctionURLResponse, error) {
 	if req.RequestContext.HTTP.Method != http.MethodGet {
 		return respond(http.StatusMethodNotAllowed, router.Response{Error: &router.ErrorBody{Code: apperr.CodeInvalid, Message: "GET only"}})
 	}
@@ -49,13 +55,25 @@ func serve(ctx context.Context, run *txn.Runner, req events.LambdaFunctionURLReq
 	if !documents.IsShareToken(token) {
 		return respond(http.StatusNotFound, router.Response{Error: &router.ErrorBody{Code: apperr.CodeNotFound, Message: documents.Shares.Gone}})
 	}
-	shared, err := txn.Read(ctx, run, func(tx *txn.Tx) (documents.SharedView, error) {
+	type opened struct {
+		doc *documents.Document
+		rev *documents.Revision
+	}
+	found, err := txn.Read(ctx, run, func(tx *txn.Tx) (opened, error) {
 		d, err := documents.Open(tx, token)
 		if err != nil {
-			return documents.SharedView{}, err
+			return opened{}, err
 		}
-		return documents.SharedViewOf(d), nil
+		r, err := documents.IssuedRevision(tx, d)
+		return opened{d, r}, err
 	})
+	var shared documents.SharedView
+	if err == nil {
+		// Read only: a PDF the issue didn't store is printed, not stored.
+		var pdf documents.File
+		pdf, err = documents.ServedPDF(ctx, blobs, found.doc, found.rev, false)
+		shared = documents.SharedViewOf(found.doc, pdf)
+	}
 	if err != nil {
 		var shown *apperr.Error
 		if errors.As(err, &shown) {

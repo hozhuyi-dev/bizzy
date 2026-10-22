@@ -16,6 +16,7 @@ type View struct {
 	Aliases    []string  `json:"aliases"`
 	FeeRates   []FeeRate `json:"feeRates"`
 	HomeVisits bool      `json:"homeVisits"`
+	IDNo       string    `json:"idNo,omitempty"`
 	Contact    *Contact  `json:"contact,omitempty"`
 	// FeeTodayCents is the hourly fee a session without one would be
 	// charged today; nil when no fee is set.
@@ -35,7 +36,7 @@ type Can struct {
 // can have (see Delete).
 func ViewOf(tx *txn.Tx, c *Client, owners ...Owner) (View, error) {
 	v := View{
-		ID: c.ID, Name: c.Name, Aliases: c.Aliases, FeeRates: c.FeeRates, HomeVisits: c.HomeVisits,
+		ID: c.ID, Name: c.Name, Aliases: c.Aliases, FeeRates: c.FeeRates, HomeVisits: c.HomeVisits, IDNo: c.IDNo,
 		Contact:       c.Contact,
 		FeeTodayCents: c.FeeOn(tx.Now().In(tx.Location()).Format(time.DateOnly)),
 		ArchivedAt:    c.ArchivedAt,

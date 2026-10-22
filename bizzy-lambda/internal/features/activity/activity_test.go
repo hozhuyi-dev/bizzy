@@ -93,7 +93,8 @@ func TestLapsedUntilReachedOut(t *testing.T) {
 	if fu.DoneAt == nil || fu.Summary != followups.ReachedOutSummary || !fu.AllDay {
 		t.Errorf("reached out: %+v", fu)
 	}
-	if v := of(t, a, jane); v.LapsedMonths != 0 || v.LastContactedAt == nil || !v.LastContactedAt.Equal(a.Now) {
+	// Done today, it counts from today's start, when it was due.
+	if v := of(t, a, jane); v.LapsedMonths != 0 || v.LastContactedAt == nil || !v.LastContactedAt.Equal(fu.Due) {
 		t.Errorf("reached out: lapsed %d, last contacted %v", v.LapsedMonths, v.LastContactedAt)
 	}
 	a.Now = a.Now.AddDate(0, 0, activity.ContactSnoozeDays+1)
@@ -108,5 +109,41 @@ func TestLapsedUntilReachedOut(t *testing.T) {
 	}
 	if v := of(t, a, jane); v.LapsedMonths != 0 || v.OpenFollowUps != 1 || v.NextFollowUpAt == nil {
 		t.Errorf("follow-up waiting: %+v", v)
+	}
+}
+
+// A follow-up counts as contact when it was due, so ticking an old one off
+// later doesn't make the client look recently contacted; one done early
+// counts when it was done.
+func TestFollowUpContactsWhenDue(t *testing.T) {
+	a := testapp.New()
+	jane, err := a.Client("Jane Smith", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	create := func(date string) followups.View {
+		var fu followups.View
+		in := map[string]any{"clientId": jane, "when": map[string]any{"date": date}, "summary": "Call"}
+		if err := a.Must("followUps.create", in, &fu); err != nil {
+			t.Fatal(err)
+		}
+		return fu
+	}
+	done := func(fu followups.View) {
+		if err := a.Must("followUps.setDone", map[string]any{"id": fu.ID, "done": true}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	late := create(testapp.Epoch.AddDate(0, 0, -20).In(testapp.KL).Format(time.DateOnly))
+	done(late)
+	if v := of(t, a, jane); v.LastContactedAt == nil || !v.LastContactedAt.Equal(late.Due) {
+		t.Errorf("ticked late: last contacted %v, want when due, %v", v.LastContactedAt, late.Due)
+	}
+
+	early := create(testapp.Epoch.AddDate(0, 0, 10).In(testapp.KL).Format(time.DateOnly))
+	done(early)
+	if v := of(t, a, jane); v.LastContactedAt == nil || !v.LastContactedAt.Equal(a.Now) {
+		t.Errorf("done early: last contacted %v, want when done, %v", v.LastContactedAt, a.Now)
 	}
 }

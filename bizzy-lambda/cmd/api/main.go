@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"log"
 	"os"
+	"strconv"
 	"time"
 	_ "time/tzdata"
 
@@ -38,6 +39,14 @@ func main() {
 	blobs, err := blobstore.NewS3(context.Background(), mustEnv("BUCKET_NAME"))
 	if err != nil {
 		log.Fatal(err)
+	}
+	// Production locks issued PDFs for as long as the tax law asks.
+	if days := os.Getenv("RECORD_RETENTION_DAYS"); days != "" {
+		n, err := strconv.Atoi(days)
+		if err != nil {
+			log.Fatalf("RECORD_RETENTION_DAYS: %v", err)
+		}
+		blobs.RecordRetention = time.Duration(n) * 24 * time.Hour
 	}
 	a := app.New(app.Deps{
 		Table: tb, Blobs: blobs, Google: google, Resettable: reset.Allowed(os.Getenv("ENVIRONMENT")),

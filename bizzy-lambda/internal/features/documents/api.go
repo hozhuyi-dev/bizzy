@@ -9,6 +9,7 @@ import (
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/listing"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
@@ -147,8 +148,8 @@ func viewOf(tx *txn.Tx, d *Document, checks []Check) (*View, error) {
 	return v, err
 }
 
-// SharedView is what a share link shows: the issued content, never a
-// draft or a revision in progress (see cmd/public).
+// SharedView is what a share link shows: the issued content and its PDF,
+// never a draft or a revision in progress (see cmd/public).
 type SharedView struct {
 	Type        Type       `json:"type"`
 	Status      Status     `json:"status"`
@@ -156,11 +157,13 @@ type SharedView struct {
 	Revision    *int       `json:"revision,omitempty"`
 	Content     Content    `json:"content"`
 	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
+	PDF         File       `json:"pdf"`
 }
 
-// SharedViewOf is an opened document as its link shows it (see Open).
-func SharedViewOf(d *Document) SharedView {
-	return SharedView{Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, Content: *d.Content, CancelledAt: d.CancelledAt}
+// SharedViewOf is an opened document as its link shows it (see Open), with
+// its PDF.
+func SharedViewOf(d *Document, pdf File) SharedView {
+	return SharedView{Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, Content: *d.Content, CancelledAt: d.CancelledAt, PDF: pdf}
 }
 
 // searchRequest finds documents of a type by words in their number, who
@@ -179,6 +182,12 @@ type clientRequest struct {
 
 type idRequest struct {
 	ID string `json:"id"`
+}
+
+type pdfRequest struct {
+	ID string `json:"id"`
+	// Revision is an issued revision; nil for the latest.
+	Revision *int `json:"revision"`
 }
 
 type saveDraftRequest struct {
@@ -214,9 +223,10 @@ type shareRequest struct {
 	IDs []string `json:"ids"`
 }
 
-// Routes registers the documents' actions. checks are what other features
-// hold a document to before it is issued (see Check).
-func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
+// Routes registers the documents' actions. Issued PDFs are kept in blobs
+// (see pdf.go); checks are what other features hold a document to before
+// it is issued (see Check).
+func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...Check) {
 	// step runs a step of a document's lifecycle and returns it; null when
 	// the step deleted it.
 	step := func(ctx context.Context, do func(tx *txn.Tx) (*Document, error)) (any, error) {
@@ -295,7 +305,49 @@ func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
 		return step(ctx, func(tx *txn.Tx) (*Document, error) { return SaveDraft(tx, in.ID, in.Content) })
 	}))
 	r.Mutation("documents.issue", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
-		return step(ctx, func(tx *txn.Tx) (*Document, error) { return Issue(tx, in.ID, checks...) })
+		out, err := step(ctx, func(tx *txn.Tx) (*Document, error) { return Issue(tx, in.ID, checks...) })
+		if v, ok := out.(*View); ok && v != nil {
+			keepIssued(ctx, blobs, v)
+		}
+		return out, err
+	}))
+	// documents.pdf is an issued revision's PDF, as issued (see pdf.go).
+	// It stores one the issue didn't manage to.
+	r.Query("documents.pdf", router.Typed(func(ctx context.Context, in pdfRequest) (any, error) {
+		type revisionOf struct {
+			doc *Document
+			rev *Revision
+		}
+		found, err := txn.Read(ctx, run, func(tx *txn.Tx) (revisionOf, error) {
+			d, err := Documents.Get(tx, in.ID)
+			if err != nil {
+				return revisionOf{}, err
+			}
+			if in.Revision == nil {
+				r, err := IssuedRevision(tx, d)
+				return revisionOf{d, r}, err
+			}
+			r, err := Revisions.Get(tx, revisionID(d.ID, *in.Revision))
+			return revisionOf{d, r}, err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return ServedPDF(ctx, blobs, found.doc, found.rev, true)
+	}))
+	// documents.preview is a draft's PDF as it would be issued now, from
+	// the content the editor has, saved or not.
+	r.Query("documents.preview", router.Typed(func(ctx context.Context, in saveDraftRequest) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) (File, error) {
+			d, err := Documents.Get(tx, in.ID)
+			if err != nil {
+				return File{}, err
+			}
+			if d.Draft == nil {
+				return File{}, notAtStep("This document is not being edited.")
+			}
+			return preview(tx, d, in.Content)
+		})
 	}))
 	r.Mutation("documents.revise", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
 		return step(ctx, func(tx *txn.Tx) (*Document, error) { return Revise(tx, in.ID) })

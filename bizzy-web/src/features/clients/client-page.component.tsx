@@ -225,6 +225,24 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
             )}
           </form.Field>
 
+          <form.Field name="idNo">
+            {(field) => (
+              <Field>
+                <FieldLabel htmlFor={field.name}>IC or passport no.</FieldLabel>
+                <Input
+                  id={field.name}
+                  form={FORM_ID}
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="900101-14-5678"
+                  autoComplete="off"
+                />
+                <FieldDescription>Printed under their name on invoices and receipts.</FieldDescription>
+              </Field>
+            )}
+          </form.Field>
+
           <form.Field name="fees" mode="array">
             {(feesField) => (
               <Field>
@@ -331,7 +349,7 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
     {
       id: "contact",
       title: "Google contact",
-      description: "Where their phone, email and address live; receipts print the address.",
+      description: "Where their phone, email and address live.",
       content: (
         <Field data-invalid={contactRequired && !contact}>
           <ClientContact

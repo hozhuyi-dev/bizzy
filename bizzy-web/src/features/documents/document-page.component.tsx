@@ -16,7 +16,7 @@ import {
   documentIssueAction,
 } from "./components/document-editor/document-editor.component";
 import { useDocumentEditor } from "./components/document-editor/document-editor.hook";
-import { DocumentSheet } from "./components/document-sheet/document-sheet.component";
+import { DocumentPdfView } from "./components/document-pdf-view/document-pdf-view.component";
 import { DocumentStatusBadge, documentLink } from "./documents.columns";
 import { DocumentsMutation } from "./documents.mutation";
 import { DocumentsQuery } from "./documents.query";
@@ -24,8 +24,9 @@ import { documentLabel, documentPlace, documentsUrl, shareUrl } from "./document
 import { DOCUMENT_LISTS } from "./documents.list";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { useDocumentPdf } from "./documents.hook";
+import type { PdfSource } from "./documents.hook";
 import type { ReactNode } from "react";
-import type { DocumentContent, DocumentPdfProps, DocumentRevision, DocumentType, DocumentView } from "./documents.types";
+import type { DocumentContent, DocumentRevision, DocumentType, DocumentView } from "./documents.types";
 import type { Action } from "~/components/shared/action-bar/action-bar.component";
 import type { ListFilter } from "~/core/list/filter.types";
 import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
@@ -167,13 +168,8 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
   const revise = DocumentsMutation.useRevise();
   const [cancelling, setCancelling] = useState(false);
   const cancelled = doc.status === "cancelled";
-  const [viewPdf, downloadPdf] = usePdfActions({
-    type: doc.type,
-    number: doc.number,
-    revision: doc.revision,
-    watermark: cancelled ? "CANCELLED" : undefined,
-    content,
-  });
+  const pdf = DocumentsQuery.usePdf(doc.id, doc.revision, doc.status);
+  const [viewPdf, downloadPdf] = usePdfActions(pdf.data ? { file: pdf.data } : { id: doc.id });
   const [resettingLink, setResettingLink] = useState(false);
   const share = useShareActions(doc, content, () => setResettingLink(true));
 
@@ -226,15 +222,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
             title: DOCUMENT_TYPES[doc.type].title,
             description: cancelled && doc.cancelReason ? `Cancelled: ${doc.cancelReason}` : undefined,
             bare: true,
-            content: (
-              <DocumentSheet
-                type={doc.type}
-                content={content}
-                number={doc.number}
-                revision={doc.revision}
-                cancelled={cancelled}
-              />
-            ),
+            content: <DocumentPdfView file={pdf.data} error={pdf.error} />,
           },
           ...(history ? [history] : []),
         ]}
@@ -317,7 +305,7 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: DocumentView; open: bool
   );
 }
 
-/** Earlier issued versions, each still viewable as the PDF it was. */
+/** Issued versions, each viewable as the PDF kept when it was issued. */
 function revisionsSection(doc: DocumentView, revisions: Array<DocumentRevision>): PageSection | undefined {
   if (revisions.length === 0) return undefined;
   return {
@@ -334,7 +322,7 @@ function revisionsSection(doc: DocumentView, revisions: Array<DocumentRevision>)
                 · issued {formatDate(rev.issuedAt)} · {formatCents(rev.content.totalCents)}
               </span>
             </span>
-            <PdfButtons pdf={{ type: doc.type, number: rev.number, revision: rev.revision, content: rev.content }} />
+            <PdfButtons source={{ id: doc.id, revision: rev.revision }} />
           </li>
         ))}
       </ul>
@@ -342,17 +330,17 @@ function revisionsSection(doc: DocumentView, revisions: Array<DocumentRevision>)
   };
 }
 
-/** View opens the real PDF in a new tab; Download saves it with a proper name. */
-function usePdfActions(pdf: DocumentPdfProps): [view: Action, download: Action] {
+/** View opens the PDF in a new tab; Download saves it with a proper name. */
+function usePdfActions(source: PdfSource): [view: Action, download: Action] {
   const { busy, open, download } = useDocumentPdf();
   return [
-    { type: "button", label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => open(pdf) },
-    { type: "button", label: "Download", icon: DownloadIcon, disabled: busy, onClick: () => download(pdf) },
+    { type: "button", label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => open(source) },
+    { type: "button", label: "Download", icon: DownloadIcon, disabled: busy, onClick: () => download(source) },
   ];
 }
 
-function PdfButtons({ pdf }: { pdf: DocumentPdfProps }) {
-  return <RowActionButtons actions={usePdfActions(pdf)} />;
+function PdfButtons({ source }: { source: PdfSource }) {
+  return <RowActionButtons actions={usePdfActions(source)} />;
 }
 
 function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean; onClose: () => void }) {

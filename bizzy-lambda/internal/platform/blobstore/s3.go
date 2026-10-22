@@ -1,9 +1,11 @@
 package blobstore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"strings"
 	"time"
@@ -24,6 +26,10 @@ type S3 struct {
 	client  *s3.Client
 	presign *s3.PresignClient
 	bucket  string
+	// RecordRetention is how long a Put record is locked (S3 Object Lock,
+	// governance mode); 0 locks nothing. Only production's bucket has
+	// Object Lock on, and keeps records the 7 years the tax law asks.
+	RecordRetention time.Duration
 }
 
 // NewS3 builds the store from the Lambda environment's credentials.
@@ -83,12 +89,48 @@ func (s *S3) PresignGet(ctx context.Context, key, filename string, download bool
 	return req.URL, nil
 }
 
+func (s *S3) Put(ctx context.Context, key, contentType string, body []byte) error {
+	in := &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
+		Body:        bytes.NewReader(body),
+		// Object Lock refuses a put without a checksum.
+		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+	}
+	if s.RecordRetention > 0 {
+		in.ObjectLockMode = types.ObjectLockModeGovernance
+		in.ObjectLockRetainUntilDate = aws.Time(time.Now().Add(s.RecordRetention))
+	}
+	_, err := s.client.PutObject(ctx, in)
+	return err
+}
+
+func (s *S3) Get(ctx context.Context, key string) ([]byte, error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	if err != nil {
+		var noKey *types.NoSuchKey
+		if errors.As(err, &noKey) || isNotFound(err) {
+			return nil, ErrMissing
+		}
+		return nil, err
+	}
+	defer out.Body.Close()
+	return io.ReadAll(out.Body)
+}
+
+// isNotFound is S3's answer for a key that isn't there, to a HEAD (which
+// has no body to name it).
+func isNotFound(err error) bool {
+	var notFound *types.NotFound
+	var apiErr smithy.APIError
+	return errors.As(err, &notFound) || (errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotFound")
+}
+
 func (s *S3) Confirm(ctx context.Context, key string) (Object, error) {
 	head, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
 	if err != nil {
-		var notFound *types.NotFound
-		var apiErr smithy.APIError
-		if errors.As(err, &notFound) || (errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotFound") {
+		if isNotFound(err) {
 			return Object{}, ErrMissing
 		}
 		return Object{}, err

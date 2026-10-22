@@ -72,6 +72,10 @@ export class ApiStack extends cdk.Stack {
         TIME_ZONE: syncTimeZone,
         // Development and staging also serve data.reset.
         ENVIRONMENT: environment,
+        // Production locks each issued PDF for as long as records are kept.
+        ...(environment === "production"
+          ? { RECORD_RETENTION_DAYS: String(FileBucket.RECORD_RETENTION_DAYS) }
+          : {}),
         GOOGLE_CLIENT_ID: googleClientId,
         GOOGLE_CLIENT_SECRET: googleClientSecret,
         GOOGLE_TOKEN_PARAM: tokenParam,
@@ -100,7 +104,25 @@ export class ApiStack extends cdk.Stack {
       new PolicyStatement({
         actions: ["s3:ListBucket"],
         resources: [files.bucketArn],
-        conditions: { StringLike: { "s3:prefix": [`${FileBucket.ATTACHMENTS_PREFIX}*`] } },
+        conditions: {
+          StringLike: {
+            "s3:prefix": [`${FileBucket.ATTACHMENTS_PREFIX}*`, `${FileBucket.DOCUMENTS_PREFIX}*`],
+          },
+        },
+      }),
+    );
+    // Issued PDFs: the API writes and locks each, and reads it back. It
+    // deletes them only in data.reset, which production doesn't serve.
+    const pdfs = files.arnForObjects(`${FileBucket.DOCUMENTS_PREFIX}*`);
+    this.api.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:PutObjectRetention",
+          ...(environment === "production" ? [] : ["s3:DeleteObject"]),
+        ],
+        resources: [pdfs],
       }),
     );
 
@@ -194,8 +216,8 @@ export class ApiStack extends cdk.Stack {
     );
 
     // The one thing reachable without signing in, so it is its own function
-    // with its own role: it can read single items from the table and nothing
-    // else, whatever its code does. Anyone can call it as often as they like
+    // with its own role: it can read single items from the table and issued
+    // PDFs, and nothing else, whatever its code does. Anyone can call it as often as they like
     // and every call is billed, so a call that is stuck (DynamoDB throttling,
     // retried with backoff) is cut short, and logs only what went wrong.
     this.public = new GoFunction(this, "Public", {
@@ -204,9 +226,13 @@ export class ApiStack extends cdk.Stack {
       command: "public",
       timeout: Duration.seconds(3),
       platformLogs: false,
-      environmentVariables: { TABLE_NAME: table.tableName },
+      environmentVariables: { TABLE_NAME: table.tableName, BUCKET_NAME: files.bucketName },
     });
     table.grant(this.public.function, "dynamodb:GetItem");
+    // The PDFs of the documents it opens, read only.
+    this.public.function.addToRolePolicy(
+      new PolicyStatement({ actions: ["s3:GetObject"], resources: [pdfs] }),
+    );
     const publicUrl = this.public.function.addFunctionUrl({
       authType: FunctionUrlAuthType.NONE,
       // The app on any origin (localhost, each CloudFront domain) reads it;

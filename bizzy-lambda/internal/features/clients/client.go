@@ -5,6 +5,7 @@ package clients
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -27,6 +28,10 @@ type Client struct {
 	// HomeVisits makes the client's sessions home visits unless a title
 	// says (H).
 	HomeVisits bool `json:"homeVisits,omitempty"`
+	// IDNo is the client's IC (MyKad) or passport number, printed under
+	// their name on documents. It is kept in bizzy, not in Google: a
+	// billing identity, not a way to reach them (see IDNo).
+	IDNo string `json:"idNo,omitempty"`
 	// Contact is the linked Google contact, where the client's details
 	// live, with a copy of them.
 	Contact *Contact `json:"contact,omitempty"`
@@ -41,7 +46,7 @@ func (c Client) Archived() bool { return c.ArchivedAt != nil }
 
 var Clients = txn.Kind[Client]{
 	Name: "CLIENT", Gone: "This client was deleted.",
-	Doc:  txn.Doc{What: "A client: name, calendar names, usual hourly fees and place, a copy of their Google contact, and whether archived."},
+	Doc:  txn.Doc{What: "A client: name, calendar names, usual hourly fees and place, IC or passport number, a copy of their Google contact, and whether archived."},
 	Meta: func(c *Client) txn.Meta { return txn.Meta{ID: c.ID} },
 }
 
@@ -159,6 +164,27 @@ func namesTaken(tx *txn.Tx, c *Client) error {
 		}
 	}
 	return nil
+}
+
+// maxIDNo bounds an IC or passport number: a MyKad is 14 characters with
+// its dashes, a passport 9 or so.
+const maxIDNo = 20
+
+// myKad is a MyKad number as typed, with or without dashes and spaces.
+var myKad = regexp.MustCompile(`^(\d{6})[- ]?(\d{2})[- ]?(\d{4})$`)
+
+// IDNo is an IC or passport number as kept and printed: a MyKad written
+// 900101-14-5678, anything else (a passport) in capitals, as typed. ""
+// clears it.
+func IDNo(typed string) (string, error) {
+	id := strings.ToUpper(strings.Join(strings.Fields(typed), " "))
+	if m := myKad.FindStringSubmatch(id); m != nil {
+		return m[1] + "-" + m[2] + "-" + m[3], nil
+	}
+	if len(id) > maxIDNo {
+		return "", apperr.Invalid("%q is too long for an IC or passport number.", typed)
+	}
+	return id, nil
 }
 
 // checkFeeRates is the refusal for fee rates out of order: the first

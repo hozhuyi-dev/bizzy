@@ -6,6 +6,7 @@ import { DOCUMENT_TYPES } from "../../documents.constant";
 import { toContent, toFormValues, validateContent } from "../../documents.form";
 import { DocumentsMutation } from "../../documents.mutation";
 import { DocumentPdfService } from "../../document-pdf.service";
+import { DocumentsService } from "../../documents.service";
 import { documentLabel } from "../../documents.util";
 import type { DocumentContent, DocumentView } from "../../documents.types";
 
@@ -95,10 +96,10 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
         onError: (error) => toast.error(error.message),
       }),
 
-    /** The real PDF, watermarked DRAFT, from what is on screen now. */
+    /** The PDF as the API would issue it now, watermarked DRAFT, from what is on screen. */
     preview: () =>
-      DocumentPdfService.open({ type: doc.type, number: doc.number, revision: nextRevision, watermark: "DRAFT", content }).catch(
-        (error: unknown) => toast.error(error instanceof Error ? error.message : "Couldn't make the PDF"),
+      DocumentPdfService.open(() => DocumentsService.preview(doc.id, content)).catch((error: unknown) =>
+        toast.error(error instanceof Error ? error.message : "Couldn't make the PDF"),
       ),
   };
 }

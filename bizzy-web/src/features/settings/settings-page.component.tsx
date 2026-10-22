@@ -205,15 +205,15 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
               <FieldGroup>
                 {textField({
                   name: "paymentMessage",
-                  label: "Asking to pay",
+                  label: "Asking for payment",
                   multiline: true,
                   hint: `From a session. ${placeholderList(PAYMENT_PLACEHOLDERS)}`,
                 })}
                 {textField({
                   name: "documentMessage",
-                  label: "Sending receipts",
+                  label: "Sending documents",
                   multiline: true,
-                  hint: `From a receipt, a session or a client; {documents} lists each with its link, and {title} reads "receipt", "receipts" or "documents". ${placeholderList(DOCUMENT_PLACEHOLDERS)}`,
+                  hint: `From an invoice or receipt, a session or a client; {documents} lists each with its link, and {title} reads "invoice", "receipts" or "documents" as it fits. ${placeholderList(DOCUMENT_PLACEHOLDERS)}`,
                 })}
               </FieldGroup>
             ),

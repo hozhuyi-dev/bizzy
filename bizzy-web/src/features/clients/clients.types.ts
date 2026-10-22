@@ -17,6 +17,8 @@ export interface ClientView {
   feeRates: Array<FeeRate>;
   /** Sessions are home visits unless their title says (H). */
   homeVisits: boolean;
+  /** IC (MyKad, as 900101-14-5678) or passport number, printed under their name on documents. */
+  idNo?: string;
   /** The linked Google contact, where the client's details live. */
   contact?: ClientContact;
   /** The hourly fee a session without one would be charged today; unset when no fee is set. */
@@ -55,7 +57,7 @@ export interface ClientContact {
   displayName?: string;
   email?: string;
   phone?: string;
-  /** Printed on receipts. */
+  /** Copied onto documents, not printed. */
   address?: string;
   postcode?: string;
   /** No longer in Google (deleted or merged); the copy is kept. */
@@ -74,6 +76,8 @@ export interface ClientFields {
   aliases?: Array<string>;
   feeRates?: Array<FeeRate>;
   homeVisits?: boolean;
+  /** `""` clears it. */
+  idNo?: string;
   contact?: { resourceName: string };
 }
 

@@ -2,22 +2,22 @@ import type { DocumentStatus, DocumentType, DocumentTypeSpec } from "./documents
 
 /**
  * What differs between document types in the app. Adding a type (quotation,
- * credit note …) is an entry here plus one in the API's documents.Types; the
- * lifecycle, editor and PDF layout are shared.
+ * credit note …) is an entry here plus one in the API's documents.Types,
+ * which prints them; the lifecycle and editor are shared.
  */
 export const DOCUMENT_TYPES: Record<DocumentType, DocumentTypeSpec> = {
   invoice: {
     title: "Invoice",
     plural: "Invoices",
     recipientLabel: "Bill to",
-    paid: false,
+    totalLabel: "Total",
     path: "/invoices",
   },
   receipt: {
     title: "Receipt",
     plural: "Receipts",
     recipientLabel: "Received from",
-    paid: true,
+    totalLabel: "Total received",
     path: "/receipts",
   },
 };

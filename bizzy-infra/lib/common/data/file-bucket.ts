@@ -24,19 +24,27 @@ export interface FileBucketProps {
  * from the API (see bizzy-lambda's platform/blobstore), so the bucket only
  * needs CORS for the app's origins, and the signed-in role gets no S3 access.
  *
- * Keys are `attachments/<ownerKind>/<ownerId>/<attachmentId>/original.<ext>`:
- * ids only, never names, since keys end up in logs and URLs.
+ * Keys are `attachments/<ownerKind>/<ownerId>/<attachmentId>/original.<ext>`,
+ * and `documents/<documentId>/<revision>.pdf` for the PDF of each issued
+ * invoice or receipt, which the API writes itself: ids only, never names,
+ * since keys end up in logs and URLs.
  *
  * Kept cheap: S3 Standard (a practice's files are a few GB at most, where the
  * colder classes' minimum sizes and retrieval fees cost more than they save),
  * images shrunk in the browser before upload, and lifecycle rules that clean
  * up abandoned uploads. Only production is backed up, by versioning: a file
  * deleted or overwritten there can be restored for 35 days, the same window
- * as the table's point-in-time recovery.
+ * as the table's point-in-time recovery. Production also has Object Lock on,
+ * so the API can lock each issued PDF for the 7 years records are kept (see
+ * RECORD_RETENTION_DAYS); attachments aren't locked.
  */
 export class FileBucket extends Construct {
   /** Where every attachment key starts; what the API's role is scoped to. */
   static readonly ATTACHMENTS_PREFIX = "attachments/";
+  /** Where every issued document's PDF key starts. */
+  static readonly DOCUMENTS_PREFIX = "documents/";
+  /** How long production locks an issued PDF: the 7 years records are kept. */
+  static readonly RECORD_RETENTION_DAYS = 7 * 365 + 2;
   /** How long an older version of a production file is kept. */
   static readonly VERSION_RETENTION_DAYS = 35;
 
@@ -55,6 +63,8 @@ export class FileBucket extends Construct {
       objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
       enforceSSL: true,
       versioned: retained,
+      // Only lets objects be locked: each issued PDF is, when the API puts it.
+      ...(retained ? { objectLockEnabled: true } : {}),
       removalPolicy: retained ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
       autoDeleteObjects: !retained,
       cors: [

@@ -14,6 +14,7 @@ export interface ClientFormValues {
   aliases: string;
   fees: Array<FeeRateValues>;
   homeVisits: boolean;
+  idNo: string;
 }
 
 /** An existing client, or a new one with a name to start from. */
@@ -23,6 +24,7 @@ export function toClientValues(client: ClientView | undefined, initialName: stri
     aliases: client ? extraAliases(client).join(", ") : "",
     fees: (client?.feeRates ?? []).map((rate) => ({ from: rate.from ?? "", amount: centsToInput(rate.cents) })),
     homeVisits: client?.homeVisits ?? false,
+    idNo: client?.idNo ?? "",
   };
 }
 
@@ -73,6 +75,7 @@ export function toClientFields(
   if (!client || aliases.join(",") !== extraAliases(client).join(",")) fields.aliases = aliases;
   if (!client || feesChanged(client, feeRates)) fields.feeRates = feeRates;
   if (!client || values.homeVisits !== client.homeVisits) fields.homeVisits = values.homeVisits;
+  if (values.idNo.trim() !== (client?.idNo ?? "")) fields.idNo = values.idNo.trim();
   if ((resourceName ?? "") !== (client?.contact?.resourceName ?? "")) fields.contact = { resourceName: resourceName ?? "" };
   return fields;
 }

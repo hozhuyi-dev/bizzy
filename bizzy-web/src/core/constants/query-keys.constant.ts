@@ -53,6 +53,9 @@ export const DocumentKeys = {
   detail: (id: string) => [...DocumentKeys.all, "detail", id] as const,
   client: (clientId: string) => [...DocumentKeys.all, "client", clientId] as const,
   shared: (token: string) => [...DocumentKeys.all, "shared", token] as const,
+  /** Keyed by status too: cancelling stamps it. */
+  pdf: (id: string, revision: number | undefined, status: string) =>
+    [...DocumentKeys.all, "pdf", id, revision, status] as const,
 };
 
 export const AttachmentKeys = {

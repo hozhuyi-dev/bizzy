@@ -32,7 +32,7 @@ var features = map[string][]string{
 	"timeline":      {"sessions", "packages", "documents", "followups"},
 	"googlesync":    {"calendar", "clients", "sessions", "packages", "documents", "followups", "conflicts", "contacts"},
 	"googleconnect": {"calendar"},
-	"reset":         {"googlesync", "googleconnect", "attachments"},
+	"reset":         {"googlesync", "googleconnect", "attachments", "documents"},
 }
 
 // TestDependenciesPointInward checks every non-test import inside

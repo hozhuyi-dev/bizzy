@@ -52,7 +52,8 @@ type Client struct {
 	OpenFollowUps  int        `json:"openFollowUps,omitempty"`
 	NextFollowUpAt *time.Time `json:"nextFollowUpAt,omitempty"`
 	// LastContactedAt is the user's latest contact with them: a session
-	// that happened, or a follow-up done.
+	// that happened, or a follow-up done (see followups.ContactedAt).
+	// Issuing or sending a document isn't contact.
 	LastContactedAt *time.Time `json:"lastContactedAt,omitempty"`
 	// LapsedMonths is the longest of LapseMonths they have lapsed for
 	// (see Lapsed); 0 when they haven't.
@@ -211,7 +212,7 @@ func All(tx *txn.Tx) ([]Client, error) {
 	for _, fu := range fus {
 		c := of(fu.ClientID)
 		if fu.DoneAt != nil {
-			latest(&c.LastContactedAt, *fu.DoneAt)
+			latest(&c.LastContactedAt, fu.ContactedAt())
 			continue
 		}
 		c.OpenFollowUps++

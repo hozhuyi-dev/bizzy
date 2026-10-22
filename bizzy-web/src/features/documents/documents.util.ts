@@ -1,5 +1,6 @@
 import { DOCUMENT_FACETS, DOCUMENT_STATUS, DOCUMENT_TYPES } from "./documents.constant";
 import type {
+  DocumentFile,
   DocumentLink,
   DocumentRef,
   DocumentStatus,
@@ -29,6 +30,12 @@ export function documentRoute(type: DocumentType) {
 }
 
 /** "RCP260042-00": the number and its revision, from -00. A draft has no number yet. */
+/** A PDF from the API, as the browser opens or saves it. */
+export function pdfBlob(file: DocumentFile): Blob {
+  const bytes = Uint8Array.from(atob(file.data), (char) => char.charCodeAt(0));
+  return new Blob([bytes], { type: "application/pdf" });
+}
+
 export function documentLabel(number: string | undefined, revision: number | undefined): string {
   if (!number) return "Draft";
   return `${number}-${String(revision ?? 0).padStart(2, "0")}`;

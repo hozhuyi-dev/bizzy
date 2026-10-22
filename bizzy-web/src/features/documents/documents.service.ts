@@ -1,5 +1,6 @@
 import type {
   DocumentContent,
+  DocumentFile,
   DocumentSource,
   DocumentSummary,
   DocumentType,
@@ -22,6 +23,10 @@ export const DocumentsService = {
   saveDraft: (id: string, content: DocumentContent) =>
     invoke<DocumentView | null>("documents.saveDraft", { id, content }),
   issue: (id: string) => invoke<DocumentView | null>("documents.issue", { id }),
+  /** An issued revision's PDF as kept (undefined: the latest), stamped CANCELLED once cancelled. */
+  pdf: (id: string, revision?: number) => invoke<DocumentFile>("documents.pdf", { id, revision }),
+  /** A draft's PDF as it would be issued now, from the content on screen, saved or not. */
+  preview: (id: string, content: DocumentContent) => invoke<DocumentFile>("documents.preview", { id, content }),
   revise: (id: string) => invoke<DocumentView | null>("documents.revise", { id }),
   /**
    * Moves lines to another draft of the client's (to = undefined: a new

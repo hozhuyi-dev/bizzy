@@ -87,7 +87,7 @@ type Check func(tx *txn.Tx, d *Document) error
 // Issue makes a draft final: the first time it takes the next number
 // (revision 0), afterwards it becomes the next revision under the same
 // number. The business, client and date are filled in as they are now
-// (see Fill), and it gets a share link.
+// (see Fill), it is printed (see pdf.go), and it gets a share link.
 func Issue(tx *txn.Tx, id string, checks ...Check) (*Document, error) {
 	d, err := Documents.Get(tx, id)
 	if err != nil {
@@ -114,7 +114,14 @@ func Issue(tx *txn.Tx, id string, checks ...Check) (*Document, error) {
 		}
 	}
 	d.Status, d.Content, d.Draft = StatusIssued, &content, nil
-	if err := Revisions.Add(tx, &Revision{DocumentID: d.ID, Revision: *d.Revision, Number: d.Number, Content: content, IssuedAt: now}); err != nil {
+	rev := &Revision{DocumentID: d.ID, Revision: *d.Revision, Number: d.Number, Content: content, IssuedAt: now}
+	// The file itself is stored after the commit (see pdf.go).
+	pdf, err := Render(PrintedRevision(d.Type, rev))
+	if err != nil {
+		return nil, err
+	}
+	rev.PDFSha256 = checksum(pdf)
+	if err := Revisions.Add(tx, rev); err != nil {
 		return nil, err
 	}
 	return d, relink(tx, d)

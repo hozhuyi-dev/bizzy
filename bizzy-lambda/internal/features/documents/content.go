@@ -40,10 +40,10 @@ func issuerFrom(cfg settings.Settings) Issuer {
 	}
 }
 
-// recipientFrom takes the client's details from their copy of the Google
-// contact.
+// recipientFrom takes the client's name and IC or passport number, and
+// their details from their copy of the Google contact.
 func recipientFrom(c clients.Client) Recipient {
-	r := Recipient{Name: c.Name}
+	r := Recipient{Name: c.Name, IDNo: c.IDNo}
 	if contact := c.Contact; contact != nil {
 		r.Email, r.Phone, r.Address = contact.Email, contact.Phone, contact.Address
 		if contact.Postcode != "" && !strings.Contains(r.Address, contact.Postcode) {
@@ -70,6 +70,11 @@ func Normalize(in Content) (Content, error) {
 			return out, apperr.Invalid("date must be YYYY-MM-DD")
 		}
 	}
+	id, err := clients.IDNo(out.Recipient.IDNo)
+	if err != nil {
+		return out, err
+	}
+	out.Recipient.IDNo = id
 	if len(in.Lines) == 0 {
 		return out, apperr.Invalid("add at least one line")
 	}
@@ -171,6 +176,7 @@ func trimIssuer(i Issuer) Issuer {
 func trimRecipient(r Recipient) Recipient {
 	return Recipient{
 		Name:    strings.TrimSpace(r.Name),
+		IDNo:    strings.TrimSpace(r.IDNo),
 		Email:   strings.TrimSpace(r.Email),
 		Phone:   strings.TrimSpace(r.Phone),
 		Address: strings.TrimSpace(r.Address),

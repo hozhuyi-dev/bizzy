@@ -48,6 +48,20 @@ func (f FollowUp) End() time.Time {
 	return f.Due.Add(time.Duration(f.Minutes) * time.Minute)
 }
 
+// ContactedAt is when a follow-up done got in touch: when it was due, or
+// when it was ticked if that was earlier. Ticking old ones off later
+// doesn't make their clients look recently contacted. Zero while not
+// done.
+func (f FollowUp) ContactedAt() time.Time {
+	if f.DoneAt == nil {
+		return time.Time{}
+	}
+	if f.DoneAt.Before(f.Due) {
+		return *f.DoneAt
+	}
+	return f.Due
+}
+
 // Date is the day it is due, in the user's time zone.
 func (f FollowUp) Date(loc *time.Location) string {
 	return f.Due.In(loc).Format(time.DateOnly)

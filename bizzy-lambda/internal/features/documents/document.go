@@ -49,11 +49,18 @@ type TypeSpec struct {
 	Title string
 	// Code starts every number of the type (see Number).
 	Code string
+	// RecipientLabel heads who it is for, and TotalLabel its total, as
+	// printed (see render.go).
+	RecipientLabel string
+	TotalLabel     string
+	// AsksPayment prints where to pay: an invoice asks for a payment, a
+	// receipt confirms one.
+	AsksPayment bool
 }
 
 var Types = map[Type]TypeSpec{
-	TypeInvoice: {Title: "Invoice", Code: "INV"},
-	TypeReceipt: {Title: "Receipt", Code: "RCP"},
+	TypeInvoice: {Title: "Invoice", Code: "INV", RecipientLabel: "Bill to", TotalLabel: "Total", AsksPayment: true},
+	TypeReceipt: {Title: "Receipt", Code: "RCP", RecipientLabel: "Received from", TotalLabel: "Total received"},
 }
 
 // SourceKind is what a line covers.
@@ -125,7 +132,7 @@ type Content struct {
 	Recipient Recipient `json:"recipient"`
 	Lines     []Line    `json:"lines"`
 	// Payment is how and when what a receipt covers was paid; PaidBy is
-	// it as printed ("Cash").
+	// its method as named ("Cash"), no longer printed.
 	Payment    *Payment `json:"payment,omitempty"`
 	PaidBy     string   `json:"paidBy,omitempty"`
 	Notes      string   `json:"notes,omitempty"`
@@ -144,9 +151,12 @@ type Issuer struct {
 	AccountNo      string `json:"accountNo,omitempty"`
 }
 
-// Recipient is the client as printed, copied from the client.
+// Recipient is the client as printed, copied from the client: their name
+// and IC or passport number. Their contact details are kept as copied, but
+// not printed.
 type Recipient struct {
 	Name    string `json:"name"`
+	IDNo    string `json:"idNo,omitempty"`
 	Email   string `json:"email,omitempty"`
 	Phone   string `json:"phone,omitempty"`
 	Address string `json:"address,omitempty"`
@@ -219,11 +229,14 @@ type Revision struct {
 	Number     string    `json:"number"`
 	Content    Content   `json:"content"`
 	IssuedAt   time.Time `json:"issuedAt"`
+	// PDFSha256 is the hex SHA-256 of its PDF as issued, which the file
+	// store keeps (see pdf.go).
+	PDFSha256 string `json:"pdfSha256,omitempty"`
 }
 
 var Revisions = txn.Kind[Revision]{
 	Name: "DOCREV", Gone: "That revision isn't kept.",
-	Doc: txn.Doc{What: "An issued revision, kept as issued: <documentId>#NN.", Ref: "its document"},
+	Doc: txn.Doc{What: "An issued revision, kept as issued: <documentId>#NN. Its PDF is in the file store, at documents/<documentId>/NN.pdf.", Ref: "its document"},
 	Meta: func(r *Revision) txn.Meta {
 		return txn.Meta{ID: revisionID(r.DocumentID, r.Revision), Ref: r.DocumentID}
 	},

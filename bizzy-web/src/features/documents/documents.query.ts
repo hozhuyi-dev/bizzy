@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { DocumentsService } from "./documents.service";
 import { searchDocumentsRequest } from "./documents.util";
-import type { DocumentType } from "./documents.types";
+import type { DocumentStatus, DocumentType } from "./documents.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { DocumentKeys } from "~/core/constants/query-keys.constant";
 import { usePages } from "~/core/list/filter.hook";
@@ -25,6 +25,15 @@ export const DocumentsQuery = {
       queryKey: DocumentKeys.client(clientId),
       queryFn: () => DocumentsService.listByClient(clientId),
       enabled: enabled && clientId !== "",
+    }),
+
+  /** An issued revision's PDF as kept (undefined: the latest); the key moves with its status, as cancelling stamps it. */
+  usePdf: (id: string, revision: number | undefined, status: DocumentStatus) =>
+    useQuery({
+      queryKey: DocumentKeys.pdf(id, revision, status),
+      queryFn: () => DocumentsService.pdf(id, revision),
+      // An issued PDF never changes under a key.
+      staleTime: Infinity,
     }),
 
   /** A shared document, for the public page. */
