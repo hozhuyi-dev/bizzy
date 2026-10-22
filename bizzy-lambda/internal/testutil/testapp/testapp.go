@@ -14,6 +14,7 @@ import (
 	"bizzy-lambda/internal/app"
 	"bizzy-lambda/internal/calendar"
 	"bizzy-lambda/internal/features/contacts"
+	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/migrations"
 	"bizzy-lambda/internal/platform/migrate"
 	"bizzy-lambda/internal/platform/router"
@@ -35,17 +36,23 @@ type App struct {
 	Calendar *fakecal.Calendar
 	Contacts *fakecontacts.Directory
 	Blobs    *memblob.Store
+	// PaySite is the payment page's site, at PayURL.
+	PaySite *memblob.Store
 	// Now is the clock; move it on to pass time.
 	Now time.Time
 }
 
+// PayURL is where the payment page is served.
+const PayURL = "https://pay.example"
+
 func New() *App {
-	a := &App{Table: table.NewMemory(), Contacts: &fakecontacts.Directory{}, Blobs: memblob.New(), Now: Epoch}
+	a := &App{Table: table.NewMemory(), Contacts: &fakecontacts.Directory{}, Blobs: memblob.New(), PaySite: memblob.New(), Now: Epoch}
 	a.Calendar = &fakecal.Calendar{Now: func() time.Time { return a.Now }}
 	ids := 0
 	a.App = app.New(app.Deps{
 		Table:      a.Table,
 		Blobs:      a.Blobs,
+		PaySite:    settings.PaySite{Store: a.PaySite, URL: PayURL},
 		Contacts:   a.Contacts,
 		Resettable: true,
 		Calendar:   func(context.Context) (calendar.Calendar, error) { return a.Calendar, nil },

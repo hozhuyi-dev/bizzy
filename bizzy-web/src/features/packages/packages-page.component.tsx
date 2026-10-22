@@ -12,6 +12,7 @@ import type { PackageHandlers } from "./packages.columns";
 import type { PackageView } from "./packages.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { useAskToPay } from "~/features/whatsapp/whatsapp.hook";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
@@ -67,6 +68,7 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
     return chosen.length > 0 ? all.filter((pkg) => chosen.includes(pkg.clientId)) : all;
   }, [packages.data, filter.chips.client]);
   const makeStandalone = PackagesMutation.useMakeStandalone();
+  const askToPay = useAskToPay();
   // Read from the list, so the dialog shows the payment once it is saved.
   const paying = packages.data?.find((pkg) => pkg.id === payingId);
 
@@ -81,8 +83,23 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
           onError: toastRefusal,
         }),
       onPay: (pkg) => setPayingId(pkg.id),
+      onAskToPay:
+        askToPay &&
+        ((pkg) => {
+          const client = clientsById.get(pkg.clientId);
+          askToPay(
+            { name: clientName(pkg, clientsById), phone: client?.contact?.phone },
+            {
+              item: `your ${pkg.hours}-hour package`,
+              date: pkg.purchasedAt,
+              amountCents: pkg.owedCents,
+              invoiceNumber: pkg.invoice?.number,
+              isPackage: true,
+            },
+          );
+        }),
     }),
-    [clientsById, makeStandalone],
+    [clientsById, makeStandalone, askToPay],
   );
 
   const columns = useMemo(() => createPackageColumns(handlers), [handlers]);

@@ -39,9 +39,9 @@ scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs
 [bin/bizzy-infra.ts](bizzy-infra/bin/bizzy-infra.ts) reads `.env.<ENVIRONMENT>` and creates `<project>-<env>-{auth,data,api,web}`:
 
 - **auth**: Cognito user pool (Google IdP) and identity pool, mapped to `ALLOWED_EMAIL`.
-- **data**: the DynamoDB table (5 generic LSIs, created up front) and the file bucket: `attachments/` and issued PDFs under `documents/`. Production versions it (35-day noncurrent expiry) and has Object Lock on.
+- **data**: the DynamoDB table (5 generic LSIs, created up front) and the file bucket: `attachments/` and issued PDFs under `documents/`. Production versions it (35-day noncurrent expiry) and has Object Lock on. Also the payment page's site, in every environment: its own bucket (no versions; Settings rewrites it) behind CloudFront.
 - **api**: the `api`, `public` (share links: a Function URL that can only `GetItem` and read issued PDFs), `job-quarterly` (EventBridge) and `migrate` (run by deploys) Go Lambdas.
-- **web** (staging and production): S3 and CloudFront for the SPA. A deploy drops the previous build's files.
+- **web** (staging and production): S3 and CloudFront for the SPA. A deploy drops the previous build's files, and the bucket keeps no versions, so no old build is kept. Each deploy also deletes the Lambda builds no stack uses from the CDK assets bucket (`cdk gc`).
 
 ### bizzy-lambda
 
@@ -72,6 +72,7 @@ flowchart TD
 - **A request is one `txn.Scope`**: the kinds its commits changed go back as `changed`, and work after commits waits for its end, done once. The Lambda logs a `request` line for each: action, ms, and its table reads, commits and Google calls.
 - **The calendar is an adapter.** `googlesync` keeps a `Link` per event (its session, and what both said when last agreed). A changed event becomes `sessions.Create`/`Update` with only what the user changed, one commit per event; a deleted one deletes its session, or cancels it when it has history. Refused events retry after the others (together, for a swap), then wait as conflicts. Changed sessions are written to their events at the end of the request, `Parallel` calls at a time and recorded in one commit, over each event as the request last saw it (Google refuses a write over a newer one); the next sync finishes a failed write, writing only events that differ. A calendar is read 60 days back, then backfilled a month per `sync.backfill`. Choosing another calendar keeps bizzy's data, writes every item into the new one and leaves the old one untouched.
 - **PDFs** are laid out by `platform/pdflayout`, a small QuestPDF-style layer over fpdf: blocks (`Text`, `Row`, `Column`, `Flow`, `Table`, …) measure their height and draw themselves, and pages break between blocks only (a table between rows, its header repeated). Output is byte-for-byte repeatable, which the hash relies on. [documents/render.go](bizzy-lambda/internal/features/documents/render.go) is the layout; `pdf.go` keeps and serves the files (`documents.pdf`, `documents.preview`, the share link).
+- **The payment page** ([settings/paypage.go](bizzy-lambda/internal/features/settings/paypage.go)) is static files on its own site: every Settings save renders the page (DuitNow QR, bank details, the phone e-wallets pay), the QR drawn again from what it says, and the preview WhatsApp shows, and writes them after the commit. A failed write fails the save's reply, so saving again mends it. Opening the page costs no Lambda call and no read. It shows only what every payment message already sends, so its address is fixed. The message links it as `{payLink}`, with a `{ref}`: the invoice number, or the client's first name and the day (`AISYAH 05OCT`).
 
 **Names** are the same in every feature. Outside a package you read `sessions.View`; the web writes `SessionView`.
 
@@ -160,7 +161,7 @@ pnpm lambda:migrate:dry  # what the next deploy's migrations would do (writes no
 pnpm web:dev             # http://localhost:4200
 pnpm web:env             # rewrite the web env only
 pnpm cdk:diff
-pnpm cdk:gc              # delete old Lambda builds no stack uses from the CDK assets bucket
+pnpm cdk:gc              # delete old Lambda builds no stack uses from the CDK assets bucket (dev:deploy and CI deploys run it too)
 
 pnpm web:test | web:lint | web:typecheck
 pnpm infra:test | infra:lint | infra:typecheck
@@ -172,6 +173,7 @@ From `bizzy-lambda/`:
 ```sh
 go test ./internal/simulation -rapid.checks=1000 -rapid.steps=300
 go test ./internal/features/documents -run TestRender -update   # rewrite the sample PDFs in testdata/ after a layout change, then open them
+go test ./internal/features/settings -run TestPayPageFiles -update   # the same for the payment page and its images (testdata/paypage)
 TABLE_NAME=<scratch table> go test ./internal/platform/dynamo   # the table contract against real DynamoDB; it wipes the table
 ```
 

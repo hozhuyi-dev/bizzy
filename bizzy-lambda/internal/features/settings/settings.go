@@ -20,6 +20,12 @@ type Settings struct {
 	BankName    string `json:"bankName,omitempty"`
 	AccountName string `json:"accountName,omitempty"`
 	AccountNo   string `json:"accountNo,omitempty"`
+	// DuitNowQR is what the user's DuitNow QR says (an EMVCo payload, read
+	// from the image in the browser); the payment page draws it again.
+	DuitNowQR string `json:"duitNowQr,omitempty"`
+	// PayPhone is the number clients pay to with PayApps; blank is Phone.
+	PayPhone string   `json:"payPhone,omitempty"`
+	PayApps  []PayApp `json:"payApps,omitempty"`
 
 	// ServiceName describes a session on an invoice or receipt line.
 	ServiceName string `json:"serviceName"`
@@ -41,8 +47,9 @@ const (
 	// MaxAheadDays bounds both: the to-do list reads that far ahead.
 	MaxAheadDays = 30
 
-	DefaultPaymentMessage = "Hi {firstName}, thanks for coming in on {date}. The session is {amount}.\n\n" +
-		"You can transfer it to:\n{bank}\n\nThank you!"
+	DefaultPaymentMessage = "Hi {firstName}, the payment for {item} is {amount}.\n\n" +
+		"Pay by DuitNow QR, bank transfer, TnG or GrabPay here:\n{payLink}\n\n" +
+		"Or transfer to:\n{bank}\nReference: {ref}\n\nThank you!"
 	DefaultDocumentMessage = "Hi {firstName}, here's your {title} from {business}:\n\n{documents}\n\nThank you!"
 )
 

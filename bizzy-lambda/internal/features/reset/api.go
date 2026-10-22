@@ -1,7 +1,7 @@
 // Package reset starts a development or staging environment over against
 // the real calendar: it deletes everything but the Google connection and
-// the schema version, and every attached file and issued PDF, then syncs
-// the calendar back in. It is never registered in production, where issued
+// the schema version, every attached file and issued PDF, and the payment
+// page, then syncs the calendar back in. It is never registered in production, where issued
 // invoices and receipts must be kept. Once production holds data, changes
 // to how items are stored are migrations (internal/migrations), not resets.
 package reset
@@ -15,6 +15,7 @@ import (
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/googleconnect"
 	"bizzy-lambda/internal/features/googlesync"
+	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/router"
@@ -38,7 +39,7 @@ type View struct {
 }
 
 // Routes registers data.reset.
-func Routes(r *router.Router, tb table.Table, blobs blobstore.Store, sync *googlesync.Sync) {
+func Routes(r *router.Router, tb table.Table, blobs blobstore.Store, site settings.PaySite, sync *googlesync.Sync) {
 	r.Mutation("data.reset", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
 		deleted, err := tb.Wipe(ctx, txn.Commits, googleconnect.Connections.Name, txn.SchemaKey.PK)
 		if err != nil {
@@ -51,6 +52,12 @@ func Routes(r *router.Router, tb table.Table, blobs blobstore.Store, sync *googl
 		pdfs, err := blobs.DeletePrefix(ctx, documents.PDFKeyPrefix)
 		if err != nil {
 			return nil, err
+		}
+		// The settings it showed are gone; saving them again publishes it.
+		if site.Store != nil {
+			if err := site.Unpublish(ctx); err != nil {
+				return nil, err
+			}
 		}
 		out := View{Deleted: deleted + files + pdfs}
 		synced, err := sync.Run(ctx)

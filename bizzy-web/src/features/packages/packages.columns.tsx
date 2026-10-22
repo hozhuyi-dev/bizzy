@@ -1,4 +1,4 @@
-import { BanknoteIcon, PackageCheckIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { BanknoteIcon, MessageCircleIcon, PackageCheckIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { clientName, paymentText } from "./packages.util";
 import type { PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
@@ -20,6 +20,8 @@ export interface PackageHandlers {
   onDelete: (pkg: PackageView) => void;
   onMakeStandalone: (pkg: PackageView) => void;
   onPay: (pkg: PackageView) => void;
+  /** Asks the client to pay on WhatsApp; unset until it can. */
+  onAskToPay?: ((pkg: PackageView) => void) | undefined;
 }
 
 const helper = createDataTableColumnHelper<PackageView>();
@@ -85,9 +87,10 @@ function PackageDocuments({ pkg }: { pkg: PackageView }) {
 
 /**
  * What can be done to a package: pay what it owes or see its payment;
- * behind ⋯, edit it (as a click on its row does, kept there for the
- * keyboard), keep one bought in a session as its own (so the session no
- * longer buys it), or delete it: each as its `can` says.
+ * behind ⋯, ask the client to pay one bought on its own (the session asks
+ * for one bought in it), edit it (as a click on its row does, kept there
+ * for the keyboard), keep one bought in a session as its own (so the
+ * session no longer buys it), or delete it: each as its `can` says.
  */
 export function packageActions(pkg: PackageView, handlers: PackageHandlers): RowActionSet {
   const set = { actions: [] as Array<Action>, more: [] as Array<Action> };
@@ -95,6 +98,10 @@ export function packageActions(pkg: PackageView, handlers: PackageHandlers): Row
     set.actions.push({ type: "button", label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   } else if (pkg.paid) {
     set.actions.push({ type: "button", label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
+  }
+  const askToPay = handlers.onAskToPay;
+  if (askToPay && pkg.owedCents > 0 && !pkg.boughtIn) {
+    set.more.push({ type: "button", label: "Ask to pay", icon: MessageCircleIcon, onClick: () => askToPay(pkg) });
   }
   set.more.push({ type: "button", label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) });
   if (pkg.can.makeStandalone.ok) {

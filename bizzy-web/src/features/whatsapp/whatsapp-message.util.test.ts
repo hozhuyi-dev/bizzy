@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { documentsMessage, documentsTitle, fillMessage, paymentMessage } from "./whatsapp-message.util";
+import { documentsMessage, documentsTitle, fillMessage, paymentMessage, paymentReference } from "./whatsapp-message.util";
 import type { SentDocument } from "./whatsapp.types";
 import type { DocumentType } from "~/features/documents/documents.types";
 import type { SettingsView } from "~/features/settings/settings.types";
@@ -35,21 +35,47 @@ describe("fillMessage", () => {
 });
 
 describe("paymentMessage", () => {
+  const session = { clientName: "Jane Smith", item: "your session on 5 Oct 2026", date: "2026-10-05T02:00:00Z" };
+
   test("uses the first name and her bank details", () => {
-    const text = paymentMessage(settings, {
-      clientName: "Jane Smith",
-      start: "2026-10-05T02:00:00Z",
-      amountCents: 9500,
-    });
+    const text = paymentMessage(settings, { ...session, amountCents: 9500 });
     expect(text).toMatch(/^Hi Jane, 5 Oct 2026: RM\s?95\.00\.\nMaybank\nPhysio Co\n1234 5678$/);
   });
 
   test("skips bank details she hasn't filled in", () => {
-    const text = paymentMessage(
-      { ...settings, bankName: "", accountName: "" },
-      { clientName: "Jane", start: "2026-10-05T02:00:00Z" },
-    );
+    const text = paymentMessage({ ...settings, bankName: "", accountName: "" }, { ...session, clientName: "Jane" });
     expect(text.endsWith(": .\n1234 5678")).toBe(true);
+  });
+
+  test("links the payment page and gives the reference", () => {
+    const text = paymentMessage(
+      { ...settings, paymentMessage: "{item}\n{payLink}\nRef: {ref}" },
+      session,
+      "https://pay.example",
+    );
+    expect(text).toBe("your session on 5 Oct 2026\nhttps://pay.example\nRef: JANE 05OCT");
+  });
+});
+
+describe("paymentReference", () => {
+  const ask = { clientName: "Aisyah binti Ahmad", date: "2026-10-05" };
+
+  test("names the client and the day until there is an invoice", () => {
+    expect(paymentReference(ask)).toBe("AISYAH 05OCT");
+    expect(paymentReference({ ...ask, isPackage: true })).toBe("AISYAH PKG 05OCT");
+  });
+
+  test("is the invoice's number once issued", () => {
+    expect(paymentReference({ ...ask, invoiceNumber: "INV260012" })).toBe("INV260012");
+  });
+
+  test("keeps to what bank apps take: letters, digits and spaces, at most 20", () => {
+    expect(paymentReference({ ...ask, clientName: "Siti-Nur'aini Abdullah" })).toBe("SITINURAINI 05OCT");
+    const long = paymentReference({ ...ask, clientName: "Muhammadabdulrahmanshah Ali", isPackage: true });
+    expect(long).toBe("MUHAMMADAB PKG 05OCT");
+    expect(long).toHaveLength(20);
+    // A name with no Latin letters leaves the day.
+    expect(paymentReference({ ...ask, clientName: "陈美玲" })).toBe("05OCT");
   });
 });
 

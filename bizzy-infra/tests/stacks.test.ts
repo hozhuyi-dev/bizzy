@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { ApiStack } from "../lib/api-stack";
 import { AuthStack } from "../lib/auth-stack";
 import { DataStack } from "../lib/data-stack";
+import { WebStack } from "../lib/web-stack";
 import type { Environment } from "../utils/environment.util";
 
 const env = { account: "123456789012", region: "ap-southeast-5" };
@@ -36,16 +37,21 @@ function synth(environment: Environment) {
     environment,
     table: data.data.table,
     files: data.files.bucket,
+    paySite: data.paySite.bucket,
+    payUrl: data.paySite.url,
     authenticatedRole: auth.auth.authenticatedRole,
     googleClientId: "client-id",
     googleClientSecret: "client-secret",
     syncTimeZone: "Asia/Kuala_Lumpur",
   });
 
+  const web = new WebStack(app, "web", { env, projectName: "bizzy", environment });
+
   return {
     auth: Template.fromStack(auth),
     data: Template.fromStack(data),
     api: Template.fromStack(api),
+    web: Template.fromStack(web),
   };
 }
 
@@ -239,13 +245,24 @@ describe("api", () => {
       .flatMap((policy) => (policy as Policy).Properties.PolicyDocument.Statement)
       .filter((s) => JSON.stringify(s.Action).includes("s3:"));
 
-  test("scopes S3 access to attachment keys and issued PDFs", () => {
+  test("scopes S3 access to attachment keys, issued PDFs and the payment page", () => {
     const s3 = s3Statements(api);
-    // The api's three, the public function's one, the quarterly job's two.
-    expect(s3).toHaveLength(6);
+    // The api's four, the public function's one, the quarterly job's two.
+    expect(s3).toHaveLength(7);
     for (const s of s3) {
-      expect(JSON.stringify(s)).toMatch(/attachments\/\*|documents\/\*/);
+      expect(JSON.stringify(s)).toMatch(/attachments\/\*|documents\/\*|PaySiteBucket/);
     }
+  });
+
+  test("lets the api only write and delete the payment page's files", () => {
+    const pay = s3Statements(api).filter((s) => JSON.stringify(s.Resource).includes("PaySiteBucket"));
+    expect(pay.map((s) => s.Action)).toEqual([["s3:PutObject", "s3:DeleteObject"]]);
+    api.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "bizzy-staging-api",
+      Environment: {
+        Variables: Match.objectLike({ PAY_BUCKET_NAME: Match.anyValue(), PAY_URL: Match.anyValue() }),
+      },
+    });
   });
 
   test("locks issued PDFs, and deletes them, only where it should", () => {
@@ -328,5 +345,79 @@ describe("api", () => {
     expect(publicRole).toBeDefined();
     expect(statements.map((s) => s.Action)).toEqual(["dynamodb:GetItem", "s3:GetObject"]);
     expect(JSON.stringify(statements[1])).toContain("documents/*");
+  });
+});
+
+// CloudFront's managed CachingOptimized policy: honours what the origin says,
+// and leaves query strings, headers and cookies out of the cache key.
+const CACHING_OPTIMIZED = "658327ea-f89d-4fab-a63d-7e88639e58f6";
+
+type Resources = Record<string, { DeletionPolicy?: string; Properties: Record<string, unknown> }>;
+
+describe("payment page", () => {
+  const paySite = (environment: Environment) => {
+    const { data } = synth(environment);
+    const buckets = data.findResources("AWS::S3::Bucket") as Resources;
+    const id = Object.keys(buckets).find((key) => key.startsWith("PaySiteBucket"));
+    return { data, bucket: id ? buckets[id] : undefined };
+  };
+
+  test("keeps no old versions, even in production, where it goes with its stack", () => {
+    const { bucket } = paySite("production");
+    expect(bucket).toBeDefined();
+    expect(bucket?.Properties.VersioningConfiguration).toBeUndefined();
+    expect(bucket?.Properties.ObjectLockEnabled).toBeUndefined();
+    expect(bucket?.DeletionPolicy).toBe("Delete");
+  });
+
+  test("is served privately through the cheapest CloudFront, without logs", () => {
+    const { data } = paySite("staging");
+    data.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        Comment: "bizzy-staging-pay",
+        DefaultRootObject: "index.html",
+        PriceClass: "PriceClass_100",
+        Logging: Match.absent(),
+        DefaultCacheBehavior: Match.objectLike({
+          CachePolicyId: CACHING_OPTIMIZED,
+          ViewerProtocolPolicy: "redirect-to-https",
+          Compress: true,
+        }),
+      }),
+    });
+    data.resourceCountIs("AWS::CloudFront::OriginAccessControl", 1);
+  });
+
+  test("asks not to be indexed", () => {
+    paySite("staging").data.hasResourceProperties("AWS::CloudFront::ResponseHeadersPolicy", {
+      ResponseHeadersPolicyConfig: Match.objectLike({
+        CustomHeadersConfig: {
+          Items: [{ Header: "X-Robots-Tag", Value: "noindex, nofollow", Override: true }],
+        },
+      }),
+    });
+  });
+});
+
+describe("web", () => {
+  test("keeps no old builds: the bucket isn't versioned, and abandoned uploads go", () => {
+    for (const environment of ["staging", "production"] as const) {
+      const buckets = Object.values(synth(environment).web.findResources("AWS::S3::Bucket") as Resources);
+      expect(buckets).toHaveLength(1);
+      expect(buckets[0]?.Properties.VersioningConfiguration).toBeUndefined();
+    }
+    synth("staging").web.hasResourceProperties("AWS::S3::Bucket", {
+      LifecycleConfiguration: {
+        Rules: [
+          Match.objectLike({ Id: "abort-incomplete-uploads", AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 } }),
+        ],
+      },
+    });
+  });
+
+  test("serves at the cheapest price class, without logs", () => {
+    synth("staging").web.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({ PriceClass: "PriceClass_100", Logging: Match.absent() }),
+    });
   });
 });

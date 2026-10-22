@@ -17,6 +17,9 @@ interface ApiStackProps extends cdk.StackProps {
   table: ITable;
   /** Where attachments live; the API presigns the browser's uploads and downloads. */
   files: IBucket;
+  /** The payment page's bucket, which saving the settings writes, and where it is served. */
+  paySite: IBucket;
+  payUrl: string;
   /** The identity pool role the signed-in user's credentials carry. */
   authenticatedRole: IRole;
   /**
@@ -42,6 +45,8 @@ export class ApiStack extends cdk.Stack {
       environment,
       table,
       files,
+      paySite,
+      payUrl,
       authenticatedRole,
       googleClientId,
       googleClientSecret,
@@ -73,6 +78,8 @@ export class ApiStack extends cdk.Stack {
       environmentVariables: {
         TABLE_NAME: table.tableName,
         BUCKET_NAME: files.bucketName,
+        PAY_BUCKET_NAME: paySite.bucketName,
+        PAY_URL: payUrl,
         TIME_ZONE: syncTimeZone,
         // Development and staging also serve data.reset.
         ENVIRONMENT: environment,
@@ -127,6 +134,15 @@ export class ApiStack extends cdk.Stack {
           ...(environment === "production" ? [] : ["s3:DeleteObject"]),
         ],
         resources: [pdfs],
+      }),
+    );
+
+    // The payment page: saving the settings rewrites its files, and a reset
+    // (development and staging) deletes them.
+    this.api.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["s3:PutObject", "s3:DeleteObject"],
+        resources: [paySite.arnForObjects("*")],
       }),
     );
 

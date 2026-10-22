@@ -354,7 +354,48 @@ export function ChoiceField({
   );
 }
 
-type SubmitButtonProps = Omit<ComponentProps<typeof Button>, "type" | "children"> & {
+/** Any of a few, as a row of buttons to tap on and off: the apps clients pay with. Kept in the options' order. */
+export function ChoicesField({
+  label,
+  labelClassName,
+  description,
+  hint,
+  className,
+  options,
+}: FieldFrameProps & { options: ReadonlyArray<ChoiceOption> }) {
+  const field = useFieldContext<Array<string>>();
+  const id = useId();
+  const errors = useShownErrors(field);
+  const chosen = field.state.value;
+  return (
+    <FieldFrame {...{ label, labelClassName, description, hint, className, errors }} labelId={id}>
+      <div role="group" aria-labelledby={id} className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const on = chosen.includes(option.value);
+          return (
+            <Button
+              key={option.value}
+              type="button"
+              aria-pressed={on}
+              variant={on ? "default" : "outline"}
+              size="sm"
+              title={option.title}
+              onClick={() => {
+                const next = on ? chosen.filter((value) => value !== option.value) : [...chosen, option.value];
+                field.handleChange(options.map((o) => o.value).filter((value) => next.includes(value)));
+                field.handleBlur();
+              }}
+            >
+              {option.label}
+            </Button>
+          );
+        })}
+      </div>
+    </FieldFrame>
+  );
+}
+
+type SubmitButtonProps =Omit<ComponentProps<typeof Button>, "type" | "children"> & {
   label: ReactNode;
   /** While it saves. */
   pendingLabel?: ReactNode;

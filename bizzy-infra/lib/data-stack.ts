@@ -3,6 +3,7 @@ import { Construct } from "constructs";
 import { CfnOutput } from "aws-cdk-lib";
 import { DataTable } from "./common/data/table";
 import { FileBucket } from "./common/data/file-bucket";
+import { PaySite } from "./common/web/pay-site";
 import type { Environment } from "../utils/environment.util";
 
 interface DataStackProps extends cdk.StackProps {
@@ -19,6 +20,7 @@ interface DataStackProps extends cdk.StackProps {
 export class DataStack extends cdk.Stack {
   readonly data: DataTable;
   readonly files: FileBucket;
+  readonly paySite: PaySite;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
@@ -36,12 +38,22 @@ export class DataStack extends cdk.Stack {
       allowedOrigins: allowedOrigins,
     });
 
+    this.paySite = new PaySite(this, "PaySite", {
+      projectName: projectName,
+      environment: environment,
+    });
+
     new CfnOutput(this, "TableName", {
       value: this.data.table.tableName,
     });
 
     new CfnOutput(this, "FilesBucketName", {
       value: this.files.bucket.bucketName,
+    });
+
+    // The payment message links to it; scripts/web-env.mjs gives it to the app.
+    new CfnOutput(this, "PayUrl", {
+      value: this.paySite.url,
     });
   }
 }

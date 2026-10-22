@@ -65,3 +65,46 @@ describe("form fields", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ name: "Jane", fee: "95" }));
   });
 });
+
+function AppsForm({ onSubmit }: { onSubmit: (value: { apps: Array<string> }) => void }) {
+  const form = useAppForm({ defaultValues: { apps: ["grabpay"] }, onSubmit: ({ value }) => onSubmit(value) });
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <form.AppField name="apps">
+        {(field) => (
+          <field.ChoicesField
+            label="Apps"
+            options={[
+              { value: "duitnow", label: "DuitNow" },
+              { value: "tng", label: "TnG" },
+              { value: "grabpay", label: "GrabPay" },
+            ]}
+          />
+        )}
+      </form.AppField>
+      <form.AppForm>
+        <form.SubmitButton label="Save" />
+      </form.AppForm>
+    </form>
+  );
+}
+
+describe("choices field", () => {
+  test("taps each on and off, keeping the options' order", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<AppsForm onSubmit={onSubmit} />);
+    expect(screen.getByRole("button", { name: "GrabPay" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "DuitNow" }));
+    await user.click(screen.getByRole("button", { name: "TnG" }));
+    await user.click(screen.getByRole("button", { name: "TnG" }));
+    expect(screen.getByRole("button", { name: "TnG" })).toHaveAttribute("aria-pressed", "false");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ apps: ["duitnow", "grabpay"] }));
+  });
+});

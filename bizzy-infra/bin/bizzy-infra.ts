@@ -62,6 +62,8 @@ const apiStack = new ApiStack(app, `${projectName}-${environment}-api`, {
   environment: environment,
   table: dataStack.data.table,
   files: dataStack.files.bucket,
+  paySite: dataStack.paySite.bucket,
+  payUrl: dataStack.paySite.url,
   authenticatedRole: authStack.auth.authenticatedRole,
   googleClientId: googleClientId,
   googleClientSecret: googleClientSecret,

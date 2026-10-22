@@ -87,12 +87,22 @@ var clientActions = []Action{
 	{Name: "settings.save", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.call(t, "settings.save", map[string]any{
 			"businessName":      "Physio Co",
+			"phone":             rapid.SampledFrom([]string{"", "012-345 6789"}).Draw(t, "phone"),
+			"bankName":          "Maybank",
+			"accountName":       "Physio Co",
+			"accountNo":         rapid.SampledFrom([]string{"", "5140 1234 5678"}).Draw(t, "account no"),
+			"duitNowQr":         rapid.SampledFrom([]string{"", duitNowQR, "not a QR"}).Draw(t, "duitnow qr"),
+			"payPhone":          rapid.SampledFrom([]string{"", "011-2345 6789", "0123"}).Draw(t, "pay phone"),
+			"payApps":           rapid.SampledFrom([][]string{nil, {"tng"}, {"grabpay", "duitnow", "grabpay"}, {"boost"}}).Draw(t, "pay apps"),
 			"serviceName":       rapid.SampledFrom([]string{"", "Physiotherapy", "Physio session"}).Draw(t, "service"),
 			"confirmAheadDays":  rapid.SampledFrom([]int{0, 1, 3, 40}).Draw(t, "confirm ahead"),
 			"followUpAheadDays": rapid.SampledFrom([]int{0, 7}).Draw(t, "follow-up ahead"),
 		})
 	}},
 }
+
+// duitNowQR is a static DuitNow QR as a bank app gives one (made up).
+const duitNowQR = "00020101021126490014A000000615000101068900530210000012345605030005204809953034585802MY5909PHYSIO CO6012KUALA LUMPUR6304319E"
 
 var feeRates = [][]map[string]any{
 	{}, {{"cents": 9000}}, {{"cents": 9000}, {"from": "2026-10-14", "cents": 9500}}, {{"from": "2026-10-14", "cents": 1}},

@@ -1,4 +1,8 @@
 // Mirrors bizzy-lambda/internal/features/settings/api.go.
+
+/** An app clients can pay her phone number with; mirrors settings.PayApp. */
+export type PayApp = "duitnow" | "tng" | "grabpay";
+
 export interface SettingsView {
   businessName: string;
   registrationNo: string;
@@ -8,6 +12,11 @@ export interface SettingsView {
   bankName?: string;
   accountName?: string;
   accountNo?: string;
+  /** What her DuitNow QR says, read from its image; the payment page draws it again. */
+  duitNowQr?: string;
+  /** The number clients pay to with payApps; blank is her phone. */
+  payPhone?: string;
+  payApps?: Array<PayApp>;
   /** Describes a session on a receipt line. */
   serviceName: string;
   /** Days ahead an unconfirmed session goes on the to-do list. */

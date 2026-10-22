@@ -4,7 +4,8 @@ import type { SettingsView } from "~/features/settings/settings.types";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { documentLabel, shareUrl  } from "~/features/documents/documents.util";
 import { formatCents } from "~/core/utils/money.util";
-import { formatDate } from "~/core/utils/date.util";
+import { formatDate, referenceDay } from "~/core/utils/date.util";
+import { PAY_URL } from "~/features/settings/settings.constant";
 
 /**
  * The WhatsApp messages she sends, filled in from her templates in Settings.
@@ -25,16 +26,51 @@ export function bankDetails(settings: SettingsView): string {
   return [settings.bankName, settings.accountName, settings.accountNo].filter(Boolean).join("\n");
 }
 
-/** Asks for payment for a session, with her bank details. */
-export function paymentMessage(
-  settings: SettingsView,
-  session: { clientName: string; start: string; amountCents?: number | undefined },
-): string {
+/** What a payment message asks for: a session, or a package bought on its own. */
+export interface PaymentAsk {
+  clientName: string;
+  /** What it is for, as the message reads it: "your session on 5 Oct 2026". */
+  item: string;
+  /** Its day: the session's start, or the day the package was bought. */
+  date: string;
+  amountCents?: number | undefined;
+  /** Its invoice's number, once issued. */
+  invoiceNumber?: string | undefined;
+  /** A package, which the reference says. */
+  isPackage?: boolean;
+}
+
+/** The most a Malaysian bank app takes as a transfer's reference. */
+const REFERENCE_LENGTH = 20;
+
+const referenceText = (text: string) => text.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * What the client types as the transfer's reference, so the payment is easy
+ * to match: its invoice number once issued, else the client's first name
+ * and the day ("AISYAH 05OCT", "AISYAH PKG 05OCT" for a package). Letters,
+ * digits and spaces only, at most 20, as bank apps take them.
+ */
+export function paymentReference(ask: Pick<PaymentAsk, "clientName" | "date" | "invoiceNumber" | "isPackage">): string {
+  if (ask.invoiceNumber) return referenceText(ask.invoiceNumber).slice(0, REFERENCE_LENGTH);
+  const suffix = `${ask.isPackage ? " PKG" : ""} ${referenceDay(ask.date)}`;
+  const name = referenceText(person(ask.clientName).firstName).slice(0, REFERENCE_LENGTH - suffix.length);
+  return `${name}${suffix}`.trim();
+}
+
+/**
+ * Asks for payment: the amount, a link to the payment page (every way to
+ * pay), her bank details and the reference to give.
+ */
+export function paymentMessage(settings: SettingsView, ask: PaymentAsk, payUrl: string = PAY_URL): string {
   return fillMessage(settings.paymentMessage, {
-    ...person(session.clientName),
-    date: formatDate(session.start),
-    amount: session.amountCents !== undefined ? formatCents(session.amountCents) : "",
+    ...person(ask.clientName),
+    item: ask.item,
+    date: formatDate(ask.date),
+    amount: ask.amountCents !== undefined ? formatCents(ask.amountCents) : "",
+    payLink: payUrl,
     bank: bankDetails(settings),
+    ref: paymentReference(ask),
     business: settings.businessName,
   });
 }

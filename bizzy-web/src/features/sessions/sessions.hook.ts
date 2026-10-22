@@ -1,30 +1,33 @@
 import { MessageCircleIcon } from "lucide-react";
-import { toast } from "sonner";
 import type { SessionView } from "./sessions.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import { SettingsQuery } from "~/features/settings/settings.query";
-import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
-import { paymentMessage } from "~/features/whatsapp/whatsapp-message.util";
+import { useAskToPay } from "~/features/whatsapp/whatsapp.hook";
+import { formatDate } from "~/core/utils/date.util";
 
 /**
  * A WhatsApp message to the client (the app on a phone, WhatsApp Web on a
- * computer) asking to pay, with the bank details, while it is unpaid. Its
- * documents are sent from their own pages.
+ * computer) asking to pay, with the payment page's link and the bank
+ * details, while it is unpaid. Its documents are sent from their own pages.
  */
 export function useAskToPayAction(session: SessionView, client: ClientView | undefined): Action | undefined {
-  const settings = SettingsQuery.useGet();
-  const whatsapp = useWhatsApp();
+  const askToPay = useAskToPay();
 
   const due = session.owedCents;
-  if (!client || due === 0 || !settings.data) return undefined;
-  const text = paymentMessage(settings.data, { clientName: client.name, start: session.start, amountCents: due });
+  if (!client || due === 0 || !askToPay) return undefined;
   return {
     type: "button",
     label: "Ask to pay",
     icon: MessageCircleIcon,
-    onClick: () => {
-      if (!whatsapp.message(client.contact?.phone, text)) toast.error(`${client.name} has no phone number WhatsApp can use.`);
-    },
+    onClick: () =>
+      askToPay(
+        { name: client.name, phone: client.contact?.phone },
+        {
+          item: `your session on ${formatDate(session.start)}`,
+          date: session.start,
+          amountCents: due,
+          invoiceNumber: session.invoice?.number,
+        },
+      ),
   };
 }

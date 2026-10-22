@@ -60,6 +60,9 @@ The business details and preferences: one item, BUSINESS.
 | bankName | `string` |
 | accountName | `string` |
 | accountNo | `string` |
+| duitNowQr | `string` |
+| payPhone | `string` |
+| payApps | `[]settings.PayApp` |
 | serviceName | `string` |
 | confirmAheadDays | `int` |
 | followUpAheadDays | `int` |
@@ -69,6 +72,7 @@ The business details and preferences: one item, BUSINESS.
 Checked on every change to one:
 
 - **look-ahead-in-range**: The to-do list reads at most MaxAheadDays ahead
+- **pay-page-showable**: The payment page draws the QR and lists the apps as saved
 
 ### DOC
 

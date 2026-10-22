@@ -14,5 +14,15 @@ var Invariants = []txn.Invariant{
 			}
 			return nil, err
 		},
+	}, {
+		ID: "pay-page-showable", Why: "The payment page draws the QR and lists the apps as saved",
+		On: Store.Name,
+		Broken: func(tx *txn.Tx, id string) ([]string, error) {
+			s, ok, err := Store.Find(tx, id)
+			if ok && checkPay(*s) != nil {
+				return []string{checkPay(*s).Error()}, err
+			}
+			return nil, err
+		},
 	},
 }

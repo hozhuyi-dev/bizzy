@@ -30,6 +30,9 @@ type S3 struct {
 	// governance mode); 0 locks nothing. Only production's bucket has
 	// Object Lock on, and keeps records the 7 years the tax law asks.
 	RecordRetention time.Duration
+	// CacheControl is how long what Put writes may be cached (a bucket a
+	// CDN serves); blank says nothing.
+	CacheControl string
 }
 
 // NewS3 builds the store from the Lambda environment's credentials.
@@ -97,6 +100,9 @@ func (s *S3) Put(ctx context.Context, key, contentType string, body []byte) erro
 		Body:        bytes.NewReader(body),
 		// Object Lock refuses a put without a checksum.
 		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+	}
+	if s.CacheControl != "" {
+		in.CacheControl = aws.String(s.CacheControl)
 	}
 	if s.RecordRetention > 0 {
 		in.ObjectLockMode = types.ObjectLockModeGovernance

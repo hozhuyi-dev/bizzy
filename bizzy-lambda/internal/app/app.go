@@ -39,6 +39,9 @@ type Deps struct {
 	Table table.Table
 	// Blobs holds attached files.
 	Blobs blobstore.Store
+	// PaySite is where saving the settings publishes the payment page; no
+	// Store, no page.
+	PaySite settings.PaySite
 	// Google is the user's Google grant; nil leaves out the Settings
 	// actions that connect it (tests).
 	Google googleconnect.Auth
@@ -110,7 +113,7 @@ func New(d Deps) *App {
 		clients.Owner{What: "documents", Has: documents.Documents.HasClient},
 		clients.Owner{What: "follow-ups", Has: followups.FollowUps.HasClient})
 	contacts.Routes(r, run, d.Contacts)
-	settings.Routes(r, run)
+	settings.Routes(r, run, d.PaySite)
 	documents.Routes(r, run, d.Blobs, sessions.CheckIssue)
 	packages.Routes(r, run, sessions.CreditsUsed)
 	sessions.Routes(r, run, d.Blobs)
@@ -133,7 +136,7 @@ func New(d Deps) *App {
 		googleconnect.Routes(r, run, d.Google)
 	}
 	if d.Resettable {
-		reset.Routes(r, d.Table, d.Blobs, sync)
+		reset.Routes(r, d.Table, d.Blobs, d.PaySite, sync)
 	}
 	return &App{Router: r, Runner: run, Sync: sync}
 }

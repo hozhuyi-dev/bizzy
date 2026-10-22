@@ -31,6 +31,14 @@ export function formatMonth(month: string): string {
 }
 
 /** YYYY-MM-DD dates are calendar days, not instants: read them as local. */
+const MONTH_CODES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+/** "05OCT" from an instant or a YYYY-MM-DD date: a day as a bank transfer's reference takes it. */
+export function referenceDay(value: string): string {
+  const date = parseDay(value);
+  return `${String(date.getDate()).padStart(2, "0")}${MONTH_CODES[date.getMonth()]}`;
+}
+
 function parseDay(value: string): Date {
   const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (day) return new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]));

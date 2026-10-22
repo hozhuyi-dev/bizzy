@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,9 +18,11 @@ import (
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googlesync"
 	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/migrations"
 	"bizzy-lambda/internal/platform/migrate"
 	"bizzy-lambda/internal/platform/txn"
+	"bizzy-lambda/internal/testutil/testapp"
 )
 
 // check runs after every action. Refused actions are checked as they
@@ -31,6 +34,7 @@ func check(t *rapid.T, w *World) {
 	invariantsHold(t, w)
 	deployable(t, w)
 	filesAreThere(t, w)
+	payPageShowsSettings(t, w)
 	if w.InSync {
 		calendarShowsBizzy(t, w)
 	}
@@ -73,6 +77,36 @@ func filesAreThere(t *rapid.T, w *World) {
 		blob, ok := w.Blobs.Blobs[documents.PDFKey(r)]
 		if sum := sha256.Sum256(blob.Body); !ok || hex.EncodeToString(sum[:]) != r.PDFSha256 {
 			t.Fatalf("%s's PDF isn't kept as issued", documents.Label(r.Number, r.Revision))
+		}
+	}
+}
+
+// payPageShowsSettings: the payment page is the one the settings make,
+// once they are saved, and there is none before (or after a reset). The
+// images are checked by being there: they are drawn from what the page
+// shows, and the page names them by it.
+func payPageShowsSettings(t *rapid.T, w *World) {
+	t.Helper()
+	saved := read(t, w, settings.Store.All)
+	if len(saved) == 0 {
+		if len(w.PaySite.Blobs) > 0 {
+			t.Fatalf("a payment page is published with no settings saved: %v", slices.Sorted(maps.Keys(w.PaySite.Blobs)))
+		}
+		return
+	}
+	p := settings.PayPageOf(*saved[0])
+	want, err := p.HTML(testapp.PayURL)
+	if err != nil {
+		t.Fatalf("the payment page doesn't render: %v", err)
+	}
+	if page := w.PaySite.Blobs[settings.PayPageKey]; !bytes.Equal(page.Body, want) {
+		t.Fatalf("the published payment page isn't the one the settings make")
+	}
+	for key, there := range map[string]bool{
+		settings.PayPreviewKey: true, settings.PayRobotsKey: true, settings.PayQRKey: p.QR != "",
+	} {
+		if _, ok := w.PaySite.Blobs[key]; ok != there {
+			t.Fatalf("the payment page's %s is published: %v; want %v", key, ok, there)
 		}
 	}
 }

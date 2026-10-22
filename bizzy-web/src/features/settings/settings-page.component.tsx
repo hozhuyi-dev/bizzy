@@ -1,4 +1,7 @@
 import { useSelector } from "@tanstack/react-form";
+import { ExternalLinkIcon } from "lucide-react";
+import { DuitNowQrField } from "./components/duitnow-qr-field/duitnow-qr-field.component";
+import { PAY_APP_OPTIONS, PAY_URL } from "./settings.constant";
 import { SettingsMutation } from "./settings.mutation";
 import { SettingsQuery } from "./settings.query";
 import type { SettingsView } from "./settings.types";
@@ -54,6 +57,9 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
       bankName: saved.bankName ?? "",
       accountName: saved.accountName ?? "",
       accountNo: saved.accountNo ?? "",
+      duitNowQr: saved.duitNowQr ?? "",
+      payPhone: saved.payPhone ?? "",
+      payApps: saved.payApps ?? [],
     },
     onSubmit: async ({ value, formApi }) => {
       try {
@@ -156,6 +162,44 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
             ),
           },
           {
+            id: "payment-page",
+            title: "Payment page",
+            description:
+              "One page with every way to pay: your DuitNow QR, bank details and the phone number e-wallets pay. The message asking to pay links to it ({payLink}). Saving updates it within a minute.",
+            actions: PAY_URL
+              ? [{ type: "external", label: "Open page", icon: ExternalLinkIcon, href: PAY_URL }]
+              : undefined,
+            content: (
+              <FieldGroup>
+                <form.AppField name="duitNowQr">
+                  {(field) => <DuitNowQrField value={field.state.value} onChange={field.handleChange} />}
+                </form.AppField>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <form.AppField name="payPhone">
+                    {(field) => (
+                      <field.TextField
+                        label="Phone clients pay to"
+                        type="tel"
+                        form={FORM_ID}
+                        placeholder={saved.phone || undefined}
+                        description="Blank uses your phone number above."
+                      />
+                    )}
+                  </form.AppField>
+                  <form.AppField name="payApps">
+                    {(field) => (
+                      <field.ChoicesField
+                        label="It takes"
+                        options={PAY_APP_OPTIONS}
+                        description="None leaves the phone number off the page."
+                      />
+                    )}
+                  </form.AppField>
+                </div>
+              </FieldGroup>
+            ),
+          },
+          {
             id: "sessions",
             title: "Sessions",
             description:
@@ -190,7 +234,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
                       label="Asking for payment"
                       form={FORM_ID}
                       rows={3}
-                      description={`From a session. ${placeholderList(PAYMENT_PLACEHOLDERS)}`}
+                      description={`From a session, or a package bought on its own. {item} reads "your session on 5 Oct 2026" or "your 10-hour package", {payLink} is your payment page, and {ref} is the invoice number, or the client's name and the day ("AISYAH 05OCT") until one is issued. ${placeholderList(PAYMENT_PLACEHOLDERS)}`}
                     />
                   )}
                 </form.AppField>

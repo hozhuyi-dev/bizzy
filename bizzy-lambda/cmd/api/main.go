@@ -17,6 +17,7 @@ import (
 
 	"bizzy-lambda/internal/app"
 	"bizzy-lambda/internal/features/reset"
+	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/dynamo"
 	"bizzy-lambda/internal/platform/googleauth"
@@ -48,8 +49,15 @@ func main() {
 		}
 		blobs.RecordRetention = time.Duration(n) * 24 * time.Hour
 	}
+	// The payment page's own bucket, served by CloudFront: it caches what
+	// it serves a minute, so a saved change shows within one.
+	paySite, err := blobstore.NewS3(context.Background(), mustEnv("PAY_BUCKET_NAME"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	paySite.CacheControl = "public, max-age=60"
 	a := app.New(app.Deps{
-		Table: tb, Blobs: blobs, Google: google, Resettable: reset.Allowed(os.Getenv("ENVIRONMENT")),
+		Table: tb, Blobs: blobs, PaySite: settings.PaySite{Store: paySite, URL: mustEnv("PAY_URL")}, Google: google, Resettable: reset.Allowed(os.Getenv("ENVIRONMENT")),
 		Location: loc, Now: time.Now, NewID: newID, Parallel: googleParallel,
 	})
 	a.Router.LogRequests = true

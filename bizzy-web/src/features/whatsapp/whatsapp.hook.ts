@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { documentsMessage } from "./whatsapp-message.util";
+import { documentsMessage, paymentMessage } from "./whatsapp-message.util";
 import { WhatsAppService } from "./whatsapp.service";
 import { whatsappNumber } from "./whatsapp.util";
+import type { PaymentAsk } from "./whatsapp-message.util";
 import type { ComputerWhatsApp } from "./whatsapp.constant";
 import type { SendableDocument, WhatsAppRecipient } from "./whatsapp.types";
 import { DocumentsMutation } from "~/features/documents/documents.mutation";
@@ -28,6 +29,26 @@ export function useWhatsApp() {
       },
     }),
     [],
+  );
+}
+
+/**
+ * Opens the client's chat with a message asking to pay: the amount, the
+ * payment page's link, her bank details and the reference to give.
+ * Undefined until the settings it fills in are loaded.
+ */
+export function useAskToPay(): ((to: WhatsAppRecipient, ask: Omit<PaymentAsk, "clientName">) => void) | undefined {
+  const settings = SettingsQuery.useGet();
+  const whatsapp = useWhatsApp();
+  const saved = settings.data;
+  return useMemo(
+    () =>
+      saved &&
+      ((to, ask) => {
+        const text = paymentMessage(saved, { ...ask, clientName: to.name });
+        if (!whatsapp.message(to.phone, text)) toast.error(`${to.name} has no phone number WhatsApp can use.`);
+      }),
+    [saved, whatsapp],
   );
 }
 
