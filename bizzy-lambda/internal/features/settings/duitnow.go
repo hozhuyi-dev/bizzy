@@ -33,7 +33,9 @@ func CheckDuitNowQR(payload string) error {
 	if err != nil {
 		return notQR(err.Error())
 	}
-	if len(fields) == 0 || fields[0].tag != "00" || fields[0].value != "01" {
+	// Field 00 is the format version: EMVCo's is 01, but DuitNow QRs from
+	// Malaysian banks (MAE among them) say 02.
+	if len(fields) == 0 || fields[0].tag != "00" || len(fields[0].value) != 2 || !isDigits(fields[0].value) {
 		return notQR("it doesn't start as one")
 	}
 	last := fields[len(fields)-1]

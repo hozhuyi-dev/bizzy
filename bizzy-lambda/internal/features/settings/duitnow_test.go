@@ -37,6 +37,9 @@ func TestCheckDuitNowQR(t *testing.T) {
 		want    string // in the refusal; "" passes
 	}{
 		"a static DuitNow QR": {sampleQR, ""},
+		"format version 02, as MAE gives": {
+			emv("00", "02", "01", "11", "26", "0014A000000615000101065887340220MAEPP1234567890", "58", "MY", "59", "AISHA"), "",
+		},
 		"checksum in lower case": {
 			sampleQR[:len(sampleQR)-4] + strings.ToLower(sampleQR[len(sampleQR)-4:]), "",
 		},
