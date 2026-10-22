@@ -1,5 +1,5 @@
 import { AuthMutation } from "../../auth.mutation";
-import { Logo } from "~/components/shared/logo/logo.component";
+import { Logo } from "~/components/shared/layout/logo/logo.component";
 import { Button } from "~/components/ui/button";
 import {
   Card,

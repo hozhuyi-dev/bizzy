@@ -4,12 +4,12 @@ import { DOCUMENT_STATUS } from "./documents.constant";
 import { documentLabel, documentRoute, shareUrl } from "./documents.util";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { DocumentStatus, DocumentSummary, DocumentsSearch } from "./documents.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { Badge } from "~/components/ui/badge";
-import { CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { DataCard } from "~/components/shared/data-card/data-card.component";
-import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
+import { CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
+import { DataCard } from "~/components/shared/list/data-card/data-card.component";
+import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 
@@ -23,7 +23,7 @@ export function DocumentStatusBadge({ status, revising }: { status: DocumentStat
 }
 
 function DocumentLink({ doc, search }: { doc: DocumentSummary; search: DocumentsSearch | undefined }) {
-  return <RowLink {...documentLink(doc, search)}>{documentLabel(doc.number, doc.revision)}</RowLink>;
+  return <CellLink {...documentLink(doc, search)}>{documentLabel(doc.number, doc.revision)}</CellLink>;
 }
 
 /** The document's page, with the list it steps through. */
@@ -72,7 +72,7 @@ export const createDocumentColumns = (search: DocumentsSearch | undefined) =>
     helper.accessor((doc) => doc.date ?? "", {
       id: "date",
       header: "Date",
-      sortFn: "alphanumeric",
+      sortFn: "basic",
       meta: { search: (doc: DocumentSummary) => (doc.date ? formatDate(doc.date) : undefined) },
       cell: ({ row }) =>
         row.original.date ? formatDate(row.original.date) : <span className="text-muted-foreground">{dateText(row.original)}</span>,
@@ -101,7 +101,7 @@ export const createDocumentColumns = (search: DocumentsSearch | undefined) =>
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
       meta: { width: "fit" },
-      cell: ({ row }) => <RowActionButtons actions={documentActions(row.original)} />,
+      cell: ({ row }) => <RowActions actions={documentActions(row.original)} />,
     }),
   ]);
 

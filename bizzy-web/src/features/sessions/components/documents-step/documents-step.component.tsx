@@ -7,7 +7,7 @@ import { DocumentRow } from "~/features/documents/components/document-row/docume
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { refLabel } from "~/features/documents/documents.util";
 import { methodLabel } from "~/features/payments/payments.util";
-import { RowList, RowListItem } from "~/components/shared/row-list/row-list.component";
+import { DataList, DataListItem } from "~/components/shared/list/data-list/data-list.component";
 import { formatDate } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
@@ -63,29 +63,29 @@ function DocumentsStep({ session, bought }: { session: SessionView; bought: Pack
   const charges = items.map((item) => `${item.label} ${formatCents(item.amountCents)}`).join(" · ");
 
   return (
-    <RowList label="Documents">
+    <DataList label="Documents">
       {(["invoice", "receipt"] as const).map((type) => {
         const docs = sessionDocuments(type, session, bought);
         if (docs.length === 0) {
           return (
-            <RowListItem key={type}>
+            <DataListItem key={type}>
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">{DOCUMENT_TYPES[type].title}</span> · {EMPTY[type]}
               </p>
-            </RowListItem>
+            </DataListItem>
           );
         }
         return docs.map((doc) => (
-          <RowListItem key={doc.ref.id}>
+          <DataListItem key={doc.ref.id}>
             {type === "invoice" ? (
               <DocumentRow doc={doc} meta={`Invoice · ${formatCents(charged)}`} detail={charges || undefined} />
             ) : (
               <DocumentRow doc={doc} meta={receiptMeta(doc, session, bought)} />
             )}
-          </RowListItem>
+          </DataListItem>
         ));
       })}
-    </RowList>
+    </DataList>
   );
 }
 

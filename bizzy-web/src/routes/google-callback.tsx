@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { GoogleCallbackSearch } from "~/features/google/google.types";
 import { GoogleCallbackPage } from "~/features/google/google-callback-page.component";
-import { textParam } from "~/core/utils/search.util";
+import { textParam } from "~/core/utils/url-param.util";
 
 export const Route = createFileRoute("/google-callback")({
   validateSearch: (search: Record<string, unknown>): GoogleCallbackSearch => ({

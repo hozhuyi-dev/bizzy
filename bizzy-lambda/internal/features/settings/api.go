@@ -27,12 +27,24 @@ type View struct {
 	DocumentMessage   string `json:"documentMessage"`
 }
 
+// GapsView is what Settings still needs before documents and messages
+// have all they use (Gaps), for the app to ask for; empty once they are set.
+type GapsView struct {
+	Missing []string `json:"missing"`
+}
+
 // Routes registers the settings' actions.
 func Routes(r *router.Router, run *txn.Runner) {
 	r.Query("settings.get", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) (View, error) {
 			s, err := Get(tx)
 			return View(s), err
+		})
+	}))
+	r.Query("settings.gaps", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) (GapsView, error) {
+			s, err := Get(tx)
+			return GapsView{Missing: Gaps(s)}, err
 		})
 	}))
 	r.Mutation("settings.save", router.Typed(func(ctx context.Context, in View) (any, error) {

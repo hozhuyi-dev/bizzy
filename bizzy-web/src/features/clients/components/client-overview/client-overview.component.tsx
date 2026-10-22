@@ -2,7 +2,7 @@ import { totals } from "../../client-activity.util";
 import { toClientRow } from "../../clients.util";
 import type { ClientView } from "../../clients.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
-import { Fact, FactList } from "~/components/shared/fact-list/fact-list.component";
+import { Fact, FactList } from "~/components/shared/layout/fact-list/fact-list.component";
 import { Card, CardContent } from "~/components/ui/card";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";

@@ -8,9 +8,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
-import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { useBackfill } from "~/features/sync/sync.hook";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
 /** Wipes the environment's data, keeping the Google connection, and syncs the whole calendar back in: the sync, then the backfill. */
 export function ResetData() {
@@ -49,7 +50,7 @@ export function ResetData() {
                   setConfirming(false);
                   backfill(synced?.back);
                 },
-                onError: (error) => toast.error(error.message),
+                onError: toastRefusal,
               })
             }
           >

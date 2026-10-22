@@ -2,7 +2,11 @@
 // the few choices that tune the to-do list and the messages the app sends.
 package settings
 
-import "bizzy-lambda/internal/platform/txn"
+import (
+	"strings"
+
+	"bizzy-lambda/internal/platform/txn"
+)
 
 // Settings is one item.
 type Settings struct {
@@ -58,6 +62,32 @@ func Get(tx *txn.Tx) (Settings, error) {
 		return Settings{}.WithDefaults(), err
 	}
 	return s.WithDefaults(), nil
+}
+
+// Gaps are the business details not set yet that documents and messages
+// need, as the app asks for them: who issues an invoice or receipt (name
+// and SSM number) and how to reach them (phone and email), and the bank
+// details a WhatsApp message asking to pay sends ({bank}), all three or
+// it is no use. The address is optional.
+func Gaps(s Settings) []string {
+	blank := func(v string) bool { return strings.TrimSpace(v) == "" }
+	gaps := []string{}
+	for _, need := range []struct {
+		value, gap string
+	}{
+		{s.BusinessName, "your business name"},
+		{s.RegistrationNo, "your SSM number"},
+		{s.Phone, "your phone number"},
+		{s.Email, "your email"},
+	} {
+		if blank(need.value) {
+			gaps = append(gaps, need.gap)
+		}
+	}
+	if blank(s.BankName) || blank(s.AccountName) || blank(s.AccountNo) {
+		gaps = append(gaps, "your bank details")
+	}
+	return gaps
 }
 
 // WithDefaults fills in what isn't set yet.

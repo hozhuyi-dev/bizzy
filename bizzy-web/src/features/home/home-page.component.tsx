@@ -1,21 +1,21 @@
 import { useMemo, useState } from "react";
 import { HomeIcon } from "lucide-react";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
 import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
-import { newSessionAction } from "~/features/sessions/sessions.action";
+import { newSessionAction } from "~/features/sessions/sessions.util";
 import { stageBadges } from "~/features/sessions/session-stage.util";
 import { SessionsQuery } from "~/features/sessions/sessions.query";
 import { TodoList } from "~/features/todo/components/todo-list/todo-list.component";
 import { TodoQuery } from "~/features/todo/todo.query";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { Loading } from "~/components/shared/quip/quip.component";
-import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
+import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
 import { queryMatch } from "~/core/utils/query.util";
 import { clientOf } from "~/features/clients/clients.util";
 import { dayRange } from "~/core/utils/date.util";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 /**
  * Her day: today's sessions, then everything that needs her (sessions and
@@ -28,9 +28,9 @@ export function HomePage() {
 
   return (
     <>
-      <PageHeader title="Home" actions={[newSessionAction(() => setAdding(true))]} banners={<GoogleNotice />} />
+      <PageHeader title="Home" actions={[newSessionAction(() => setAdding(true))]} />
       <NewSessionDialog open={adding} returnTo="home" onClose={() => setAdding(false)} />
-      <SectionLayout
+      <PageSections
         sections={[
           { id: "today", title: "Today", content: <Today /> },
           {
@@ -38,11 +38,9 @@ export function HomePage() {
             title: count ? `To do (${count})` : "To do",
             bare: true,
             content: queryMatch(todo, {
-              pending: () => <Loading />,
+              pending: () => <LoadingState />,
               error: (error) => (
-                <p role="alert" className="text-sm text-destructive">
-                  {error.message}
-                </p>
+                <ErrorMessage>{error.message}</ErrorMessage>
               ),
               success: (items) => <TodoList items={items} />,
             }),
@@ -61,11 +59,9 @@ function Today() {
   const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
   return queryMatch(sessions, {
-    pending: () => <Loading />,
+    pending: () => <LoadingState />,
     error: (error) => (
-      <p role="alert" className="text-sm text-destructive">
-        {error.message}
-      </p>
+      <ErrorMessage>{error.message}</ErrorMessage>
     ),
     success: (data) => {
       const today = [...data].sort((a, b) => a.start.localeCompare(b.start));

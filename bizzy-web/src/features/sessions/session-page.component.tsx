@@ -20,7 +20,7 @@ import { SessionsQuery } from "./sessions.query";
 import type { ReactNode } from "react";
 import type { PipelineStep } from "./components/pipeline-layout/pipeline-layout.component";
 import type { SessionDraft, SessionFullView, SessionReturnTo } from "./sessions.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { ListFilter } from "~/core/list/filter.types";
@@ -32,11 +32,12 @@ import { conflictKind } from "~/features/conflicts/conflicts.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpsQuery } from "~/features/follow-ups/follow-ups.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { Banner } from "~/components/shared/banner/banner.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { Loading } from "~/components/shared/quip/quip.component";
+import { Banner } from "~/components/shared/layout/banner/banner.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { clientOf } from "~/features/clients/clients.util";
 import { formatDate } from "~/core/utils/date.util";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 /**
  * `settle`: the calendar edit it was opened to settle, by changing its
@@ -74,7 +75,7 @@ export function SessionPage({ id, returnTo, settle, filter, onFilterChange }: Se
     return (
       <>
         <PageHeader parent={parent} title="…" pager={pager} />
-        <Loading />
+        <LoadingState />
       </>
     );
   }
@@ -82,9 +83,7 @@ export function SessionPage({ id, returnTo, settle, filter, onFilterChange }: Se
     return (
       <>
         <PageHeader parent={parent} title="Not available" pager={pager} />
-        <p role="alert" className="text-sm text-destructive">
-          {detail.error.message}
-        </p>
+        <ErrorMessage>{detail.error.message}</ErrorMessage>
       </>
     );
   }

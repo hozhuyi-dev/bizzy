@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ClientPage } from "~/features/clients/client-page.component";
-import { textParam } from "~/core/utils/search.util";
+import { textParam } from "~/core/utils/url-param.util";
 
 export interface NewClientSearch {
   /** A prefill, e.g. from an unmatched calendar name. */

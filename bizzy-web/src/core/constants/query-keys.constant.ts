@@ -73,6 +73,7 @@ export const ExpenseKeys = {
 
 export const SettingsKeys = {
   all: ["settings"] as const,
+  gaps: () => [...SettingsKeys.all, "gaps"] as const,
 };
 
 export const SyncKeys = {

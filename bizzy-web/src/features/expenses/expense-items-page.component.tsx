@@ -5,25 +5,29 @@ import { toast } from "sonner";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
 import type { CatalogueView, ExpenseItem } from "./expenses.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
-import { CellEmpty } from "~/components/shared/data-table/data-table-cell.component";
-import { DataCard } from "~/components/shared/data-card/data-card.component";
-import { SearchInput } from "~/components/shared/search-input/search-input.component";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
+import { CellEmpty } from "~/components/shared/list/data-table/data-table-cell.component";
+import { DataCard } from "~/components/shared/list/data-card/data-card.component";
+import { SearchInput } from "~/components/shared/list/search-input/search-input.component";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { FieldGroup } from "~/components/ui/field";
+import { useAppForm } from "~/components/shared/form/form.hook";
+import { requiredError } from "~/core/utils/form.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+
+/** As the API keeps an item's name. */
+const MAX_NAME = 100;
 
 const NO_ITEMS: Array<ExpenseItem> = [];
 
@@ -78,7 +82,7 @@ export function ExpenseItemsPage() {
           header: () => <span className="sr-only">Actions</span>,
           meta: { width: "fit" },
           cell: ({ row }) => (
-            <RowActionButtons
+            <RowActions
               actions={[]}
               more={[{ type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]}
             />
@@ -100,11 +104,9 @@ export function ExpenseItemsPage() {
     <>
       <PageHeader title="Items" toolbar={<SearchInput label="Search items" value={search} onChange={setSearch} />} />
       {catalogue.isPending ? (
-        <Loading />
+        <LoadingState />
       ) : catalogue.error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {catalogue.error.message}
-        </p>
+        <ErrorMessage>{catalogue.error.message}</ErrorMessage>
       ) : (
         <DataTable
           table={table}
@@ -139,21 +141,30 @@ export function ExpenseItemsPage() {
 
 function ItemForm({ item, catalogue, onDone }: { item: ExpenseItem; catalogue: CatalogueView; onDone: () => void }) {
   const save = ExpensesMutation.useSaveItem();
-  const [values, setValues] = useState(item);
-  const categories = catalogue.categories.filter((c) => !c.archived || c.id === item.categoryId);
+  const all = catalogue.categories.map((c) => ({ value: c.id, label: c.name }));
+  const offered = catalogue.categories
+    .filter((c) => !c.archived || c.id === item.categoryId)
+    .map((c) => ({ value: c.id, label: c.name }));
+
+  const form = useAppForm({
+    defaultValues: { ...item, archived: item.archived ?? false },
+    onSubmit: async ({ value }) => {
+      try {
+        await save.mutateAsync(value);
+        toast.success("Item saved");
+        onDone();
+      } catch (error) {
+        toastRefusal(error);
+      }
+    },
+  });
 
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        save.mutate(values, {
-          onSuccess: () => {
-            toast.success("Item saved");
-            onDone();
-          },
-          onError: (error) => toast.error(error.message),
-        });
+        void form.handleSubmit();
       }}
     >
       <DialogHeader>
@@ -161,50 +172,25 @@ function ItemForm({ item, catalogue, onDone }: { item: ExpenseItem; catalogue: C
         <DialogDescription>Expenses already recorded keep the name and category they were saved with.</DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="item-name">Name</FieldLabel>
-          <Input
-            id="item-name"
-            value={values.name}
-            maxLength={100}
-            onChange={(e) => setValues({ ...values, name: e.target.value })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel>Category</FieldLabel>
-          <Select
-            items={categories.map((c) => ({ value: c.id, label: c.name }))}
-            value={values.categoryId}
-            onValueChange={(value) => setValues({ ...values, categoryId: value ?? values.categoryId })}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field orientation="horizontal">
-          <Checkbox
-            id="item-archived"
-            checked={values.archived ?? false}
-            onCheckedChange={(checked) => setValues({ ...values, archived: checked })}
-          />
-          <FieldContent>
-            <FieldLabel htmlFor="item-archived">Archived</FieldLabel>
-            <FieldDescription>Not suggested on new expenses. Expenses already recorded keep it.</FieldDescription>
-          </FieldContent>
-        </Field>
+        <form.AppField name="name" validators={{ onChange: ({ value }) => requiredError(value, "Name the item") }}>
+          {(field) => <field.TextField label="Name" maxLength={MAX_NAME} />}
+        </form.AppField>
+        <form.AppField name="categoryId" validators={{ onChange: ({ value }) => requiredError(value, "Choose a category") }}>
+          {(field) => <field.SelectField label="Category" items={all} options={offered} />}
+        </form.AppField>
+        <form.AppField name="archived">
+          {(field) => (
+            <field.CheckboxField
+              label="Archived"
+              description="Not suggested on new expenses. Expenses already recorded keep it."
+            />
+          )}
+        </form.AppField>
       </FieldGroup>
       <DialogFooter>
-        <Button type="submit" disabled={save.isPending || !values.name.trim()}>
-          {save.isPending ? "Saving…" : "Save"}
-        </Button>
+        <form.AppForm>
+          <form.SubmitButton label="Save" />
+        </form.AppForm>
       </DialogFooter>
     </form>
   );

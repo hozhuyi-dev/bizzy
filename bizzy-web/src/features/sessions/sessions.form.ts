@@ -18,6 +18,8 @@ export interface BookingValues {
   packagePriceIs: PriceIs;
   homeVisit: boolean;
   tentative: boolean;
+  /** What was received moves to the new amounts (a receipt not issued yet). */
+  updatePayment: boolean;
 }
 
 /** Now, on the hour: most often it's the session that just happened. */
@@ -51,6 +53,7 @@ export function toBookingValues(draft: SessionDraft): BookingValues {
     ...packageValues(draft.package),
     homeVisit: draft.homeVisit,
     tentative: draft.tentative,
+    updatePayment: false,
   };
 }
 

@@ -1,7 +1,7 @@
 import type { FilterSearch, ListFilter, ListRequest, Page, When } from "./filter.types";
 import { LOCALE } from "~/core/constants/app.constant";
 import { addMonths, formatDate, formatMonth, monthKey, toISODate } from "~/core/utils/date.util";
-import { textParam } from "~/core/utils/search.util";
+import { textParam } from "~/core/utils/url-param.util";
 
 const YEAR = /^\d{4}$/;
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -12,6 +12,14 @@ function isDay(value: string): boolean {
   if (!DAY.test(value)) return false;
   const [year = 0, month = 1, day = 1] = value.split("-").map(Number);
   return toISODate(new Date(year, month - 1, day)) === value;
+}
+
+// A column id, "-" first for descending: "name", "-owedCents".
+const SORT = /^-?[A-Za-z][A-Za-z0-9_]*$/;
+
+/** The value as a list's sort, else undefined (the list's own order). */
+export function sortParam(value: unknown): string | undefined {
+  return typeof value === "string" && SORT.test(value) ? value : undefined;
 }
 
 /** No words, days or chips: everything. */
@@ -155,6 +163,7 @@ export function filterSearch<TKey extends string>(search: Record<string, unknown
   const out: Record<string, unknown> = {
     q: textParam(search.q),
     when: search.when === "all" ? "all" : whenParam(search.when),
+    sort: sortParam(search.sort),
   };
   for (const key of facets) out[key] = listParam(search[key]);
   return out as FilterSearch<TKey>;
@@ -172,7 +181,7 @@ export function toFilter<TKey extends string>(
     if (values) chips[key] = values;
   }
   const when = search.when === "all" ? undefined : (search.when ?? defaultWhen);
-  return { text: search.q ?? "", when, chips };
+  return { text: search.q ?? "", when, chips, sort: search.sort };
 }
 
 /** The filter as its URL keeps it, leaving out the defaults. */
@@ -184,6 +193,7 @@ export function toSearch<TKey extends string>(
   const out: Record<string, unknown> = {
     q: filter.text.trim() || undefined,
     when: filter.when === defaultWhen ? undefined : (filter.when ?? "all"),
+    sort: filter.sort,
   };
   for (const key of facets) {
     const values = filter.chips[key];

@@ -1,15 +1,15 @@
 import { BellIcon, CalendarIcon, CheckIcon, FileTextIcon, PackageIcon, PencilIcon, ReceiptIcon } from "lucide-react";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import type { TimelineDocument, TimelineDocumentRef, TimelineEntry, TimelinePackage, TimelineSession } from "../../timeline.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { lengthAndPlace, recordText, stageBadges } from "~/features/sessions/session-stage.util";
 import { DocumentStatusBadge } from "~/features/documents/documents.columns";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { documentRoute, refLabel } from "~/features/documents/documents.util";
 import { useMarkDone } from "~/features/follow-ups/follow-ups.hook";
 import { formatDue, isOverdue } from "~/features/follow-ups/follow-ups.util";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { TimelineChip, TimelineItem, TimelineLink } from "~/components/shared/timeline/timeline.component";
+import { TextLink } from "~/components/shared/link/text-link/text-link.component";
+import { TimelineChip, TimelineItem, TimelineLink } from "~/components/shared/list/timeline/timeline.component";
 import { Badge } from "~/components/ui/badge";
 import { formatDate, formatHours, formatSessionTime } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";

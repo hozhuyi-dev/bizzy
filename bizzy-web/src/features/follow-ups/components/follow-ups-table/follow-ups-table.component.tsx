@@ -6,8 +6,8 @@ import type { ReactNode } from "react";
 import type { FollowUpHandlers } from "../../follow-ups.columns";
 import type { FollowUpView } from "../../follow-ups.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 
 interface FollowUpsTableProps {
   /** In the order the API found them. */

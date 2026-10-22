@@ -8,8 +8,8 @@ import { sessionPayables } from "~/features/sessions/session-payment.util";
 import { formatDate } from "~/core/utils/date.util";
 import { pageItems } from "~/core/list/filter.util";
 import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
-import { Loading } from "~/components/shared/quip/quip.component";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 
 interface RecordPaymentDialogProps {
   client: ClientView;
@@ -52,7 +52,7 @@ function RecordPayment({ client, onClose }: Omit<RecordPaymentDialogProps, "open
         <DialogDescription>What {client.name} paid, in full for each item ticked: one receipt for it all.</DialogDescription>
       </DialogHeader>
       {owing.isPending || packages.isPending ? (
-        <Loading />
+        <LoadingState />
       ) : payables.length === 0 ? (
         <p className="text-sm text-muted-foreground">{client.name} owes nothing.</p>
       ) : (

@@ -3,7 +3,7 @@ import type { FilterSearch } from "~/core/list/filter.types";
 import { FollowUpsPage } from "~/features/follow-ups/follow-ups-page.component";
 import { FOLLOW_UP_FACETS } from "~/features/follow-ups/follow-ups.constant";
 import { filterSearch, toFilter, toSearch } from "~/core/list/filter.util";
-import { textParam } from "~/core/utils/search.util";
+import { textParam } from "~/core/utils/url-param.util";
 
 export type FollowUpsSearch = FilterSearch<(typeof FOLLOW_UP_FACETS)[number]> & {
   /** The follow-up open to edit: a link to it, and Back closes it. */

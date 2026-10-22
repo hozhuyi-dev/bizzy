@@ -4,8 +4,8 @@ import type { SessionView } from "../../sessions.types";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { formatDue, isOverdue } from "~/features/follow-ups/follow-ups.util";
-import { Loading } from "~/components/shared/quip/quip.component";
-import { RowList, RowListItem } from "~/components/shared/row-list/row-list.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { DataList, DataListItem } from "~/components/shared/list/data-list/data-list.component";
 import { Button } from "~/components/ui/button";
 
 /**
@@ -56,7 +56,7 @@ interface FollowUpsStepProps {
 }
 
 function FollowUpsStep({ followUps, onAdd, onEdit }: FollowUpsStepProps) {
-  if (!followUps) return <Loading />;
+  if (!followUps) return <LoadingState />;
   if (followUps.length === 0) {
     return (
       <>
@@ -74,12 +74,12 @@ function FollowUpsStep({ followUps, onAdd, onEdit }: FollowUpsStepProps) {
     );
   }
   return (
-    <RowList label="Follow-ups">
+    <DataList label="Follow-ups">
       {followUps.map((f) => (
-        <RowListItem key={f.id}>
+        <DataListItem key={f.id}>
           <FollowUpRow followUp={f} onEdit={onEdit} hideClient showSession={false} />
-        </RowListItem>
+        </DataListItem>
       ))}
-    </RowList>
+    </DataList>
   );
 }

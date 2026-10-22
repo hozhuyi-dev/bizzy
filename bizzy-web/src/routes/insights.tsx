@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { InsightsPage } from "~/features/insights/insights-page.component";
-import { oneOf } from "~/core/utils/search.util";
+import { oneOf } from "~/core/utils/url-param.util";
 
 export interface InsightsSearch {
   basis?: "earned" | undefined;

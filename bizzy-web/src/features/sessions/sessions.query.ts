@@ -4,7 +4,7 @@ import { searchSessionsRequest } from "./sessions.util";
 import type { PreviewSessionRequest } from "./sessions.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { SessionKeys } from "~/core/constants/query-keys.constant";
-import { usePages } from "~/core/list/filter.hook";
+import { usePages } from "~/core/list/pages.hook";
 
 export const SessionsQuery = {
   /**

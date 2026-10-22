@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { ClientsListSearch } from "~/features/clients/clients.types";
 import { ClientPage } from "~/features/clients/client-page.component";
 import { clientsListFilter, clientsListSearch, validateClientsListSearch } from "~/features/clients/clients.util";
-import { textParam } from "~/core/utils/search.util";
+import { textParam } from "~/core/utils/url-param.util";
 
 export interface ClientSearch extends ClientsListSearch {
   /** The calendar edit it was opened to settle: once saved, back to the to-do list. */

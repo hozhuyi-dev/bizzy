@@ -6,6 +6,8 @@ import { AuthScreen } from "~/features/auth/components/auth-screen/auth-screen.c
 import { NavBar } from "~/features/nav-bar/components/nav-bar/nav-bar.component";
 import { SyncOnLoad } from "~/features/sync/components/sync-on-load/sync-on-load.component";
 import { queryClient } from "~/core/config/query-client.config";
+import { AppBannerContext } from "~/components/shared/layout/page-header/page-header.hook";
+import { SetupNotice } from "~/features/settings/components/setup-notice/setup-notice.component";
 import "~/styles/app.css";
 
 export const Route = createRootRoute({
@@ -35,8 +37,11 @@ function AuthGate() {
     <div className="min-h-dvh">
       <SyncOnLoad />
       <NavBar />
-      <main className="mx-auto max-w-7xl px-4 pb-6">
-        <Outlet />
+      <main className="mx-auto max-w-(--content-width) px-(--page-gutter) pb-(--page-bottom)">
+        {/* What is left to set up, on every page's header. */}
+        <AppBannerContext value={<SetupNotice />}>
+          <Outlet />
+        </AppBannerContext>
       </main>
     </div>
   );

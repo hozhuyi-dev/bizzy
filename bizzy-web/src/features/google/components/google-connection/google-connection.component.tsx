@@ -12,14 +12,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
-import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
-import { Loading } from "~/components/shared/quip/quip.component";
+import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 /**
  * The Google account bizzy acts as: sessions come from one of its
@@ -30,11 +32,9 @@ export function GoogleConnectionSettings() {
   const startConsent = useGoogleConsent();
 
   return queryMatch(status, {
-    pending: () => <Loading />,
+    pending: () => <LoadingState />,
     error: (error) => (
-      <p role="alert" className="text-sm text-destructive">
-        {error.message}
-      </p>
+      <ErrorMessage>{error.message}</ErrorMessage>
     ),
     success: (connection) =>
       connection ? (
@@ -70,9 +70,7 @@ function Connected({ connection }: { connection: GoogleConnectionView }) {
 
       {connection.problem && (
         <div className="flex flex-wrap items-center gap-2">
-          <p role="alert" className="text-sm text-destructive">
-            {connection.problem}
-          </p>
+          <ErrorMessage>{connection.problem}</ErrorMessage>
           <Button size="sm" onClick={startConsent}>
             Reconnect
           </Button>
@@ -184,9 +182,9 @@ function ChooseCalendarDialog({
                 onSuccess: (updated) => {
                   toast.success(`Syncing ${updated.calendarName}…`);
                   close();
-                  sync().catch((error: Error) => toast.error(error.message));
+                  sync().catch(toastRefusal);
                 },
-                onError: (error) => toast.error(error.message),
+                onError: toastRefusal,
               },
             )
           }
@@ -221,7 +219,7 @@ function DisconnectDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 toast.success("Google disconnected");
                 onClose();
               },
-              onError: (error) => toast.error(error.message),
+              onError: toastRefusal,
             })
           }
         >

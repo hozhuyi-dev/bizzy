@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import { ClientDocumentCard, createClientDocumentColumns } from "../../client-documents.columns";
 import type { RowSelectionState } from "@tanstack/react-table";
 import type { ClientView } from "../../clients.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
-import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
 import type { DocumentSummary } from "~/features/documents/documents.types";
 import { DocumentsMutation } from "~/features/documents/documents.mutation";
 import { DocumentsQuery } from "~/features/documents/documents.query";
@@ -14,10 +14,12 @@ import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { documentLink } from "~/features/documents/documents.columns";
 import { useSendDocuments } from "~/features/whatsapp/whatsapp.hook";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 const COLUMNS = createClientDocumentColumns();
 
@@ -95,11 +97,9 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
     more: data.length > 0 ? actions : undefined,
     bare: true,
     content: docs.isPending ? (
-      <Loading />
+      <LoadingState />
     ) : docs.error ? (
-      <p role="alert" className="text-sm text-destructive">
-        {docs.error.message}
-      </p>
+      <ErrorMessage>{docs.error.message}</ErrorMessage>
     ) : (
       <DataTable
         table={table}

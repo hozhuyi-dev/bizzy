@@ -10,7 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
-import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";

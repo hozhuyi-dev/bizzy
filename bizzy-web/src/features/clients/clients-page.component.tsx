@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
-import { toast } from "sonner";
 import { ClientCard, clientLink, clientSorting, createClientColumns } from "./clients.columns";
 import { useClientRows } from "./clients.hook";
 import { ClientsQuery } from "./clients.query";
@@ -9,17 +8,21 @@ import { clientsListSearch, facetsOf } from "./clients.util";
 import type { ClientRow, ClientView, ClientsFilter, ClientsListSearch } from "./clients.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
+import { sortingFromFilter } from "~/components/shared/list/data-table/data-table-sort.util";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpsMutation } from "~/features/follow-ups/follow-ups.mutation";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface ClientsPageProps {
   /** All clients, or Reconnect: those worth getting back in touch with. */
@@ -49,14 +52,21 @@ export function ClientsPage({ view, filter, onFilterChange }: ClientsPageProps) 
       />
 
       {queryMatch(clients, {
-        pending: () => <Loading />,
+        pending: () => <LoadingState />,
         error: (error) => (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
+          <ErrorMessage>{error.message}</ErrorMessage>
         ),
         // Keyed by view: each view has its own columns and sort order.
-        success: () => <ClientsTable key={view} view={view} rows={rows} query={filter.text} search={search} />,
+        success: () => (
+          <ClientsTable
+            key={view}
+            view={view}
+            rows={rows}
+            filter={filter}
+            onFilterChange={onFilterChange}
+            search={search}
+          />
+        ),
       })}
     </>
   );
@@ -65,12 +75,13 @@ export function ClientsPage({ view, filter, onFilterChange }: ClientsPageProps) 
 interface ClientsTableProps {
   view: ClientsFilter;
   rows: Array<ClientRow>;
-  /** The words searched in the table. */
-  query: string;
+  /** Its words are searched in the table; its sort orders it. */
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
   search: ClientsListSearch;
 }
 
-function ClientsTable({ view, rows, query, search }: ClientsTableProps) {
+function ClientsTable({ view, rows, filter, onFilterChange, search }: ClientsTableProps) {
   const { mutate: reachedOut } = FollowUpsMutation.useReachedOut();
   const { mutate: undo } = FollowUpsMutation.useDelete();
   const reconnect = view === "reconnect";
@@ -85,7 +96,7 @@ function ClientsTable({ view, rows, query, search }: ClientsTableProps) {
           toastWithQuip(`Marked ${client.name} as contacted`, QUIPS.todoDone, {
             action: { label: "Undo", onClick: () => undo(followUp.id) },
           }),
-        onError: (error) => toast.error(error.message),
+        onError: toastRefusal,
       }),
     [reachedOut, undo],
   );
@@ -103,14 +114,15 @@ function ClientsTable({ view, rows, query, search }: ClientsTableProps) {
     columns,
     data: rows,
     getRowId: (row) => row.client.id,
-    initialState: { sorting: clientSorting(view) },
+    // Kept in the URL, so a client's page steps through it in this order.
+    ...sortingFromFilter(filter, onFilterChange, clientSorting(view), columns),
   });
 
   return (
     <>
       <DataTable
         table={table}
-        query={query}
+        query={filter.text}
         rowLink={(row) => clientLink(row.client.id, search)}
         empty={
           reconnect ? (

@@ -19,3 +19,9 @@ export interface SettingsView {
   /** WhatsApp message with links to issued documents. */
   documentMessage: string;
 }
+
+/** What Settings still needs before documents print as they should; mirrors settings.GapsView. */
+export interface SettingsGapsView {
+  /** As the app asks for them: "your business name", "a phone number or email". Empty once set. */
+  missing: Array<string>;
+}

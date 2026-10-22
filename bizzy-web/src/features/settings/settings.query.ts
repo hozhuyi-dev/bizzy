@@ -8,4 +8,11 @@ export const SettingsQuery = {
       queryKey: SettingsKeys.all,
       queryFn: () => SettingsService.get(),
     }),
+
+  /** What Settings still needs; refreshed with them, as a save invalidates both. */
+  useGaps: () =>
+    useQuery({
+      queryKey: SettingsKeys.gaps(),
+      queryFn: () => SettingsService.gaps(),
+    }),
 };

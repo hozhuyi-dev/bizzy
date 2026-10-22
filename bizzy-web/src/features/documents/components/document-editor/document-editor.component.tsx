@@ -2,20 +2,21 @@ import { EyeIcon, ListPlusIcon, PlusIcon, SaveIcon, SplitIcon, Trash2Icon } from
 import { DOCUMENT_TYPES } from "../../documents.constant";
 import { AddSessionsDialog } from "../add-sessions-dialog/add-sessions-dialog.component";
 import type { DocumentEditorState } from "./document-editor.hook";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
-import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
-import type { Verdict } from "~/core/lambda/lambda.types";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
 import { Button } from "~/components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Textarea } from "~/components/ui/textarea";
+import { FieldGroup } from "~/components/ui/field";
 import { formatCents, parseCents } from "~/core/utils/money.util";
+import { emailError, moneyError, requiredError } from "~/core/utils/form.util";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { saidAbove } from "~/features/remedies/remedies.util";
 
+/** As the API keeps a client's: what is printed under the name. */
+const MAX_ID_NO = 20;
+
 /** Issue: what the page is for, so it stays in view on a phone. */
 export function documentIssueAction(editor: DocumentEditorState): Action {
-  const { doc, nextRevision, invalid, busy } = editor;
+  const { doc, nextRevision, busy } = editor;
   return {
     type: "button",
     label: editor.issuing
@@ -24,7 +25,7 @@ export function documentIssueAction(editor: DocumentEditorState): Action {
         ? `Issue Rev ${String(nextRevision).padStart(2, "0")}`
         : `Issue ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
     style: "primary",
-    disabled: busy || invalid !== undefined,
+    disabled: busy,
     // Saved as it is, the API says; changes are saved first, and it decides then.
     can: editor.hasChanges ? undefined : doc.can.issue,
     onClick: () => void editor.issue(),
@@ -36,21 +37,20 @@ export function documentIssueAction(editor: DocumentEditorState): Action {
  * on a phone), and `menu`, Discard, behind ⋯ on every screen.
  */
 export function documentEditorActions(editor: DocumentEditorState): { more: Array<Action>; menu: Array<Action> } {
-  const { doc, invalid, busy } = editor;
+  const { doc, busy } = editor;
   return {
     more: [
       {
         type: "button",
         label: "Preview PDF",
         icon: EyeIcon,
-        disabled: invalid !== undefined,
         onClick: () => void editor.preview(),
       },
       {
         type: "button",
         label: editor.saving && !editor.issuing ? "Saving…" : "Save draft",
         icon: SaveIcon,
-        disabled: busy || invalid !== undefined,
+        disabled: busy,
         onClick: () => void editor.save(),
       },
     ],
@@ -70,7 +70,9 @@ export function documentEditorActions(editor: DocumentEditorState): { more: Arra
 
 /**
  * The editor's fields as page sections. The page wraps them in a form (Enter
- * saves the draft) and adds its own sections around them.
+ * saves the draft) and adds its own sections around them. Each field says
+ * what is missing once it is left, or once the draft is saved, issued or
+ * previewed.
  */
 export function documentEditorSections(editor: DocumentEditorState): Array<PageSection> {
   const { form, values, doc } = editor;
@@ -88,21 +90,16 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       title: "Details",
       content: (
         <div className="grid gap-4 sm:grid-cols-2">
-          <form.Field name="date">
+          <form.AppField name="date" validators={{ onChange: ({ value }) => requiredError(value, "Choose its date") }}>
             {(field) => (
-              <Field>
-                <FieldLabel htmlFor={field.name}>{spec.title} date</FieldLabel>
-                <Input
-                  id={field.name}
-                  type="date"
-                  value={field.state.value}
-                  disabled={locked.date !== undefined}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <LockedHint lock={locked.date} />
-              </Field>
+              <field.TextField
+                label={`${spec.title} date`}
+                type="date"
+                disabled={locked.date !== undefined}
+                hint={<LockedHint lock={locked.date} />}
+              />
             )}
-          </form.Field>
+          </form.AppField>
         </div>
       ),
     },
@@ -112,10 +109,15 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       content: (
         <FieldGroup>
           <div className="grid gap-4 sm:grid-cols-2">
-            <form.Field name="recipient.name">{(field) => <TextInput field={field} label="Name" />}</form.Field>
-            <form.Field name="recipient.idNo">
-              {(field) => <TextInput field={field} label="IC or passport no." />}
-            </form.Field>
+            <form.AppField
+              name="recipient.name"
+              validators={{ onChange: ({ value }) => requiredError(value, "Name who it's for") }}
+            >
+              {(field) => <field.TextField label="Name" />}
+            </form.AppField>
+            <form.AppField name="recipient.idNo">
+              {(field) => <field.TextField label="IC or passport no." maxLength={MAX_ID_NO} />}
+            </form.AppField>
           </div>
         </FieldGroup>
       ),
@@ -144,41 +146,32 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
               <AddSessionsDialog doc={doc} open={editor.adding} onClose={() => editor.setAdding(false)} />
               {linesField.state.value.map((line, i) => (
                 <div key={i} className="flex flex-col gap-1 border-b pb-3">
-                  <div className="grid items-end gap-2 md:grid-cols-[minmax(0,1fr)_11rem_8rem_auto]">
-                    <form.Field name={`lines[${i}].description`}>
-                      {(field) => <TextInput field={field} label="Description" />}
-                    </form.Field>
-                    <form.Field name={`lines[${i}].date`}>
+                  <div className="grid items-start gap-2 md:grid-cols-[minmax(0,1fr)_11rem_8rem_auto]">
+                    <form.AppField
+                      name={`lines[${i}].description`}
+                      validators={{ onChange: ({ value }) => requiredError(value, "Describe the line") }}
+                    >
+                      {(field) => <field.TextField label="Description" />}
+                    </form.AppField>
+                    <form.AppField name={`lines[${i}].date`}>
+                      {(field) => <field.TextField label="Date" type="date" readOnly={line.source !== undefined} />}
+                    </form.AppField>
+                    <form.AppField
+                      name={`lines[${i}].amount`}
+                      validators={{ onChange: ({ value }) => moneyError(value, { required: "An amount" }) }}
+                    >
                       {(field) => (
-                        <Field>
-                          <FieldLabel htmlFor={field.name}>Date</FieldLabel>
-                          <Input
-                            id={field.name}
-                            type="date"
-                            readOnly={line.source !== undefined}
-                            value={field.state.value}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                          />
-                        </Field>
+                        <field.TextField
+                          label="Amount"
+                          inputMode="decimal"
+                          inputClassName="text-right"
+                          readOnly={line.source !== undefined}
+                          disabled={locked["lines.amountCents"] !== undefined}
+                        />
                       )}
-                    </form.Field>
-                    <form.Field name={`lines[${i}].amount`}>
-                      {(field) => (
-                        <Field data-invalid={parseCents(field.state.value) === null}>
-                          <FieldLabel htmlFor={field.name}>Amount</FieldLabel>
-                          <Input
-                            id={field.name}
-                            inputMode="decimal"
-                            className="text-right"
-                            readOnly={line.source !== undefined}
-                            disabled={locked["lines.amountCents"] !== undefined}
-                            value={field.state.value}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                          />
-                        </Field>
-                      )}
-                    </form.Field>
-                    <div className="flex items-center">
+                    </form.AppField>
+                    {/* Level with the inputs, under their labels. */}
+                    <div className="flex items-center md:mt-6">
                       {line.source && line.id && covered > 1 && (
                         <Button
                           type="button"
@@ -251,7 +244,11 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       id: "notes",
       title: "Notes",
       description: `Printed at the bottom of the ${title}.`,
-      content: <form.Field name="notes">{(field) => <TextInput field={field} label="Notes" multiline />}</form.Field>,
+      content: (
+        <form.AppField name="notes">
+          {(field) => <field.TextareaField label="Notes" labelClassName="sr-only" rows={2} />}
+        </form.AppField>
+      ),
     },
     {
       id: "issuer",
@@ -259,12 +256,15 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       description: `Copied from Settings when the draft was made. Changes here only affect this ${title}.`,
       content: (
         <FieldGroup>
-          <form.Field name="issuer.name">
-            {(field) => <TextInput field={field} label="Business name" lock={locked["issuer.name"]} />}
-          </form.Field>
-          <form.Field name="issuer.registrationNo">
-            {(field) => <TextInput field={field} label="Registration no." lock={locked["issuer.registrationNo"]} />}
-          </form.Field>
+          <form.AppField
+            name="issuer.name"
+            validators={{ onChange: ({ value }) => requiredError(value, "Your business name") }}
+          >
+            {(field) => <field.TextField label="Business name" disabled={locked["issuer.name"] !== undefined} />}
+          </form.AppField>
+          <form.AppField name="issuer.registrationNo">
+            {(field) => <field.TextField label="Registration no." disabled={locked["issuer.registrationNo"] !== undefined} />}
+          </form.AppField>
           <LockedHint
             lock={locked["issuer.name"] ?? locked["issuer.registrationNo"]}
             again={saidAbove(
@@ -273,56 +273,17 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
               locked.lines ?? locked["lines.amountCents"],
             )}
           />
-          <form.Field name="issuer.address">
-            {(field) => <TextInput field={field} label="Address" multiline />}
-          </form.Field>
+          <form.AppField name="issuer.address">
+            {(field) => <field.TextareaField label="Address" rows={2} />}
+          </form.AppField>
           <div className="grid gap-4 sm:grid-cols-2">
-            <form.Field name="issuer.phone">{(field) => <TextInput field={field} label="Phone" />}</form.Field>
-            <form.Field name="issuer.email">{(field) => <TextInput field={field} label="Email" />}</form.Field>
+            <form.AppField name="issuer.phone">{(field) => <field.TextField label="Phone" type="tel" />}</form.AppField>
+            <form.AppField name="issuer.email" validators={{ onChange: ({ value }) => emailError(value) }}>
+              {(field) => <field.TextField label="Email" type="email" />}
+            </form.AppField>
           </div>
         </FieldGroup>
       ),
     },
   ];
-}
-
-/** The part of a TanStack Form field a text input needs. */
-interface TextFieldApi {
-  name: string;
-  state: { value: string };
-  handleChange: (value: string) => void;
-  handleBlur: () => void;
-}
-
-interface TextInputProps {
-  field: TextFieldApi;
-  label: string;
-  multiline?: boolean;
-  /** Why it can't change now: disabled (the caller says why, once for a group). */
-  lock?: Verdict | undefined;
-}
-
-function TextInput({ field, label, multiline, lock }: TextInputProps) {
-  return (
-    <Field>
-      <FieldLabel htmlFor={field.name}>{label}</FieldLabel>
-      {multiline ? (
-        <Textarea
-          id={field.name}
-          rows={2}
-          value={field.state.value}
-          onBlur={field.handleBlur}
-          onChange={(e) => field.handleChange(e.target.value)}
-        />
-      ) : (
-        <Input
-          id={field.name}
-          value={field.state.value}
-          disabled={lock !== undefined}
-          onBlur={field.handleBlur}
-          onChange={(e) => field.handleChange(e.target.value)}
-        />
-      )}
-    </Field>
-  );
 }

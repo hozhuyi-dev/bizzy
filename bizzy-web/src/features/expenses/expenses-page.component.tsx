@@ -9,17 +9,19 @@ import type { ExpenseTotals } from "./expenses.types";
 import type { ListFilter, When } from "~/core/list/filter.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { monthTotals } from "~/features/insights/insights-metrics.util";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
-import { LoadMore } from "~/components/shared/load-more/load-more.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
 import { formatWhen, isNarrowed, pageItems, whenDays } from "~/core/list/filter.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface ExpensesPageProps {
   filter: ListFilter;
@@ -62,11 +64,9 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
       />
 
       {expenses.isPending ? (
-        <Loading />
+        <LoadingState />
       ) : expenses.error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {expenses.error.message}
-        </p>
+        <ErrorMessage>{expenses.error.message}</ErrorMessage>
       ) : (
         <div className={cn("flex flex-col gap-6 transition-opacity", expenses.isPlaceholderData && "opacity-60")}>
           {totals && <Summary when={filter.when} totals={totals} narrowed={isNarrowed(filter)} />}

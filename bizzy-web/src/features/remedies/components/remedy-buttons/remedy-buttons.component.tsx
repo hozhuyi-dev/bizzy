@@ -6,7 +6,7 @@ import { remedyStep } from "../../remedies.util";
 import type { CallStep, RemedyStep } from "../../remedies.util";
 import type { Remedy } from "~/core/lambda/lambda.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
-import { InlineConfirm, InlineField } from "~/components/shared/inline-action/inline-action.component";
+import { InlineConfirm, InlineField } from "~/components/shared/actions/inline-action/inline-action.component";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,

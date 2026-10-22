@@ -3,13 +3,13 @@ import { cn } from "cn";
 import { formatDue, isOverdue } from "./follow-ups.util";
 import type { FollowUpView } from "./follow-ups.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { RowActionSet } from "~/components/shared/row-actions/row-actions.component";
+import type { RowActionSet } from "~/components/shared/actions/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
-import { CellText } from "~/components/shared/data-table/data-table-cell.component";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { DataCard } from "~/components/shared/data-card/data-card.component";
-import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
+import { DataCard } from "~/components/shared/list/data-card/data-card.component";
+import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
+import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { clientOf } from "~/features/clients/clients.util";
 import { formatDate } from "~/core/utils/date.util";
 
@@ -95,7 +95,7 @@ export function createFollowUpColumns(handlers: FollowUpHandlers) {
   return helper.columns([
     helper.accessor("due", {
       header: "Due",
-      sortFn: "alphanumeric",
+      sortFn: "basic",
       meta: { search: (followUp: FollowUpView) => [formatDue(followUp), dueNote(followUp)] },
       cell: ({ row }) => {
         const overdue = isOverdue(row.original);
@@ -151,7 +151,7 @@ export function createFollowUpColumns(handlers: FollowUpHandlers) {
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
       meta: { width: "fit" },
-      cell: ({ row }) => <RowActionButtons {...followUpActions(row.original, handlers)} />,
+      cell: ({ row }) => <RowActions {...followUpActions(row.original, handlers)} />,
     }),
   ]);
 }

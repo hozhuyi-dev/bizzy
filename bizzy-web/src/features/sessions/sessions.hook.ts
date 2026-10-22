@@ -1,7 +1,7 @@
 import { MessageCircleIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { SessionView } from "./sessions.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import { SettingsQuery } from "~/features/settings/settings.query";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";

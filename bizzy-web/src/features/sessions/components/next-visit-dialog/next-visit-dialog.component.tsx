@@ -1,17 +1,15 @@
-import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { toast } from "sonner";
-import { useBookingSave } from "../../sessions-booking.hook";
+import { useBookingSave } from "../../session-booking.hook";
 import type { SessionDraft } from "../../sessions.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { addDays, formatSessionTime, toISODate, toTimeInput } from "~/core/utils/date.util";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { FieldGroup } from "~/components/ui/field";
+import { useAppForm } from "~/components/shared/form/form.hook";
+import { requiredError } from "~/core/utils/form.util";
+import { addDays, formatSessionTime, toISODate, toTimeInput, todayISO } from "~/core/utils/date.util";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 interface NextVisitDialogProps {
@@ -46,28 +44,28 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
     onClose();
   });
   const start = new Date(from.start);
-  const [date, setDate] = useState(toISODate(addDays(start, 7)));
-  const [time, setTime] = useState(toTimeInput(start));
-  const [tentative, setTentative] = useState(false);
 
-  const book = () => {
-    const draft: SessionDraft = {
-      clientId: from.clientId,
-      start: new Date(`${date}T${time}`).toISOString(),
-      minutes: from.minutes,
-      homeVisit: from.homeVisit,
-      tentative,
-    };
-    // A refusal (no fee known, say) is shown with what would settle it.
-    save.submit(draft).catch(toastRefusal);
-  };
+  const form = useAppForm({
+    defaultValues: { date: toISODate(addDays(start, 7)), time: toTimeInput(start), tentative: false },
+    onSubmit: async ({ value }) => {
+      const draft: SessionDraft = {
+        clientId: from.clientId,
+        start: new Date(`${value.date}T${value.time}`).toISOString(),
+        minutes: from.minutes,
+        homeVisit: from.homeVisit,
+        tentative: value.tentative,
+      };
+      // A refusal (no fee known, say) is shown with what would settle it.
+      await save.submit(draft).catch(toastRefusal);
+    },
+  });
 
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        book();
+        void form.handleSubmit();
       }}
     >
       <DialogHeader>
@@ -77,31 +75,37 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <div className="flex flex-wrap gap-4">
-          <Field className="w-auto">
-            <FieldLabel htmlFor="next-date">Day</FieldLabel>
-            <Input id="next-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-          <Field className="w-auto">
-            <FieldLabel htmlFor="next-time">Start</FieldLabel>
-            <Input id="next-time" type="time" step={300} value={time} onChange={(e) => setTime(e.target.value)} />
-          </Field>
+        <div className="flex flex-wrap items-start gap-4">
+          <form.AppField name="date" validators={{ onChange: ({ value }) => requiredError(value, "Pick a day") }}>
+            {(field) => (
+              <field.TextField
+                label="Day"
+                type="date"
+                className="w-auto"
+                description={field.state.value && field.state.value < todayISO() ? "That day has passed." : undefined}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="time" validators={{ onChange: ({ value }) => requiredError(value, "Pick a time") }}>
+            {(field) => <field.TextField label="Start" type="time" step={300} className="w-auto" />}
+          </form.AppField>
         </div>
-        <Field orientation="horizontal">
-          <Checkbox id="next-tentative" checked={tentative} onCheckedChange={setTentative} />
-          <FieldContent>
-            <FieldLabel htmlFor="next-tentative">Not confirmed yet</FieldLabel>
-            <FieldDescription>Comes up on your to-do list a few days before, to confirm.</FieldDescription>
-          </FieldContent>
-        </Field>
+        <form.AppField name="tentative">
+          {(field) => (
+            <field.CheckboxField
+              label="Not confirmed yet"
+              description="Comes up on your to-do list a few days before, to confirm."
+            />
+          )}
+        </form.AppField>
       </FieldGroup>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!date || !time || save.saving}>
-          {save.saving ? "Booking…" : "Book"}
-        </Button>
+        <form.AppForm>
+          <form.SubmitButton label="Book" pendingLabel="Booking…" />
+        </form.AppForm>
       </DialogFooter>
     </form>
   );

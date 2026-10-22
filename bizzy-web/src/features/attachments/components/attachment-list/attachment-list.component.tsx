@@ -14,10 +14,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
-import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
 interface AttachmentListProps {
   owner: AttachmentOwner;
@@ -159,7 +160,7 @@ export function AttachmentList({ owner, can, addLabel = "Attach photos or PDFs" 
               removing &&
               remove.mutate(removing.id, {
                 onSuccess: () => toast.success("File removed"),
-                onError: (error) => toast.error(error.message),
+                onError: toastRefusal,
                 onSettled: () => setRemoving(null),
               })
             }

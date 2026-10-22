@@ -13,13 +13,13 @@ import type { LinkOptions } from "@tanstack/react-router";
 import type { SessionHit, SessionSearch, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { PackageView } from "~/features/packages/packages.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { Badge } from "~/components/ui/badge";
-import { CellEmpty, CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { DataCard } from "~/components/shared/data-card/data-card.component";
-import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { CellEmpty, CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
+import { DataCard } from "~/components/shared/list/data-card/data-card.component";
+import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
+import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { documentRoute, refLabel } from "~/features/documents/documents.util";
 import { formatCents } from "~/core/utils/money.util";
 import { formatSessionTime } from "~/core/utils/date.util";
@@ -183,16 +183,16 @@ export function createSessionColumns(handlers: SessionHandlers) {
   return helper.columns([
     helper.accessor("start", {
       header: "When",
-      sortFn: "alphanumeric",
+      sortFn: "basic",
       meta: {
         search: (session: SessionView) => [formatSessionTime(session.start), SESSION_PLACES[session.location]],
       },
       // The way into the session by keyboard; the whole row opens it too.
       cell: ({ row }) => (
         <CellText sub={lengthAndPlace(row.original)}>
-          <RowLink {...sessionLink(row.original.id, handlers.search)} className="font-normal">
+          <CellLink {...sessionLink(row.original.id, handlers.search)} className="font-normal">
             {formatSessionTime(row.original.start)}
-          </RowLink>
+          </CellLink>
         </CellText>
       ),
     }),
@@ -246,7 +246,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
       meta: { width: "fit" },
-      cell: ({ row }) => <RowActionButtons actions={sessionActions(row.original, handlers)} />,
+      cell: ({ row }) => <RowActions actions={sessionActions(row.original, handlers)} />,
     }),
   ]);
 }

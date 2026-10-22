@@ -1,14 +1,13 @@
-import { useForm, useStore } from "@tanstack/react-form";
+import { useSelector } from "@tanstack/react-form";
 import { toContactDetails, toContactValues } from "../../contacts.form";
-import type { ComponentProps } from "react";
-import type { ContactValues } from "../../contacts.form";
 import type { ContactDetails } from "../../contacts.types";
-import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
+import { useAppForm } from "~/components/shared/form/form.hook";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 import { Button } from "~/components/ui/button";
 import { DialogFooter } from "~/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Textarea } from "~/components/ui/textarea";
+import { FieldGroup } from "~/components/ui/field";
+import { emailError } from "~/core/utils/form.util";
 
 interface ContactDetailsFormProps {
   /** "create" also asks for the name; renaming happens in Google Contacts. */
@@ -25,29 +24,12 @@ interface ContactDetailsFormProps {
  * its own, apart from the client's Save. Enter saves.
  */
 export function ContactDetailsForm({ mode, initial, submitLabel, onSubmit, onCancel, error }: ContactDetailsFormProps) {
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: toContactValues(initial),
     onSubmit: ({ value }) => onSubmit(toContactDetails(value, mode)),
   });
 
-  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
-
-  const text =(name: Exclude<keyof ContactValues, "street">, label: string, props: ComponentProps<typeof Input> = {}) => (
-    <form.Field name={name}>
-      {(field) => (
-        <Field>
-          <FieldLabel htmlFor={`contact-${name}`}>{label}</FieldLabel>
-          <Input
-            id={`contact-${name}`}
-            value={field.state.value}
-            onBlur={field.handleBlur}
-            onChange={(e) => field.handleChange(e.target.value)}
-            {...props}
-          />
-        </Field>
-      )}
-    </form.Field>
-  );
+  const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
 
   return (
     <form
@@ -60,54 +42,50 @@ export function ContactDetailsForm({ mode, initial, submitLabel, onSubmit, onCan
       <FieldGroup>
         {mode === "create" && (
           <div className="grid gap-4 sm:grid-cols-2">
-            {text("givenName", "First name", { autoComplete: "off" })}
-            {text("familyName", "Last name", { autoComplete: "off" })}
+            <form.AppField
+              name="givenName"
+              validators={{
+                onChangeListenTo: ["familyName"],
+                onChange: ({ value, fieldApi }) =>
+                  value.trim() || fieldApi.form.getFieldValue("familyName").trim() ? undefined : "Give a first or last name",
+              }}
+            >
+              {(field) => <field.TextField label="First name" autoComplete="off" />}
+            </form.AppField>
+            <form.AppField name="familyName">
+              {(field) => <field.TextField label="Last name" autoComplete="off" />}
+            </form.AppField>
           </div>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
-          {text("phone", "Phone", { type: "tel", placeholder: "012-345 6789" })}
-          {text("email", "Email", { type: "email" })}
+          <form.AppField name="phone">
+            {(field) => <field.TextField label="Phone" type="tel" placeholder="012-345 6789" />}
+          </form.AppField>
+          <form.AppField name="email" validators={{ onChange: ({ value }) => emailError(value) }}>
+            {(field) => <field.TextField label="Email" type="email" />}
+          </form.AppField>
         </div>
-        <form.Field name="street">
-          {(field) => (
-            <Field>
-              <FieldLabel htmlFor="contact-street">Address</FieldLabel>
-              <Textarea
-                id="contact-street"
-                rows={2}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-            </Field>
-          )}
-        </form.Field>
+        <form.AppField name="street">{(field) => <field.TextareaField label="Address" rows={2} />}</form.AppField>
         <div className="grid gap-4 sm:grid-cols-3">
-          {text("postcode", "Postcode", { inputMode: "numeric" })}
-          {text("city", "City")}
-          {text("region", "State")}
+          <form.AppField name="postcode">
+            {(field) => <field.TextField label="Postcode" inputMode="numeric" />}
+          </form.AppField>
+          <form.AppField name="city">{(field) => <field.TextField label="City" />}</form.AppField>
+          <form.AppField name="region">{(field) => <field.TextField label="State" />}</form.AppField>
         </div>
 
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {error && <ErrorMessage>{error}</ErrorMessage>}
       </FieldGroup>
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <form.Subscribe selector={(state) => [state.values.givenName, state.values.familyName, state.isSubmitting] as const}>
-          {([givenName, familyName, isSubmitting]) => (
-            <Button type="submit" disabled={isSubmitting || (mode === "create" && !givenName.trim() && !familyName.trim())}>
-              {isSubmitting ? "Saving…" : submitLabel}
-            </Button>
-          )}
-        </form.Subscribe>
+        <form.AppForm>
+          <form.SubmitButton label={submitLabel} />
+        </form.AppForm>
       </DialogFooter>
-      <UnsavedChangesPrompt when={hasChanges} />
+      <UnsavedChangesDialog when={hasChanges} />
     </form>
   );
 }

@@ -23,7 +23,7 @@ import { toastRefusal } from "~/features/remedies/components/remedy-buttons/reme
 import { CancelSessionDialog } from "~/features/sessions/components/cancel-session-dialog/cancel-session-dialog.component";
 import { owedText, sessionPayables } from "~/features/sessions/session-payment.util";
 import { SessionsMutation } from "~/features/sessions/sessions.mutation";
-import { useConfirmBooking } from "~/features/sessions/sessions-booking.hook";
+import { useConfirmBooking } from "~/features/sessions/session-booking.hook";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
@@ -37,13 +37,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import { InlineField } from "~/components/shared/inline-action/inline-action.component";
-import { ListRow } from "~/components/shared/list-row/list-row.component";
-import { RowList, RowListItem } from "~/components/shared/row-list/row-list.component";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
-import { EmptyState } from "~/components/shared/quip/quip.component";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { InlineField } from "~/components/shared/actions/inline-action/inline-action.component";
+import { DataList, DataListItem, DataRow  } from "~/components/shared/list/data-list/data-list.component";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { TextLink } from "~/components/shared/link/text-link/text-link.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { formatDate, formatHours, formatSessionTime, todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -55,7 +54,7 @@ const REASONS: Record<SessionReason | "calendar", { label: string; tone: "waitin
   calendar: { label: "Calendar", tone: "attention" },
 };
 
-/** How long a row done takes to fold away; RowListItem's transition matches it. */
+/** How long a row done takes to fold away; DataListItem's transition matches it. */
 const LEAVE_MS = 300;
 
 /**
@@ -150,9 +149,9 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
             </h3>
             <Card>
               <CardContent>
-                <RowList>
+                <DataList>
                   {inGroup.map(({ item, gone }) => (
-                    <RowListItem key={todoKey(item)} gone={gone}>
+                    <DataListItem key={todoKey(item)} gone={gone}>
                       {item.kind === "session" && (
                         <SessionTodo session={item.session} onCancel={setCancelling} onPayOther={setPaying} />
                       )}
@@ -165,9 +164,9 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
                         />
                       )}
                       {item.kind === "conflict" && <ConflictTodo conflict={item.conflict} />}
-                    </RowListItem>
+                    </DataListItem>
                   ))}
-                </RowList>
+                </DataList>
               </CardContent>
             </Card>
           </section>
@@ -250,7 +249,7 @@ function SessionTodo({ session, onCancel, onPayOther }: SessionTodoProps) {
   const collecting = session.todo.includes("collect");
 
   return (
-    <ListRow
+    <DataRow
       title={
         <>
           <TextLink to="/sessions/$id" params={{ id: session.id }} search={{ from: "home" }}>
@@ -432,7 +431,7 @@ function PackageTodo({ pkg, onPayOther }: { pkg: PackageView; onPayOther: (payab
   const payables = packagePayables(pkg).filter((p) => !p.paid);
 
   return (
-    <ListRow
+    <DataRow
       title={
         <>
           {client ? (
@@ -469,7 +468,7 @@ function ConflictTodo({ conflict }: { conflict: ConflictView }) {
   const time = conflictTime(conflict);
 
   return (
-    <ListRow
+    <DataRow
       title={
         <>
           <CalendarX2Icon className="size-4 text-muted-foreground" aria-hidden="true" />

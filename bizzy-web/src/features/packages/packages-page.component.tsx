@@ -15,17 +15,22 @@ import { ClientsQuery } from "~/features/clients/clients.query";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
+import { sortingFromFilter } from "~/components/shared/list/data-table/data-table-sort.util";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { formatDate, formatHours } from "~/core/utils/date.util";
-import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+
+/** How packages sort until a column is picked: by client. */
+const BY_CLIENT = [{ id: "client", desc: false }];
 
 type Editing = { mode: "new"; clientId?: string | undefined } | { mode: "edit"; pkg: PackageView } | null;
 
@@ -87,7 +92,7 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
     columns,
     data: rows,
     getRowId: (pkg) => pkg.id,
-    initialState: { sorting: [{ id: "client", desc: false }] },
+    ...sortingFromFilter(filter, onFilterChange, BY_CLIENT, columns),
   });
 
   return (
@@ -107,11 +112,9 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
       />
 
       {queryMatch(packages, {
-        pending: () => <Loading />,
+        pending: () => <LoadingState />,
         error: (error) => (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
+          <ErrorMessage>{error.message}</ErrorMessage>
         ),
         success: () => (
           <DataTable

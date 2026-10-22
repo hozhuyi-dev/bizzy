@@ -2,14 +2,14 @@ import { BanknoteIcon, PackageCheckIcon, PencilIcon, Trash2Icon } from "lucide-r
 import { clientName, paymentText } from "./packages.util";
 import type { PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
-import type { RowActionSet } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { RowActionSet } from "~/components/shared/actions/row-actions/row-actions.component";
 import { Badge } from "~/components/ui/badge";
-import { CellEmpty, CellText } from "~/components/shared/data-table/data-table-cell.component";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { DataCard } from "~/components/shared/data-card/data-card.component";
-import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { CellEmpty, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
+import { DataCard } from "~/components/shared/list/data-card/data-card.component";
+import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
+import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
@@ -142,7 +142,7 @@ export function createPackageColumns(handlers: PackageHandlers) {
     }),
     helper.accessor("purchasedAt", {
       header: "Bought",
-      sortFn: "alphanumeric",
+      sortFn: "basic",
       meta: { search: (pkg: PackageView) => [formatDate(pkg.purchasedAt), sourceText(pkg)] },
       cell: ({ row }) => <CellText sub={sourceText(row.original)}>{formatDate(row.original.purchasedAt)}</CellText>,
     }),
@@ -183,7 +183,7 @@ export function createPackageColumns(handlers: PackageHandlers) {
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
       meta: { width: "fit" },
-      cell: ({ row }) => <RowActionButtons {...packageActions(row.original, handlers)} />,
+      cell: ({ row }) => <RowActions {...packageActions(row.original, handlers)} />,
     }),
   ]);
 }

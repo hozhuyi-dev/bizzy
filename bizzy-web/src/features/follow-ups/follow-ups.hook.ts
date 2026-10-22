@@ -1,9 +1,9 @@
 import { useCallback } from "react";
-import { toast } from "sonner";
 import { FollowUpsMutation } from "./follow-ups.mutation";
 import type { FollowUpView } from "./follow-ups.types";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
 /** Marks a follow-up done with an Undo in the toast. */
 export function useMarkDone() {
@@ -19,7 +19,7 @@ export function useMarkDone() {
               action: { label: "Undo", onClick: () => mutate({ id: followUp.id, done: false }) },
             });
           },
-          onError: (error) => toast.error(error.message),
+          onError: toastRefusal,
         },
       ),
     [mutate],

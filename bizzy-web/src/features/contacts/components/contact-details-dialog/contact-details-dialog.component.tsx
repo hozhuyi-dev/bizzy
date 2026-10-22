@@ -2,13 +2,14 @@ import { ContactsMutation } from "../../contacts.mutation";
 import { ContactsQuery } from "../../contacts.query";
 import { ContactDetailsForm } from "../contact-details-form/contact-details-form.component";
 import type { ContactView } from "../../contacts.types";
-import { Loading } from "~/components/shared/quip/quip.component";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { isApiError } from "~/core/utils/api-error.util";
 import { queryMatch } from "~/core/utils/query.util";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface ContactDetailsDialogProps {
   /** The contact to edit; null closes the dialog. */
@@ -45,11 +46,9 @@ function ContactDetailsEditor({
         <DialogDescription>Saved to Google Contacts. Rename the contact there.</DialogDescription>
       </DialogHeader>
       {queryMatch(detail, {
-        pending: () => <Loading />,
+        pending: () => <LoadingState />,
         error: (error) => (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
+          <ErrorMessage>{error.message}</ErrorMessage>
         ),
         success: (contact) => (
           <ContactDetailsForm

@@ -8,13 +8,14 @@ import type { FollowUpList, FollowUpTarget, FollowUpView } from "./follow-ups.ty
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { clientFacet } from "~/features/clients/clients.util";
-import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
-import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
-import { LoadMore } from "~/components/shared/load-more/load-more.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { isNarrowed, pageItems } from "~/core/list/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface FollowUpsPageProps {
   view: FollowUpList;
@@ -61,16 +62,13 @@ export function FollowUpsPage({ view, filter, onFilterChange, open, onOpenChange
             onClick: () => setAdding({ mode: "new" }),
           },
         ]}
-        banners={<GoogleNotice />}
         toolbar={<FilterBar label="Search follow-ups" value={filter} onChange={onFilterChange} facets={facets} dates />}
       />
 
       {list.isPending ? (
-        <Loading />
+        <LoadingState />
       ) : list.error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {list.error.message}
-        </p>
+        <ErrorMessage>{list.error.message}</ErrorMessage>
       ) : (
         <div className={cn("transition-opacity", list.isPlaceholderData && "opacity-60")}>
           <FollowUpsTable

@@ -1,15 +1,15 @@
 import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
 import { SessionCard, createSessionColumns, sessionLink } from "../../sessions.columns";
-import { useConfirmBooking } from "../../sessions-booking.hook";
+import { useConfirmBooking } from "../../session-booking.hook";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
 import type { SessionHit, SessionSearch } from "../../sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 
 interface SessionsTableProps {
   /** In the order the API found them: latest first. */

@@ -3,7 +3,7 @@ import { SESSIONS_LIST } from "../../sessions.list";
 import { sessionPlace, sessionsUrl } from "../../sessions.util";
 import type { SessionReturnTo, SessionView } from "../../sessions.types";
 import type { ListFilter } from "~/core/list/filter.types";
-import { ListPager } from "~/components/shared/list-pager/list-pager.component";
+import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
 import { NO_FILTER } from "~/core/list/filter.util";
 import { TODO_SESSIONS } from "~/features/todo/todo.list";
 

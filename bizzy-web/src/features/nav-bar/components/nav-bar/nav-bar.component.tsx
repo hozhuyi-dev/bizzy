@@ -1,9 +1,9 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { cn } from "cn";
 import { ChevronDownIcon, MenuIcon, SettingsIcon } from "lucide-react";
-import { MODULES } from "../../nav-bar.constant";
-import { moduleOf, pageOf } from "../../nav-bar.util";
-import type { Module } from "../../nav-bar.types";
+import type { Module } from "~/core/navigation/navigation.types";
+import { MODULES } from "~/core/navigation/navigation.constant";
+import { moduleOf, pageOf } from "~/core/navigation/navigation.util";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import { Logo } from "~/components/shared/logo/logo.component";
+import { Logo } from "~/components/shared/layout/logo/logo.component";
 import { AuthMutation } from "~/features/auth/auth.mutation";
 import { SyncButton } from "~/features/sync/components/sync-button/sync-button.component";
 
@@ -35,8 +35,8 @@ export function NavBar() {
 
   return (
     // --nav-height (app.css) is this bar's height: PageHeader sticks right below it.
-    <header className="sticky top-0 z-30 h-(--nav-height) border-b bg-background">
-      <nav className="mx-auto flex h-full max-w-7xl items-center gap-1 px-4">
+    <header className="sticky top-0 z-(--z-nav) h-(--nav-height) border-b bg-background">
+      <nav className="mx-auto flex h-full max-w-(--content-width) items-center gap-1 px-(--page-gutter)">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={<Button variant="ghost" size="icon-sm" className="-ml-1.5 md:hidden" aria-label="Menu" />}

@@ -6,7 +6,7 @@ import { DOCUMENT_TYPES } from "./documents.constant";
 import { documentLabel } from "./documents.util";
 import { useDocumentPdf } from "./documents.hook";
 import type { SharedDocumentView } from "./documents.types";
-import { Banner } from "~/components/shared/banner/banner.component";
+import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { Button } from "~/components/ui/button";
 import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
@@ -28,8 +28,9 @@ export function SharedDocumentPage({ token }: { token: string }) {
     return () => meta.remove();
   }, []);
 
+  // The whole screen, as wide as the app: the PDF takes the height left.
   return (
-    <main className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-4 px-4 py-6">
+    <main className="mx-auto flex h-dvh max-w-(--content-width) flex-col gap-3 px-(--page-gutter) py-3 sm:gap-4 sm:py-4">
       {queryMatch(shared, {
         pending: () => <p className="text-sm text-muted-foreground">Loading…</p>,
         error: (error) => (
@@ -57,7 +58,7 @@ function SharedDocument({ doc }: { doc: SharedDocumentView }) {
   return (
     <>
       <header className="flex items-center justify-between gap-3">
-        <h1 className="truncate text-lg font-semibold">
+        <h1 className="truncate type-page-title">
           {title} {documentLabel(doc.number, doc.revision)}
         </h1>
         <Button onClick={download} disabled={busy}>
@@ -71,7 +72,7 @@ function SharedDocument({ doc }: { doc: SharedDocumentView }) {
           title={`This ${title.toLowerCase()} was cancelled${doc.cancelledAt ? ` on ${formatDate(doc.cancelledAt)}` : ""}.`}
         />
       )}
-      <DocumentPdfView file={doc.pdf} />
+      <DocumentPdfView file={doc.pdf} fill />
     </>
   );
 }

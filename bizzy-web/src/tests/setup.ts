@@ -17,3 +17,6 @@ Object.defineProperty(window, "matchMedia", {
     removeEventListener: vi.fn(),
   }),
 });
+
+// jsdom lays nothing out, so has no scrollIntoView; a form scrolls to its first error.
+Element.prototype.scrollIntoView = vi.fn();

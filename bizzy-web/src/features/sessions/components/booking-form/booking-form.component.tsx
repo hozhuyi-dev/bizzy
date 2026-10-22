@@ -1,32 +1,32 @@
-import { useState } from "react";
-import { useForm, useStore } from "@tanstack/react-form";
+import { useSelector } from "@tanstack/react-form";
 import { sessionTime, toBookingValues, toSessionDraft } from "../../sessions.form";
 import { SessionsQuery } from "../../sessions.query";
 import type { BookingValues, PriceIs } from "../../sessions.form";
 import type { CoverView, PreviewSessionRequest, SessionDraft, SessionView } from "../../sessions.types";
 import type { Locks } from "~/core/lambda/lambda.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { pickableClients } from "~/features/clients/clients.util";
+import { ClientSelectField } from "~/features/clients/components/client-select-field/client-select-field.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { saidAbove } from "~/features/remedies/remedies.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
+import { useAppForm } from "~/components/shared/form/form.hook";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
 import { DialogFooter } from "~/components/ui/dialog";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { FieldDescription, FieldGroup } from "~/components/ui/field";
 import { Separator } from "~/components/ui/separator";
-import { formatDate, formatHours } from "~/core/utils/date.util";
-import { formatCents, parseCents } from "~/core/utils/money.util";
-import { fieldErrors } from "~/core/utils/form.util";
+import { formatDate, formatHours, toTimeInput } from "~/core/utils/date.util";
+import { formatCents } from "~/core/utils/money.util";
+import { moneyError, requiredError, wholeNumberError } from "~/core/utils/form.util";
 
 const PRICE_IS_ITEMS: Array<{ value: PriceIs; label: string }> = [
   { value: "each", label: "per hour" },
   { value: "total", label: "in total" },
 ];
+
+/** Usual lengths, a tap away; any other is typed. */
+const LENGTHS = [30, 45, 60, 90];
 
 interface BookingFormProps {
   initial: SessionDraft;
@@ -51,30 +51,26 @@ interface BookingFormProps {
  * in the dialog's footer.
  */
 export function BookingForm({ initial, session, locked = {}, submitLabel, onSubmit, onCancel }: BookingFormProps) {
-  const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   // What was received follows a new fee only on a receipt not issued yet.
   const repayable = Boolean(session?.paid && !session.paid.issued);
-  const [updatePayment, setUpdatePayment] = useState(false);
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: toBookingValues(initial),
     onSubmit: async ({ value }) => {
       try {
-        await onSubmit(toSessionDraft(value), updatePayment);
+        await onSubmit(toSessionDraft(value), value.updatePayment);
       } catch (error) {
         toastRefusal(error);
       }
     },
   });
 
-  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
-
-  const items = pickableClients(clients.data ?? [], session?.clientId);
+  const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
 
   // What would pay for it, as saving it will choose.
-  const previewRequest = useStore(form.store, (state) => previewOf(state.values, session));
+  const previewRequest = useSelector(form.store, (state) => previewOf(state.values, session));
   const preview = SessionsQuery.usePreview(previewRequest);
   const cover: CoverView | undefined = previewRequest ? preview.data : undefined;
 
@@ -116,137 +112,83 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
       }}
     >
       <FieldGroup>
-        <form.Field
+        <form.AppField
           name="clientId"
-          validators={{ onChange: ({ value }) => (value ? undefined : "Choose a client") }}
+          validators={{ onChange: ({ value }) => requiredError(value, "Choose a client") }}
           listeners={{
             // A new choice of client starts from their usual place.
             onChange: ({ value }) => form.setFieldValue("homeVisit", clientsById.get(value)?.homeVisits ?? false),
           }}
         >
-          {(field) => (
-            <Field data-invalid={field.state.meta.errors.length > 0}>
-              <FieldLabel>Client</FieldLabel>
-              <Select
-                items={items}
-                value={field.state.value}
-                disabled={locked.clientId !== undefined}
-                onValueChange={(value) => field.handleChange(value ?? "")}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a client" />
-                </SelectTrigger>
-                <SelectContent>
-                  {items.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <LockedHint lock={locked.clientId} />
-              <FieldError errors={fieldErrors(field.state.meta.errors)} />
-            </Field>
+          {() => (
+            <ClientSelectField
+              keepId={session?.clientId}
+              disabled={locked.clientId !== undefined}
+              hint={<LockedHint lock={locked.clientId} />}
+            />
           )}
-        </form.Field>
+        </form.AppField>
 
-        <div className="flex flex-wrap gap-4">
-          <form.Field name="date" validators={{ onChange: ({ value }) => (value ? undefined : "Pick a day") }}>
-            {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0} className="w-auto">
-                <FieldLabel htmlFor={field.name}>Day</FieldLabel>
-                <Input
-                  id={field.name}
-                  type="date"
-                    value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
-            )}
-          </form.Field>
+        <div className="flex flex-wrap items-start gap-4">
+          <form.AppField name="date" validators={{ onChange: ({ value }) => requiredError(value, "Pick a day") }}>
+            {(field) => <field.TextField label="Day" type="date" className="w-auto" />}
+          </form.AppField>
 
-          <form.Field name="time" validators={{ onChange: ({ value }) => (value ? undefined : "Pick a time") }}>
-            {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0} className="w-auto">
-                <FieldLabel htmlFor={field.name}>Start</FieldLabel>
-                <Input
-                  id={field.name}
-                  type="time"
-                  step={300}
-                    value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
-            )}
-          </form.Field>
+          <form.AppField name="time" validators={{ onChange: ({ value }) => requiredError(value, "Pick a time") }}>
+            {(field) => <field.TextField label="Start" type="time" step={300} className="w-auto" />}
+          </form.AppField>
 
-          <form.Field
-            name="minutes"
-            validators={{
-              onChange: ({ value }) =>
-                /^\d+$/.test(value.trim()) && Number(value) >= 5 && Number(value) <= 720 ? undefined : "5 to 720",
-            }}
-          >
-            {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0} className="w-24">
-                <FieldLabel htmlFor={field.name}>Minutes</FieldLabel>
-                <Input
-                  id={field.name}
-                  inputMode="numeric"
-                    value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
-            )}
-          </form.Field>
+          <form.AppField name="minutes" validators={{ onChange: ({ value }) => wholeNumberError(value, 5, 720) }}>
+            {(field) => <field.TextField label="Minutes" inputMode="numeric" className="w-24" />}
+          </form.AppField>
         </div>
-
-        <form.Field name="homeVisit">
-          {(field) => (
-            <Field orientation="horizontal">
-              <Checkbox
-                id={field.name}
-                checked={field.state.value}
-                onCheckedChange={(checked) => field.handleChange(checked)}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor={field.name}>Home visit</FieldLabel>
-                <FieldDescription>Shown in the event's title as (V) or (H) when it isn't the client's usual place.</FieldDescription>
-              </FieldContent>
-            </Field>
+        <form.Subscribe selector={(state) => [state.values.date, state.values.time, state.values.minutes] as const}>
+          {([date, time, minutes]) => (
+            <div className="-mt-3 flex flex-wrap items-center gap-1">
+              {LENGTHS.map((length) => (
+                <Button
+                  key={length}
+                  type="button"
+                  variant={Number(minutes) === length ? "secondary" : "outline"}
+                  size="xs"
+                  onClick={() => form.setFieldValue("minutes", String(length))}
+                >
+                  {length} min
+                </Button>
+              ))}
+              <span className="ml-1 text-xs text-muted-foreground">{endsAt(date, time, minutes)}</span>
+            </div>
           )}
-        </form.Field>
+        </form.Subscribe>
 
-        <form.Field name="tentative">
+        <form.AppField name="homeVisit">
           {(field) => (
-            <Field orientation="horizontal">
-              <Checkbox
-                id={field.name}
-                checked={field.state.value}
-                disabled={locked.tentative !== undefined}
-                onCheckedChange={(checked) => field.handleChange(checked)}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor={field.name}>Not confirmed</FieldLabel>
-                <FieldDescription>Goes on your to-do list a few days before, to confirm with the client.</FieldDescription>
-                <LockedHint lock={locked.tentative} again={saidAbove(locked.tentative, locked.clientId)} />
-              </FieldContent>
-            </Field>
+            <field.CheckboxField
+              label="Home visit"
+              description="Shown in the event's title as (V) or (H) when it isn't the client's usual place."
+            />
           )}
-        </form.Field>
+        </form.AppField>
+
+        <form.AppField name="tentative">
+          {(field) => (
+            <field.CheckboxField
+              label="Not confirmed"
+              description="Goes on your to-do list a few days before, to confirm with the client."
+              disabled={locked.tentative !== undefined}
+              hint={<LockedHint lock={locked.tentative} again={saidAbove(locked.tentative, locked.clientId)} />}
+            />
+          )}
+        </form.AppField>
 
         <Separator />
 
-        <form.Field
+        <form.AppField
           name="fee"
           validators={{
             onChangeListenTo: ["clientId", "date", "time", "minutes", "packageHours", "packagePrice", "tentative"],
             onChange: ({ value, fieldApi }) => {
-              if (value.trim()) return parseCents(value) !== null ? undefined : "Like 95 or 95.50";
+              if (value.trim()) return moneyError(value);
               // A booking not yet confirmed can wait for its fee.
               return cover?.kind === "none" && !fieldApi.form.getFieldValue("tentative")
                 ? "Enter the fee: no package credits or client fee cover it"
@@ -255,31 +197,24 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
           }}
         >
           {(field) => (
-            <Field data-invalid={field.state.meta.errors.length > 0}>
-              <FieldLabel htmlFor={field.name}>Fee for this session</FieldLabel>
-              <Input
-                id={field.name}
-                inputMode="decimal"
-                value={field.state.value}
-                disabled={locked.fee !== undefined}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-                className="max-w-40"
-              />
-              {locked.fee ? (
-                <LockedHint lock={locked.fee} again={saidAbove(locked.fee, locked.clientId, locked.tentative)} />
-              ) : (
-                <form.Subscribe selector={(state) => state.values}>
-                  {(values) => <FieldDescription>{describeCover(values)}</FieldDescription>}
-                </form.Subscribe>
+            <form.Subscribe selector={(state) => state.values}>
+              {(values) => (
+                <field.TextField
+                  label="Fee for this session"
+                  inputMode="decimal"
+                  inputClassName="max-w-40"
+                  disabled={locked.fee !== undefined}
+                  // The lock says why; otherwise what would pay for it.
+                  description={locked.fee ? undefined : describeCover(values)}
+                  hint={<LockedHint lock={locked.fee} again={saidAbove(locked.fee, locked.clientId, locked.tentative)} />}
+                />
               )}
-              <FieldError errors={fieldErrors(field.state.meta.errors)} />
-            </Field>
+            </form.Subscribe>
           )}
-        </form.Field>
+        </form.AppField>
 
         <div className="flex flex-wrap items-start gap-4">
-          <form.Field
+          <form.AppField
             name="packageHours"
             validators={{
               onChangeListenTo: ["packagePrice"],
@@ -287,82 +222,48 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
                 if (!value.trim()) {
                   return fieldApi.form.getFieldValue("packagePrice").trim() ? "How many hours?" : undefined;
                 }
-                return /^\d+$/.test(value.trim()) && Number(value) >= 1 && Number(value) <= 1000
-                  ? undefined
-                  : "1 to 1000";
+                return wholeNumberError(value, 1, 1000);
               },
             }}
           >
             {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0} className="w-32">
-                <FieldLabel htmlFor={field.name}>Package bought</FieldLabel>
-                <Input
-                  id={field.name}
-                  inputMode="numeric"
-                  placeholder="Hours"
-                  value={field.state.value}
-                  disabled={locked.package !== undefined}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
+              <field.TextField
+                label="Package bought"
+                inputMode="numeric"
+                placeholder="Hours"
+                className="w-32"
+                disabled={locked.package !== undefined}
+              />
             )}
-          </form.Field>
+          </form.AppField>
 
-          <form.Field
+          <form.AppField
             name="packagePrice"
             validators={{
               onChangeListenTo: ["packageHours"],
-              onChange: ({ value, fieldApi }) => {
-                if (!value.trim()) {
-                  return fieldApi.form.getFieldValue("packageHours").trim() ? "What does it cost?" : undefined;
-                }
-                const cents = parseCents(value);
-                return cents !== null && cents > 0 ? undefined : "Like 180 or 1800";
-              },
+              onChange: ({ value, fieldApi }) =>
+                moneyError(value, {
+                  required: fieldApi.form.getFieldValue("packageHours").trim() ? "What does it cost?" : undefined,
+                  positive: true,
+                }),
             }}
           >
             {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0} className="w-32">
-                <FieldLabel htmlFor={field.name}>Price</FieldLabel>
-                <Input
-                  id={field.name}
-                  inputMode="decimal"
-                  value={field.state.value}
-                  disabled={locked.package !== undefined}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
+              <field.TextField label="Price" inputMode="decimal" className="w-32" disabled={locked.package !== undefined} />
             )}
-          </form.Field>
+          </form.AppField>
 
-          <form.Field name="packagePriceIs">
+          <form.AppField name="packagePriceIs">
             {(field) => (
-              <Field className="w-36">
-                <FieldLabel aria-hidden="true">&nbsp;</FieldLabel>
-                <Select
-                  items={PRICE_IS_ITEMS}
-                  value={field.state.value}
-                  disabled={locked.package !== undefined}
-                    onValueChange={(value) => value && field.handleChange(value)}
-                >
-                  <SelectTrigger className="w-full" aria-label="The price is">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRICE_IS_ITEMS.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+              <field.SelectField
+                label={<span aria-hidden="true">&nbsp;</span>}
+                aria-label="The price is"
+                items={PRICE_IS_ITEMS}
+                className="w-36"
+                disabled={locked.package !== undefined}
+              />
             )}
-          </form.Field>
+          </form.AppField>
         </div>
         <LockedHint
           lock={locked.package}
@@ -383,33 +284,35 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
       </FieldGroup>
 
       {repayable && (
-        <Field orientation="horizontal">
-          <Checkbox id="update-payment" checked={updatePayment} onCheckedChange={setUpdatePayment} />
-          <FieldContent>
-            <FieldLabel htmlFor="update-payment">Update the payment with a new fee</FieldLabel>
-            <FieldDescription>
-              What was paid moves to the new amount, as what you collected or refunded with the change. Without it, a
-              new fee waits for the payment to be undone.
-            </FieldDescription>
-          </FieldContent>
-        </Field>
+        <form.AppField name="updatePayment">
+          {(field) => (
+            <field.CheckboxField
+              label="Update the payment with a new fee"
+              description="What was paid moves to the new amount, as what you collected or refunded with the change. Without it, a new fee waits for the payment to be undone."
+            />
+          )}
+        </form.AppField>
       )}
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
-          {([canSubmit, isSubmitting]) => (
-            <Button type="submit" disabled={!canSubmit || isSubmitting}>
-              {isSubmitting ? "Saving…" : submitLabel}
-            </Button>
-          )}
-        </form.Subscribe>
+        <form.AppForm>
+          <form.SubmitButton label={submitLabel} />
+        </form.AppForm>
       </DialogFooter>
-      <UnsavedChangesPrompt when={hasChanges} />
+      <UnsavedChangesDialog when={hasChanges} />
     </form>
   );
+}
+
+/** "Until 11:00", once the day, start and length read as a time. */
+function endsAt(date: string, time: string, minutes: string): string {
+  const n = Number(minutes);
+  if (!date || !time || !Number.isInteger(n) || n <= 0) return "";
+  const end = new Date(new Date(`${date}T${time}`).getTime() + n * 60_000);
+  return Number.isNaN(end.getTime()) ? "" : `Until ${toTimeInput(end)}`;
 }
 
 /** The booking to price, once it names a client and a time. */

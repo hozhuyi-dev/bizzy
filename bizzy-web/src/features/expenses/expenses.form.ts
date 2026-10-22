@@ -57,10 +57,6 @@ export function totalOf(lines: ReadonlyArray<ExpenseLineValues>): number {
   return lines.reduce((sum, line) => sum + (parseCents(line.amount) ?? 0), 0);
 }
 
-export function amountError(amount: string): string | undefined {
-  return parseCents(amount) === null ? "Enter an amount like 12.50" : undefined;
-}
-
 export function toExpenseFields(values: ExpenseFormValues): ExpenseFields {
   return {
     date: values.date,

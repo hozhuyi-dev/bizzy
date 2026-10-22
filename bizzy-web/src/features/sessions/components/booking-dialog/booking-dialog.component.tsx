@@ -1,15 +1,15 @@
 import { useNavigate } from "@tanstack/react-router";
 import { CalendarX2Icon } from "lucide-react";
 import { BookingForm } from "../booking-form/booking-form.component";
-import { useBookingSave } from "../../sessions-booking.hook";
+import { useBookingSave } from "../../session-booking.hook";
 import { draftOf, newSessionDraft } from "../../sessions.form";
 import type { SessionFullView, SessionReturnTo } from "../../sessions.types";
 import { ConflictsQuery } from "~/features/conflicts/conflicts.query";
 import { conflictKind } from "~/features/conflicts/conflicts.util";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { formatSessionTime } from "~/core/utils/date.util";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 interface NewSessionDialogProps {

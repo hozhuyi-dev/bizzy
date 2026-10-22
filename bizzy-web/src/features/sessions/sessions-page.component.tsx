@@ -1,20 +1,21 @@
 import { useMemo, useState } from "react";
 import { cn } from "cn";
-import { newSessionAction } from "./sessions.action";
+import { newSessionAction, sessionFacets, sessionsUrl  } from "./sessions.util";
 import { NewSessionDialog } from "./components/booking-dialog/booking-dialog.component";
 import { SessionsTable } from "./components/sessions-table/sessions-table.component";
 import { SessionsQuery } from "./sessions.query";
-import { sessionFacets, sessionsUrl } from "./sessions.util";
+
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { GoogleNotice } from "~/features/google/components/google-notice/google-notice.component";
-import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
-import { LoadMore } from "~/components/shared/load-more/load-more.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface SessionsPageProps {
   filter: ListFilter;
@@ -41,16 +42,13 @@ export function SessionsPage({ filter, onFilterChange }: SessionsPageProps) {
       <PageHeader
         title="All sessions"
         actions={[newSessionAction(() => setAdding(true))]}
-        banners={<GoogleNotice />}
         toolbar={<FilterBar label="Search sessions" value={filter} onChange={onFilterChange} facets={facets} dates />}
       />
 
       {queryMatch(sessions, {
-        pending: () => <Loading />,
+        pending: () => <LoadingState />,
         error: (error) => (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
+          <ErrorMessage>{error.message}</ErrorMessage>
         ),
         success: () => (
           <div className={cn("transition-opacity", sessions.isPlaceholderData && "opacity-60")}>

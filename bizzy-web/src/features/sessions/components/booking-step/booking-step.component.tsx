@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CheckIcon, PencilIcon } from "lucide-react";
 import { EditBookingDialog } from "../booking-dialog/booking-dialog.component";
 import { hasHappened, sessionMinutes } from "../../session-stage.util";
-import { useConfirmBooking } from "../../sessions-booking.hook";
+import { useConfirmBooking } from "../../session-booking.hook";
 import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
 import type { SessionFullView } from "../../sessions.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";

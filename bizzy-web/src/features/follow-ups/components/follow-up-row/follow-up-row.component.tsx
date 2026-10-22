@@ -5,8 +5,8 @@ import { useMarkDone } from "../../follow-ups.hook";
 import { formatDue, isOverdue } from "../../follow-ups.util";
 import type { FollowUpView } from "../../follow-ups.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { ListRow } from "~/components/shared/list-row/list-row.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { DataRow } from "~/components/shared/list/data-list/data-list.component";
+import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { clientOf } from "~/features/clients/clients.util";
@@ -24,7 +24,7 @@ interface FollowUpRowProps {
 }
 
 /**
- * One follow-up, laid out like every to-do row (ListRow): who and what,
+ * One follow-up, laid out like every to-do row (DataRow): who and what,
  * when below, and Done and Edit (or a link to Follow-ups), which a click
  * anywhere on the row does too.
  */
@@ -39,7 +39,7 @@ export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, 
   const shownSummary = hideClient ? undefined : followUp.summary;
 
   return (
-    <ListRow
+    <DataRow
       title={
         <>
           {hideClient ? (

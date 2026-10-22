@@ -1,5 +1,7 @@
+import { PlusIcon } from "lucide-react";
 import { CANCELLED_STAGE, SESSION_FACETS, SESSION_PLACES } from "./sessions.constant";
 import { CANCELLED_BADGE, REASON_BADGES } from "./session-stage.util";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { SearchSessionsRequest, SessionLocation, SessionReason, SessionSearch, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { Facet, ListFilter } from "~/core/list/filter.types";
@@ -7,7 +9,7 @@ import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
 import { filterUrl, listRequest } from "~/core/list/filter.util";
 import { monthKey } from "~/core/utils/date.util";
-import { oneOf, textParam } from "~/core/utils/search.util";
+import { oneOf, textParam } from "~/core/utils/url-param.util";
 
 /** The sessions list's filter in its URL: this month unless it says otherwise. */
 export const sessionsUrl = filterUrl(SESSION_FACETS, () => monthKey(new Date()));
@@ -46,5 +48,17 @@ export function searchSessionsRequest(filter: ListFilter): SearchSessionsRequest
     locations: [...(filter.chips.place ?? [])] as Array<SessionLocation>,
     todo: [...(filter.chips.stage ?? [])].filter((stage) => stage !== CANCELLED_STAGE) as Array<SessionReason>,
     cancelled: (filter.chips.stage ?? []).includes(CANCELLED_STAGE),
+  };
+}
+
+/** Opens NewSessionDialog, to add a session to the calendar. */
+export function newSessionAction(onClick: () => void): Action {
+  return {
+    type: "button",
+    label: "New session",
+    icon: PlusIcon,
+    style: "primary",
+    iconOnlyOnPhone: true,
+    onClick,
   };
 }

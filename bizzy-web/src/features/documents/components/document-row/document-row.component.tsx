@@ -6,8 +6,8 @@ import { DocumentsMutation } from "../../documents.mutation";
 import { documentLabel, documentRoute, refLabel } from "../../documents.util";
 import type { ReactNode } from "react";
 import type { DocumentLink } from "../../documents.types";
-import { ListRow } from "~/components/shared/list-row/list-row.component";
-import { TextLink } from "~/components/shared/text-link/text-link.component";
+import { DataRow } from "~/components/shared/list/data-list/data-list.component";
+import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { Button } from "~/components/ui/button";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
@@ -21,7 +21,7 @@ interface DocumentRowProps {
 
 /**
  * A document covering something on its page (a session's invoice), laid out
- * like every to-do row (ListRow): its number and whether it is issued, then
+ * like every to-do row (DataRow): its number and whether it is issued, then
  * Issue while it is a draft, and Open, which a click anywhere on the row
  * does too.
  */
@@ -32,7 +32,7 @@ export function DocumentRow({ doc, meta, detail }: DocumentRowProps) {
   const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
 
   return (
-    <ListRow
+    <DataRow
       title={
         <>
           <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

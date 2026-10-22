@@ -1,5 +1,4 @@
-import { useForm, useStore } from "@tanstack/react-form";
-import { toast } from "sonner";
+import { useSelector } from "@tanstack/react-form";
 import { SettingsMutation } from "./settings.mutation";
 import { SettingsQuery } from "./settings.query";
 import type { SettingsView } from "./settings.types";
@@ -7,23 +6,20 @@ import { CAN_RESET } from "~/features/reset/reset.constant";
 import { ResetData } from "~/features/reset/components/reset-data/reset-data.component";
 import { GoogleConnectionSettings } from "~/features/google/components/google-connection/google-connection.component";
 import { AppearanceSettings } from "~/features/theme/components/appearance-settings/appearance-settings.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
-import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
-import { Loading } from "~/components/shared/quip/quip.component";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Textarea } from "~/components/ui/textarea";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { FieldGroup } from "~/components/ui/field";
+import { useAppForm } from "~/components/shared/form/form.hook";
+import { emailError, placeholdersError, wholeNumberError } from "~/core/utils/form.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { DOCUMENT_PLACEHOLDERS, PAYMENT_PLACEHOLDERS } from "~/features/whatsapp/whatsapp.constant";
 import { ComputerWhatsAppSettings } from "~/features/whatsapp/components/computer-whatsapp-settings/computer-whatsapp-settings.component";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 export function SettingsPage() {
   const settings = SettingsQuery.useGet();
@@ -32,15 +28,13 @@ export function SettingsPage() {
     pending: () => (
       <>
         <PageHeader title="Settings" />
-        <Loading />
+        <LoadingState />
       </>
     ),
     error: (error) => (
       <>
         <PageHeader title="Settings" />
-        <p role="alert" className="text-sm text-destructive">
-          {error.message}
-        </p>
+        <ErrorMessage>{error.message}</ErrorMessage>
       </>
     ),
     success: (data) => <SettingsForm saved={data} />,
@@ -49,37 +43,12 @@ export function SettingsPage() {
 
 const FORM_ID = "settings-form";
 
-type TextKey = Exclude<keyof SettingsView, "confirmAheadDays" | "followUpAheadDays">;
-
 const placeholderList = (names: ReadonlyArray<string>) => names.map((name) => `{${name}}`).join(" ");
-
-const BUSINESS_FIELDS: Array<{
-  name: TextKey;
-  label: string;
-  multiline?: boolean;
-  hint?: string;
-}> = [
-  { name: "businessName", label: "Business name" },
-  {
-    name: "registrationNo",
-    label: "Registration no.",
-    hint: "Your SSM number, printed under the name.",
-  },
-  { name: "address", label: "Address", multiline: true },
-  { name: "phone", label: "Phone" },
-  { name: "email", label: "Email" },
-];
-
-const BANK_FIELDS: Array<{ name: TextKey; label: string }> = [
-  { name: "bankName", label: "Bank" },
-  { name: "accountName", label: "Account name" },
-  { name: "accountNo", label: "Account no." },
-];
 
 function SettingsForm({ saved }: { saved: SettingsView }) {
   const save = SettingsMutation.useSave();
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       ...saved,
       bankName: saved.bankName ?? "",
@@ -92,50 +61,13 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
         formApi.reset(value);
         toastWithQuip("Settings saved", QUIPS.saved);
       } catch (error) {
-        toast.error((error as Error).message);
+        toastRefusal(error);
       }
     },
   });
 
-  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
-  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
-
-  const textField = ({
-    name,
-    label,
-    multiline,
-    hint,
-  }: {
-    name: TextKey;
-    label: string;
-    multiline?: boolean;
-    hint?: string;
-  }) => (
-    <form.Field key={name} name={name}>
-      {(field) => (
-        <Field>
-          <FieldLabel htmlFor={field.name}>{label}</FieldLabel>
-          {multiline ? (
-            <Textarea
-              id={field.name}
-              form={FORM_ID}
-              rows={3}
-              value={field.state.value}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-          ) : (
-            <Input
-              id={field.name}
-              form={FORM_ID}
-              value={field.state.value}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-          )}
-          {hint && <FieldDescription>{hint}</FieldDescription>}
-        </Field>
-      )}
-    </form.Field>
-  );
+  const isSubmitting = useSelector(form.store, (state) => state.isSubmitting);
+  const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
 
   return (
     <>
@@ -155,12 +87,13 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
       <form
         id={FORM_ID}
         hidden
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
       />
-      <SectionLayout
+      <PageSections
         sections={[
           {
             id: "google",
@@ -173,13 +106,54 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
             id: "business",
             title: "Your business",
             description: "Printed on every invoice and receipt. Issued ones keep what they printed.",
-            content: <FieldGroup>{BUSINESS_FIELDS.map(textField)}</FieldGroup>,
+            content: (
+              <FieldGroup>
+                <form.AppField name="businessName">
+                  {(field) => <field.TextField label="Business name" form={FORM_ID} />}
+                </form.AppField>
+                <form.AppField name="registrationNo">
+                  {(field) => (
+                    <field.TextField
+                      label="Registration no."
+                      form={FORM_ID}
+                      description="Your SSM number, printed under the name."
+                    />
+                  )}
+                </form.AppField>
+                <form.AppField name="address">
+                  {(field) => (
+                    <field.TextareaField
+                      label="Address"
+                      form={FORM_ID}
+                      rows={3}
+                      description="Optional. Printed under your name when given."
+                    />
+                  )}
+                </form.AppField>
+                <form.AppField name="phone">
+                  {(field) => <field.TextField label="Phone" type="tel" form={FORM_ID} />}
+                </form.AppField>
+                <form.AppField name="email" validators={{ onChange: ({ value }) => emailError(value) }}>
+                  {(field) => <field.TextField label="Email" type="email" form={FORM_ID} />}
+                </form.AppField>
+              </FieldGroup>
+            ),
           },
           {
             id: "bank",
             title: "Bank details",
-            description: "Optional. Printed on invoices and sent when asking to pay; receipts confirm money already paid, so they don't print them.",
-            content: <div className="grid gap-4 sm:grid-cols-3">{BANK_FIELDS.map(textField)}</div>,
+            description: "Printed on invoices and sent in the WhatsApp message asking to pay, so all three are needed. Receipts confirm money already paid, so they don't print them.",
+            content: (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <form.AppField name="bankName">{(field) => <field.TextField label="Bank" form={FORM_ID} />}</form.AppField>
+                <form.AppField name="accountName">
+                  {(field) => <field.TextField label="Account name" form={FORM_ID} />}
+                </form.AppField>
+                <form.AppField name="accountNo">
+                  {(field) => <field.TextField label="Account no." inputMode="numeric" form={FORM_ID} />}
+                </form.AppField>
+              </div>
+            ),
           },
           {
             id: "sessions",
@@ -188,11 +162,15 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
               "In a calendar title, (V) marks a home visit and (H) your place, like “Jane (V) 95”. Without either, a session is at the client's usual place.",
             content: (
               <FieldGroup>
-                {textField({
-                  name: "serviceName",
-                  label: "Session description",
-                  hint: "How a session reads on an invoice or receipt line.",
-                })}
+                <form.AppField name="serviceName">
+                  {(field) => (
+                    <field.TextField
+                      label="Session description"
+                      form={FORM_ID}
+                      description="How a session reads on an invoice or receipt line."
+                    />
+                  )}
+                </form.AppField>
               </FieldGroup>
             ),
           },
@@ -203,18 +181,32 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
               "WhatsApp opens the client's chat with the message typed in, ready to send. Leave one blank to go back to the default.",
             content: (
               <FieldGroup>
-                {textField({
-                  name: "paymentMessage",
-                  label: "Asking for payment",
-                  multiline: true,
-                  hint: `From a session. ${placeholderList(PAYMENT_PLACEHOLDERS)}`,
-                })}
-                {textField({
-                  name: "documentMessage",
-                  label: "Sending documents",
-                  multiline: true,
-                  hint: `From an invoice or receipt, a session or a client; {documents} lists each with its link, and {title} reads "invoice", "receipts" or "documents" as it fits. ${placeholderList(DOCUMENT_PLACEHOLDERS)}`,
-                })}
+                <form.AppField
+                  name="paymentMessage"
+                  validators={{ onChange: ({ value }) => placeholdersError(value, PAYMENT_PLACEHOLDERS) }}
+                >
+                  {(field) => (
+                    <field.TextareaField
+                      label="Asking for payment"
+                      form={FORM_ID}
+                      rows={3}
+                      description={`From a session. ${placeholderList(PAYMENT_PLACEHOLDERS)}`}
+                    />
+                  )}
+                </form.AppField>
+                <form.AppField
+                  name="documentMessage"
+                  validators={{ onChange: ({ value }) => placeholdersError(value, DOCUMENT_PLACEHOLDERS) }}
+                >
+                  {(field) => (
+                    <field.TextareaField
+                      label="Sending documents"
+                      form={FORM_ID}
+                      rows={3}
+                      description={`From an invoice or receipt, a session or a client; {documents} lists each with its link, and {title} reads "invoice", "receipts" or "documents" as it fits. ${placeholderList(DOCUMENT_PLACEHOLDERS)}`}
+                    />
+                  )}
+                </form.AppField>
               </FieldGroup>
             ),
           },
@@ -232,48 +224,38 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
             content: (
               <FieldGroup>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <form.Field name="confirmAheadDays">
+                  <form.AppField
+                    name="confirmAheadDays"
+                    validators={{ onChange: ({ value }) => wholeNumberError(value, 1, 30) }}
+                  >
                     {(field) => (
-                      <Field>
-                        <FieldLabel htmlFor={field.name}>Confirm sessions</FieldLabel>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id={field.name}
-                            form={FORM_ID}
-                            type="number"
-                            min={1}
-                            max={30}
-                            className="w-20"
-                            value={field.state.value}
-                            onChange={(e) => field.handleChange(Number(e.target.value))}
-                          />
-                          <span className="text-sm text-muted-foreground">days ahead</span>
-                        </div>
-                        <FieldDescription>When an unconfirmed (?) session comes up, to check the time with the client.</FieldDescription>
-                      </Field>
+                      <field.NumberField
+                        label="Confirm sessions"
+                        form={FORM_ID}
+                        min={1}
+                        max={30}
+                        inputClassName="w-20"
+                        suffix="days ahead"
+                        description="When an unconfirmed (?) session comes up, to check the time with the client."
+                      />
                     )}
-                  </form.Field>
-                  <form.Field name="followUpAheadDays">
+                  </form.AppField>
+                  <form.AppField
+                    name="followUpAheadDays"
+                    validators={{ onChange: ({ value }) => wholeNumberError(value, 1, 30) }}
+                  >
                     {(field) => (
-                      <Field>
-                        <FieldLabel htmlFor={field.name}>Follow-ups</FieldLabel>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id={field.name}
-                            form={FORM_ID}
-                            type="number"
-                            min={1}
-                            max={30}
-                            className="w-20"
-                            value={field.state.value}
-                            onChange={(e) => field.handleChange(Number(e.target.value))}
-                          />
-                          <span className="text-sm text-muted-foreground">days ahead</span>
-                        </div>
-                        <FieldDescription>When a follow-up comes up before it is due.</FieldDescription>
-                      </Field>
+                      <field.NumberField
+                        label="Follow-ups"
+                        form={FORM_ID}
+                        min={1}
+                        max={30}
+                        inputClassName="w-20"
+                        suffix="days ahead"
+                        description="When a follow-up comes up before it is due."
+                      />
                     )}
-                  </form.Field>
+                  </form.AppField>
                 </div>
               </FieldGroup>
             ),
@@ -297,7 +279,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
             : []),
         ]}
       />
-      <UnsavedChangesPrompt when={hasChanges} />
+      <UnsavedChangesDialog when={hasChanges} />
     </>
   );
 }

@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { GoogleQuery } from "~/features/google/google.query";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
 /**
  * Sits in the nav bar, so a failed sync shows on every page. The app
@@ -34,7 +35,7 @@ export function SyncButton() {
   const sync = () =>
     syncCalendar()
       .then((result) => toast.success("Calendar synced", { description: describeSync(result) }))
-      .catch((error: Error) => toast.error(error.message));
+      .catch(toastRefusal);
 
   const failed = !running && Boolean(status.data?.error);
   const label = lastRunText(status.data, running, backfilling);

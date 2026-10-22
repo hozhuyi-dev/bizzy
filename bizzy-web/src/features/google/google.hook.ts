@@ -5,6 +5,7 @@ import { GoogleMutation } from "./google.mutation";
 import { GoogleOAuthService } from "./google-oauth.service";
 import type { GoogleCallbackSearch } from "./google.types";
 import { useSyncCalendar } from "~/features/sync/sync.hook";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
 /** Sends her to Google's consent screen; she comes back to /google-callback. */
 export function useGoogleConsent(): () => void {
@@ -50,9 +51,9 @@ export function useFinishGoogleConsent({ code, state, error }: GoogleCallbackSea
           return;
         }
         toast.success(`Connected ${connection.email}`, { description: `Syncing ${connection.calendarName}…` });
-        sync().catch((syncError: Error) => toast.error(syncError.message));
+        sync().catch(toastRefusal);
       })
-      .catch((connectError: Error) => toast.error(connectError.message))
+      .catch(toastRefusal)
       .finally(done);
   }, [code, state, error, connect, sync, navigate]);
 }

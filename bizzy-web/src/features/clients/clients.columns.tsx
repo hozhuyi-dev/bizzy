@@ -2,14 +2,14 @@ import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
 import { contactProblem, extraAliases } from "./clients.util";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { ClientNext, ClientRow, ClientView, ClientsFilter, ClientsListSearch } from "./clients.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
-import type { RowActionSet } from "~/components/shared/row-actions/row-actions.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { RowActionSet } from "~/components/shared/actions/row-actions/row-actions.component";
 import { whatsappNumber } from "~/features/whatsapp/whatsapp.util";
 import { Badge } from "~/components/ui/badge";
-import { CellEmpty, CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { DataCard } from "~/components/shared/data-card/data-card.component";
-import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
+import { CellEmpty, CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
+import { DataCard } from "~/components/shared/list/data-card/data-card.component";
+import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 
@@ -61,7 +61,7 @@ export function clientLink(id: string, search?: ClientsListSearch): LinkOptions 
 }
 
 function ClientLink({ client, search }: { client: ClientView; search: ClientsListSearch | undefined }) {
-  return <RowLink {...clientLink(client.id, search)}>{client.name}</RowLink>;
+  return <CellLink {...clientLink(client.id, search)}>{client.name}</CellLink>;
 }
 
 /** How a view sorts until she picks a column: lapsed clients are worked through most valuable first. */
@@ -159,7 +159,7 @@ export function createClientColumns(view: ClientsFilter, handlers: ClientActions
   });
   const lastSession = helper.accessor("lastSessionAt", {
     header: "Last session",
-    sortFn: "alphanumeric",
+    sortFn: "basic",
     meta: { search: (row: ClientRow) => row.lastSessionAt && formatDate(row.lastSessionAt) },
     sortUndefined: "last",
     cell: ({ row }) =>
@@ -173,7 +173,7 @@ export function createClientColumns(view: ClientsFilter, handlers: ClientActions
     id: "actions",
     header: () => <span className="sr-only">Actions</span>,
     meta: { width: "fit" },
-    cell: ({ row }) => <RowActionButtons {...clientActions(row.original.client, handlers)} />,
+    cell: ({ row }) => <RowActions {...clientActions(row.original.client, handlers)} />,
   });
 
   if (view === "reconnect") {
@@ -182,7 +182,7 @@ export function createClientColumns(view: ClientsFilter, handlers: ClientActions
       lastSession,
       helper.accessor("lastContactedAt", {
         header: "Last contacted",
-        sortFn: "alphanumeric",
+        sortFn: "basic",
         meta: { search: (row: ClientRow) => row.lastContactedAt && formatDate(row.lastContactedAt) },
         sortUndefined: "last",
         cell: ({ getValue }) => {
@@ -206,7 +206,7 @@ export function createClientColumns(view: ClientsFilter, handlers: ClientActions
     helper.accessor((row) => row.next?.at, {
       id: "next",
       header: "Next",
-      sortFn: "alphanumeric",
+      sortFn: "basic",
       meta: { search: (row: ClientRow) => row.next && nextText(row.next) },
       sortUndefined: "last",
       cell: ({ row }) => {

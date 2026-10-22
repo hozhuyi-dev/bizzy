@@ -46,10 +46,6 @@ export function feesChanged(client: ClientView, rates: ReadonlyArray<FeeRate>): 
   return key(client.feeRates) !== key(rates);
 }
 
-export function feeAmountError(amount: string): string | undefined {
-  return parseCents(amount) === null ? "Enter an amount like 95 or 95.50" : undefined;
-}
-
 /** Why row i can't start on from, or undefined. The first row has no start. */
 export function feeStartError(fees: ReadonlyArray<FeeRateValues>, i: number, from: string): string | undefined {
   if (i === 0) return undefined;

@@ -1,21 +1,28 @@
 import { useState } from "react";
+import { useSelector } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { Trash2Icon } from "lucide-react";
 import { daysFromToday, toCreateFollowUp, toFollowUpFields, toFollowUpValues } from "../../follow-ups.form";
 import { FollowUpsMutation } from "../../follow-ups.mutation";
-import type { FollowUpValues } from "../../follow-ups.form";
 import type { FollowUpTarget } from "../../follow-ups.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { ClientSelectField } from "~/features/clients/components/client-select-field/client-select-field.component";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { InlineConfirm } from "~/components/shared/actions/inline-action/inline-action.component";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
+import { useAppForm } from "~/components/shared/form/form.hook";
 import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
-import { Textarea } from "~/components/ui/textarea";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { FieldGroup } from "~/components/ui/field";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { todayISO } from "~/core/utils/date.util";
+import { requiredError } from "~/core/utils/form.util";
+
+// As the API keeps them: the summary is the calendar title, the notes its description.
+const MAX_SUMMARY = 200;
+const MAX_NOTES = 8000;
 
 interface FollowUpDialogProps {
   target: FollowUpTarget | null;
@@ -44,163 +51,164 @@ const IN = [
 ];
 
 function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: () => void }) {
-  const [values, setValues] = useState(() => toFollowUpValues(target));
-  const set = <TKey extends keyof FollowUpValues>(key: TKey, value: FollowUpValues[TKey]) =>
-    setValues((prev) => ({ ...prev, [key]: value }));
-  const clients = ClientsQuery.useList();
+  const clientsById = ClientsQuery.useById();
   const create = FollowUpsMutation.useCreate();
   const update = FollowUpsMutation.useUpdate();
   const remove = FollowUpsMutation.useDelete();
-  const busy = create.isPending || update.isPending || remove.isPending;
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const editing = target.mode === "edit" ? target.followUp : undefined;
   const sessionId = target.mode === "new" ? target.sessionId : undefined;
   const fixedClient = target.mode === "new" && Boolean(target.clientId);
 
-  const items = (clients.data ?? [])
-    .map((client) => ({ value: client.id, label: client.name }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-  const clientName = items.find((item) => item.value === values.clientId)?.label;
-  const valid = values.clientId !== "" && values.date !== "" && (values.allDay || values.time !== "");
-
-  const save = () => {
-    const done = {
-      onSuccess: () => {
+  const form = useAppForm({
+    defaultValues: toFollowUpValues(target),
+    onSubmit: async ({ value, formApi }) => {
+      try {
+        if (editing) await update.mutateAsync({ id: editing.id, fields: toFollowUpFields(value, editing) });
+        else await create.mutateAsync(toCreateFollowUp(value, sessionId));
+        // Saved: closing isn't leaving with changes.
+        formApi.reset(value);
         toastWithQuip(editing ? "Follow-up updated" : "Follow-up added to your calendar", QUIPS.saved);
         onClose();
-      },
-      onError: (error: Error) => toast.error(error.message),
-    };
-    if (editing) update.mutate({ id: editing.id, fields: toFollowUpFields(values, editing) }, done);
-    else create.mutate(toCreateFollowUp(values, sessionId), done);
-  };
+      } catch (error) {
+        toastRefusal(error);
+      }
+    },
+  });
+
+  const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
+  const clientId = useSelector(form.store, (state) => state.values.clientId);
+  const summary = useSelector(form.store, (state) => state.values.summary);
+  const clientName = clientsById.get(clientId)?.name;
 
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        if (valid) save();
+        void form.handleSubmit();
       }}
     >
       <DialogHeader>
         <DialogTitle>{editing ? "Edit follow-up" : clientName ? `Follow up with ${clientName}` : "New follow-up"}</DialogTitle>
         <DialogDescription>
           Added to your calendar as “! {clientName ?? "Name"}
-          {values.summary.trim() ? `: ${values.summary.trim()}` : ""}”.
+          {summary.trim() ? `: ${summary.trim()}` : ""}”.
         </DialogDescription>
       </DialogHeader>
 
       <FieldGroup>
         {!fixedClient && (
-          <Field>
-            <FieldLabel>Client</FieldLabel>
-            <Select items={items} value={values.clientId} onValueChange={(value) => set("clientId", value ?? "")}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Choose a client" />
-              </SelectTrigger>
-              <SelectContent>
-                {items.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <form.AppField name="clientId" validators={{ onChange: ({ value }) => requiredError(value, "Choose a client") }}>
+            {() => <ClientSelectField keepId={editing?.clientId} />}
+          </form.AppField>
         )}
 
-        <Field>
-          <FieldLabel htmlFor="follow-up-summary">What to follow up</FieldLabel>
-          <Input
-            id="follow-up-summary"
-            value={values.summary}
-            maxLength={200}
-            placeholder="Check MRI results"
-            onChange={(e) => set("summary", e.target.value)}
-          />
-        </Field>
+        <form.AppField name="summary">
+          {(field) => (
+            <field.TextField label="What to follow up" maxLength={MAX_SUMMARY} placeholder="Check MRI results" />
+          )}
+        </form.AppField>
 
-        <Field>
-          <FieldLabel htmlFor="follow-up-date">When</FieldLabel>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              id="follow-up-date"
-              type="date"
-              className="w-auto"
-              value={values.date}
-              onChange={(e) => set("date", e.target.value)}
-            />
-            {!values.allDay && (
-              <Input
-                type="time"
-                aria-label="Time"
-                step={300}
-                className="w-auto"
-                value={values.time}
-                onChange={(e) => set("time", e.target.value)}
-              />
-            )}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-start gap-2">
+            <form.AppField name="date" validators={{ onChange: ({ value }) => requiredError(value, "Pick a day") }}>
+              {(field) => (
+                <field.TextField
+                  label="When"
+                  type="date"
+                  className="w-auto"
+                  // Fine for a note of a call made; most often a slip.
+                  description={field.state.value && field.state.value < todayISO() ? "That day has passed." : undefined}
+                />
+              )}
+            </form.AppField>
+            <form.Subscribe selector={(state) => state.values.allDay}>
+              {(allDay) =>
+                !allDay && (
+                  <form.AppField
+                    name="time"
+                    validators={{
+                      onChangeListenTo: ["allDay"],
+                      onChange: ({ value, fieldApi }) =>
+                        fieldApi.form.getFieldValue("allDay") ? undefined : requiredError(value, "Pick a time"),
+                    }}
+                  >
+                    {(field) => <field.TextField label="Time" type="time" step={300} className="w-auto" />}
+                  </form.AppField>
+                )
+              }
+            </form.Subscribe>
           </div>
           <div className="flex flex-wrap gap-1">
             {IN.map(({ label, days }) => (
-              <Button key={label} type="button" variant="outline" size="xs" onClick={() => set("date", daysFromToday(days))}>
+              <Button key={label} type="button" variant="outline" size="xs" onClick={() => form.setFieldValue("date", daysFromToday(days))}>
                 In {label}
               </Button>
             ))}
           </div>
-        </Field>
+        </div>
 
-        <Field orientation="horizontal">
-          <Checkbox id="follow-up-all-day" checked={values.allDay} onCheckedChange={(checked) => set("allDay", checked)} />
-          <FieldContent>
-            <FieldLabel htmlFor="follow-up-all-day">All day</FieldLabel>
-            <FieldDescription>Untick to block a time for the call.</FieldDescription>
-          </FieldContent>
-        </Field>
+        <form.AppField name="allDay">
+          {(field) => <field.CheckboxField label="All day" description="Untick to block a time for the call." />}
+        </form.AppField>
 
-        <Field>
-          <FieldLabel htmlFor="follow-up-notes">Notes</FieldLabel>
-          <Textarea
-            id="follow-up-notes"
-            rows={4}
-            value={values.notes}
-            onChange={(e) => set("notes", e.target.value)}
-          />
-          <FieldDescription>Saved as the calendar event's description.</FieldDescription>
-        </Field>
+        <form.AppField name="notes">
+          {(field) => (
+            <field.TextareaField
+              label="Notes"
+              rows={4}
+              maxLength={MAX_NOTES}
+              description="Saved as the calendar event's description."
+            />
+          )}
+        </form.AppField>
       </FieldGroup>
 
       <DialogFooter className="sm:justify-between">
-        {editing ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-destructive hover:text-destructive"
-            disabled={busy}
-            onClick={() =>
+        {editing && confirmingDelete ? (
+          <InlineConfirm
+            question="Delete it from your calendar too?"
+            yes="Delete"
+            pending={remove.isPending}
+            onNo={() => setConfirmingDelete(false)}
+            onYes={() =>
               remove.mutate(editing.id, {
                 onSuccess: () => {
                   toast.success("Follow-up deleted from your calendar");
+                  form.reset();
                   onClose();
                 },
-                onError: (error) => toast.error(error.message),
+                onError: toastRefusal,
               })
             }
-          >
-            <Trash2Icon /> Delete
-          </Button>
+          />
         ) : (
-          <span />
+          <>
+            {editing ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <Trash2Icon /> Delete
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <form.AppForm>
+                <form.SubmitButton label={editing ? "Save" : "Add follow-up"} />
+              </form.AppForm>
+            </div>
+          </>
         )}
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={!valid || busy}>
-            {busy ? "Saving…" : editing ? "Save" : "Add follow-up"}
-          </Button>
-        </div>
       </DialogFooter>
+      <UnsavedChangesDialog when={hasChanges} />
     </form>
   );
 }

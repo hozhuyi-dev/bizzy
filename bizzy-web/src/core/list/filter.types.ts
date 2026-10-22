@@ -16,6 +16,12 @@ export interface ListFilter {
   when: When | undefined;
   /** The chips, as each facet's values, by facet key. */
   chips: Readonly<Record<string, ReadonlyArray<string>>>;
+  /**
+   * The column a list loaded whole is sorted by, "-" first for the other
+   * way ("name", "-owedCents"); unset, the list's own order. A list read a
+   * page at a time keeps the API's order and ignores it.
+   */
+  sort?: string | undefined;
 }
 
 /** One kind of chip a list can be narrowed by: a client, a stage. */
@@ -44,6 +50,7 @@ export interface FacetOption {
 export type FilterSearch<TKey extends string> = {
   q?: string | undefined;
   when?: string | undefined;
+  sort?: string | undefined;
 } & { [P in TKey]?: Array<string> | undefined };
 
 /** What every search route takes besides its own filters; mirrors listing.Request. */

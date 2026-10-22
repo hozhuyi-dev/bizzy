@@ -6,8 +6,9 @@ import { ClientsQuery } from "./clients.query";
 import { CLIENT_FACETS, RECONNECT_FACETS, lapseOf } from "./clients.util";
 import type { ClientRow } from "./clients.types";
 import type { FilteredPagerList } from "~/core/list/pager.types";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
-import { shownRows } from "~/components/shared/data-table/data-table-search.util";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
+import { columnIdsOf, toSorting } from "~/components/shared/list/data-table/data-table-sort.util";
+import { shownRows } from "~/components/shared/list/data-table/data-table-search.util";
 import { useAllWindow } from "~/core/list/pager.hook";
 
 // Only for what each row is searched by: nothing here is shown.
@@ -19,7 +20,7 @@ const FACETS = [...CLIENT_FACETS, ...RECONNECT_FACETS];
 /**
  * All clients or Reconnect, for a client's page to step through: every
  * client is loaded, and read through the table's own sort and search, so
- * the order is the one the list shows before a column is clicked.
+ * the order is the one the list shows, sorted as it was left.
  */
 export const CLIENTS_LIST: FilteredPagerList<ClientRow> = {
   noun: "client",
@@ -29,7 +30,7 @@ export const CLIENTS_LIST: FilteredPagerList<ClientRow> = {
     const clients = ClientsQuery.useList();
     const rows = useClientRows(filter);
     const view = lapseOf(filter) ? "reconnect" : "all";
-    const sorting = clientSorting(view);
+    const sorting = toSorting(filter.sort, clientSorting(view), columnIdsOf(COLUMNS[view]));
     const table = useTable({
       features: dataTableFeatures,
       columns: COLUMNS[view],
@@ -39,7 +40,7 @@ export const CLIENTS_LIST: FilteredPagerList<ClientRow> = {
     });
     const query = filter.text;
     // The table's rows follow its data and sorting, both from these.
-    const sortKey = sorting[0]?.id;
+    const sortKey = filter.sort;
     const shown = useMemo(
       () => shownRows(table, query).map((row) => row.original),
       // eslint-disable-next-line react-hooks/exhaustive-deps -- the table reads rows and sortKey

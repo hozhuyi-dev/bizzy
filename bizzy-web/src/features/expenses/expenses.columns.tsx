@@ -3,9 +3,9 @@ import { linesCategories, linesSummary } from "./expenses.util";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { CatalogueView, ExpenseView, ExpensesSearch } from "./expenses.types";
 import { Badge } from "~/components/ui/badge";
-import { CellEmpty, CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { DataCard } from "~/components/shared/data-card/data-card.component";
+import { CellEmpty, CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
+import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { formatDate } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
@@ -24,7 +24,7 @@ function ExpenseReceipt({ expense }: { expense: ExpenseView }) {
 }
 
 function ExpenseLink({ expense, search }: { expense: ExpenseView; search: ExpensesSearch | undefined }) {
-  return <RowLink {...expenseLink(expense.id, search)}>{formatDate(expense.date)}</RowLink>;
+  return <CellLink {...expenseLink(expense.id, search)}>{formatDate(expense.date)}</CellLink>;
 }
 
 /** The expense's page, with the list it steps through. */

@@ -8,7 +8,7 @@ import { clientsListLink, matchesChips, toClientRow, withLapse } from "./clients
 import type { ClientFields, ClientRow, ClientView, ClientsFilter } from "./clients.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 /**

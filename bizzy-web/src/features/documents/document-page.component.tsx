@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   BanIcon,
-  CircleAlertIcon,
   DownloadIcon,
   EyeIcon,
   LinkIcon,
@@ -27,16 +26,16 @@ import { useDocumentPdf } from "./documents.hook";
 import type { PdfSource } from "./documents.hook";
 import type { ReactNode } from "react";
 import type { DocumentContent, DocumentRevision, DocumentType, DocumentView } from "./documents.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ListFilter } from "~/core/list/filter.types";
-import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
-import { Banner } from "~/components/shared/banner/banner.component";
-import { ListPager } from "~/components/shared/list-pager/list-pager.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { RowActionButtons } from "~/components/shared/row-actions/row-actions.component";
-import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
-import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
-import { Loading } from "~/components/shared/quip/quip.component";
+import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
+import { Banner } from "~/components/shared/layout/banner/banner.component";
+import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
+import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import {
   AlertDialogCancel,
   AlertDialogDescription,
@@ -44,7 +43,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
-import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { formatCents } from "~/core/utils/money.util";
@@ -53,6 +52,8 @@ import { queryMatch } from "~/core/utils/query.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { useSendDocuments } from "~/features/whatsapp/whatsapp.hook";
 import { clientOf } from "~/features/clients/clients.util";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 /** The breadcrumb, which already says what kind of document this is: its list, with the filter it was left at. */
 function parentOf(type: DocumentType, filter: ListFilter) {
@@ -91,15 +92,13 @@ export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageP
     pending: () => (
       <>
         <PageHeader {...header} title="…" />
-        <Loading />
+        <LoadingState />
       </>
     ),
     error: (error) => (
       <>
         <PageHeader {...header} title="Not available" />
-        <p role="alert" className="text-sm text-destructive">
-          {error.message}
-        </p>
+        <ErrorMessage>{error.message}</ErrorMessage>
       </>
     ),
     success: (doc) => {
@@ -139,9 +138,6 @@ function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
         actions={[documentIssueAction(editor)]}
         moreActions={editorActions.more}
         menuActions={editorActions.menu}
-        banners={
-          editor.invalid && <Banner tone="attention" icon={CircleAlertIcon} title={editor.invalid} role="alert" />
-        }
       />
       <form
         onSubmit={(event) => {
@@ -149,9 +145,9 @@ function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
           void editor.save();
         }}
       >
-        <SectionLayout sections={[...documentEditorSections(editor), ...(history ? [history] : [])]} />
+        <PageSections sections={[...documentEditorSections(editor), ...(history ? [history] : [])]} />
       </form>
-      <UnsavedChangesPrompt when={editor.hasChanges} />
+      <UnsavedChangesDialog when={editor.hasChanges} />
     </>
   );
 }
@@ -192,7 +188,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
             icon: PencilIcon,
             disabled: revise.isPending,
             can: doc.can.revise,
-            onClick: () => revise.mutate(doc.id, { onError: (error) => toast.error(error.message) }),
+            onClick: () => revise.mutate(doc.id, { onError: toastRefusal }),
           },
           {
             type: "button",
@@ -215,7 +211,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
           )
         }
       />
-      <SectionLayout
+      <PageSections
         sections={[
           {
             id: "document",
@@ -294,7 +290,7 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: DocumentView; open: bool
                 toast.success("New link made; the old one no longer works");
                 onClose();
               },
-              onError: (error) => toast.error(error.message),
+              onError: toastRefusal,
             })
           }
         >
@@ -340,7 +336,7 @@ function usePdfActions(source: PdfSource): [view: Action, download: Action] {
 }
 
 function PdfButtons({ source }: { source: PdfSource }) {
-  return <RowActionButtons actions={usePdfActions(source)} />;
+  return <RowActions actions={usePdfActions(source)} />;
 }
 
 function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean; onClose: () => void }) {
@@ -371,7 +367,7 @@ function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean
                   toast.success(`${documentLabel(doc.number, doc.revision)} cancelled`);
                   onClose();
                 },
-                onError: (error) => toast.error(error.message),
+                onError: toastRefusal,
               },
             )
           }

@@ -4,7 +4,7 @@ import { searchDocumentsRequest } from "./documents.util";
 import type { DocumentStatus, DocumentType } from "./documents.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { DocumentKeys } from "~/core/constants/query-keys.constant";
-import { usePages } from "~/core/list/filter.hook";
+import { usePages } from "~/core/list/pages.hook";
 
 export const DocumentsQuery = {
   /** The documents of a type a filter finds, latest first, a page at a time. */

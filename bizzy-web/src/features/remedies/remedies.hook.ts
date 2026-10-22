@@ -12,7 +12,7 @@ import { DocumentsService } from "~/features/documents/documents.service";
 import { PackagesService } from "~/features/packages/packages.service";
 import { PaymentsService } from "~/features/payments/payments.service";
 import { SessionsService } from "~/features/sessions/sessions.service";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { invalidateBilling } from "~/core/utils/query.util";
 

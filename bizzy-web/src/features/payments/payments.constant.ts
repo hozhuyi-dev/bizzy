@@ -7,3 +7,6 @@ export const PAYMENT_METHODS: ReadonlyArray<{ value: PaymentMethod; label: strin
   { value: "grab", label: "GrabPay", short: "Grab" },
   { value: "bank_transfer", label: "Bank transfer", short: "Bank" },
 ];
+
+/** The methods as a ChoiceField offers them: short on the button, in full on hover. */
+export const PAYMENT_CHOICES = PAYMENT_METHODS.map((method) => ({ value: method.value, label: method.short, title: method.label }));

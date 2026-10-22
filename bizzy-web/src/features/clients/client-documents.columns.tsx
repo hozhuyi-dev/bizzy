@@ -3,9 +3,9 @@ import type { DocumentSummary } from "~/features/documents/documents.types";
 import { DocumentStatusBadge, documentLink } from "~/features/documents/documents.columns";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { documentLabel } from "~/features/documents/documents.util";
-import { CellText, RowLink } from "~/components/shared/data-table/data-table-cell.component";
-import { createDataTableColumnHelper } from "~/components/shared/data-table/data-table.config";
-import { DataCard } from "~/components/shared/data-card/data-card.component";
+import { CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
+import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { Checkbox } from "~/components/ui/checkbox";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
@@ -61,7 +61,7 @@ export const createClientDocumentColumns = () =>
           <CellText sub={dateText(doc)}>
             <span className="flex min-w-0 items-center gap-2">
               <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <RowLink {...documentLink(doc)}>{clientDocumentLabel(doc)}</RowLink>
+              <CellLink {...documentLink(doc)}>{clientDocumentLabel(doc)}</CellLink>
             </span>
           </CellText>
         );

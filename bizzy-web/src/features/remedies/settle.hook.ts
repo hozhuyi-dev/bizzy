@@ -6,7 +6,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { TodoView } from "~/features/todo/todo.types";
 import { TodoQuery } from "~/features/todo/todo.query";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 /** The calendar edits waiting on the to-do list, by event. */

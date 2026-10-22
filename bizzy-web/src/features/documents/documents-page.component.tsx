@@ -8,15 +8,17 @@ import { documentFacets, documentsUrl } from "./documents.util";
 import type { DocumentType } from "./documents.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
-import { LoadMore } from "~/components/shared/load-more/load-more.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.config";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface DocumentsPageProps {
   type: DocumentType;
@@ -65,11 +67,9 @@ export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPagePro
         }
       />
       {queryMatch(documents, {
-        pending: () => <Loading />,
+        pending: () => <LoadingState />,
         error: (error) => (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
+          <ErrorMessage>{error.message}</ErrorMessage>
         ),
         success: () => (
           <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>

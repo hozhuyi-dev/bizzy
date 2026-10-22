@@ -6,7 +6,7 @@ import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactDetails, ContactView } from "~/features/contacts/contacts.types";
 import type { Facet, ListFilter } from "~/core/list/filter.types";
 import { filterUrl } from "~/core/list/filter.util";
-import { oneOf } from "~/core/utils/search.util";
+import { oneOf } from "~/core/utils/url-param.util";
 
 /** The client an item is for, when it has one and it still exists. */
 export function clientOf(clientsById: ReadonlyMap<string, ClientView>, clientId: string | undefined): ClientView | undefined {
@@ -155,7 +155,7 @@ export function clientsListLink(filter: ListFilter) {
   const lapse = lapseOf(filter);
   const q = filter.text.trim() || undefined;
   if (lapse) {
-    const search = { q, lapse: lapse === LAPSE_MONTHS[0] ? undefined : lapse };
+    const search = { q, lapse: lapse === LAPSE_MONTHS[0] ? undefined : lapse, sort: filter.sort };
     return { to: "/clients/reconnect", label: "Reconnect", search } as const;
   }
   return { to: "/clients", label: "Clients", search: clientsUrl.toSearch(filter) } as const;

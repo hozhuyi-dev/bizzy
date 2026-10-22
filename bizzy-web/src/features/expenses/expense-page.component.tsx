@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useForm, useStore } from "@tanstack/react-form";
+import { useSelector } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { EMPTY_LINE, amountError, toExpenseFields, toExpenseValues, totalOf, withName } from "./expenses.form";
+import { EMPTY_LINE, toExpenseFields, toExpenseValues, totalOf, withName } from "./expenses.form";
 import { expenseLink } from "./expenses.columns";
 import { EXPENSES_LIST } from "./expenses.list";
 import { ExpensesMutation } from "./expenses.mutation";
@@ -11,15 +11,15 @@ import { ExpensesQuery } from "./expenses.query";
 import { expensePlace, expensesUrl, vendorsOf } from "./expenses.util";
 import type { ReactNode } from "react";
 import type { CatalogueView, ExpenseView } from "./expenses.types";
-import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
 import type { ListFilter } from "~/core/list/filter.types";
 import { AttachmentList } from "~/features/attachments/components/attachment-list/attachment-list.component";
-import { Banner } from "~/components/shared/banner/banner.component";
-import { ListPager } from "~/components/shared/list-pager/list-pager.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { Loading } from "~/components/shared/quip/quip.component";
-import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
-import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
+import { Banner } from "~/components/shared/layout/banner/banner.component";
+import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import {
   AlertDialogCancel,
   AlertDialogDescription,
@@ -27,16 +27,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
-import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
-import { Textarea } from "~/components/ui/textarea";
+import { FieldGroup } from "~/components/ui/field";
 import { formatCents } from "~/core/utils/money.util";
-import { fieldErrors } from "~/core/utils/form.util";
+import { moneyError, requiredError } from "~/core/utils/form.util";
+import { todayISO } from "~/core/utils/date.util";
+import { useAppForm } from "~/components/shared/form/form.hook";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 const FORM_ID = "expense-form";
+
+// As the API keeps them.
+const MAX_VENDOR = 100;
+const MAX_NAME = 100;
+const MAX_NOTES = 2000;
+const MAX_LINES = 50;
 
 /** The expenses list, with the filter it was left at. */
 function parentOf(filter: ListFilter | undefined) {
@@ -85,11 +92,9 @@ export function ExpensePage(props: ExpensePageProps) {
       <>
         <PageHeader {...header} title={error ? "Not available" : "…"} />
         {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
+          <ErrorMessage>{error.message}</ErrorMessage>
         ) : (
-          <Loading />
+          <LoadingState />
         )}
       </>
     );
@@ -121,7 +126,7 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
   const items = catalogue.items.filter((item) => !item.archived);
   const categories = catalogue.categories.filter((category) => !category.archived);
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues,
     onSubmit: async ({ value, formApi }) => {
       try {
@@ -142,8 +147,10 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
     },
   });
 
-  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
-  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
+  const isSubmitting = useSelector(form.store, (state) => state.isSubmitting);
+  const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
+  const categoryItems = catalogue.categories.map((category) => ({ value: category.id, label: category.name }));
+  const categoryOptions = categories.map((category) => ({ value: category.id, label: category.name }));
 
   const sections: Array<PageSection> = [
     {
@@ -151,48 +158,39 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
       title: "Receipt",
       content: (
         <FieldGroup>
-          <form.Field
+          <form.AppField
             name="date"
-            validators={{ onSubmit: ({ value }) => (value ? undefined : "Choose the day on the receipt") }}
+            validators={{ onChange: ({ value }) => requiredError(value, "Choose the day on the receipt") }}
           >
             {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel htmlFor={field.name}>Date</FieldLabel>
-                <Input
-                  id={field.name}
-                  type="date"
-                  form={FORM_ID}
-                  className="max-w-44"
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
+              <field.TextField
+                label="Date"
+                type="date"
+                form={FORM_ID}
+                inputClassName="max-w-44"
+                // A receipt from a day to come is most likely a typo.
+                description={field.state.value > todayISO() ? "That day hasn't come yet." : undefined}
+              />
             )}
-          </form.Field>
-          <form.Field name="vendor">
+          </form.AppField>
+          <form.AppField name="vendor">
             {(field) => (
-              <Field>
-                <FieldLabel htmlFor={field.name}>Where</FieldLabel>
-                <Input
-                  id={field.name}
-                  form={FORM_ID}
-                  list="expense-vendors"
-                  maxLength={100}
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="Shopee, the pharmacy, Petronas"
-                  autoComplete="off"
-                />
-                <datalist id="expense-vendors">
-                  {vendors.map((vendor) => (
-                    <option key={vendor} value={vendor} />
-                  ))}
-                </datalist>
-                <FieldDescription>The shop or website it was bought from.</FieldDescription>
-              </Field>
+              <field.TextField
+                label="Where"
+                form={FORM_ID}
+                list="expense-vendors"
+                maxLength={MAX_VENDOR}
+                placeholder="Shopee, the pharmacy, Petronas"
+                autoComplete="off"
+                description="The shop or website it was bought from."
+              />
             )}
-          </form.Field>
+          </form.AppField>
+          <datalist id="expense-vendors">
+            {vendors.map((vendor) => (
+              <option key={vendor} value={vendor} />
+            ))}
+          </datalist>
         </FieldGroup>
       ),
     },
@@ -209,86 +207,61 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
                   <option key={item.id} value={item.name} />
                 ))}
               </datalist>
-              {linesField.state.value.map((line, i) => (
+              {linesField.state.value.map((_, i) => (
                 <div
                   key={i}
                   className="grid items-start gap-2 border-b pb-3 md:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_7rem_auto]"
                 >
-                  <form.Field
+                  <form.AppField
                     name={`lines[${i}].name`}
-                    validators={{ onSubmit: ({ value }) => (value.trim() ? undefined : "What was bought?") }}
-                  >
-                    {(field) => (
-                      <Field data-invalid={field.state.meta.errors.length > 0}>
-                        <FieldLabel htmlFor={field.name} className="md:sr-only">
-                          Item
-                        </FieldLabel>
-                        <Input
-                          id={field.name}
-                          form={FORM_ID}
-                          list="expense-items"
-                          maxLength={100}
-                          value={field.state.value}
-                          placeholder="Kinesio tape"
-                          autoComplete="off"
-                          onChange={(e) => linesField.replaceValue(i, withName(line, e.target.value, catalogue))}
-                        />
-                        <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                      </Field>
-                    )}
-                  </form.Field>
-                  <form.Field
-                    name={`lines[${i}].categoryId`}
-                    validators={{ onSubmit: ({ value }) => (value ? undefined : "Choose a category") }}
-                  >
-                    {(field) => (
-                      <Field data-invalid={field.state.meta.errors.length > 0}>
-                        <FieldLabel className="md:sr-only">Category</FieldLabel>
-                        <Select
-                          items={catalogue.categories.map((category) => ({ value: category.id, label: category.name }))}
-                          value={field.state.value}
-                          onValueChange={(value) => field.handleChange(value ?? "")}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((category) => (
-                              <SelectItem key={category.id} value={category.id}>
-                                {category.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                      </Field>
-                    )}
-                  </form.Field>
-                  <form.Field
-                    name={`lines[${i}].amount`}
-                    validators={{
-                      onChange: ({ value }) => (value ? amountError(value) : undefined),
-                      onSubmit: ({ value }) => amountError(value),
+                    validators={{ onChange: ({ value }) => requiredError(value, "What was bought?") }}
+                    listeners={{
+                      // A listed item fills in its category and what it last cost.
+                      onChange: ({ value }) =>
+                        form.setFieldValue(`lines[${i}]`, (line) => withName(line, value, catalogue)),
                     }}
                   >
                     {(field) => (
-                      <Field data-invalid={field.state.meta.errors.length > 0}>
-                        <FieldLabel htmlFor={field.name} className="md:sr-only">
-                          Amount
-                        </FieldLabel>
-                        <Input
-                          id={field.name}
-                          form={FORM_ID}
-                          inputMode="decimal"
-                          className="text-right"
-                          value={field.state.value}
-                          placeholder="0.00"
-                          onChange={(e) => field.handleChange(e.target.value)}
-                        />
-                        <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                      </Field>
+                      <field.TextField
+                        label="Item"
+                        labelClassName="md:sr-only"
+                        form={FORM_ID}
+                        list="expense-items"
+                        maxLength={MAX_NAME}
+                        placeholder="Kinesio tape"
+                        autoComplete="off"
+                      />
                     )}
-                  </form.Field>
+                  </form.AppField>
+                  <form.AppField
+                    name={`lines[${i}].categoryId`}
+                    validators={{ onChange: ({ value }) => requiredError(value, "Choose a category") }}
+                  >
+                    {(field) => (
+                      <field.SelectField
+                        label="Category"
+                        labelClassName="md:sr-only"
+                        placeholder="Category"
+                        items={categoryItems}
+                        options={categoryOptions}
+                      />
+                    )}
+                  </form.AppField>
+                  <form.AppField
+                    name={`lines[${i}].amount`}
+                    validators={{ onChange: ({ value }) => moneyError(value, { required: "What did it cost?", positive: true }) }}
+                  >
+                    {(field) => (
+                      <field.TextField
+                        label="Amount"
+                        labelClassName="md:sr-only"
+                        form={FORM_ID}
+                        inputMode="decimal"
+                        inputClassName="text-right"
+                        placeholder="0.00"
+                      />
+                    )}
+                  </form.AppField>
                   <Button
                     type="button"
                     variant="ghost"
@@ -302,7 +275,13 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
                 </div>
               ))}
               <div className="flex items-center justify-between gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => linesField.pushValue({ ...EMPTY_LINE })}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={linesField.state.value.length >= MAX_LINES}
+                  onClick={() => linesField.pushValue({ ...EMPTY_LINE })}
+                >
                   <PlusIcon /> Add line
                 </Button>
                 <span className="text-sm">
@@ -332,22 +311,17 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
       id: "notes",
       title: "Notes",
       content: (
-        <form.Field name="notes">
+        <form.AppField name="notes">
           {(field) => (
-            <Field>
-              <FieldLabel htmlFor={field.name} className="sr-only">
-                Notes
-              </FieldLabel>
-              <Textarea
-                id={field.name}
-                value={field.state.value}
-                maxLength={2000}
-                placeholder="What it was for, a warranty, who to claim it from…"
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-            </Field>
+            <field.TextareaField
+              label="Notes"
+              labelClassName="sr-only"
+              form={FORM_ID}
+              maxLength={MAX_NOTES}
+              placeholder="What it was for, a warranty, who to claim it from…"
+            />
           )}
-        </form.Field>
+        </form.AppField>
       ),
     },
   ];
@@ -379,13 +353,14 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
       <form
         id={FORM_ID}
         hidden
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
       />
-      <SectionLayout sections={sections} />
-      <UnsavedChangesPrompt when={hasChanges} />
+      <PageSections sections={sections} />
+      <UnsavedChangesDialog when={hasChanges} />
 
       <SheetAlertDialog open={deleting} onClose={() => setDeleting(false)}>
         <AlertDialogHeader>
@@ -407,7 +382,7 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
                   toast.success("Expense deleted");
                   void navigate({ ...header.parent, ignoreBlocker: true });
                 },
-                onError: (error) => toast.error(error.message),
+                onError: toastRefusal,
                 onSettled: () => setDeleting(false),
               })
             }

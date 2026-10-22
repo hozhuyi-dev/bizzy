@@ -1,22 +1,19 @@
 import { useState } from "react";
-import { useForm, useStore } from "@tanstack/react-form";
+import { useSelector } from "@tanstack/react-form";
 import { toPackageFields, toPackageValues } from "../../packages.form";
-import { usePackageSave } from "../../packages-save.hook";
+import { usePackageSave } from "../../package-save.hook";
 import type { PackageView } from "../../packages.types";
-import { fieldErrors } from "~/core/utils/form.util";
+import { moneyError, requiredError, wholeNumberError } from "~/core/utils/form.util";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { saidAbove } from "~/features/remedies/remedies.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
-import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
-import { Checkbox } from "~/components/ui/checkbox";
-import { ClientsQuery } from "~/features/clients/clients.query";
-import { pickableClients } from "~/features/clients/clients.util";
-import { Button } from "~/components/ui/button";
+import { PAYMENT_CHOICES } from "~/features/payments/payments.constant";
+import { ClientSelectField } from "~/features/clients/components/client-select-field/client-select-field.component";
+import { useAppForm } from "~/components/shared/form/form.hook";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 import { DialogFooter } from "~/components/ui/dialog";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { FieldDescription, FieldGroup } from "~/components/ui/field";
 import { formatCents, parseCents } from "~/core/utils/money.util";
 
 interface PackageFormProps {
@@ -36,12 +33,11 @@ interface PackageFormProps {
  * disabled, saying why.
  */
 export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) {
-  const clients = ClientsQuery.useList();
   const save = usePackageSave(pkg, onDone, quiet);
   const [error, setError] = useState<string | null>(null);
   const locked = pkg?.locked ?? {};
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: toPackageValues(pkg, clientId),
     onSubmit: async ({ value }) => {
       setError(null);
@@ -55,9 +51,7 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
     },
   });
 
-  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
-
-  const items = pickableClients(clients.data ?? [], pkg?.clientId ?? clientId);
+  const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
 
   return (
     <form
@@ -67,92 +61,48 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
       }}
     >
       <FieldGroup>
-        <form.Field
-          name="clientId"
-          validators={{ onChange: ({ value }) => (value ? undefined : "Choose a client") }}
-        >
-          {(field) => (
-            <Field data-invalid={field.state.meta.errors.length > 0}>
-              <FieldLabel>Client</FieldLabel>
-              <Select
-                items={items}
-                value={field.state.value}
-                disabled={locked.clientId !== undefined}
-                onValueChange={(value) => field.handleChange(value ?? "")}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a client" />
-                </SelectTrigger>
-                <SelectContent>
-                  {items.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <LockedHint lock={locked.clientId} />
-              <FieldError errors={fieldErrors(field.state.meta.errors)} />
-            </Field>
+        <form.AppField name="clientId" validators={{ onChange: ({ value }) => requiredError(value, "Choose a client") }}>
+          {() => (
+            <ClientSelectField
+              keepId={pkg?.clientId ?? clientId}
+              disabled={locked.clientId !== undefined}
+              hint={<LockedHint lock={locked.clientId} />}
+            />
           )}
-        </form.Field>
+        </form.AppField>
 
         <div className="grid grid-cols-2 gap-4">
-          <form.Field
-            name="hours"
-            validators={{
-              onChange: ({ value }) =>
-                /^\d+$/.test(value.trim()) && Number(value) >= 1 && Number(value) <= 1000
-                  ? undefined
-                  : "1 to 1000",
-            }}
-          >
+          <form.AppField name="hours" validators={{ onChange: ({ value }) => wholeNumberError(value, 1, 1000) }}>
             {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel htmlFor={field.name}>Hours</FieldLabel>
-                <Input
-                  id={field.name}
-                  inputMode="numeric"
-                  value={field.state.value}
-                  disabled={locked.hours !== undefined}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <LockedHint lock={locked.hours} again={saidAbove(locked.hours, locked.clientId)} />
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
+              <field.TextField
+                label="Hours"
+                inputMode="numeric"
+                disabled={locked.hours !== undefined}
+                hint={<LockedHint lock={locked.hours} again={saidAbove(locked.hours, locked.clientId)} />}
+              />
             )}
-          </form.Field>
+          </form.AppField>
 
-          <form.Field
+          <form.AppField
             name="price"
-            validators={{
-              onChange: ({ value }) => (parseCents(value) !== null ? undefined : "Like 850 or 850.50"),
-            }}
+            validators={{ onChange: ({ value }) => moneyError(value, { required: "What does it cost?", positive: true }) }}
           >
             {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel htmlFor={field.name}>Total price</FieldLabel>
-                <Input
-                  id={field.name}
-                  inputMode="decimal"
-                  value={field.state.value}
-                  disabled={locked.priceCents !== undefined}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
-                <LockedHint lock={locked.priceCents} again={saidAbove(locked.priceCents, locked.clientId, locked.hours)} />
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
+              <field.TextField
+                label="Total price"
+                inputMode="decimal"
+                disabled={locked.priceCents !== undefined}
+                hint={<LockedHint lock={locked.priceCents} again={saidAbove(locked.priceCents, locked.clientId, locked.hours)} />}
+              />
             )}
-          </form.Field>
+          </form.AppField>
         </div>
 
         <form.Subscribe selector={(state) => [state.values.hours, state.values.price] as const}>
           {([hours, price]) => {
             const cents = parseCents(price);
             const n = Number(hours);
-            return cents !== null && n >= 1 ? (
+            return cents !== null && Number.isInteger(n) && n >= 1 ? (
               <FieldDescription>
                 {formatCents(Math.round(cents / n))} an hour. Sessions use credits by the half hour.
               </FieldDescription>
@@ -160,107 +110,70 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
           }}
         </form.Subscribe>
 
-        <form.Field name="purchasedOn">
+        <form.AppField name="purchasedOn" validators={{ onChange: ({ value }) => requiredError(value, "Choose the day it was bought") }}>
           {(field) => (
-            <Field>
-              <FieldLabel htmlFor={field.name}>Bought on</FieldLabel>
-              <Input
-                id={field.name}
-                type="date"
-                value={field.state.value}
-                disabled={locked.purchasedAt !== undefined}
-                onChange={(e) => field.handleChange(e.target.value)}
-                className="max-w-44"
-              />
-              <FieldDescription>Credits cover sessions from this day on.</FieldDescription>
-              <LockedHint
-                lock={locked.purchasedAt}
-                again={saidAbove(locked.purchasedAt, locked.clientId, locked.hours, locked.priceCents)}
-              />
-            </Field>
+            <field.TextField
+              label="Bought on"
+              type="date"
+              inputClassName="max-w-44"
+              disabled={locked.purchasedAt !== undefined}
+              description="Credits cover sessions from this day on."
+              hint={
+                <LockedHint
+                  lock={locked.purchasedAt}
+                  again={saidAbove(locked.purchasedAt, locked.clientId, locked.hours, locked.priceCents)}
+                />
+              }
+            />
           )}
-        </form.Field>
+        </form.AppField>
 
-        <form.Field name="note">
-          {(field) => (
-            <Field>
-              <FieldLabel htmlFor={field.name}>Note</FieldLabel>
-              <Input
-                id={field.name}
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-            </Field>
-          )}
-        </form.Field>
+        <form.AppField name="note">{(field) => <field.TextField label="Note" />}</form.AppField>
 
         {pkg?.paid && !pkg.paid.issued && (
-          <form.Field name="updatePayment">
-            {(field) => (
-              <Field orientation="horizontal">
-                <Checkbox id={field.name} checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
-                <FieldLabel htmlFor={field.name}>Update the payment with a new price</FieldLabel>
-              </Field>
-            )}
-          </form.Field>
+          <form.AppField name="updatePayment">
+            {(field) => <field.CheckboxField label="Update the payment with a new price" />}
+          </form.AppField>
         )}
 
         {!pkg?.paid && (
-          <form.Field name="paid">
-            {(paid) => (
-              <Field>
-                <div className="flex items-center gap-2">
-                  <Checkbox id={paid.name} checked={paid.state.value} onCheckedChange={(checked) => paid.handleChange(checked)} />
-                  <FieldLabel htmlFor={paid.name}>Paid on the day it was bought</FieldLabel>
-                </div>
-                {paid.state.value ? (
-                  <form.Field name="paidBy" validators={{ onChange: ({ value }) => (value ? undefined : "Choose how") }}>
-                    {(method) => (
-                      <div role="radiogroup" aria-label="Paid by" className="flex flex-wrap gap-2">
-                        {PAYMENT_METHODS.map((option) => (
-                          <Button
-                            key={option.value}
-                            type="button"
-                            role="radio"
-                            aria-checked={method.state.value === option.value}
-                            variant={method.state.value === option.value ? "default" : "outline"}
-                            size="sm"
-                            title={option.label}
-                            onClick={() => method.handleChange(option.value)}
-                          >
-                            {option.short}
-                          </Button>
-                        ))}
-                      </div>
-                    )}
-                  </form.Field>
-                ) : (
-                  <FieldDescription>Otherwise it goes on your to-do list to collect.</FieldDescription>
-                )}
-              </Field>
-            )}
-          </form.Field>
+          <>
+            <form.AppField name="paid">
+              {(field) => (
+                <field.CheckboxField
+                  label="Paid on the day it was bought"
+                  description={field.state.value ? undefined : "Otherwise it goes on your to-do list to collect."}
+                />
+              )}
+            </form.AppField>
+            <form.Subscribe selector={(state) => state.values.paid}>
+              {(paid) =>
+                paid && (
+                  <form.AppField
+                    name="paidBy"
+                    validators={{
+                      onChangeListenTo: ["paid"],
+                      onChange: ({ value, fieldApi }) =>
+                        fieldApi.form.getFieldValue("paid") && !value ? "Choose how it was paid" : undefined,
+                    }}
+                  >
+                    {(field) => <field.ChoiceField label="Paid by" labelClassName="sr-only" options={PAYMENT_CHOICES} />}
+                  </form.AppField>
+                )
+              }
+            </form.Subscribe>
+          </>
         )}
 
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {error && <ErrorMessage>{error}</ErrorMessage>}
       </FieldGroup>
 
       <DialogFooter className="mt-6">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting, state.values.paid && !state.values.paidBy] as const}
-        >
-          {([canSubmit, isSubmitting, missingMethod]) => (
-            <Button type="submit" disabled={!canSubmit || isSubmitting || missingMethod}>
-              {isSubmitting ? "Saving…" : "Save"}
-            </Button>
-          )}
-        </form.Subscribe>
+        <form.AppForm>
+          <form.SubmitButton label="Save" />
+        </form.AppForm>
       </DialogFooter>
-      <UnsavedChangesPrompt when={hasChanges} />
+      <UnsavedChangesDialog when={hasChanges} />
     </form>
   );
 }

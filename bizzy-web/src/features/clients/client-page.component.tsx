@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useForm, useStore } from "@tanstack/react-form";
+import { useSelector } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -14,7 +14,7 @@ import {
   WalletIcon,
 } from "lucide-react";
 import { clientLink } from "./clients.columns";
-import { feeAmountError, feeStartError, toClientFields, toClientValues } from "./clients.form";
+import { feeStartError, toClientFields, toClientValues } from "./clients.form";
 import { useSaveClient } from "./clients.hook";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
@@ -28,9 +28,10 @@ import { RecordPaymentDialog } from "./components/record-payment-dialog/record-p
 import { CLIENTS_LIST } from "./clients.list";
 import { clientsListLink, clientsListSearch, contactProblem } from "./clients.util";
 import type { ReactNode } from "react";
+import type { ClientFormValues } from "./clients.form";
 import type { ChosenContact, ClientView } from "./clients.types";
-import type { Action } from "~/components/shared/action-bar/action-bar.component";
-import type { PageSection } from "~/components/shared/section-layout/section-layout.component";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
@@ -39,21 +40,27 @@ import { toastRefusal } from "~/features/remedies/components/remedy-buttons/reme
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
-import { Banner } from "~/components/shared/banner/banner.component";
-import { ListPager } from "~/components/shared/list-pager/list-pager.component";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { Loading } from "~/components/shared/quip/quip.component";
-import { SectionLayout } from "~/components/shared/section-layout/section-layout.component";
-import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
+import { Banner } from "~/components/shared/layout/banner/banner.component";
+import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { formatDate, todayISO } from "~/core/utils/date.util";
-import { fieldErrors } from "~/core/utils/form.util";
+import { fieldErrors, moneyError, requiredError } from "~/core/utils/form.util";
+import { useAppForm } from "~/components/shared/form/form.hook";
 import { NO_FILTER } from "~/core/list/filter.util";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 const FORM_ID = "client-form";
+
+/** As the API keeps it: a MyKad is 14 characters with its dashes; passports are shorter. */
+const MAX_ID_NO = 20;
+
+/** The profile, and the Google contact it is linked to. */
+type ClientEditorValues = ClientFormValues & { contact: ChosenContact | null };
 
 /**
  * `settle`: the calendar edit it was opened to settle; once saved, back to
@@ -107,7 +114,7 @@ export function ClientPage(props: ClientPageProps) {
     return (
       <>
         <PageHeader {...header} title="…" />
-        <Loading />
+        <LoadingState />
       </>
     );
   }
@@ -116,9 +123,7 @@ export function ClientPage(props: ClientPageProps) {
     return (
       <>
         <PageHeader {...header} title="Not available" />
-        <p role="alert" className="text-sm text-destructive">
-          {clients.error?.message ?? "This client doesn't exist, or was removed."}
-        </p>
+        <ErrorMessage>{clients.error?.message ?? "This client doesn't exist, or was removed."}</ErrorMessage>
       </>
     );
   }
@@ -141,8 +146,6 @@ interface ClientEditorProps {
 
 function ClientEditor({ client, initialName, settle, header }: ClientEditorProps) {
   const navigate = useNavigate();
-  const [contact, setContact] = useState<ChosenContact | null>(client?.contact ?? null);
-  const [contactRequired, setContactRequired] = useState(false);
   const settled = useSettleReturn(settle);
   const save = useSaveClient(client, (saved, done) => {
     if (settled) settled(done);
@@ -151,23 +154,16 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
     }
   }, { quiet: Boolean(settled) });
 
-  const form = useForm({
-    defaultValues: toClientValues(client, initialName),
+  const defaultValues: ClientEditorValues = { ...toClientValues(client, initialName), contact: client?.contact ?? null };
+  const form = useAppForm({
+    defaultValues,
     onSubmit: async ({ value, formApi }) => {
-      // A new client needs a contact; an existing one may be unlinked.
-      if (!contact && !client) {
-        setContactRequired(true);
-        document.getElementById("contact")?.scrollIntoView({ block: "start" });
-        return;
-      }
-      if (await save.submit(toClientFields(value, client, contact?.resourceName))) formApi.reset(value);
+      if (await save.submit(toClientFields(value, client, value.contact?.resourceName))) formApi.reset(value);
     },
   });
 
-  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
-  const hasChanges =
-    useStore(form.store, (state) => !state.isDefaultValue) ||
-    contact?.resourceName !== client?.contact?.resourceName;
+  const isSubmitting = useSelector(form.store, (state) => state.isSubmitting);
+  const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
   const whatsapp = useWhatsApp();
   const phone = client?.contact?.phone;
   const problem = client && contactProblem(client);
@@ -186,62 +182,41 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
       title: "Profile",
       content: (
         <FieldGroup>
-          <form.Field
-            name="name"
-            validators={{ onChange: ({ value }) => (value.trim() ? undefined : "Name is required") }}
-          >
+          <form.AppField name="name" validators={{ onChange: ({ value }) => requiredError(value, "Name is required") }}>
             {(field) => (
-              <Field data-invalid={field.state.meta.errors.length > 0}>
-                <FieldLabel htmlFor={field.name}>Name</FieldLabel>
-                <Input
-                  id={field.name}
-                  form={FORM_ID}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  autoComplete="off"
-                />
-                <FieldDescription>How you know them here; the contact can be named differently.</FieldDescription>
-                <FieldError errors={fieldErrors(field.state.meta.errors)} />
-              </Field>
+              <field.TextField
+                label="Name"
+                form={FORM_ID}
+                autoComplete="off"
+                description="How you know them here; the contact can be named differently."
+              />
             )}
-          </form.Field>
+          </form.AppField>
 
-          <form.Field name="aliases">
+          <form.AppField name="aliases">
             {(field) => (
-              <Field>
-                <FieldLabel htmlFor={field.name}>Other calendar names</FieldLabel>
-                <Input
-                  id={field.name}
-                  form={FORM_ID}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="Jane S, Janey"
-                  autoComplete="off"
-                />
-                <FieldDescription>Comma-separated. The name above always matches.</FieldDescription>
-              </Field>
+              <field.TextField
+                label="Other calendar names"
+                form={FORM_ID}
+                placeholder="Jane S, Janey"
+                autoComplete="off"
+                description="Comma-separated. The name above always matches."
+              />
             )}
-          </form.Field>
+          </form.AppField>
 
-          <form.Field name="idNo">
+          <form.AppField name="idNo">
             {(field) => (
-              <Field>
-                <FieldLabel htmlFor={field.name}>IC or passport no.</FieldLabel>
-                <Input
-                  id={field.name}
-                  form={FORM_ID}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="900101-14-5678"
-                  autoComplete="off"
-                />
-                <FieldDescription>Printed under their name on invoices and receipts.</FieldDescription>
-              </Field>
+              <field.TextField
+                label="IC or passport no."
+                form={FORM_ID}
+                placeholder="900101-14-5678"
+                maxLength={MAX_ID_NO}
+                autoComplete="off"
+                description="Printed under their name on invoices and receipts."
+              />
             )}
-          </form.Field>
+          </form.AppField>
 
           <form.Field name="fees" mode="array">
             {(feesField) => (
@@ -249,58 +224,43 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
                 <FieldLabel>Hourly fee</FieldLabel>
                 {feesField.state.value.map((_, i) => (
                   <div key={i} className="grid grid-cols-[7rem_minmax(0,1fr)_auto] items-start gap-2">
-                    <form.Field
+                    <form.AppField
                       name={`fees[${i}].amount`}
-                      validators={{
-                        onChange: ({ value }) => feeAmountError(value),
-                        onSubmit: ({ value }) => feeAmountError(value),
-                      }}
+                      validators={{ onChange: ({ value }) => moneyError(value, { required: "What do they pay an hour?" }) }}
                     >
                       {(field) => (
-                        <Field data-invalid={field.state.meta.errors.length > 0}>
-                          <Input
-                            aria-label="Amount"
-                            form={FORM_ID}
-                            value={field.state.value}
-                            onBlur={field.handleBlur}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                            inputMode="decimal"
-                            placeholder="95"
-                          />
-                          <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                        </Field>
+                        <field.TextField
+                          label="Amount"
+                          labelClassName="sr-only"
+                          form={FORM_ID}
+                          inputMode="decimal"
+                          placeholder="95"
+                        />
                       )}
-                    </form.Field>
+                    </form.AppField>
                     {i === 0 ? (
                       <span className="flex h-8 items-center text-sm text-muted-foreground">
                         {feesField.state.value.length > 1 ? "Until the next one" : "For every session"}
                       </span>
                     ) : (
-                      <form.Field
+                      <form.AppField
                         name={`fees[${i}].from`}
                         validators={{
+                          onChangeListenTo: ["fees"],
                           onChange: ({ value }) => feeStartError(form.getFieldValue("fees"), i, value),
-                          onSubmit: ({ value }) => feeStartError(form.getFieldValue("fees"), i, value),
                         }}
                       >
                         {(field) => (
-                          <Field data-invalid={field.state.meta.errors.length > 0}>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">from</span>
-                              <Input
-                                aria-label="Starts on"
-                                type="date"
-                                form={FORM_ID}
-                                className="max-w-44"
-                                value={field.state.value}
-                                onBlur={field.handleBlur}
-                                onChange={(e) => field.handleChange(e.target.value)}
-                              />
-                            </div>
-                            <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                          </Field>
+                          <field.TextField
+                            label="Starts on"
+                            labelClassName="sr-only"
+                            prefix="from"
+                            type="date"
+                            form={FORM_ID}
+                            inputClassName="max-w-44"
+                          />
                         )}
-                      </form.Field>
+                      </form.AppField>
                     )}
                     <Button
                       type="button"
@@ -332,17 +292,9 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
             )}
           </form.Field>
 
-          <form.Field name="homeVisits">
-            {(field) => (
-              <Field orientation="horizontal">
-                <Checkbox id={field.name} checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
-                <FieldContent>
-                  <FieldLabel htmlFor={field.name}>Usually a home visit</FieldLabel>
-                  <FieldDescription>(V) or (H) in a calendar title still wins.</FieldDescription>
-                </FieldContent>
-              </Field>
-            )}
-          </form.Field>
+          <form.AppField name="homeVisits">
+            {(field) => <field.CheckboxField label="Usually a home visit" description="(V) or (H) in a calendar title still wins." />}
+          </form.AppField>
         </FieldGroup>
       ),
     },
@@ -351,23 +303,31 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
       title: "Google contact",
       description: "Where their phone, email and address live.",
       content: (
-        <Field data-invalid={contactRequired && !contact}>
-          <ClientContact
-            contact={contact}
-            linked={client?.contact}
-            searchFor={form.getFieldValue("name") || initialName || ""}
-            clientName={client?.name}
-            onChange={(next) => {
-              setContact(next);
-              setContactRequired(false);
-              // A new client takes the contact's name unless she typed one.
-              if (next?.displayName && !form.getFieldValue("name").trim()) {
-                form.setFieldValue("name", next.displayName);
-              }
-            }}
-          />
-          {contactRequired && !contact && <FieldError errors={[{ message: "Choose a contact, or create one" }]} />}
-        </Field>
+        <form.Field
+          name="contact"
+          // A new client needs a contact; an existing one may be unlinked.
+          validators={{ onSubmit: ({ value }) => (!value && !client ? "Choose a contact, or create one" : undefined) }}
+        >
+          {(field) => (
+            <Field data-invalid={field.state.meta.errors.length > 0}>
+              <ClientContact
+                contact={field.state.value}
+                linked={client?.contact}
+                searchFor={form.getFieldValue("name") || initialName || ""}
+                clientName={client?.name}
+                onChange={(next) => {
+                  // The contact it had, picked again, is no change.
+                  field.handleChange(next && next.resourceName === client?.contact?.resourceName ? client.contact : next);
+                  // A new client takes the contact's name unless one was typed.
+                  if (next?.displayName && !form.getFieldValue("name").trim()) {
+                    form.setFieldValue("name", next.displayName);
+                  }
+                }}
+              />
+              <FieldError errors={fieldErrors(field.state.meta.errors)} />
+            </Field>
+          )}
+        </form.Field>
       ),
     },
   ];
@@ -447,13 +407,14 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
       <form
         id={FORM_ID}
         hidden
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
       />
-      <SectionLayout sections={sections} />
-      <UnsavedChangesPrompt when={hasChanges} />
+      <PageSections sections={sections} />
+      <UnsavedChangesDialog when={hasChanges} />
       {client && (
         <>
           <NewSessionDialog open={booking} clientId={client.id} onClose={() => setBooking(false)} />

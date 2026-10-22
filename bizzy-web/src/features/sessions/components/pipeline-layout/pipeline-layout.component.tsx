@@ -40,9 +40,6 @@ const STATE_LABELS: Record<StepState, string> = {
   none: "Not needed",
 };
 
-// The phone's timeline (h-13) sticks under the headers, plus air.
-const PHONE_GAP = 52 + 16;
-
 /**
  * A session's page: a rail of its steps, each with where it stands, its
  * dates and a summary, beside the steps' forms. The rail is the only place
@@ -51,21 +48,19 @@ const PHONE_GAP = 52 + 16;
  * the header (dots joined by a line, titles below), and the summaries go,
  * the forms below saying the same.
  *
- * Kept apart from SectionLayout (whose contents list is plain links) so the
+ * Kept apart from PageSections (whose contents list is plain links) so the
  * two can grow on their own; they share only the scroll measuring.
  */
 export function PipelineLayout({ steps }: PipelineLayoutProps) {
-  const [active, jumpTo] = useActiveSection(
-    steps.map((step) => step.id),
-    PHONE_GAP,
-  );
+  const [active, jumpTo] = useActiveSection(steps.map((step) => step.id));
 
+  // The phone's timeline is taller than PageSections's links: what sticks
+  // and scrolls below it reads --contents-height.
   return (
-    <div className="flex flex-col gap-4 md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-10">
+    <div className="flex flex-col gap-4 [--contents-height:3.25rem] md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-10">
       <Rail steps={steps} active={active} onJump={jumpTo} />
-      {/* The last step is at least a screen tall, less the sticky bars and the
-          main's pb-6, so its heading reaches the top like the others. */}
-      <div className="flex min-w-0 flex-col gap-10 *:last:min-h-[calc(100dvh-var(--sticky-top)-5.75rem)] md:*:last:min-h-[calc(100dvh-var(--sticky-top)-2.5rem)]">
+      {/* The last step is at least a screen tall, so its heading reaches the top like the others. */}
+      <div className="flex min-w-0 flex-col gap-10 fill-last-section">
         {steps.map((step) => (
           <StepSection key={step.id} step={step} />
         ))}
@@ -104,9 +99,9 @@ function Rail({ steps, active, onJump }: RailProps) {
       aria-label="Steps"
       className={cn(
         // Phones: a sticky timeline, sideways-scrolling once it doesn't fit.
-        "sticky top-(--sticky-top) z-10 -mx-4 -mt-4 flex h-13 overflow-x-auto border-b bg-background px-1 scrollbar-none",
+        "sticky top-(--sticky-top) z-(--z-sticky) -mx-(--page-gutter) -mt-(--section-gap) flex h-(--contents-height) overflow-x-auto border-b bg-background px-1 scrollbar-none",
         // Wider: a sticky column of steps with their details.
-        "md:top-[calc(var(--sticky-top)+1rem)] md:mx-0 md:mt-0 md:h-auto md:flex-col md:overflow-visible md:border-b-0 md:bg-transparent md:px-0",
+        "md:top-[calc(var(--sticky-top)+var(--section-gap))] md:mx-0 md:mt-0 md:h-auto md:flex-col md:overflow-visible md:border-b-0 md:bg-transparent md:px-0",
       )}
     >
       {steps.map((step, i) => {
@@ -153,7 +148,7 @@ function Rail({ steps, active, onJump }: RailProps) {
               {count !== undefined && (
                 <span
                   aria-hidden="true"
-                  className="absolute -top-1.5 -right-3 h-3.5 min-w-3.5 rounded-full bg-muted px-1 text-center text-[0.625rem] leading-3.5 font-medium text-foreground tabular-nums md:hidden"
+                  className="absolute -top-1.5 -right-3 h-3.5 min-w-3.5 rounded-full bg-muted px-1 text-center text-2xs leading-3.5 font-medium text-foreground tabular-nums md:hidden"
                 >
                   {count}
                 </span>
@@ -197,9 +192,9 @@ function StepSection({ step }: { step: PipelineStep }) {
     <section
       id={id}
       aria-labelledby={`${id}-title`}
-      className="flex scroll-mt-[calc(var(--sticky-top)+4.25rem)] flex-col gap-3 md:scroll-mt-[calc(var(--sticky-top)+1rem)]"
+      className="scroll-below-headers flex flex-col gap-3"
     >
-      <h2 id={`${id}-title`} className="flex h-6 min-w-0 items-center gap-2 text-base font-semibold">
+      <h2 id={`${id}-title`} className="flex h-6 min-w-0 items-center gap-2 type-section-title">
         <StepIcon state={step.state} className="md:hidden" />
         <span className="truncate">{title}</span>
       </h2>

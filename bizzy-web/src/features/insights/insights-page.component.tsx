@@ -14,9 +14,9 @@ import type { ChartConfig } from "~/components/ui/chart";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { PackagesQuery } from "~/features/packages/packages.query";
-import { PageHeader } from "~/components/shared/page-header/page-header.component";
-import { Loading } from "~/components/shared/quip/quip.component";
-import { useQuip } from "~/components/shared/quip/quip.hook";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { useQuip } from "~/components/shared/feedback/quip/quip.hook";
 import { Card, CardContent } from "~/components/ui/card";
 import {
   ChartContainer,
@@ -30,6 +30,7 @@ import { addMonths, formatHours, formatMonth, monthKey } from "~/core/utils/date
 import { formatCents } from "~/core/utils/money.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 // Bars: 4px rounded data end, anchored to the baseline.
 const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
@@ -72,11 +73,9 @@ export function InsightsPage({ basis, onBasisChange }: InsightsPageProps) {
       />
 
       {queryMatch(activity, {
-        pending: () => <Loading />,
+        pending: () => <LoadingState />,
         error: (error) => (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
+          <ErrorMessage>{error.message}</ErrorMessage>
         ),
         success: (data) => (
           <Insights

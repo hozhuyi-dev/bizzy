@@ -166,15 +166,83 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* A size under xs, for a count on a phone's step dot. */
+@theme {
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
+}
+
 /*
- * The sticky nav's height (h-12): everything that sticks below it reads this.
- * --banners-height is set by PageHeader while its banners show; --sticky-top
- * is where content sticks, under the nav, the page header (h-14) and banners.
+ * Type roles: what a title is, not how big. Change a role here and every
+ * page follows. Named type-*, not text-*, so class merging (cn) never takes
+ * one for a text colour.
+ */
+@utility type-page-title {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  line-height: var(--text-lg--line-height);
+  font-weight: var(--font-weight-semibold);
+}
+
+@utility type-section-title {
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+  font-weight: var(--font-weight-semibold);
+}
+
+/*
+ * The page's frame, in rem so the whole app scales with the root font size.
+ * The scroll measuring (core/scroll-spy) reads these too, so nothing repeats
+ * them in JS. --banners-height is set by PageHeader while its banners show;
+ * --sticky-top is where content sticks: under the nav, the page header and
+ * its banners.
  */
 :root {
   --nav-height: 3rem;
+  --page-header-height: 3.5rem;
+  /* A phone's sticky row of section links (PageSections); a layout with a
+     taller row sets its own. */
+  --contents-height: 2.75rem;
+  /* Air under the page header, and above a section heading jumped to. */
+  --section-gap: 1rem;
+  /* Room under the last thing on a page. */
+  --page-bottom: 1.5rem;
+  --page-gutter: 1rem;
+  --content-width: 80rem;
+  /* A table row: a line and a quieter one under it. */
+  --row-height: 3.5rem;
+  /* The least a button is on a phone, to tap with a thumb. */
+  --touch-target: 2.5rem;
   --banners-height: 0px;
-  --sticky-top: calc(var(--nav-height) + 3.5rem + var(--banners-height));
+  --sticky-top: calc(var(--nav-height) + var(--page-header-height) + var(--banners-height));
+
+  /* The page's layers, bottom to top. */
+  --z-sticky: 10;
+  --z-header: 20;
+  --z-nav: 30;
+  --z-popover: 40;
+}
+
+/* A section heading jumped to lands just under what sticks above it. */
+@utility scroll-below-headers {
+  scroll-margin-top: calc(var(--sticky-top) + var(--contents-height) + var(--section-gap));
+  @variant md {
+    scroll-margin-top: calc(var(--sticky-top) + var(--section-gap));
+  }
+}
+
+/* The last section is at least a screen tall, less what sticks above it,
+   so jumping to it brings its heading to the top like the others. */
+@utility fill-last-section {
+  & > :last-child {
+    min-height: calc(100dvh - var(--sticky-top) - var(--contents-height) - var(--section-gap) - var(--page-bottom));
+  }
+  @variant md {
+    & > :last-child {
+      min-height: calc(100dvh - var(--sticky-top) - var(--section-gap) - var(--page-bottom));
+    }
+  }
 }
 
 @layer base {

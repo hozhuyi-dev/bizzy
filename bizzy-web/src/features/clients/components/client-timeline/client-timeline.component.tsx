@@ -8,15 +8,17 @@ import { TimelineQuery } from "~/features/timeline/timeline.query";
 import { TIMELINE_FACETS, entryKey } from "~/features/timeline/timeline.util";
 import { TimelineEntryItem } from "~/features/timeline/components/timeline-entry/timeline-entry.component";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
-import { FilterBar } from "~/components/shared/filter-bar/filter-bar.component";
-import { LoadMore } from "~/components/shared/load-more/load-more.component";
-import { EmptyState, Loading } from "~/components/shared/quip/quip.component";
-import { Timeline, TimelineGroup, TimelineNow } from "~/components/shared/timeline/timeline.component";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
+import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { Timeline, TimelineGroup, TimelineNow } from "~/components/shared/list/timeline/timeline.component";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { NO_FILTER, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { formatMonth, monthKey } from "~/core/utils/date.util";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 /** How many of what is coming show before the rest are asked for: the nearest. */
 const UPCOMING_SHOWN = 3;
@@ -39,12 +41,10 @@ export function ClientTimeline({ client }: { client: ClientView }) {
   const onEditFollowUp = (f: FollowUpView) => setFollowUp({ mode: "edit", followUp: f });
 
   let body;
-  if (pages.isPending) body = <Loading />;
+  if (pages.isPending) body = <LoadingState />;
   else if (pages.error) {
     body = (
-      <p role="alert" className="text-sm text-destructive">
-        {pages.error.message}
-      </p>
+      <ErrorMessage>{pages.error.message}</ErrorMessage>
     );
   } else if (upcoming.length === 0 && past.length === 0 && !pages.hasNextPage) {
     body = isNarrowed(filter) ? (

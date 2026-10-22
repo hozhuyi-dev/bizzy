@@ -1,20 +1,20 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
-import { toast } from "sonner";
 import { ContactsMutation } from "../../contacts.mutation";
 import { ContactsQuery } from "../../contacts.query";
 import { searchContacts } from "../../contacts.util";
 import { ContactDetailsForm } from "../contact-details-form/contact-details-form.component";
 import type { ContactDetails, ContactView } from "../../contacts.types";
-import { useQuip } from "~/components/shared/quip/quip.hook";
-import { SheetDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
+import { useQuip } from "~/components/shared/feedback/quip/quip.hook";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { isApiError } from "~/core/utils/api-error.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
+import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 const SHOWN = 6;
 
@@ -71,14 +71,14 @@ function Matches({ query, onQueryChange, matches, onPick, onCreate }: MatchesPro
   if (contacts.error) {
     const disconnected = isApiError(contacts.error, "disconnected");
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <ErrorMessage>
         {contacts.error.message}{" "}
         {disconnected && (
           <Link to="/settings" className="underline underline-offset-4">
             Open Settings
           </Link>
         )}
-      </p>
+      </ErrorMessage>
     );
   }
 

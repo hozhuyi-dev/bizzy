@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { ConflictsMutation } from "../../conflicts.mutation";
 import type { ConflictView } from "../../conflicts.types";
 import { RemedyButtons } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { toastWithQuip } from "~/components/shared/quip/quip-toast";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 /**
