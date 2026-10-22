@@ -13,9 +13,10 @@ import (
 )
 
 // TestContract runs the table contract against a real table, when
-// TABLE_NAME names one (e.g. the development stack's, with AWS credentials
-// set). Each test writes under its own TEST<random># partitions, which are
-// left behind; Settings → Reset clears them.
+// TABLE_NAME names one (with AWS credentials set). Never a stack's: the
+// wipe test wipes the whole table. Use a scratch table with the stack's
+// keys and five LSIs, deleted after. Each test writes under its own
+// TEST<random># partitions.
 func TestContract(t *testing.T) {
 	if os.Getenv("TABLE_NAME") == "" {
 		t.Skip("set TABLE_NAME to run against DynamoDB")

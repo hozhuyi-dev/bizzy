@@ -49,6 +49,9 @@ type Deps struct {
 	// Resettable serves data.reset (see features/reset): development and
 	// staging only.
 	Resettable bool
+	// Parallel is how many calls to the calendar the sync makes at once
+	// (googlesync.Sync.Parallel); 0, one at a time, as the tests do.
+	Parallel int
 	// Location is the user's time zone.
 	Location *time.Location
 	Now      func() time.Time
@@ -96,10 +99,11 @@ func New(d Deps) *App {
 	if d.Contacts == nil && d.Google != nil {
 		d.Contacts = contacts.NewGoogle(d.Google.Client)
 	}
-	sync := &googlesync.Sync{Runner: run, Calendar: d.Calendar, Contacts: d.Contacts}
+	sync := &googlesync.Sync{Runner: run, Calendar: d.Calendar, Contacts: d.Contacts, Parallel: d.Parallel}
 	run.After = sync.AfterCommit
 
 	r := router.New()
+	r.Scope = txn.Scoped
 	clients.Routes(r, run, contacts.Link(d.Contacts, d.Now),
 		clients.Owner{What: "sessions", Has: sessions.Sessions.HasClient},
 		clients.Owner{What: "packages", Has: packages.Packages.HasClient},
@@ -122,6 +126,8 @@ func New(d Deps) *App {
 	activity.Routes(r, run)
 	timeline.Routes(r, run)
 	googlesync.Routes(r, sync)
+	statusRoutes(r, run, d.Google)
+	pageRoutes(r, run)
 	if d.Google != nil {
 		googleconnect.Routes(r, run, d.Google)
 	}

@@ -1,6 +1,6 @@
 // Package dynamo is the bizzy table in DynamoDB: the production Table (see
 // platform/table for the layout). Every read is consistent, and a commit is
-// one transaction.
+// one transaction, conditional on the versions item.
 package dynamo
 
 import (
@@ -9,8 +9,12 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/ratelimit"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -29,17 +33,32 @@ func New(ctx context.Context) (*Table, error) {
 	if name == "" {
 		return nil, errors.New("TABLE_NAME is not set")
 	}
-	cfg, err := config.LoadDefaultConfig(ctx)
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRetryer(Retryer))
 	if err != nil {
 		return nil, err
 	}
 	return &Table{Client: dynamodb.NewFromConfig(cfg), Name: name}, nil
 }
 
-// The attributes an item is stored as.
+// Retryer rides out the small table's throttling: more attempts than the
+// SDK's 3, backing off up to a few seconds, and no client-side retry quota,
+// which a burst of throttled reads otherwise empties for every request
+// after it.
+func Retryer() aws.Retryer {
+	return retry.NewStandard(func(o *retry.StandardOptions) {
+		o.MaxAttempts = 8
+		o.MaxBackoff = 4 * time.Second
+		o.RateLimiter = ratelimit.None
+	})
+}
+
+// The attributes an item is stored as. The versions item also counts every
+// commit (attrCounter), which marks it as the versions item (see Wipe), and
+// keeps each partition's version as attrVersion + the partition.
 const (
 	attrData    = "data"
 	attrCounter = "n"
+	attrVersion = "v_"
 )
 
 var indexes = []table.Index{table.ByTime, table.ByClient, table.ByOpen, table.ByTag, table.ByRef}
@@ -144,35 +163,72 @@ func (t *Table) Scan(ctx context.Context) ([]table.Item, error) {
 	return out, nil
 }
 
-func (t *Table) Counter(ctx context.Context, key table.Key) (int64, error) {
+func (t *Table) Versions(ctx context.Context, key table.Key) (table.Versions, error) {
 	out, err := t.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(t.Name), Key: keyOf(key), ConsistentRead: aws.Bool(true),
 	})
-	if err != nil || out.Item == nil {
-		return 0, err
+	if err != nil {
+		return nil, err
 	}
-	n, ok := out.Item[attrCounter].(*types.AttributeValueMemberN)
-	if !ok {
-		return 0, fmt.Errorf("dynamo: counter %v has no %s", key, attrCounter)
+	v := table.Versions{}
+	for name, av := range out.Item {
+		pk, ok := strings.CutPrefix(name, attrVersion)
+		n, isN := av.(*types.AttributeValueMemberN)
+		if !ok || !isN {
+			continue
+		}
+		if v[pk], err = strconv.ParseInt(n.Value, 10, 64); err != nil {
+			return nil, fmt.Errorf("dynamo: version of %s: %w", pk, err)
+		}
 	}
-	return strconv.ParseInt(n.Value, 10, 64)
+	return v, nil
 }
 
-func (t *Table) Commit(ctx context.Context, counter table.Key, from int64, writes []table.Write) error {
+// commitAttempts bounds the retries of a commit DynamoDB throttled; the
+// waits between them double from commitBackoff.
+const (
+	commitAttempts = 6
+	commitBackoff  = 100 * time.Millisecond
+)
+
+func (t *Table) Commit(ctx context.Context, key table.Key, read table.Versions, writes []table.Write) (table.Versions, error) {
 	if len(writes) > table.MaxWrites {
-		return table.ErrTooBig
+		return nil, table.ErrTooBig
+	}
+	next, err := table.Moved(read, writes)
+	if err != nil {
+		return nil, err
+	}
+	// One name per partition, for its condition and its new version alike.
+	names := map[string]string{"#n": attrCounter}
+	values := map[string]types.AttributeValue{":one": n(1)}
+	var conds, sets []string
+	i := 0
+	for pk, v := range read {
+		name := fmt.Sprintf("#v%d", i)
+		names[name] = attrVersion + pk
+		if v == 0 {
+			conds = append(conds, "attribute_not_exists("+name+")")
+		} else {
+			conds = append(conds, fmt.Sprintf("%s = :e%d", name, i))
+			values[fmt.Sprintf(":e%d", i)] = n(v)
+		}
+		if nv, ok := next[pk]; ok {
+			sets = append(sets, fmt.Sprintf("%s = :n%d", name, i))
+			values[fmt.Sprintf(":n%d", i)] = n(nv)
+		}
+		i++
+	}
+	update := "ADD #n :one"
+	if len(sets) > 0 {
+		update = "SET " + strings.Join(sets, ", ") + " " + update
 	}
 	bump := &types.Update{
-		TableName: aws.String(t.Name), Key: keyOf(counter),
-		UpdateExpression:          aws.String("SET #n = :next"),
-		ExpressionAttributeNames:  map[string]string{"#n": attrCounter},
-		ExpressionAttributeValues: map[string]types.AttributeValue{":next": n(from + 1)},
+		TableName: aws.String(t.Name), Key: keyOf(key),
+		UpdateExpression: aws.String(update), ExpressionAttributeNames: names, ExpressionAttributeValues: values,
 	}
-	if from == 0 {
-		bump.ConditionExpression = aws.String("attribute_not_exists(#n)")
-	} else {
-		bump.ConditionExpression = aws.String("#n = :from")
-		bump.ExpressionAttributeValues[":from"] = n(from)
+	if len(conds) > 0 {
+		bump.ConditionExpression = aws.String(strings.Join(conds, " AND "))
 	}
 	items := []types.TransactWriteItem{{Update: bump}}
 	for _, w := range writes {
@@ -183,16 +239,38 @@ func (t *Table) Commit(ctx context.Context, counter table.Key, from int64, write
 			items = append(items, types.TransactWriteItem{Delete: &types.Delete{TableName: aws.String(t.Name), Key: keyOf(*w.Delete)}})
 		}
 	}
-	_, err := t.Client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
-	var canceled *types.TransactionCanceledException
-	if errors.As(err, &canceled) {
-		for _, r := range canceled.CancellationReasons {
-			if code := aws.ToString(r.Code); code == "ConditionalCheckFailed" || code == "TransactionConflict" {
-				return table.ErrConflict
+	for attempt := 0; ; attempt++ {
+		_, err := t.Client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+		switch reason := cancelled(err); {
+		case err == nil:
+			return next, nil
+		case reason == "ConditionalCheckFailed" || reason == "TransactionConflict":
+			return nil, table.ErrConflict
+		case reason == "ThrottlingError" && attempt+1 < commitAttempts:
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(commitBackoff << attempt):
 			}
+		default:
+			return nil, err
 		}
 	}
-	return err
+}
+
+// cancelled is why DynamoDB cancelled a transaction, if it did: the first
+// reason given that isn't "None".
+func cancelled(err error) string {
+	var canceled *types.TransactionCanceledException
+	if !errors.As(err, &canceled) {
+		return ""
+	}
+	for _, r := range canceled.CancellationReasons {
+		if code := aws.ToString(r.Code); code != "" && code != "None" {
+			return code
+		}
+	}
+	return ""
 }
 
 func attributesOf(it table.Item) map[string]types.AttributeValue {

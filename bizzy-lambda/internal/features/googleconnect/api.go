@@ -28,6 +28,35 @@ func viewOf(c *Connection) View {
 	return View{Email: c.Email, CalendarID: c.CalendarID, CalendarName: c.CalendarName, ConnectedAt: c.ConnectedAt}
 }
 
+// Current is the connection; nil before the user connects.
+func Current(tx *txn.Tx) (*Connection, error) {
+	c, _, err := Connections.Find(tx, connectionID)
+	return c, err
+}
+
+// StatusOf is a connection as the app shows it, with why Google no longer
+// accepts it, if it doesn't; nil before the user connects. A nil auth
+// (tests) doesn't ask Google.
+func StatusOf(ctx context.Context, conn *Connection, auth Auth) *View {
+	if conn == nil {
+		return nil
+	}
+	status := viewOf(conn)
+	if auth == nil {
+		return &status
+	}
+	if err := auth.Check(ctx); err != nil {
+		var shown *apperr.Error
+		if errors.As(err, &shown) {
+			status.Problem = shown.Message
+		} else {
+			slog.WarnContext(ctx, "google check failed", "error", err)
+			status.Problem = "Couldn't reach Google just now."
+		}
+	}
+	return &status
+}
+
 type connectRequest struct {
 	Code string `json:"code"`
 	// RedirectURI is where the browser told Google to send the user back;
@@ -51,28 +80,6 @@ func Routes(r *router.Router, run *txn.Runner, auth Auth) {
 		}
 		return calendar.Calendars(ctx, client)
 	}
-
-	// google.status is null before the user connects.
-	r.Query("google.status", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
-		conn, err := txn.Read(ctx, run, func(tx *txn.Tx) (*Connection, error) {
-			c, _, err := Connections.Find(tx, connectionID)
-			return c, err
-		})
-		if err != nil || conn == nil {
-			return nil, err
-		}
-		status := viewOf(conn)
-		if err := auth.Check(ctx); err != nil {
-			var shown *apperr.Error
-			if errors.As(err, &shown) {
-				status.Problem = shown.Message
-			} else {
-				slog.WarnContext(ctx, "google check failed", "error", err)
-				status.Problem = "Couldn't reach Google just now."
-			}
-		}
-		return status, nil
-	}))
 
 	r.Mutation("google.connect", router.Typed(func(ctx context.Context, in connectRequest) (any, error) {
 		if in.Code == "" || in.RedirectURI == "" {

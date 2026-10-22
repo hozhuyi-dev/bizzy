@@ -173,11 +173,12 @@ func TestARefusalAfterAnotherCommitRerunsTheAction(t *testing.T) {
 	runs := 0
 	_, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
 		runs++
+		_, err := notes.All(tx)
 		if runs == 1 {
 			// What it read may be half of what was committed meanwhile.
-			return nil, errors.Join(theirs(ctx, r, "theirs"), apperr.Refused("no"))
+			return nil, errors.Join(err, theirs(ctx, r, "theirs"), apperr.Refused("no"))
 		}
-		return nil, nil
+		return nil, err
 	})
 	if err != nil || runs != 2 {
 		t.Errorf("runs = %d, err %v; want a rerun that isn't refused", runs, err)
@@ -217,11 +218,108 @@ func TestReadsKeptBusyGiveUp(t *testing.T) {
 	runs := 0
 	_, err := txn.Read(ctx, r, func(tx *txn.Tx) (any, error) {
 		runs++
-		return nil, theirs(ctx, r, fmt.Sprintf("theirs%d", runs))
+		_, err := notes.All(tx)
+		return nil, errors.Join(err, theirs(ctx, r, fmt.Sprintf("theirs%d", runs)))
 	})
 	var shown *apperr.Error
 	if !errors.As(err, &shown) || shown.Code != apperr.CodeConflict || runs != 5 {
 		t.Errorf("runs = %d, err %v; want a conflict after 5", runs, err)
+	}
+}
+
+// others are notes of another kind, in a partition of their own.
+var others = txn.Kind[note]{
+	Name: "OTHER", Gone: "gone",
+	Meta: func(n *note) txn.Meta { return txn.Meta{ID: n.ID, Time: n.At} },
+}
+
+func TestACommitElsewhereDoesntRerunTheAction(t *testing.T) {
+	r, _ := newRunner()
+	ctx := context.Background()
+	runs := 0
+	_, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+		runs++
+		if _, err := notes.All(tx); err != nil {
+			return nil, err
+		}
+		if runs == 1 {
+			// Of a partition this run neither read nor writes.
+			if _, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+				return nil, others.Add(tx, &note{ID: "o", At: day})
+			}); err != nil {
+				return nil, err
+			}
+		}
+		return nil, notes.Add(tx, &note{ID: "mine", At: day})
+	})
+	if err != nil || runs != 1 {
+		t.Errorf("runs = %d, err %v; want one run: nothing it read moved", runs, err)
+	}
+}
+
+// counting is a table that counts the reads that reach it.
+type counting struct {
+	table.Table
+	reads int
+}
+
+func (c *counting) Get(ctx context.Context, key table.Key) (table.Item, bool, error) {
+	c.reads++
+	return c.Table.Get(ctx, key)
+}
+
+func (c *counting) Query(ctx context.Context, q table.Query) ([]table.Item, error) {
+	c.reads++
+	return c.Table.Query(ctx, q)
+}
+
+func TestKeptReadsFollowCommits(t *testing.T) {
+	r, mem := newRunner()
+	tb := &counting{Table: mem}
+	r.Table = tb
+	ctx := context.Background()
+	if err := theirs(ctx, r, "a"); err != nil {
+		t.Fatal(err)
+	}
+	pinned := func() []string {
+		got, err := txn.Read(ctx, r, func(tx *txn.Tx) ([]*note, error) { return notes.Open(tx) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ids(got)
+	}
+	if got := pinned(); len(got) != 0 {
+		t.Fatalf("pinned = %v, want none", got)
+	}
+	// Kept: a second read of the same reads nothing but the versions.
+	before := tb.reads
+	if got := pinned(); len(got) != 0 || tb.reads != before {
+		t.Fatalf("pinned = %v, read the table %d times; want none", got, tb.reads-before)
+	}
+	// A commit through the Runner moves what it kept on with it.
+	if _, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+		n, err := notes.Get(tx, "a")
+		if err == nil {
+			n.Pinned = true
+		}
+		return nil, err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before = tb.reads
+	if got := pinned(); !slices.Equal(got, []string{"a"}) || tb.reads != before {
+		t.Fatalf("after pinning: %v, read the table %d times; want a, from memory", got, tb.reads-before)
+	}
+	// One by another Runner on the same table (another Lambda) is seen.
+	fresh, _ := newRunner()
+	fresh.Table = mem
+	if _, err := txn.Run(ctx, fresh, func(tx *txn.Tx) (any, error) {
+		return nil, notes.Add(tx, &note{ID: "b", At: day.Add(time.Hour), Pinned: true})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := pinned(); !slices.Equal(got, []string{"a", "b"}) {
+		t.Fatalf("after another Runner's commit: %v, want a b", got)
 	}
 }
 

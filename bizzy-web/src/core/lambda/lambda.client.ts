@@ -53,8 +53,45 @@ async function send(functionName: string, payload: unknown): Promise<string> {
   return result.Payload ? decoder.decode(result.Payload) : "";
 }
 
+type QueryKey = ReadonlyArray<unknown>;
+
+/**
+ * Told the kinds of item each call changed (see onChanged), and the
+ * queries kept as they are meanwhile (see keeping).
+ */
+export type ChangeListener = (changed: ReadonlyArray<string>, keep: ReadonlyArray<QueryKey>) => void;
+
+let listener: ChangeListener = () => undefined;
+
+/** Hears what every call changed, to read again only what shows it; one listener at a time. */
+export function onChanged(next: ChangeListener): void {
+  listener = next;
+}
+
+const kept = new Map<string, { key: QueryKey; calls: number }>();
+
+/**
+ * Keeps a query as it is while `call` runs, rather than read it again for
+ * what any call changes meanwhile: a page whose forms would restart, which
+ * the call's own result updates instead. No key keeps nothing.
+ */
+export async function keeping<T>(queryKey: QueryKey | undefined, call: () => Promise<T>): Promise<T> {
+  if (!queryKey) return call();
+  const id = JSON.stringify(queryKey);
+  const entry = kept.get(id) ?? { key: queryKey, calls: 0 };
+  entry.calls++;
+  kept.set(id, entry);
+  try {
+    return await call();
+  } finally {
+    if (--entry.calls === 0) kept.delete(id);
+  }
+}
+
 function unwrap<T>(text: string): T {
   const body = JSON.parse(text) as ApiResponse<T>;
+  // Before any error: a call refused halfway may have changed something.
+  if (body.changed?.length) listener(body.changed, [...kept.values()].map(({ key }) => key));
   if (body.error) {
     throw new ApiError(body.error.code, body.error.message, body.error.remedies);
   }

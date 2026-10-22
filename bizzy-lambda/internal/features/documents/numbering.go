@@ -38,8 +38,9 @@ type Counter struct {
 
 var Counters = txn.Kind[Counter]{
 	Name: "DOCNUMBER", Gone: "No number was taken yet.",
-	Doc:  txn.Doc{What: "The last number taken in a sequence: <type>#<year>."},
-	Meta: func(c *Counter) txn.Meta { return txn.Meta{ID: c.Key} },
+	Doc:   txn.Doc{What: "The last number taken in a sequence: <type>#<year>."},
+	Meta:  func(c *Counter) txn.Meta { return txn.Meta{ID: c.Key} },
+	Whole: true,
 }
 
 // nextNumber takes the next number of a type, issued now.

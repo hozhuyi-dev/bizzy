@@ -1,40 +1,19 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { PackagesService } from "./packages.service";
 import type { PackageFields } from "./packages.types";
-import { invalidateBilling } from "~/core/utils/query.util";
 
-// A refusal says why and offers its remedies (see remedies).
+// A refusal says why and offers its remedies (see remedies); what each
+// changes is read again as the API says (refreshChanged).
 export const PackagesMutation = {
-  useCreate: () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-      mutationFn: (fields: PackageFields) => PackagesService.create(fields),
-      onSuccess: () => invalidateBilling(queryClient),
-    });
-  },
+  useCreate: () => useMutation({ mutationFn: (fields: PackageFields) => PackagesService.create(fields) }),
 
   /** A patch: only what is set changes. */
-  useUpdate: () => {
-    const queryClient = useQueryClient();
-    return useMutation({
+  useUpdate: () =>
+    useMutation({
       mutationFn: ({ id, fields }: { id: string; fields: PackageFields }) => PackagesService.update(id, fields),
-      onSuccess: () => invalidateBilling(queryClient),
-    });
-  },
+    }),
 
-  useDelete: () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-      mutationFn: (id: string) => PackagesService.delete(id),
-      onSuccess: () => invalidateBilling(queryClient),
-    });
-  },
+  useDelete: () => useMutation({ mutationFn: (id: string) => PackagesService.delete(id) }),
 
-  useMakeStandalone: () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-      mutationFn: (id: string) => PackagesService.makeStandalone(id),
-      onSuccess: () => invalidateBilling(queryClient),
-    });
-  },
+  useMakeStandalone: () => useMutation({ mutationFn: (id: string) => PackagesService.makeStandalone(id) }),
 };

@@ -71,8 +71,9 @@ type Item struct {
 
 var Items = txn.Kind[Item]{
 	Name: "EXPENSEITEM", Gone: "This item is no longer in the list.",
-	Doc:  txn.Doc{What: "An item expense lines are picked from, in a category."},
-	Meta: func(it *Item) txn.Meta { return txn.Meta{ID: it.ID} },
+	Doc:   txn.Doc{What: "An item expense lines are picked from, in a category."},
+	Meta:  func(it *Item) txn.Meta { return txn.Meta{ID: it.ID} },
+	Whole: true,
 }
 
 // Category groups items the way the tax return does.
@@ -98,8 +99,9 @@ const categoriesID = "ALL"
 
 var Categories = txn.Kind[CategoryList]{
 	Name: "EXPENSECATEGORIES", Gone: "No categories are set.",
-	Doc:  txn.Doc{What: "Every expense category, in order: one item, ALL."},
-	Meta: func(*CategoryList) txn.Meta { return txn.Meta{ID: categoriesID} },
+	Doc:   txn.Doc{What: "Every expense category, in order: one item, ALL."},
+	Meta:  func(*CategoryList) txn.Meta { return txn.Meta{ID: categoriesID} },
+	Whole: true,
 }
 
 // DefaultCategories are the expenses on Form B's profit and loss account,

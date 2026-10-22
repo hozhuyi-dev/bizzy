@@ -3,8 +3,8 @@ import type {
   PreviewSessionRequest,
   SearchSessionsRequest,
   SessionFields,
-  SessionFullView,
   SessionHit,
+  SessionPageView,
   SessionView,
 } from "./sessions.types";
 import type { Page } from "~/core/list/filter.types";
@@ -15,8 +15,8 @@ export const SessionsService = {
   list: (from: string, to: string) => invoke<Array<SessionView>>("sessions.list", { from, to }),
   /** A page of the sessions found, latest first. */
   search: (request: SearchSessionsRequest) => invoke<Page<SessionHit>>("sessions.search", request),
-  /** A client's sessions, newest first. */
-  get: (id: string) => invoke<SessionFullView>("sessions.get", { id }),
+  /** A session's page: it, the calendar edits waiting on it, and its follow-ups. */
+  page: (id: string) => invoke<SessionPageView>("sessions.page", { id }),
   /** What would pay for a booking with no fee entered, exactly as saving it would choose. */
   preview: (request: PreviewSessionRequest) => invoke<CoverView>("sessions.preview", request),
   // Each is decided by the API's rules, and then written to the calendar.

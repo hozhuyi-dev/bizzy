@@ -1,11 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { SyncService } from "./sync.service";
-import { SyncKeys } from "~/core/constants/query-keys.constant";
+import type { AppStatusView } from "~/features/app/app.types";
+import { AppQuery } from "~/features/app/app.query";
+
+const sync = (status: AppStatusView) => status.sync;
 
 export const SyncQuery = {
-  useStatus: () =>
-    useQuery({
-      queryKey: SyncKeys.status(),
-      queryFn: () => SyncService.status(),
-    }),
+  /** The last run; null before the first. */
+  useStatus: () => AppQuery.useStatus(sync),
 };

@@ -12,10 +12,4 @@ export const FollowUpsQuery = {
     const request = searchFollowUpsRequest(view, filter);
     return usePages(FollowUpKeys.search(request), (after) => FollowUpsService.search({ ...request, after }));
   },
-
-  useBySession: (sessionId: string) =>
-    useQuery({
-      queryKey: FollowUpKeys.session(sessionId),
-      queryFn: () => FollowUpsService.listBySession(sessionId),
-    }),
 };

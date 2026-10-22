@@ -40,7 +40,7 @@ type View struct {
 // Routes registers data.reset.
 func Routes(r *router.Router, tb table.Table, blobs blobstore.Store, sync *googlesync.Sync) {
 	r.Mutation("data.reset", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
-		deleted, err := tb.Wipe(ctx, googleconnect.Connections.Name, txn.SchemaKey.PK)
+		deleted, err := tb.Wipe(ctx, txn.Commits, googleconnect.Connections.Name, txn.SchemaKey.PK)
 		if err != nil {
 			return nil, err
 		}

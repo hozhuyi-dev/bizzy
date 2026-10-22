@@ -14,7 +14,6 @@ import { PaymentsService } from "~/features/payments/payments.service";
 import { SessionsService } from "~/features/sessions/sessions.service";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { invalidateBilling } from "~/core/utils/query.util";
 
 /** What each remedy the app takes right there does. */
 const CALLS: Record<CallAction, (target: string, request: Record<string, unknown>) => Promise<unknown>> = {
@@ -53,11 +52,7 @@ export function useRemedy(conflict?: ConflictView) {
     const before = waitingBefore(queryClient);
     setPending(true);
     try {
-      try {
-        await CALLS[step.action](step.target, withAnswer(step, cents));
-      } finally {
-        await invalidateBilling(queryClient);
-      }
+      await CALLS[step.action](step.target, withAnswer(step, cents));
       if (settle && step.action !== "calendar.revert") {
         await reportSettled(queryClient, settle, before, step.done, step.quip);
       } else {

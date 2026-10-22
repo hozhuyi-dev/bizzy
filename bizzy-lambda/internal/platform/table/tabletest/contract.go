@@ -21,7 +21,13 @@ import (
 func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 	ctx := context.Background()
 	var pk string
-	counter := func() table.Key { return table.Key{PK: pk + "COUNTER", SK: "commits"} }
+	versions := func() table.Key { return table.Key{PK: pk + "COUNTER", SK: "commits"} }
+	thing := func() string { return pk + "THING" }
+	// commit writes as a first commit to THING would.
+	commit := func(tb table.Table, writes ...table.Write) error {
+		_, err := tb.Commit(ctx, versions(), table.Versions{thing(): 0}, writes)
+		return err
+	}
 	item := func(sk string, ix table.Indexes) table.Item {
 		return table.Item{Key: table.Key{PK: pk + "THING", SK: sk}, Indexes: ix, Data: []byte(fmt.Sprintf(`{"id":%q}`, sk))}
 	}
@@ -39,32 +45,44 @@ func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 		return out
 	}
 
-	t.Run("a commit moves the counter and writes everything", func(t *testing.T) {
+	t.Run("a commit moves what it writes on and writes everything", func(t *testing.T) {
 		tb := open(t)
 		a, b := item("a", table.Indexes{Time: "2026-10-02"}), item("b", table.Indexes{Time: "2026-10-01"})
-		if err := tb.Commit(ctx, counter(), 0, []table.Write{put(a), put(b)}); err != nil {
+		moved, err := tb.Commit(ctx, versions(), table.Versions{thing(): 0, pk + "OTHER": 0}, []table.Write{put(a), put(b)})
+		if err != nil {
 			t.Fatal(err)
 		}
-		if n, err := tb.Counter(ctx, counter()); err != nil || n != 1 {
-			t.Fatalf("counter = %d, %v; want 1", n, err)
+		now, err := tb.Versions(ctx, versions())
+		if err != nil || now[thing()] == 0 || now[thing()] != moved[thing()] || now[pk+"OTHER"] != 0 {
+			t.Fatalf("versions = %v, %v (commit said %v); want THING moved on, OTHER, only read, not", now, err, moved)
 		}
 		got, ok, err := tb.Get(ctx, a.Key)
 		if err != nil || !ok || string(got.Data) != string(a.Data) || got.Time != a.Time {
 			t.Fatalf("get = %+v, %v, %v; want %+v", got, ok, err, a)
 		}
+		again, err := tb.Commit(ctx, versions(), now, []table.Write{put(a)})
+		if err != nil || again[thing()] != now[thing()]+1 {
+			t.Fatalf("second commit moved THING to %v, %v; want %d", again, err, now[thing()]+1)
+		}
 	})
 
-	t.Run("a commit from an old counter writes nothing", func(t *testing.T) {
+	t.Run("a commit after what it read moved writes nothing", func(t *testing.T) {
 		tb := open(t)
-		if err := tb.Commit(ctx, counter(), 0, []table.Write{put(item("a", table.Indexes{}))}); err != nil {
+		if err := commit(tb, put(item("a", table.Indexes{}))); err != nil {
 			t.Fatal(err)
 		}
-		err := tb.Commit(ctx, counter(), 0, []table.Write{put(item("b", table.Indexes{}))})
+		err := commit(tb, put(item("b", table.Indexes{})))
 		if !errors.Is(err, table.ErrConflict) {
 			t.Fatalf("err = %v, want ErrConflict", err)
 		}
-		if _, ok, _ := tb.Get(ctx, table.Key{PK: pk + "THING", SK: "b"}); ok {
+		if _, ok, _ := tb.Get(ctx, table.Key{PK: thing(), SK: "b"}); ok {
 			t.Fatal("a refused commit wrote")
+		}
+		// One that read only other partitions goes through.
+		other := item("c", table.Indexes{})
+		other.PK = pk + "OTHER"
+		if _, err := tb.Commit(ctx, versions(), table.Versions{other.PK: 0}, []table.Write{put(other)}); err != nil {
+			t.Fatalf("a commit of another partition: %v", err)
 		}
 	})
 
@@ -76,7 +94,7 @@ func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 			put(item("c", table.Indexes{Time: "2026-10-02", Client: "jane#2026-10-02"})),
 			put(item("d", table.Indexes{})),
 		}
-		if err := tb.Commit(ctx, counter(), 0, writes); err != nil {
+		if err := commit(tb, writes...); err != nil {
 			t.Fatal(err)
 		}
 		for _, c := range []struct {
@@ -106,7 +124,7 @@ func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 		for i, at := range []string{"2026-10-01", "2026-10-02", "2026-10-02", "2026-10-03", "2026-10-03", "2026-10-04"} {
 			writes = append(writes, put(item(fmt.Sprintf("i%d", i), table.Indexes{Time: at})))
 		}
-		if err := tb.Commit(ctx, counter(), 0, writes); err != nil {
+		if err := commit(tb, writes...); err != nil {
 			t.Fatal(err)
 		}
 		for _, desc := range []bool{false, true} {
@@ -147,10 +165,10 @@ func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 		kept.PK = pk + "KEPT"
 		// An item an older version wrote, which this one can't read.
 		stale := table.Item{Key: table.Key{PK: kept.PK, SK: "old"}}
-		if err := tb.Commit(ctx, counter(), 0, []table.Write{put(item("a", table.Indexes{Time: "x"})), put(kept), put(stale)}); err != nil {
+		if _, err := tb.Commit(ctx, versions(), table.Versions{thing(): 0, kept.PK: 0}, []table.Write{put(item("a", table.Indexes{Time: "x"})), put(kept), put(stale)}); err != nil {
 			t.Fatal(err)
 		}
-		n, err := tb.Wipe(ctx, kept.PK)
+		n, err := tb.Wipe(ctx, versions(), kept.PK)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -163,15 +181,15 @@ func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 		if got, _ := tb.Query(ctx, table.Query{PK: pk + "THING"}); len(got) != 0 {
 			t.Errorf("still there: %v", keys(got))
 		}
-		if c, _ := tb.Counter(ctx, counter()); c != 0 || n < 3 {
-			t.Errorf("counter = %d, deleted %d; want the counter gone too", c, n)
+		if v, _ := tb.Versions(ctx, versions()); len(v) != 1 || v[kept.PK] == 0 || n < 2 {
+			t.Errorf("versions = %v, deleted %d; want only the kept partition's, moved on", v, n)
 		}
 	})
 
-	t.Run("a scan reads every item, counters aside", func(t *testing.T) {
+	t.Run("a scan reads every item, versions aside", func(t *testing.T) {
 		tb := open(t)
 		a := item("a", table.Indexes{Time: "2026-10-01"})
-		if err := tb.Commit(ctx, counter(), 0, []table.Write{put(a), put(item("b", table.Indexes{}))}); err != nil {
+		if err := commit(tb, put(a), put(item("b", table.Indexes{}))); err != nil {
 			t.Fatal(err)
 		}
 		all, err := tb.Scan(ctx)
@@ -189,10 +207,11 @@ func Run(t *testing.T, newTable func(t *testing.T) (table.Table, string)) {
 	t.Run("a delete removes the item from every index", func(t *testing.T) {
 		tb := open(t)
 		a := item("a", table.Indexes{Time: "2026-10-01"})
-		if err := tb.Commit(ctx, counter(), 0, []table.Write{put(a)}); err != nil {
+		moved, err := tb.Commit(ctx, versions(), table.Versions{thing(): 0}, []table.Write{put(a)})
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := tb.Commit(ctx, counter(), 1, []table.Write{{Delete: &a.Key}}); err != nil {
+		if _, err := tb.Commit(ctx, versions(), moved, []table.Write{{Delete: &a.Key}}); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := tb.Query(ctx, table.Query{PK: pk + "THING", Index: table.ByTime})

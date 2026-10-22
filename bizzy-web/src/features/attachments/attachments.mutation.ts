@@ -1,35 +1,25 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { AttachmentsService } from "./attachments.service";
-import type { QueryClient } from "@tanstack/react-query";
 import type { AttachmentOwner } from "./attachments.types";
-import { AttachmentKeys, ExpenseKeys, SessionKeys } from "~/core/constants/query-keys.constant";
-import { invalidateBilling } from "~/core/utils/query.util";
+import { SessionKeys } from "~/core/constants/query-keys.constant";
+import { keeping } from "~/core/lambda/lambda.client";
 
 /**
- * Refreshes the owner's files, and the owner, whose file count changed. A
- * session's own page is left alone: refetching it would restart the notes
- * being typed.
+ * A session's own page is kept as it is meanwhile: reading it again would
+ * restart the notes being typed. Everything else showing the files is read
+ * again for what the API says changed.
  */
-function invalidateOwner(queryClient: QueryClient, { ownerKind, ownerId }: AttachmentOwner) {
-  void queryClient.invalidateQueries({ queryKey: AttachmentKeys.owner(ownerKind, ownerId) });
-  if (ownerKind === "session") void invalidateBilling(queryClient, SessionKeys.detail(ownerId));
-  else void queryClient.invalidateQueries({ queryKey: ExpenseKeys.all });
-}
+const keepOwner = ({ ownerKind, ownerId }: AttachmentOwner) =>
+  ownerKind === "session" ? SessionKeys.detail(ownerId) : undefined;
 
 export const AttachmentsMutation = {
-  useUpload: (owner: AttachmentOwner) => {
-    const queryClient = useQueryClient();
-    return useMutation({
-      mutationFn: (file: File) => AttachmentsService.upload(owner, file),
-      onSettled: () => invalidateOwner(queryClient, owner),
-    });
-  },
+  useUpload: (owner: AttachmentOwner) =>
+    useMutation({
+      mutationFn: (file: File) => keeping(keepOwner(owner), () => AttachmentsService.upload(owner, file)),
+    }),
 
-  useRemove: (owner: AttachmentOwner) => {
-    const queryClient = useQueryClient();
-    return useMutation({
-      mutationFn: (id: string) => AttachmentsService.remove(id),
-      onSettled: () => invalidateOwner(queryClient, owner),
-    });
-  },
+  useRemove: (owner: AttachmentOwner) =>
+    useMutation({
+      mutationFn: (id: string) => keeping(keepOwner(owner), () => AttachmentsService.remove(id)),
+    }),
 };

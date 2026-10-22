@@ -37,6 +37,7 @@ var Packages = txn.Kind[Package]{
 	Meta: func(p *Package) txn.Meta {
 		return txn.Meta{ID: p.ID, Client: p.ClientID, Time: p.PurchasedAt, Ref: p.BoughtIn}
 	},
+	Whole: true,
 }
 
 // Reason is why a package is on the to-do list.

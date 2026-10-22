@@ -8,3 +8,6 @@ export const CANCELLED_STAGE = "cancelled";
 
 /** Where a session is, as lists and the Place chip name it. */
 export const SESSION_PLACES: Record<SessionLocation, string> = { visit: "Home visit", own: "Your place" };
+
+/** How long a booking's time must stop changing before the API is asked what would pay for it. */
+export const PREVIEW_DEBOUNCE_MS = 400;

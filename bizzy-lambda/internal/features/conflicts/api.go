@@ -31,25 +31,19 @@ func ViewOf(c *Conflict) View {
 	}
 }
 
-type targetRequest struct {
-	ItemID string `json:"itemId"`
+// ByTarget are the edits waiting on one session or follow-up.
+func ByTarget(tx *txn.Tx, itemID string) ([]View, error) {
+	all, err := Conflicts.WithRef(tx, itemID)
+	out := []View{}
+	for _, c := range all {
+		out = append(out, ViewOf(c))
+	}
+	return out, err
 }
 
 // Routes registers the conflicts' actions; resolving them is the sync's
 // (see googlesync).
 func Routes(r *router.Router, run *txn.Runner) {
-	// conflicts.listByTarget lists the edits waiting on one session or
-	// follow-up, for its page.
-	r.Query("conflicts.listByTarget", router.Typed(func(ctx context.Context, in targetRequest) (any, error) {
-		return txn.Read(ctx, run, func(tx *txn.Tx) (any, error) {
-			all, err := Conflicts.WithRef(tx, in.ItemID)
-			out := []View{}
-			for _, c := range all {
-				out = append(out, ViewOf(c))
-			}
-			return out, err
-		})
-	}))
 	r.Query("conflicts.list", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) (any, error) {
 			open, err := Conflicts.Open(tx)

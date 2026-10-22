@@ -29,6 +29,10 @@ type Kind[T any] struct {
 	// Doc says what the kind is, and what each index it files items in
 	// means for it: the schema (see SCHEMA.md).
 	Doc Doc
+	// Whole is for a kind with few items, read by many: any read of it
+	// reads the whole partition once, which the Runner keeps (cache.go),
+	// and answers every other read of it from that.
+	Whole bool
 }
 
 // Doc describes a kind for the schema: what one item is, and what each
@@ -111,7 +115,7 @@ func (k Kind[T]) Find(tx *Tx, id string) (*T, bool, error) {
 		}
 		return e.value.(*T), true, nil
 	}
-	it, ok, err := tx.table.Get(tx.ctx, key)
+	it, ok, err := tx.get(key, k.Whole)
 	if err != nil || !ok {
 		return nil, false, err
 	}
@@ -138,8 +142,20 @@ func (k Kind[T]) OfClient(tx *Tx, clientID string) ([]*T, error) {
 	return k.query(tx, table.Query{PK: k.Name, Index: table.ByClient, Prefix: clientID + "#"})
 }
 
-// HasClient reports whether a client has any item of this kind.
+// HasClient reports whether a client has any item of this kind, reading
+// one when that settles it.
 func (k Kind[T]) HasClient(tx *Tx, clientID string) (bool, error) {
+	q := table.Query{PK: k.Name, Index: table.ByClient, Prefix: clientID + "#", Limit: 1}
+	first, err := tx.query(q, k.Whole)
+	if err != nil {
+		return false, err
+	}
+	if len(first) == 1 {
+		// Unless this run deleted it or moved it to another client.
+		if e, ok := tx.entries[first[0].Key]; !ok || (!e.deleted && q.Matches(table.Item{Key: first[0].Key, Indexes: e.meta().indexes()})) {
+			return true, nil
+		}
+	}
 	items, err := k.OfClient(tx, clientID)
 	return len(items) > 0, err
 }
@@ -228,7 +244,7 @@ func (k Kind[T]) Each(tx *Tx, l List, after string, do func(*T) (bool, error)) (
 		q.After = &place
 	}
 	for {
-		items, err := tx.table.Query(tx.ctx, q)
+		items, err := tx.query(q, k.Whole)
 		if err != nil {
 			return "", err
 		}
@@ -365,7 +381,7 @@ func (k Kind[T]) cache(tx *Tx, it table.Item) (*T, error) {
 // added or changed to match are in, those it deleted or changed not to are
 // out.
 func (k Kind[T]) query(tx *Tx, q table.Query) ([]*T, error) {
-	items, err := tx.table.Query(tx.ctx, q)
+	items, err := tx.query(q, k.Whole)
 	if err != nil {
 		return nil, err
 	}

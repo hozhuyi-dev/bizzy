@@ -70,6 +70,9 @@ type Sync struct {
 	// Contacts is the user's Google contacts; nil leaves the clients'
 	// copies as they are.
 	Contacts contacts.Directory
+	// Parallel is how many calls to the calendar run at once when many
+	// events are read or written; 1 or less, one at a time (see each).
+	Parallel int
 }
 
 // State is what the sync remembers between runs.
@@ -108,8 +111,9 @@ type Run struct {
 
 var States = txn.Kind[State]{
 	Name: "SYNC", Gone: "The calendar was never synced.",
-	Doc:  txn.Doc{What: "What the sync remembers between runs: one item, CALENDAR."},
-	Meta: func(s *State) txn.Meta { return txn.Meta{ID: s.ID} },
+	Doc:   txn.Doc{What: "What the sync remembers between runs: one item, CALENDAR."},
+	Meta:  func(s *State) txn.Meta { return txn.Meta{ID: s.ID} },
+	Whole: true,
 }
 
 const stateID = "CALENDAR"
@@ -207,29 +211,14 @@ type pass struct {
 func (s *Sync) run(ctx context.Context, now time.Time) (Run, pass, error) {
 	var run Run
 	var r pass
-	if err := s.refreshContacts(ctx); err != nil {
-		return run, r, err
-	}
-	cal, err := s.Calendar(ctx)
-	if err != nil {
-		return run, r, err
-	}
-	st, err := s.bind(ctx, cal)
-	if err != nil {
+	// The contacts are listed while the calendar is read: neither waits on
+	// the other. Copied once both are in, even when the calendar can't be.
+	refreshed := s.refreshContacts(ctx)
+	cal, st, events, err := s.readChanged(ctx, now)
+	if err := errors.Join(refreshed(), err); err != nil {
 		return run, r, err
 	}
 	r.calendarID = st.CalendarID
-
-	// The first read is of every event from Window back; then of what
-	// changed, however old.
-	since, from := st.ReadAt.Add(-slack), time.Time{}
-	if st.ReadAt.IsZero() {
-		since, from = time.Time{}, now.Add(-Window)
-	}
-	events, err := cal.Changed(ctx, since, from, time.Time{})
-	if err != nil {
-		return run, r, err
-	}
 	if events, err = s.withWaiting(ctx, cal, events); err != nil {
 		return run, r, err
 	}
@@ -245,6 +234,31 @@ func (s *Sync) run(ctx context.Context, now time.Time) (Run, pass, error) {
 		r.floor, err = s.floor(ctx, cal, r.back)
 	}
 	return run, r, err
+}
+
+// readChanged opens the calendar, starts the sync over on it if it was
+// just chosen (bind), and reads what changed in it since the last run.
+func (s *Sync) readChanged(ctx context.Context, now time.Time) (calendar.Calendar, State, []calendar.Event, error) {
+	cal, err := s.Calendar(ctx)
+	if err != nil {
+		return nil, State{}, nil, err
+	}
+	st, err := s.bind(ctx, cal)
+	if err != nil {
+		return nil, State{}, nil, err
+	}
+	// The first read is of every event from Window back; then of what
+	// changed, however old.
+	since, from := st.ReadAt.Add(-slack), time.Time{}
+	if st.ReadAt.IsZero() {
+		since, from = time.Time{}, now.Add(-Window)
+	}
+	events, err := cal.Changed(ctx, since, from, time.Time{})
+	if err != nil {
+		return nil, State{}, nil, err
+	}
+	knownEvents(ctx, cal).put(events...)
+	return cal, st, events, nil
 }
 
 // bind makes the sync's state the chosen calendar's. On another than the
@@ -371,6 +385,7 @@ func (s *Sync) Backfill(ctx context.Context) (Run, error) {
 		if err != nil {
 			return run, err
 		}
+		knownEvents(ctx, cal).put(events...)
 		refused, err := s.applyAll(ctx, events)
 		if err != nil {
 			return run, err
@@ -436,18 +451,33 @@ func (s *Sync) applyAll(ctx context.Context, events []calendar.Event) (int, erro
 	return len(refused), nil
 }
 
-// refreshContacts copies every linked client's Google contact, as Google
-// has it now.
-func (s *Sync) refreshContacts(ctx context.Context) error {
+// refreshContacts starts listing the user's Google contacts, in the
+// background when Parallel allows, and returns the function that waits
+// for the list and copies every linked client's contact as Google has it.
+func (s *Sync) refreshContacts(ctx context.Context) func() error {
 	if s.Contacts == nil {
-		return nil
+		return func() error { return nil }
 	}
-	people, err := s.Contacts.List(ctx)
-	if err != nil {
+	var people []contacts.Person
+	var err error
+	listed := make(chan struct{})
+	list := func() {
+		defer close(listed)
+		people, err = s.Contacts.List(ctx)
+	}
+	if s.Parallel > 1 {
+		go list()
+	} else {
+		list()
+	}
+	return func() error {
+		<-listed
+		if err != nil {
+			return err
+		}
+		_, err := txn.Run(ctx, s.Runner, func(tx *txn.Tx) (any, error) { return nil, contacts.Refresh(tx, people, true) })
 		return err
 	}
-	_, err = txn.Run(ctx, s.Runner, func(tx *txn.Tx) (any, error) { return nil, contacts.Refresh(tx, people, true) })
-	return err
 }
 
 // withWaiting adds the events of edits waiting as conflicts, read again:
@@ -459,17 +489,16 @@ func (s *Sync) withWaiting(ctx context.Context, cal calendar.Calendar, events []
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range waiting {
-		if slices.ContainsFunc(events, func(e calendar.Event) bool { return e.ID == c.EventID }) {
-			continue
-		}
-		e, err := read(ctx, cal, c.EventID)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, e)
+	waiting = slices.DeleteFunc(waiting, func(c *conflicts.Conflict) bool {
+		return slices.ContainsFunc(events, func(e calendar.Event) bool { return e.ID == c.EventID })
+	})
+	read := make([]calendar.Event, len(waiting))
+	errs := make([]error, len(waiting))
+	s.each(len(waiting), func(i int) { read[i], errs[i] = readEvent(ctx, cal, waiting[i].EventID) })
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
-	return events, nil
+	return append(events, read...), nil
 }
 
 // retryWaiting reads the edits waiting as conflicts again, as a run does:
@@ -497,11 +526,14 @@ func isReading(ctx context.Context) bool {
 	return marked
 }
 
-// read reads one event as the sync does: one gone is cancelled.
-func read(ctx context.Context, cal calendar.Calendar, id string) (calendar.Event, error) {
+// readEvent reads one event as the sync does: one gone is cancelled.
+func readEvent(ctx context.Context, cal calendar.Calendar, id string) (calendar.Event, error) {
 	e, err := cal.Get(ctx, id)
 	if errors.Is(err, calendar.ErrGone) {
 		return calendar.Event{ID: id, Cancelled: true}, nil
+	}
+	if err == nil {
+		knownEvents(ctx, cal).put(e)
 	}
 	return e, err
 }
@@ -639,7 +671,7 @@ func (s *Sync) Apply(ctx context.Context, eventID string) error {
 	if err != nil {
 		return err
 	}
-	e, err := read(ctx, cal, eventID)
+	e, err := readEvent(ctx, cal, eventID)
 	if err != nil {
 		return err
 	}

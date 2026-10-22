@@ -1,10 +1,10 @@
 // Package router dispatches the web app's direct Lambda invocations.
 //
 // The app invokes the API with {"action": "clients.list", "payload": ...}
-// and always gets {"data": ...} or {"error": ...} back. Errors the app may
-// show (apperr) are returned in the body, not as a Lambda function error, so
-// the app has one shape to handle; anything else is logged and reported as
-// internal.
+// and always gets {"data": ...} or {"error": ...} back, with "changed": the
+// kinds of item the request changed. Errors the app may show (apperr) are
+// returned in the body, not as a Lambda function error, so the app has one
+// shape to handle; anything else is logged and reported as internal.
 package router
 
 import (
@@ -12,7 +12,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"maps"
 	"slices"
+	"time"
 
 	"bizzy-lambda/internal/platform/apperr"
 )
@@ -25,6 +27,9 @@ type Request struct {
 type Response struct {
 	Data  any        `json:"data,omitempty"`
 	Error *ErrorBody `json:"error,omitempty"`
+	// Changed are the kinds of item the request changed, whether or not it
+	// then failed: the app reads again only what shows them.
+	Changed []string `json:"changed,omitempty"`
 }
 
 type ErrorBody struct {
@@ -47,6 +52,13 @@ const (
 type Router struct {
 	handlers map[string]Handler
 	kinds    map[string]Kind
+	// Scope, when set, wraps every request: it gives the request its
+	// context, and a function that finishes the request, once its handler
+	// returns, and says what it changed and counted (see txn.Scope).
+	Scope func(ctx context.Context) (context.Context, func(ctx context.Context) ([]string, map[string]int))
+	// LogRequests logs a line per request (see logRequest): the Lambda's,
+	// not the tests' thousands.
+	LogRequests bool
 }
 
 func New() *Router {
@@ -84,16 +96,45 @@ func (r *Router) Handle(ctx context.Context, req Request) (Response, error) {
 	if !ok {
 		return failed(apperr.Invalid("unknown action %q", req.Action)), nil
 	}
-	data, err := h(ctx, req.Payload)
+	if r.Scope == nil {
+		return respond(ctx, req.Action, h, req.Payload), nil
+	}
+	start := time.Now()
+	ctx, end := r.Scope(ctx)
+	res := respond(ctx, req.Action, h, req.Payload)
+	var counts map[string]int
+	res.Changed, counts = end(ctx)
+	if r.LogRequests {
+		logRequest(ctx, req.Action, time.Since(start), res, counts)
+	}
+	return res, nil
+}
+
+// logRequest is one line per request: what it was, how long it took, how
+// it ended, and what it counted (reads of the table, calls to Google), so
+// a slow one says why.
+func logRequest(ctx context.Context, action string, took time.Duration, res Response, counts map[string]int) {
+	attrs := []any{"action", action, "ms", took.Milliseconds()}
+	if res.Error != nil {
+		attrs = append(attrs, "error", res.Error.Code)
+	}
+	for _, name := range slices.Sorted(maps.Keys(counts)) {
+		attrs = append(attrs, name, counts[name])
+	}
+	slog.InfoContext(ctx, "request", attrs...)
+}
+
+func respond(ctx context.Context, action string, h Handler, payload json.RawMessage) Response {
+	data, err := h(ctx, payload)
 	var shown *apperr.Error
 	switch {
 	case errors.As(err, &shown):
-		return failed(shown), nil
+		return failed(shown)
 	case err != nil:
-		slog.ErrorContext(ctx, "action failed", "action", req.Action, "error", err)
-		return Response{Error: &ErrorBody{Code: "internal", Message: "Something went wrong."}}, nil
+		slog.ErrorContext(ctx, "action failed", "action", action, "error", err)
+		return Response{Error: &ErrorBody{Code: "internal", Message: "Something went wrong."}}
 	}
-	return Response{Data: data}, nil
+	return Response{Data: data}
 }
 
 func failed(err *apperr.Error) Response {

@@ -46,8 +46,9 @@ func (c Client) Archived() bool { return c.ArchivedAt != nil }
 
 var Clients = txn.Kind[Client]{
 	Name: "CLIENT", Gone: "This client was deleted.",
-	Doc:  txn.Doc{What: "A client: name, calendar names, usual hourly fees and place, IC or passport number, a copy of their Google contact, and whether archived."},
-	Meta: func(c *Client) txn.Meta { return txn.Meta{ID: c.ID} },
+	Doc:   txn.Doc{What: "A client: name, calendar names, usual hourly fees and place, IC or passport number, a copy of their Google contact, and whether archived."},
+	Meta:  func(c *Client) txn.Meta { return txn.Meta{ID: c.ID} },
+	Whole: true,
 }
 
 // FeeRate is one hourly fee and the day it starts.

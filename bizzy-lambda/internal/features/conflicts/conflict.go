@@ -41,4 +41,5 @@ var Conflicts = txn.Kind[Conflict]{
 	Meta: func(c *Conflict) txn.Meta {
 		return txn.Meta{ID: c.EventID, Time: c.Since, Open: true, Ref: c.ItemID}
 	},
+	Whole: true,
 }

@@ -51,8 +51,9 @@ const settingsID = "BUSINESS"
 // Store is the settings' one item.
 var Store = txn.Kind[Settings]{
 	Name: "SETTINGS", Gone: "Nothing is set yet.",
-	Doc:  txn.Doc{What: "The business details and preferences: one item, BUSINESS."},
-	Meta: func(*Settings) txn.Meta { return txn.Meta{ID: settingsID} },
+	Doc:   txn.Doc{What: "The business details and preferences: one item, BUSINESS."},
+	Meta:  func(*Settings) txn.Meta { return txn.Meta{ID: settingsID} },
+	Whole: true,
 }
 
 // Get is the settings, with what isn't set yet at its default.

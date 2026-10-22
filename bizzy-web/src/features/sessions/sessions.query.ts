@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
 import { searchSessionsRequest } from "./sessions.util";
 import type { PreviewSessionRequest } from "./sessions.types";
@@ -6,19 +6,27 @@ import type { ListFilter } from "~/core/list/filter.types";
 import { SessionKeys } from "~/core/constants/query-keys.constant";
 import { usePages } from "~/core/list/pages.hook";
 
+/**
+ * A session's page, one call for all its parts, which each select their
+ * own. Not read again on focus: a refetch restarts the forms, which would
+ * lose what the user typed.
+ */
+const page = (id: string) =>
+  queryOptions({
+    queryKey: SessionKeys.detail(id),
+    queryFn: () => SessionsService.page(id),
+    refetchOnWindowFocus: false,
+  });
+
 export const SessionsQuery = {
-  /**
-   * One session and its notes, read fresh on every visit. Not refetched on
-   * focus: a refetch restarts the forms, which would lose what the user
-   * typed.
-   */
-  useDetail: (id: string) =>
-    useQuery({
-      queryKey: SessionKeys.detail(id),
-      queryFn: () => SessionsService.get(id),
-      gcTime: 0,
-      refetchOnWindowFocus: false,
-    }),
+  /** One session and its notes. */
+  useDetail: (id: string) => useQuery({ ...page(id), select: (p) => p.session }),
+
+  /** The calendar edits waiting on a session's event. */
+  useConflicts: (id: string) => useQuery({ ...page(id), select: (p) => p.conflicts }),
+
+  /** The follow-ups made from a session. */
+  useFollowUps: (id: string) => useQuery({ ...page(id), select: (p) => p.followUps }),
 
   /** The sessions a filter finds, latest first, a page at a time. */
   useSearch: (filter: ListFilter) => {

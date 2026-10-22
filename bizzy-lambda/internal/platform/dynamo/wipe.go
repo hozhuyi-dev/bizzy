@@ -9,6 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	"bizzy-lambda/internal/platform/table"
 )
 
 // batchLimit is the most writes one BatchWriteItem takes.
@@ -16,7 +18,7 @@ const batchLimit = 25
 
 // Wipe scans the whole table, which is fine for one user's data and only
 // meant for starting a test environment over.
-func (t *Table) Wipe(ctx context.Context, keep ...string) (int, error) {
+func (t *Table) Wipe(ctx context.Context, key table.Key, keep ...string) (int, error) {
 	var doomed []map[string]types.AttributeValue
 	pages := dynamodb.NewScanPaginator(t.Client, &dynamodb.ScanInput{
 		TableName:                aws.String(t.Name),
@@ -47,7 +49,13 @@ func (t *Table) Wipe(ctx context.Context, keep ...string) (int, error) {
 			return 0, err
 		}
 	}
-	return len(doomed), nil
+	versions := keyOf(key)
+	versions[attrCounter] = n(0)
+	for _, pk := range keep {
+		versions[attrVersion+pk] = n(table.Next(0))
+	}
+	_, err := t.Client.PutItem(ctx, &dynamodb.PutItemInput{TableName: aws.String(t.Name), Item: versions})
+	return len(doomed), err
 }
 
 // batchAttempts bounds batchWrite's retries; the waits between them double

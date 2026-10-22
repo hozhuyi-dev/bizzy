@@ -16,12 +16,14 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/ssm"
+	"bizzy-lambda/internal/platform/txn"
 )
 
 const (
@@ -72,12 +74,20 @@ type Auth struct {
 	tokens TokenStore
 
 	// The token source is kept while the stored refresh token stays the
-	// same, so a warm Lambda reuses its access token. The store is re-read
-	// on every call because the other Lambda may have reconnected.
+	// same, so a warm Lambda reuses its access token. The store is read
+	// again once the token was read refreshFor ago, as another instance may
+	// have reconnected meanwhile.
 	mu      sync.Mutex
 	refresh string
+	readAt  time.Time
 	source  oauth2.TokenSource
+	now     func() time.Time
 }
+
+// refreshFor is how long a refresh token read from the store is used
+// before it is read again: a sync opens the calendar and contacts many
+// times, each once a store read.
+const refreshFor = time.Minute
 
 func New(clientID, clientSecret string, tokens TokenStore) *Auth {
 	return &Auth{
@@ -128,12 +138,14 @@ func (a *Auth) Exchange(ctx context.Context, code, redirectURI string) (Grant, e
 
 // Store saves a refresh token from Exchange.
 func (a *Auth) Store(ctx context.Context, refreshToken string) error {
+	defer a.forget()
 	return a.tokens.Put(ctx, refreshToken)
 }
 
 // Revoke tells Google to forget the grant and deletes the stored token. A
 // token Google already forgot is deleted all the same.
 func (a *Auth) Revoke(ctx context.Context) error {
+	defer a.forget()
 	token, err := a.tokens.Get(ctx)
 	if err != nil {
 		return err
@@ -160,7 +172,18 @@ func (a *Auth) Client(ctx context.Context) (*http.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return oauth2.NewClient(ctx, source), nil
+	client := oauth2.NewClient(ctx, source)
+	client.Transport = counted{client.Transport}
+	return client, nil
+}
+
+// counted counts each call to Google in its request (txn.Count), for the
+// request's log line.
+type counted struct{ base http.RoundTripper }
+
+func (c counted) RoundTrip(req *http.Request) (*http.Response, error) {
+	txn.Count(req.Context(), "google")
+	return c.base.RoundTrip(req)
 }
 
 // Check refreshes the access token, to tell whether the grant still works.
@@ -174,22 +197,45 @@ func (a *Auth) Check(ctx context.Context) error {
 }
 
 func (a *Auth) tokenSource(ctx context.Context) (oauth2.TokenSource, error) {
+	a.mu.Lock()
+	if a.source != nil && a.clock().Sub(a.readAt) < refreshFor {
+		defer a.mu.Unlock()
+		return a.source, nil
+	}
+	a.mu.Unlock()
+
 	refresh, err := a.tokens.Get(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if refresh == "" {
-		return nil, ErrNotConnected
-	}
-
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if refresh == "" {
+		a.source = nil
+		return nil, ErrNotConnected
+	}
 	if a.source == nil || a.refresh != refresh {
 		// Background: the source outlives this request in a warm Lambda.
 		a.source = a.config.TokenSource(context.Background(), &oauth2.Token{RefreshToken: refresh})
 		a.refresh = refresh
 	}
+	a.readAt = a.clock()
 	return a.source, nil
+}
+
+// forget makes the next call read the store again: after this instance
+// changed it.
+func (a *Auth) forget() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.source, a.refresh = nil, ""
+}
+
+func (a *Auth) clock() time.Time {
+	if a.now != nil {
+		return a.now()
+	}
+	return time.Now()
 }
 
 // Err turns Google's "invalid_grant" (the grant was revoked, or expired)

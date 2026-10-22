@@ -12,14 +12,18 @@
 //     item without a sort key for an index is not in it.
 //   - An item's fields are stored as JSON in one attribute, so what is read
 //     back is exactly what was written, in DynamoDB and in memory alike.
-//   - Every commit moves one counter on (see Commit), which makes commits
-//     happen one at a time (see platform/txn).
+//   - One item holds every partition's version, which each commit that
+//     writes a partition moves on (see Commit): a commit goes through only
+//     if what it read hasn't moved since (see platform/txn).
 package table
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"strings"
+	"time"
 )
 
 // Key identifies an item: its partition (its kind) and its id.
@@ -133,18 +137,73 @@ func (q Query) Matches(it Item) bool {
 	return (q.From == "" || v >= q.From) && (q.To == "" || v <= q.To)
 }
 
+// Select is what a query reads from a partition's items, as a table
+// would: those it matches, in its order, from After, up to Limit.
+func Select(items []Item, q Query) []Item {
+	out := []Item{}
+	for _, it := range items {
+		if q.Matches(it) && q.Past(it) {
+			out = append(out, it)
+		}
+	}
+	slices.SortFunc(out, func(a, b Item) int { return q.Order(PlaceOf(q.Index, a), PlaceOf(q.Index, b)) })
+	if q.Limit > 0 && len(out) > q.Limit {
+		out = out[:q.Limit]
+	}
+	return out
+}
+
+// Order compares two places in the query's order.
+func (q Query) Order(a, b Place) int {
+	c := cmp.Or(cmp.Compare(a.SortKey, b.SortKey), cmp.Compare(a.SK, b.SK))
+	if q.Desc {
+		return -c
+	}
+	return c
+}
+
+// Past reports whether an item comes after the query's After, if it has
+// one.
+func (q Query) Past(it Item) bool {
+	return q.After == nil || q.Order(PlaceOf(q.Index, it), *q.After) > 0
+}
+
 // Write is one change of a commit: Put replaces an item, Delete removes one.
 type Write struct {
 	Put    *Item
 	Delete *Key
 }
 
+// PK is the partition the write is in.
+func (w Write) PK() string {
+	if w.Put != nil {
+		return w.Put.PK
+	}
+	return w.Delete.PK
+}
+
 // MaxWrites is how many writes one commit takes: DynamoDB's 100 per
-// transaction, less the counter.
+// transaction, less the versions.
 const MaxWrites = 99
 
-// ErrConflict means the counter moved since it was read: another commit
-// went first. Nothing was written.
+// Versions are partitions' versions: each moves on with every commit that
+// writes the partition. 0 is a partition never written (or wiped since).
+// What a partition holds is the same whenever its version is: what was
+// read of it at one version is still true while it is at that version.
+type Versions map[string]int64
+
+// Next is the version a commit moves a partition on to from v. From 0 it
+// starts at the time, so a partition wiped and written again never comes
+// back to a version it had before.
+func Next(v int64) int64 {
+	if v == 0 {
+		return time.Now().UnixNano()
+	}
+	return v + 1
+}
+
+// ErrConflict means a partition the commit read moved since: another
+// commit went first. Nothing was written.
 var ErrConflict = errors.New("table: another commit went first")
 
 // ErrTooBig is a commit of more than MaxWrites writes.
@@ -156,17 +215,36 @@ type Table interface {
 	// Query reads the items a query matches, consistently, in index order
 	// (items with the same sort key in a fixed order of their own).
 	Query(ctx context.Context, q Query) ([]Item, error)
-	// Scan reads every item, in no order (counters aside): for copying the
+	// Scan reads every item, in no order (versions aside): for copying the
 	// table, as a migration's dry run does (see platform/migrate).
 	Scan(ctx context.Context) ([]Item, error)
-	// Counter reads a counter's value; 0 before it was ever moved.
-	Counter(ctx context.Context, key Key) (int64, error)
-	// Commit moves a counter from `from` to from+1 and applies the writes,
-	// all or none: ErrConflict if the counter isn't at `from`.
-	Commit(ctx context.Context, counter Key, from int64, writes []Write) error
-	// Wipe deletes every item and counter outside the kept partitions, and
+	// Versions reads the partitions' versions, kept in one item, at once.
+	Versions(ctx context.Context, key Key) (Versions, error)
+	// Commit applies the writes, all or none, if every partition in read
+	// is still at its version there; it moves each partition written on
+	// (Next) and returns their new versions. ErrConflict if one moved.
+	// Every partition written must be in read.
+	Commit(ctx context.Context, key Key, read Versions, writes []Write) (Versions, error)
+	// Wipe deletes every item and version outside the kept partitions, and
 	// any item inside them that isn't one (written by an older version of
-	// bizzy, so unreadable); it returns how many it deleted. Only for
-	// starting a test environment over (see features/reset).
-	Wipe(ctx context.Context, keep ...string) (int, error)
+	// bizzy, so unreadable); it returns how many it deleted. The kept
+	// partitions move on to new versions (in the versions item at key), so
+	// a partition at 0 is always an empty one. Only for starting a test
+	// environment over (see features/reset).
+	Wipe(ctx context.Context, key Key, keep ...string) (int, error)
+}
+
+// Moved are the versions a commit moves its writes' partitions on to, or
+// an error when one isn't in read.
+func Moved(read Versions, writes []Write) (Versions, error) {
+	next := Versions{}
+	for _, w := range writes {
+		pk := w.PK()
+		v, ok := read[pk]
+		if !ok {
+			return nil, errors.New("table: a commit writes " + pk + " without its version")
+		}
+		next[pk] = Next(v)
+	}
+	return next, nil
 }

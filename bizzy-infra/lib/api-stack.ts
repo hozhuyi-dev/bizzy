@@ -66,6 +66,10 @@ export class ApiStack extends cdk.Stack {
       command: "api",
       // A calendar sync reads and re-derives every session in its range.
       timeout: Duration.minutes(2),
+      // A whole CPU: a request's TLS handshakes with Google and PDF
+      // rendering are CPU-bound, and cold starts shorter. Well inside the
+      // free tier's GB-seconds at one user's use.
+      memorySize: 1024,
       environmentVariables: {
         TABLE_NAME: table.tableName,
         BUCKET_NAME: files.bucketName,

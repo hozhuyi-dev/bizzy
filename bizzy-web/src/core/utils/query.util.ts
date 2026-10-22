@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import type { QueryClient, QueryKey } from "@tanstack/react-query";
-import { BILLING_KEYS } from "~/core/constants/query-keys.constant";
+import type { QueryClient } from "@tanstack/react-query";
+import { AuthKeys, CHANGED_KEYS } from "~/core/constants/query-keys.constant";
 
 interface QueryState<TData, TError extends Error = Error> {
   isPending: boolean;
@@ -23,18 +23,54 @@ export function queryMatch<TData, TError extends Error = Error>(
   return cases.success(state.data as TData);
 }
 
+type Keys = ReadonlyArray<ReadonlyArray<unknown>>;
+
+/** Whether a query is one of `keep`. */
+const kept = (queryKey: ReadonlyArray<unknown>, keep: Keys) =>
+  keep.some((key) => JSON.stringify(key) === JSON.stringify(queryKey));
+
 /**
- * Refreshes everything a billing change can touch; see BILLING_KEYS.
- * `except` skips one query, e.g. a document that was just deleted.
+ * Reads again what shows the kinds of item a call changed (CHANGED_KEYS),
+ * but `keep` (see keeping): the queries on screen now, the others when
+ * next shown.
  */
-export function invalidateBilling(queryClient: QueryClient, except?: QueryKey): Promise<unknown> {
-  const skipped = except && JSON.stringify(except);
+export function refreshChanged(queryClient: QueryClient, changed: ReadonlyArray<string>, keep: Keys = []): Promise<unknown> {
+  if (changed.some((kind) => !(kind in CHANGED_KEYS))) return refreshAll(queryClient, keep);
+  const roots = new Map(changed.flatMap((kind) => CHANGED_KEYS[kind] ?? []).map((key) => [JSON.stringify(key), key]));
   return Promise.all(
-    BILLING_KEYS.map((queryKey) =>
-      queryClient.invalidateQueries({
-        queryKey,
-        predicate: (query) => JSON.stringify(query.queryKey) !== skipped,
-      }),
+    [...roots.values()].map((queryKey) =>
+      queryClient.invalidateQueries({ queryKey, predicate: (query) => !kept(query.queryKey, keep) }),
     ),
   );
+}
+
+/** Reads everything again but who is signed in (and `keep`): after an edit the API found stale. */
+export function refreshAll(queryClient: QueryClient, keep: Keys = []): Promise<unknown> {
+  return queryClient.invalidateQueries({
+    predicate: (query) => query.queryKey[0] !== AuthKeys.all[0] && !kept(query.queryKey, keep),
+  });
+}
+
+/**
+ * Holds what calls change until `released`, then reads it again once: for
+ * a run of calls (the backfill) whose pages would otherwise be read again
+ * after each.
+ */
+export function holdingChanges(queryClient: QueryClient) {
+  let held: Set<string> | undefined;
+  return {
+    /** Refreshes now, or later while held. */
+    changed(changed: ReadonlyArray<string>, keep: Keys = []): void {
+      if (held) changed.forEach((kind) => held?.add(kind));
+      else void refreshChanged(queryClient, changed, keep);
+    },
+    hold(): () => void {
+      held ??= new Set();
+      return () => {
+        const kinds = held;
+        held = undefined;
+        if (kinds?.size) void refreshChanged(queryClient, [...kinds]);
+      };
+    },
+  };
 }

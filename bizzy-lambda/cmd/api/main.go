@@ -50,10 +50,15 @@ func main() {
 	}
 	a := app.New(app.Deps{
 		Table: tb, Blobs: blobs, Google: google, Resettable: reset.Allowed(os.Getenv("ENVIRONMENT")),
-		Location: loc, Now: time.Now, NewID: newID,
+		Location: loc, Now: time.Now, NewID: newID, Parallel: googleParallel,
 	})
+	a.Router.LogRequests = true
 	lambda.Start(a.Router.Handle)
 }
+
+// googleParallel is how many calls to Google Calendar run at once: each
+// takes a few hundred milliseconds, mostly waiting.
+const googleParallel = 4
 
 // newID is a random 16-character hex id.
 func newID() string {

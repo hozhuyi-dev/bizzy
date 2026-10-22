@@ -14,6 +14,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"bizzy-lambda/internal/calendar"
@@ -31,6 +32,9 @@ type Calendar struct {
 	// BeforeWrite, when set, runs before each of bizzy's writes.
 	BeforeWrite func(op string) `json:"-"`
 	ids         int
+	// mu lets bizzy call it from many goroutines at once, as the sync
+	// does with Parallel.
+	mu sync.Mutex
 }
 
 var _ calendar.Calendar = (*Calendar)(nil)
@@ -38,6 +42,8 @@ var _ calendar.Calendar = (*Calendar)(nil)
 func (f *Calendar) ID() string { return cmp.Or(f.Name, "primary") }
 
 func (f *Calendar) Changed(_ context.Context, since, from, to time.Time) ([]calendar.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	events := f.Live
 	if !since.IsZero() {
 		events = slices.Concat(f.Live, f.Trash)
@@ -52,6 +58,8 @@ func (f *Calendar) Changed(_ context.Context, since, from, to time.Time) ([]cale
 }
 
 func (f *Calendar) Earliest(_ context.Context, before time.Time) (time.Time, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	var first time.Time
 	found := false
 	for _, e := range f.Live {
@@ -63,6 +71,8 @@ func (f *Calendar) Earliest(_ context.Context, before time.Time) (time.Time, boo
 }
 
 func (f *Calendar) Get(_ context.Context, id string) (calendar.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if i := f.find(f.Live, id); i >= 0 {
 		return clone(f.Live[i]), nil
 	}
@@ -73,6 +83,8 @@ func (f *Calendar) Get(_ context.Context, id string) (calendar.Event, error) {
 }
 
 func (f *Calendar) Insert(_ context.Context, in calendar.EventInput) (calendar.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.beforeWrite("calendar.insert")
 	e := calendar.Event{ID: f.newID()}
 	write(&e, in)
@@ -82,6 +94,8 @@ func (f *Calendar) Insert(_ context.Context, in calendar.EventInput) (calendar.E
 }
 
 func (f *Calendar) Update(_ context.Context, id, etag string, in calendar.EventInput) (calendar.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.beforeWrite("calendar.update")
 	i := f.find(f.Live, id)
 	if i < 0 {
@@ -96,6 +110,8 @@ func (f *Calendar) Update(_ context.Context, id, etag string, in calendar.EventI
 }
 
 func (f *Calendar) Delete(_ context.Context, id, etag string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.beforeWrite("calendar.delete")
 	i := f.find(f.Live, id)
 	if i < 0 {
@@ -110,6 +126,8 @@ func (f *Calendar) Delete(_ context.Context, id, etag string) error {
 
 // UserAdd is the user adding an event; it returns its id.
 func (f *Calendar) UserAdd(title string, start, end time.Time) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	e := calendar.Event{ID: f.newID(), Title: title, Start: start.UTC(), End: end.UTC()}
 	f.touch(&e)
 	f.Live = append(f.Live, e)
@@ -118,6 +136,8 @@ func (f *Calendar) UserAdd(title string, start, end time.Time) string {
 
 // UserAddAllDay is the user adding an all-day event; it returns its id.
 func (f *Calendar) UserAddAllDay(title, date string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	e := calendar.Event{ID: f.newID(), Title: title, Date: date, AllDay: true}
 	f.touch(&e)
 	f.Live = append(f.Live, e)
@@ -126,6 +146,8 @@ func (f *Calendar) UserAddAllDay(title, date string) string {
 
 // UserEdit is the user changing an event.
 func (f *Calendar) UserEdit(id string, edit func(e *calendar.Event)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if i := f.find(f.Live, id); i >= 0 {
 		edit(&f.Live[i])
 		f.touch(&f.Live[i])
@@ -134,6 +156,8 @@ func (f *Calendar) UserEdit(id string, edit func(e *calendar.Event)) {
 
 // UserDelete is the user deleting an event.
 func (f *Calendar) UserDelete(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if i := f.find(f.Live, id); i >= 0 {
 		f.trash(i)
 	}
@@ -142,6 +166,8 @@ func (f *Calendar) UserDelete(id string) {
 // UserCopy is the user duplicating an event, bizzy's hidden properties
 // included, as Google's "Duplicate" does; it returns the copy's id.
 func (f *Calendar) UserCopy(id string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	i := f.find(f.Live, id)
 	if i < 0 {
 		return ""

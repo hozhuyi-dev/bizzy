@@ -23,6 +23,11 @@ export interface GoFunctionProps {
   environmentVariables?: Record<string, string>;
   timeout?: Duration;
   /**
+   * MB, which also sets its share of a CPU: 256 (a seventh) by default,
+   * enough for a function that mostly waits on the table.
+   */
+  memorySize?: number;
+  /**
    * False drops Lambda's own START/END/REPORT lines, which are logged (and
    * billed) once per invocation; the function's own logs stay.
    */
@@ -48,6 +53,7 @@ export class GoFunction extends Construct {
       command,
       environmentVariables,
       timeout,
+      memorySize = 256,
       platformLogs = true,
     } = props;
 
@@ -64,7 +70,7 @@ export class GoFunction extends Construct {
       runtime: Runtime.PROVIDED_AL2023,
       architecture: Architecture.ARM_64,
       handler: "bootstrap",
-      memorySize: 256,
+      memorySize: memorySize,
       timeout: timeout ?? Duration.seconds(10),
       logGroup: logGroup,
       // Log levels need the JSON format; the platform lines are INFO.

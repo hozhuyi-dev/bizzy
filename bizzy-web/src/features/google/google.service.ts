@@ -2,8 +2,6 @@ import type { GoogleCalendar, GoogleConnectionView, SetCalendarRequest } from ".
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const GoogleService = {
-  /** Null before she connects. */
-  status: () => invoke<GoogleConnectionView | null>("google.status"),
   connect: (code: string, redirectUri: string) =>
     invoke<GoogleConnectionView>("google.connect", { code, redirectUri }),
   disconnect: () => invoke<null>("google.disconnect"),

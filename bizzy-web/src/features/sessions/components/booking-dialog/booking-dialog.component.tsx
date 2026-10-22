@@ -1,10 +1,10 @@
 import { useNavigate } from "@tanstack/react-router";
 import { CalendarX2Icon } from "lucide-react";
+import { SessionsQuery } from "../../sessions.query";
 import { BookingForm } from "../booking-form/booking-form.component";
 import { useBookingSave } from "../../session-booking.hook";
 import { draftOf, newSessionDraft } from "../../sessions.form";
 import type { SessionFullView, SessionReturnTo } from "../../sessions.types";
-import { ConflictsQuery } from "~/features/conflicts/conflicts.query";
 import { conflictKind } from "~/features/conflicts/conflicts.util";
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
@@ -84,7 +84,7 @@ export function EditBookingDialog({ session, open, onClose, onSaved }: EditBooki
 }
 
 function EditBooking({ session, onClose, onSaved }: Omit<EditBookingDialogProps, "open">) {
-  const conflicts = ConflictsQuery.useByTarget(session.id);
+  const conflicts = SessionsQuery.useConflicts(session.id);
   const draft = draftOf(session);
   const save = useBookingSave(session, draft, (next) => {
     const done = new Date(next.start) > new Date() ? `Booked for ${formatSessionTime(next.start)}` : "Booking saved";

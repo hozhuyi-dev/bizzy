@@ -2,6 +2,8 @@
 export interface ApiResponse<T> {
   data?: T;
   error?: ApiErrorBody;
+  /** The kinds of item the call changed (e.g. "SESSION"), refused or not; mirrors router.Response. */
+  changed?: Array<string>;
 }
 
 /**

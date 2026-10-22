@@ -1,4 +1,6 @@
+import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { DocumentRef, DocumentSource } from "~/features/documents/documents.types";
+import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { Paid } from "~/features/payments/payments.types";
 import type { SESSION_FACETS } from "./sessions.constant";
@@ -105,6 +107,13 @@ export interface SearchSessionsRequest extends ListRequest {
 export interface SessionFullView extends SessionView {
   notes: string;
   locked: Locks;
+}
+
+/** A session's page in one call: it, the calendar edits waiting on it, the follow-ups made from it; mirrors app.SessionPageView. */
+export interface SessionPageView {
+  session: SessionFullView;
+  conflicts: Array<ConflictView>;
+  followUps: Array<FollowUpView>;
 }
 
 /**

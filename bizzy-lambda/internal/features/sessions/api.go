@@ -111,6 +111,24 @@ type FullView struct {
 	Locked apperr.Locks `json:"locked"`
 }
 
+// Full is a session as its page shows it.
+func Full(tx *txn.Tx, id string) (FullView, error) {
+	s, err := Sessions.Get(tx, id)
+	if err != nil {
+		return FullView{}, err
+	}
+	v, err := ViewOf(tx, s)
+	if err != nil {
+		return FullView{}, err
+	}
+	notes, err := NotesOf(tx, s.ID)
+	if err != nil {
+		return FullView{}, err
+	}
+	locked, err := Locks(tx, s)
+	return FullView{View: v, Notes: notes, Locked: locked}, err
+}
+
 // Locks are what an update to a session can't change now.
 func Locks(tx *txn.Tx, s *Session) (apperr.Locks, error) {
 	return apperr.LocksOf(map[string]error{
@@ -320,22 +338,7 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 		})
 	}))
 	r.Query("sessions.get", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
-		return txn.Read(ctx, run, func(tx *txn.Tx) (FullView, error) {
-			s, err := Sessions.Get(tx, in.ID)
-			if err != nil {
-				return FullView{}, err
-			}
-			v, err := ViewOf(tx, s)
-			if err != nil {
-				return FullView{}, err
-			}
-			notes, err := NotesOf(tx, s.ID)
-			if err != nil {
-				return FullView{}, err
-			}
-			locked, err := Locks(tx, s)
-			return FullView{View: v, Notes: notes, Locked: locked}, err
-		})
+		return txn.Read(ctx, run, func(tx *txn.Tx) (FullView, error) { return Full(tx, in.ID) })
 	}))
 	r.Query("sessions.preview", router.Typed(func(ctx context.Context, in previewRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) (CoverView, error) {

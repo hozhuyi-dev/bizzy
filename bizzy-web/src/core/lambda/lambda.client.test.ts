@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { ApiError, invoke } from "./lambda.client";
+import { ApiError, invoke, keeping, onChanged } from "./lambda.client";
 
 const send = vi.hoisted(() => vi.fn());
 
@@ -39,7 +39,7 @@ describe("invoke", () => {
 
   test("returns null for an empty result", async () => {
     reply({});
-    await expect(invoke("google.status")).resolves.toBeNull();
+    await expect(invoke("sessions.get")).resolves.toBeNull();
   });
 
   test("throws the API's error", async () => {
@@ -48,6 +48,23 @@ describe("invoke", () => {
     const error = await invoke("clients.get").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ code: "refused", message: "taken" });
+  });
+
+  test("tells the listener what a call changed, even when refused", async () => {
+    const heard: Array<[ReadonlyArray<string>, unknown]> = [];
+    onChanged((changed, keep) => heard.push([changed, keep]));
+
+    reply({ data: null, changed: ["SESSION"] });
+    await keeping(["sessions", "detail", "1"], () => invoke("sessions.saveRecord"));
+    reply({ error: { code: "refused", message: "no" }, changed: ["CLIENT"] });
+    await invoke("clients.update").catch(() => undefined);
+    reply({ data: [] });
+    await invoke("clients.list");
+
+    expect(heard).toEqual([
+      [["SESSION"], [["sessions", "detail", "1"]]],
+      [["CLIENT"], []],
+    ]);
   });
 
   test("hides function crashes behind a generic error", async () => {

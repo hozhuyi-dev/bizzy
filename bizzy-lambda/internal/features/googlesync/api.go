@@ -28,6 +28,18 @@ func ViewOf(r Run) View {
 	return v
 }
 
+// Last is the last run; nil before the first.
+func Last(tx *txn.Tx) (*View, error) {
+	st, ok, err := States.Find(tx, stateID)
+	if err != nil || !ok || st.Last == nil {
+		return nil, err
+	}
+	last := *st.Last
+	last.Back = backOf(st) // The backfill has read on since.
+	v := ViewOf(last)
+	return &v, nil
+}
+
 type idRequest struct {
 	ID string `json:"id"`
 }
@@ -40,19 +52,6 @@ func Routes(r *router.Router, s *Sync) {
 			return nil, err
 		}
 		return ViewOf(run), nil
-	}))
-	// sync.status is the last run; null before the first.
-	r.Query("sync.status", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
-		return txn.Read(ctx, s.Runner, func(tx *txn.Tx) (*View, error) {
-			st, ok, err := States.Find(tx, stateID)
-			if err != nil || !ok || st.Last == nil {
-				return nil, err
-			}
-			last := *st.Last
-			last.Back = backOf(st) // The backfill has read on since.
-			v := ViewOf(last)
-			return &v, nil
-		})
 	}))
 	// sync.backfill reads the calendar a month further back; back is how
 	// far back it is read, while older events are still to read.

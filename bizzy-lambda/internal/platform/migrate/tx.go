@@ -128,15 +128,20 @@ func setSchema(ctx context.Context, tb table.Table, s txn.Schema) error {
 // migration could, and deploys of one environment never overlap.
 const commitAttempts = 3
 
-// commit writes a batch, moving the commit counter as every commit does,
-// so that runs which began before it fail and rerun (against the fence).
+// commit writes a batch, moving its partitions' versions as every commit
+// does, so that runs which began before it fail and rerun (against the
+// fence: the schema is a partition every run reads). It goes through only
+// if no partition moved since it read them, as if it were the only writer.
 func commit(ctx context.Context, tb table.Table, writes []table.Write) error {
 	for range commitAttempts {
-		n, err := tb.Counter(ctx, txn.Commits)
+		read, err := tb.Versions(ctx, txn.Commits)
 		if err != nil {
 			return err
 		}
-		if err := tb.Commit(ctx, txn.Commits, n, writes); !errors.Is(err, table.ErrConflict) {
+		for _, w := range writes {
+			read[w.PK()] = read[w.PK()]
+		}
+		if _, err := tb.Commit(ctx, txn.Commits, read, writes); !errors.Is(err, table.ErrConflict) {
 			return err
 		}
 	}

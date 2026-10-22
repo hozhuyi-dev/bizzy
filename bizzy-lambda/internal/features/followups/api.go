@@ -44,6 +44,15 @@ func ViewOf(tx *txn.Tx, fu *FollowUp) (View, error) {
 	}, nil
 }
 
+// BySession are the follow-ups made from one session.
+func BySession(tx *txn.Tx, sessionID string) ([]View, error) {
+	all, err := FollowUps.WithRef(tx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return viewsOf(tx, all)
+}
+
 func viewsOf(tx *txn.Tx, all []*FollowUp) ([]View, error) {
 	out := []View{}
 	for _, fu := range all {
@@ -71,10 +80,6 @@ type searchRequest struct {
 	listing.Request
 	View      List     `json:"view"`
 	ClientIDs []string `json:"clientIds"`
-}
-
-type sessionRequest struct {
-	SessionID string `json:"sessionId"`
 }
 
 type createRequest struct {
@@ -139,15 +144,6 @@ func Routes(r *router.Router, run *txn.Runner) {
 				v, err := ViewOf(tx, fu)
 				return v, err == nil && words.In(v.ClientName, v.Summary, v.Notes), err
 			})
-		})
-	}))
-	r.Query("followUps.listBySession", router.Typed(func(ctx context.Context, in sessionRequest) (any, error) {
-		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
-			all, err := FollowUps.WithRef(tx, in.SessionID)
-			if err != nil {
-				return nil, err
-			}
-			return viewsOf(tx, all)
 		})
 	}))
 	r.Mutation("followUps.create", router.Typed(func(ctx context.Context, in createRequest) (any, error) {

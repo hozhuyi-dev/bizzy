@@ -51,16 +51,20 @@ var errUpdating = apperr.Unavailable("bizzy is being updated. Try again in a min
 
 // checkSchema refuses a table at another version than the Runner's, or
 // one being migrated, unless the Runner is the migrator's.
-func (r *Runner) checkSchema(ctx context.Context) error {
+func (r *Runner) checkSchema(tx *Tx) error {
 	if r.Migrator {
 		return nil
 	}
-	s, err := ReadSchema(ctx, r.Table)
+	var s Schema
+	it, ok, err := tx.get(SchemaKey, false)
+	if err == nil && ok {
+		err = json.Unmarshal(it.Data, &s)
+	}
 	if err != nil {
 		return err
 	}
 	if s.Migrating || s.Version != r.Schema {
-		slog.WarnContext(ctx, "the table isn't at the code's schema", "table", s.Version, "migrating", s.Migrating, "code", r.Schema)
+		slog.WarnContext(tx.ctx, "the table isn't at the code's schema", "table", s.Version, "migrating", s.Migrating, "code", r.Schema)
 		return errUpdating
 	}
 	return nil

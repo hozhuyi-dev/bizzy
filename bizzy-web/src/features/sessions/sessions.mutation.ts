@@ -4,7 +4,8 @@ import type { SessionFields, SessionView } from "./sessions.types";
 import type { TodoView } from "~/features/todo/todo.types";
 import { SessionKeys, TodoKeys } from "~/core/constants/query-keys.constant";
 import { isStaleEdit } from "~/core/utils/api-error.util";
-import { invalidateBilling } from "~/core/utils/query.util";
+import { keeping } from "~/core/lambda/lambda.client";
+import { refreshAll } from "~/core/utils/query.util";
 import { withSession } from "~/features/todo/todo.util";
 
 interface SessionMutationOptions<TInput> {
@@ -14,12 +15,12 @@ interface SessionMutationOptions<TInput> {
 }
 
 /**
- * Refreshes billing after a write. The session's own page is left alone
- * unless asked (`refresh`): its forms restart on a refetch, which would lose
- * what the user is typing. A stale edit refreshes everything, that page
- * included. An action that returns the session puts it on the to-do list
- * at once, so its row shows what was just done instead of waiting for the
- * refetch.
+ * What a write changes is read again as the API says (refreshChanged), but
+ * the session's own page, unless asked (`refresh`): its forms restart on a
+ * refetch, which would lose what the user is typing. A stale edit reads
+ * everything again, that page included. An action that returns the
+ * session puts it on the to-do list at once, so its row shows what was
+ * just done instead of waiting for the refetch.
  */
 function useSessionMutation<TInput, TResult>(
   mutationFn: (input: TInput) => Promise<TResult>,
@@ -27,16 +28,17 @@ function useSessionMutation<TInput, TResult>(
 ) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn,
-    onSuccess: (data, input) => {
+    mutationFn: (input: TInput) => {
+      const id = idOf(input);
+      return keeping(id && !refresh ? SessionKeys.detail(id) : undefined, () => mutationFn(input));
+    },
+    onSuccess: (data) => {
       if (isSessionView(data)) {
         queryClient.setQueryData<Array<TodoView>>(TodoKeys.list(), (items) => items && withSession(items, data));
       }
-      const id = idOf(input);
-      void invalidateBilling(queryClient, id && !refresh ? SessionKeys.detail(id) : undefined);
     },
     onError: (error) => {
-      if (isStaleEdit(error)) void invalidateBilling(queryClient);
+      if (isStaleEdit(error)) void refreshAll(queryClient);
     },
   });
 }

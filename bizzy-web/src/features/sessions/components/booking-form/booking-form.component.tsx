@@ -1,4 +1,5 @@
 import { useSelector } from "@tanstack/react-form";
+import { PREVIEW_DEBOUNCE_MS } from "../../sessions.constant";
 import { sessionTime, toBookingValues, toSessionDraft } from "../../sessions.form";
 import { SessionsQuery } from "../../sessions.query";
 import type { BookingValues, PriceIs } from "../../sessions.form";
@@ -16,6 +17,7 @@ import { Button } from "~/components/ui/button";
 import { DialogFooter } from "~/components/ui/dialog";
 import { FieldDescription, FieldGroup } from "~/components/ui/field";
 import { Separator } from "~/components/ui/separator";
+import { useDebounced } from "~/core/utils/debounced.hook";
 import { formatDate, formatHours, toTimeInput } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { moneyError, requiredError, wholeNumberError } from "~/core/utils/form.util";
@@ -69,8 +71,11 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
 
   const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
 
-  // What would pay for it, as saving it will choose.
-  const previewRequest = useSelector(form.store, (state) => previewOf(state.values, session));
+  // What would pay for it, as saving it will choose; asked once the time stops changing.
+  const previewRequest = useDebounced(
+    useSelector(form.store, (state) => previewOf(state.values, session)),
+    PREVIEW_DEBOUNCE_MS,
+  );
   const preview = SessionsQuery.usePreview(previewRequest);
   const cover: CoverView | undefined = previewRequest ? preview.data : undefined;
 

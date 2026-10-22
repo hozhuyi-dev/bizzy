@@ -23,13 +23,11 @@ export const ActivityKeys = {
 
 export const ConflictKeys = {
   all: ["conflicts"] as const,
-  target: (targetId: string) => [...ConflictKeys.all, "target", targetId] as const,
 };
 
 export const FollowUpKeys = {
   all: ["followUps"] as const,
   search: (request: object) => [...FollowUpKeys.all, "search", request] as const,
-  session: (sessionId: string) => [...FollowUpKeys.all, "session", sessionId] as const,
 };
 
 export const TimelineKeys = {
@@ -73,19 +71,16 @@ export const ExpenseKeys = {
 
 export const SettingsKeys = {
   all: ["settings"] as const,
-  gaps: () => [...SettingsKeys.all, "gaps"] as const,
 };
 
 export const SyncKeys = {
   all: ["sync"] as const,
-  status: () => [...SyncKeys.all, "status"] as const,
   run: () => [...SyncKeys.all, "run"] as const,
   backfill: () => [...SyncKeys.all, "backfill"] as const,
 };
 
 export const GoogleKeys = {
   all: ["google"] as const,
-  status: () => [...GoogleKeys.all, "status"] as const,
   calendars: () => [...GoogleKeys.all, "calendars"] as const,
 };
 
@@ -95,11 +90,18 @@ export const ContactKeys = {
   detail: (resourceName: string) => [...ContactKeys.all, "detail", resourceName] as const,
 };
 
+/** What every page shows around it: Google, Settings' gaps and the last sync, in one call (app.status). */
+export const AppKeys = {
+  all: ["app"] as const,
+  status: () => [...AppKeys.all, "status"] as const,
+};
+
 /**
- * Everything derived from sessions: a sync, a client save or a receipt can
- * change any of these, so they are refreshed together.
+ * What shows a session's money and stage: its client, fee line, receipt,
+ * package and follow-ups all show in these, so a change to any of them
+ * reads them all again.
  */
-export const BILLING_KEYS = [
+const BILLING = [
   TodoKeys.all,
   SessionKeys.all,
   ConflictKeys.all,
@@ -109,5 +111,32 @@ export const BILLING_KEYS = [
   ActivityKeys.all,
   DocumentKeys.all,
   TimelineKeys.all,
-  SyncKeys.all,
 ] as const;
+
+/**
+ * The queries that show each kind of item the API stores (its partition,
+ * as a response's `changed` names it), read again when a call changes one.
+ * A kind not here reads everything again.
+ */
+export const CHANGED_KEYS: Readonly<Record<string, ReadonlyArray<ReadonlyArray<unknown>>>> = {
+  CLIENT: [...BILLING, ContactKeys.all],
+  SESSION: BILLING,
+  SESSIONNOTES: [SessionKeys.all, TimelineKeys.all],
+  PACKAGE: BILLING,
+  DOC: BILLING,
+  DOCLINK: BILLING,
+  DOCREV: [DocumentKeys.all],
+  DOCSHARE: [DocumentKeys.all],
+  DOCNUMBER: [DocumentKeys.all],
+  FOLLOWUP: [FollowUpKeys.all, TodoKeys.all, TimelineKeys.all, SessionKeys.all, ClientKeys.all, ActivityKeys.all],
+  CONFLICT: [ConflictKeys.all, TodoKeys.all, SessionKeys.all],
+  ATTACHMENT: [AttachmentKeys.all, SessionKeys.all, TimelineKeys.all, ExpenseKeys.all],
+  EXPENSE: [ExpenseKeys.all],
+  EXPENSEITEM: [ExpenseKeys.all],
+  EXPENSECATEGORIES: [ExpenseKeys.all],
+  SETTINGS: [SettingsKeys.all, AppKeys.all, TodoKeys.all, SessionKeys.all, DocumentKeys.all],
+  SYNC: [AppKeys.all],
+  GOOGLE: [AppKeys.all, GoogleKeys.all],
+  // Which event shows which item: no page shows it.
+  EVENTLINK: [],
+};

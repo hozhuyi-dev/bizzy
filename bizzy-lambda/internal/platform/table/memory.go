@@ -15,14 +15,14 @@ import (
 type Memory struct {
 	mu       sync.Mutex
 	items    map[Key]Item
-	counters map[Key]int64
+	versions map[Key]Versions
 	// BeforeCommit, when set, runs before each commit is applied; the
 	// simulation panics in it to crash a request halfway.
 	BeforeCommit func()
 }
 
 func NewMemory() *Memory {
-	return &Memory{items: map[Key]Item{}, counters: map[Key]int64{}}
+	return &Memory{items: map[Key]Item{}, versions: map[Key]Versions{}}
 }
 
 func (m *Memory) Get(_ context.Context, key Key) (Item, bool, error) {
@@ -35,27 +35,7 @@ func (m *Memory) Get(_ context.Context, key Key) (Item, bool, error) {
 func (m *Memory) Query(_ context.Context, q Query) ([]Item, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := []Item{}
-	for _, it := range m.items {
-		if q.Matches(it) {
-			out = append(out, it)
-		}
-	}
-	order := func(a, b Place) int {
-		c := cmp.Or(cmp.Compare(a.SortKey, b.SortKey), cmp.Compare(a.SK, b.SK))
-		if q.Desc {
-			return -c
-		}
-		return c
-	}
-	slices.SortFunc(out, func(a, b Item) int { return order(PlaceOf(q.Index, a), PlaceOf(q.Index, b)) })
-	if q.After != nil {
-		out = slices.DeleteFunc(out, func(it Item) bool { return order(PlaceOf(q.Index, it), *q.After) <= 0 })
-	}
-	if q.Limit > 0 && len(out) > q.Limit {
-		out = out[:q.Limit]
-	}
-	return out, nil
+	return Select(slices.Collect(maps.Values(m.items)), q), nil
 }
 
 func (m *Memory) Scan(context.Context) ([]Item, error) {
@@ -74,25 +54,38 @@ func (m *Memory) Load(items ...Item) {
 	}
 }
 
-func (m *Memory) Counter(_ context.Context, key Key) (int64, error) {
+func (m *Memory) Versions(_ context.Context, key Key) (Versions, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.counters[key], nil
+	v := Versions{}
+	maps.Copy(v, m.versions[key])
+	return v, nil
 }
 
-func (m *Memory) Commit(_ context.Context, counter Key, from int64, writes []Write) error {
+func (m *Memory) Commit(_ context.Context, key Key, read Versions, writes []Write) (Versions, error) {
 	if len(writes) > MaxWrites {
-		return ErrTooBig
+		return nil, ErrTooBig
+	}
+	next, err := Moved(read, writes)
+	if err != nil {
+		return nil, err
 	}
 	if m.BeforeCommit != nil {
 		m.BeforeCommit()
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.counters[counter] != from {
-		return ErrConflict
+	now := m.versions[key]
+	for pk, v := range read {
+		if now[pk] != v {
+			return nil, ErrConflict
+		}
 	}
-	m.counters[counter] = from + 1
+	if now == nil {
+		now = Versions{}
+		m.versions[key] = now
+	}
+	maps.Copy(now, next)
 	for _, w := range writes {
 		switch {
 		case w.Put != nil:
@@ -101,25 +94,30 @@ func (m *Memory) Commit(_ context.Context, counter Key, from int64, writes []Wri
 			delete(m.items, *w.Delete)
 		}
 	}
-	return nil
+	return next, nil
 }
 
-func (m *Memory) Wipe(_ context.Context, keep ...string) (int, error) {
+func (m *Memory) Wipe(_ context.Context, key Key, keep ...string) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	deleted := 0
-	for key, it := range m.items {
-		if !slices.Contains(keep, key.PK) || len(it.Data) == 0 {
-			delete(m.items, key)
+	for k, it := range m.items {
+		if !slices.Contains(keep, k.PK) || len(it.Data) == 0 {
+			delete(m.items, k)
 			deleted++
 		}
 	}
-	for key := range m.counters {
-		if !slices.Contains(keep, key.PK) {
-			delete(m.counters, key)
+	for k := range m.versions {
+		if !slices.Contains(keep, k.PK) {
+			delete(m.versions, k)
 			deleted++
 		}
 	}
+	fresh := Versions{}
+	for _, pk := range keep {
+		fresh[pk] = Next(0)
+	}
+	m.versions[key] = fresh
 	return deleted, nil
 }
 
@@ -147,7 +145,11 @@ func (m *Memory) Dump() []byte {
 func (m *Memory) Clone() *Memory {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return &Memory{items: maps.Clone(m.items), counters: maps.Clone(m.counters)}
+	versions := map[Key]Versions{}
+	for k, v := range m.versions {
+		versions[k] = maps.Clone(v)
+	}
+	return &Memory{items: maps.Clone(m.items), versions: versions}
 }
 
 func compareKeys(a, b Key) int {

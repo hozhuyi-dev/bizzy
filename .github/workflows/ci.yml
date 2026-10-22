@@ -39,6 +39,11 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # The sync calls Google from many goroutines at once, which the
+      # race detector checks here (it can't run on every machine).
+      - name: Race
+        run: go test -race ./internal/features/googlesync/... ./internal/platform/txn/... ./internal/platform/router/...
+
   infra:
     runs-on: ubuntu-latest
 
