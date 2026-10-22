@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -46,10 +46,13 @@ export function ExpenseItemsPage() {
     const names = new Map((catalogue.data?.categories ?? []).map((c) => [c.id, c.name]));
     return (item: ExpenseItem) => names.get(item.categoryId) ?? "—";
   }, [catalogue.data]);
-  // A click on the row opens it to edit; Edit is behind ⋯ for the keyboard.
-  const itemMore = (item: ExpenseItem): Array<Action> => [
-    { type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(item) },
-  ];
+  // A click on the row opens it to edit; Edit is its one action, for the keyboard.
+  const itemActions = useCallback(
+    (item: ExpenseItem): Array<Action> => [
+      { type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(item) },
+    ],
+    [],
+  );
 
   const columns = useMemo(
     () =>
@@ -82,14 +85,11 @@ export function ExpenseItemsPage() {
           header: () => <span className="sr-only">Actions</span>,
           meta: { width: "fit" },
           cell: ({ row }) => (
-            <RowActions
-              actions={[]}
-              more={[{ type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(row.original) }]}
-            />
+            <RowActions actions={itemActions(row.original)} />
           ),
         }),
       ]),
-    [categoryName],
+    [categoryName, itemActions],
   );
 
   const table = useTable({
@@ -123,7 +123,7 @@ export function ExpenseItemsPage() {
               }
               value={row.original.lastAmountCents === undefined ? undefined : formatCents(row.original.lastAmountCents)}
               meta={categoryName(row.original)}
-              more={itemMore(row.original)}
+              actions={itemActions(row.original)}
               onOpen={() => setEditing(row.original)}
             />
           )}

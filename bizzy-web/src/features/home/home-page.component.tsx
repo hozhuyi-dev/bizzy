@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
-import { HomeIcon } from "lucide-react";
+import { BellPlusIcon, HomeIcon, PackagePlusIcon, ReceiptIcon, UserPlusIcon } from "lucide-react";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
+import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { PackageForm } from "~/features/packages/components/package-form/package-form.component";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
 import { newSessionAction } from "~/features/sessions/sessions.util";
@@ -18,18 +24,40 @@ import { dayRange } from "~/core/utils/date.util";
 import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 /**
- * Her day: today's sessions, then everything that needs her (sessions and
- * follow-ups in one list). The contents list doubles as the counts.
+ * The user's day: today's sessions, then everything that needs them
+ * (sessions and follow-ups in one list). The contents list doubles as the
+ * counts. The header starts anything new without a trip to its list:
+ * a session first, the rest beside it on a wide screen, behind ⋯ below.
  */
 export function HomePage() {
   const todo = TodoQuery.useList();
   const count = todo.data?.length;
   const [adding, setAdding] = useState(false);
+  const [addingPackage, setAddingPackage] = useState(false);
+  const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
+  const shortcuts: Array<Action> = [
+    { type: "link", label: "New client", icon: UserPlusIcon, link: { to: "/clients/new" } },
+    { type: "button", label: "New package", icon: PackagePlusIcon, onClick: () => setAddingPackage(true) },
+    { type: "button", label: "New follow-up", icon: BellPlusIcon, onClick: () => setFollowUp({ mode: "new" }) },
+    { type: "link", label: "New expense", icon: ReceiptIcon, link: { to: "/expenses/new" } },
+  ];
 
   return (
     <>
-      <PageHeader title="Home" actions={[newSessionAction(() => setAdding(true))]} />
+      <PageHeader
+        title="Home"
+        actions={[newSessionAction(() => setAdding(true))]}
+        moreActions={shortcuts}
+        foldBelow="lg"
+      />
       <NewSessionDialog open={adding} returnTo="home" onClose={() => setAdding(false)} />
+      <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
+      <SheetDialog open={addingPackage} onClose={() => setAddingPackage(false)}>
+        <DialogHeader>
+          <DialogTitle>New package</DialogTitle>
+        </DialogHeader>
+        {addingPackage && <PackageForm onDone={() => setAddingPackage(false)} />}
+      </SheetDialog>
       <PageSections
         sections={[
           { id: "today", title: "Today", content: <Today /> },

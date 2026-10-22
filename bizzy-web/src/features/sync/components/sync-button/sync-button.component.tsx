@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import { RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useSyncCalendar } from "../../sync.hook";
@@ -47,17 +48,17 @@ export function SyncButton() {
         render={
           <Button
             variant="ghost"
-            size="sm"
-            className="relative max-lg:size-7 max-lg:px-0"
+            className="relative max-xl:size-8 max-xl:px-0"
             aria-label={label ? `Calendar sync: ${label}` : "Calendar sync"}
           />
         }
       >
         <RefreshCwIcon className={running || backfilling ? "animate-spin" : undefined} />
-        <span className={failed ? "hidden text-destructive lg:inline" : "hidden text-muted-foreground lg:inline"}>
+        {/* Kept to a width, so a long one ("Reading older events…") never pushes the bar; the menu says it whole. */}
+        <span className={cn("hidden max-w-44 truncate xl:inline", failed ? "text-destructive" : "text-muted-foreground")}>
           {label}
         </span>
-        {failed && <span className="absolute top-1 right-1 size-1.5 rounded-full bg-destructive lg:hidden" />}
+        {failed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-destructive xl:hidden" />}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <div className="px-1.5 py-1 text-xs">

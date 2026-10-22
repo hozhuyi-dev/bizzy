@@ -3,6 +3,7 @@ import {
   BanIcon,
   DownloadIcon,
   EyeIcon,
+  FileCheckIcon,
   LinkIcon,
   MessageCircleIcon,
   PencilIcon,
@@ -32,7 +33,7 @@ import type { PageSection } from "~/components/shared/layout/page-sections/page-
 import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
-import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
+import { Timeline, TimelineItem, TimelineNow } from "~/components/shared/list/timeline/timeline.component";
 import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
 import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
@@ -127,7 +128,7 @@ interface DraftDocumentProps {
 function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
   const editor = useDocumentEditor(doc, draft);
   const editorActions = documentEditorActions(editor);
-  const history = revisionsSection(doc, revisions);
+  const history = historySection(doc, revisions);
 
   return (
     <>
@@ -160,7 +161,7 @@ interface IssuedDocumentProps {
 }
 
 function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps) {
-  const history = revisionsSection(doc, revisions);
+  const history = historySection(doc, revisions, doc.revision);
   const revise = DocumentsMutation.useRevise();
   const [cancelling, setCancelling] = useState(false);
   const cancelled = doc.status === "cancelled";
@@ -206,7 +207,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
               icon={BanIcon}
               title={`Cancelled${doc.cancelledAt ? ` ${formatDate(doc.cancelledAt)}` : ""}.`}
             >
-              Number stays used.
+              {doc.cancelReason ? `${doc.cancelReason}. ` : ""}Number stays used.
             </Banner>
           )
         }
@@ -216,7 +217,6 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
           {
             id: "document",
             title: DOCUMENT_TYPES[doc.type].title,
-            description: cancelled && doc.cancelReason ? `Cancelled: ${doc.cancelReason}` : undefined,
             bare: true,
             content: <DocumentPdfView file={pdf.data} error={pdf.error} />,
           },
@@ -301,29 +301,57 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: DocumentView; open: bool
   );
 }
 
-/** Issued versions, each viewable as the PDF kept when it was issued. */
-function revisionsSection(doc: DocumentView, revisions: Array<DocumentRevision>): PageSection | undefined {
+/**
+ * What happened to it, newest first: the next revision being edited (above
+ * Now), its cancelling, each revision issued (viewable as the PDF kept when
+ * it was issued) and its drafting. Once something was issued only: before
+ * that there is no story. `shown` is the revision the page already offers
+ * the PDF of in its header, so its row doesn't offer it again.
+ */
+function historySection(doc: DocumentView, revisions: Array<DocumentRevision>, shown?: number): PageSection | undefined {
   if (revisions.length === 0) return undefined;
   return {
-    id: "revisions",
-    title: "Issued revisions",
+    id: "history",
+    title: "History",
     content: (
-      <ul className="flex flex-col divide-y">
+      <Timeline label={`${documentLabel(doc.number, doc.revision)}'s history`}>
+        {doc.draft && (
+          <>
+            <TimelineItem
+              icon={PencilIcon}
+              tone="waiting"
+              upcoming
+              when="Being edited"
+              title="Next revision"
+              meta={formatCents(doc.draft.totalCents)}
+            />
+            <TimelineNow />
+          </>
+        )}
+        {doc.cancelledAt && (
+          <TimelineItem icon={BanIcon} when={formatDate(doc.cancelledAt)} title="Cancelled" meta={doc.cancelReason} />
+        )}
         {[...revisions].reverse().map((rev) => (
-          <li key={rev.revision} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-            <span>
-              {documentLabel(rev.number, rev.revision)}
-              <span className="text-muted-foreground">
-                {" "}
-                · issued {formatDate(rev.issuedAt)} · {formatCents(rev.content.totalCents)}
-              </span>
-            </span>
-            <PdfButtons source={{ id: doc.id, revision: rev.revision }} />
-          </li>
+          <RevisionItem key={rev.revision} doc={doc} rev={rev} withPdf={rev.revision !== shown} />
         ))}
-      </ul>
+        <TimelineItem when={formatDate(doc.createdAt)} title="Drafted" />
+      </Timeline>
     ),
   };
+}
+
+function RevisionItem({ doc, rev, withPdf }: { doc: DocumentView; rev: DocumentRevision; withPdf: boolean }) {
+  const actions = usePdfActions({ id: doc.id, revision: rev.revision }).map((action) => ({ ...action, style: "quiet" as const }));
+  return (
+    <TimelineItem
+      icon={FileCheckIcon}
+      tone="done"
+      when={formatDate(rev.issuedAt)}
+      title={`${documentLabel(rev.number, rev.revision)} issued`}
+      meta={formatCents(rev.content.totalCents)}
+      actions={withPdf ? actions : undefined}
+    />
+  );
 }
 
 /** View opens the PDF in a new tab; Download saves it with a proper name. */
@@ -333,10 +361,6 @@ function usePdfActions(source: PdfSource): [view: Action, download: Action] {
     { type: "button", label: "View PDF", icon: EyeIcon, disabled: busy, onClick: () => open(source) },
     { type: "button", label: "Download", icon: DownloadIcon, disabled: busy, onClick: () => download(source) },
   ];
-}
-
-function PdfButtons({ source }: { source: PdfSource }) {
-  return <RowActions actions={usePdfActions(source)} />;
 }
 
 function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean; onClose: () => void }) {

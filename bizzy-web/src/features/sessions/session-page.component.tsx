@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { BanIcon, CalendarPlusIcon, CalendarX2Icon, PlusIcon, Trash2Icon } from "lucide-react";
+import { BanIcon, CalendarPlusIcon, CalendarX2Icon, CheckIcon, CircleHelpIcon, Trash2Icon } from "lucide-react";
 import { bookingStep } from "./components/booking-step/booking-step.component";
+import { EditBookingDialog } from "./components/booking-dialog/booking-dialog.component";
 import { SessionPager } from "./components/session-pager/session-pager.component";
 import { CancelSessionDialog } from "./components/cancel-session-dialog/cancel-session-dialog.component";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
@@ -15,6 +16,7 @@ import { recordStep } from "./components/record-step/record-step.component";
 import { boughtIn, coveringCredits } from "./session-stage.util";
 import { draftOf } from "./sessions.form";
 import { useAskToPayAction } from "./sessions.hook";
+import { useConfirmBooking } from "./session-booking.hook";
 import { sessionsUrl } from "./sessions.util";
 import { SessionsQuery } from "./sessions.query";
 import type { ReactNode } from "react";
@@ -27,6 +29,7 @@ import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ConflictActions } from "~/features/conflicts/components/conflict-actions/conflict-actions.component";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { conflictKind } from "~/features/conflicts/conflicts.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
@@ -108,6 +111,9 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
   const [nextVisit, setNextVisit] = useState<SessionDraft | null>(null);
   const settled = useSettleReturn(settle);
+  // Opened to settle a calendar edit by changing the booking: it starts open, and once saved goes back to the to-do list.
+  const [editingBooking, setEditingBooking] = useState(Boolean(settled) && session.can.update.ok);
+  const confirm = useConfirmBooking();
 
   const parent = parentOf(returnTo, filter);
   const client = clientOf(clientsById, session.clientId);
@@ -116,16 +122,16 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
   // Only after deleting it, so an open booking edit is moot.
   const leave = () => void navigate({ ...parent, ignoreBlocker: true });
   const waiting = conflicts.data ?? [];
+  const unconfirmed = session.tentative && !session.cancelledAt;
 
   const askToPay = useAskToPayAction(session, client);
   const addFollowUp = client && (() => setFollowUp({ mode: "new", clientId: client.id, sessionId: session.id }));
   // Whatever step it is at, so in the header rather than by a step.
   const more: Array<Action> = [
     ...(askToPay ? [askToPay] : []),
-    ...(addFollowUp
+    ...(client
       ? ([
           { type: "button", label: "Next visit", icon: CalendarPlusIcon, onClick: () => setNextVisit(draftOf(session)) },
-          { type: "button", label: "Follow-up", icon: PlusIcon, onClick: addFollowUp },
         ] satisfies Array<Action>)
       : []),
   ];
@@ -133,11 +139,11 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
   // delete one booked by mistake.
   const menu: Array<Action> = [
     { type: "button", label: "Cancel session", icon: BanIcon, can: session.can.cancel, onClick: () => setCancelling(true) },
-    { type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", can: session.can.delete, onClick: () => setDeleting(true) },
+    { type: "button", label: "Delete session", icon: Trash2Icon, style: "destructive", can: session.can.delete, onClick: () => setDeleting(true) },
   ];
 
   const steps: Array<PipelineStep> = [
-    bookingStep(session, () => setCancelling(true), settled),
+    bookingStep(session, () => setEditingBooking(true)),
     recordStep(session, record),
     paymentStep(session, covering, bought),
     documentsStep(session, bought),
@@ -159,8 +165,29 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
         moreActions={more}
         menuActions={menu}
         banners={
-          (session.cancelledAt || waiting.length > 0) && (
+          (session.cancelledAt || unconfirmed || waiting.length > 0) && (
             <>
+              {/* A question it waits on, with its answers: the rest of the page doesn't depend on it. */}
+              {unconfirmed && (
+                <Banner
+                  tone="waiting"
+                  icon={CircleHelpIcon}
+                  title="Not confirmed"
+                  actions={[
+                    {
+                      type: "button",
+                      label: "Confirm",
+                      icon: CheckIcon,
+                      disabled: confirm.pending,
+                      can: session.can.update,
+                      onClick: () => void confirm.confirm(session.id).catch(toastRefusal),
+                    },
+                    { type: "button", label: "Cancel booking", icon: BanIcon, can: session.can.cancel, onClick: () => setCancelling(true) },
+                  ]}
+                >
+                  with the client yet.
+                </Banner>
+              )}
               {session.cancelledAt && (
                 <Banner tone="neutral" icon={BanIcon} title={`Cancelled ${formatDate(session.cancelledAt)}.`}>
                   {session.cancelReason ? `${session.cancelReason}. ` : ""}It stays as it was, with what was recorded on it.
@@ -174,6 +201,7 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
         }
       />
       <PipelineLayout steps={steps} />
+      <EditBookingDialog session={session} open={editingBooking} onClose={() => setEditingBooking(false)} onSaved={settled} />
       <DeleteSessionDialog
         session={deleting ? session : null}
         clientName={client?.name ?? session.clientName}

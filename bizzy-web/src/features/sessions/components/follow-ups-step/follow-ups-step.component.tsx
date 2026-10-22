@@ -6,13 +6,12 @@ import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/foll
 import { formatDue, isOverdue } from "~/features/follow-ups/follow-ups.util";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { DataList, DataListItem } from "~/components/shared/list/data-list/data-list.component";
-import { Button } from "~/components/ui/button";
 
 /**
  * Its follow-ups, `undefined` while they load: to do now once one is
  * overdue, ahead while any is open, done once all are. The next visit isn't
- * linked to it, so it isn't here. Adding one is in the page's header;
- * `onAdd` (without a client, none) is the way in from an empty list too.
+ * linked to it, so it isn't here. `onAdd` (without a client, none) is
+ * the step's own action, beside its title.
  */
 export function followUpsStep(
   session: SessionView,
@@ -45,32 +44,23 @@ export function followUpsStep(
     state,
     meta: late ? <span className="text-status-attention-foreground">{meta}</span> : meta,
     count: open.length,
-    content: <FollowUpsStep followUps={followUps} onAdd={onAdd} onEdit={onEdit} />,
+    actions: onAdd && [{ type: "button", label: "Add follow-up", icon: PlusIcon, onClick: onAdd }],
+    content: <FollowUpsStep followUps={followUps} onEdit={onEdit} />,
   };
 }
 
 interface FollowUpsStepProps {
   followUps: ReadonlyArray<FollowUpView> | undefined;
-  onAdd: (() => void) | undefined;
   onEdit: (followUp: FollowUpView) => void;
 }
 
-function FollowUpsStep({ followUps, onAdd, onEdit }: FollowUpsStepProps) {
+function FollowUpsStep({ followUps, onEdit }: FollowUpsStepProps) {
   if (!followUps) return <LoadingState />;
   if (followUps.length === 0) {
     return (
-      <>
-        <p className="text-sm text-muted-foreground">
-          Anything to get back to the client about, like results to check. It goes in your calendar as a reminder.
-        </p>
-        {onAdd && (
-          <div>
-            <Button variant="outline" size="sm" onClick={onAdd}>
-              <PlusIcon /> Add follow-up
-            </Button>
-          </div>
-        )}
-      </>
+      <p className="text-sm text-muted-foreground">
+        Anything to get back to the client about, like results to check. It goes in your calendar as a reminder.
+      </p>
     );
   }
   return (

@@ -349,23 +349,19 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
     style: "primary",
     disabled: isSubmitting,
   };
-  // What she does with them: behind ⋯ until the header has room beside the
-  // pager. Only Save stays out, while the details have changes to keep.
-  const actions: Array<Action> = !client || hasChanges ? [submit] : [];
+  const book: Action = { type: "button", label: "Book session", icon: CalendarPlusIcon, onClick: () => setBooking(true) };
+  // Booking is the page's main job, until the details have changes to keep:
+  // then Save takes its place and booking waits with the rest, beside it on
+  // a wide screen and behind ⋯ on a phone.
+  const actions: Array<Action> = client && !hasChanges ? [{ ...book, style: "primary" }] : [submit];
   const more: Array<Action> = client
     ? [
         ...(owed > 0 ? [{ type: "button", label: "Record payment", icon: WalletIcon, onClick: () => setPaying(true) } satisfies Action] : []),
-        { type: "button", label: "Follow-up", icon: BellPlusIcon, onClick: () => setFollowUp({ mode: "new", clientId: client.id }) },
+        { type: "button", label: "Add follow-up", icon: BellPlusIcon, onClick: () => setFollowUp({ mode: "new", clientId: client.id }) },
         ...(whatsapp.canMessage(phone)
           ? [{ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) } satisfies Action]
           : []),
-        {
-          type: "button",
-          label: "Book session",
-          icon: CalendarPlusIcon,
-          style: hasChanges ? "secondary" : "primary",
-          onClick: () => setBooking(true),
-        },
+        ...(hasChanges ? [book] : []),
       ]
     : [];
 

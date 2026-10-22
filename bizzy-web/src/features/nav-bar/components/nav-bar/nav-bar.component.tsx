@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { cn } from "cn";
-import { ChevronDownIcon, MenuIcon, SettingsIcon } from "lucide-react";
+import { ChevronDownIcon, CircleUserIcon, LogOutIcon, MenuIcon, SettingsIcon } from "lucide-react";
 import type { Module } from "~/core/navigation/navigation.types";
 import { MODULES } from "~/core/navigation/navigation.constant";
 import { moduleOf, pageOf } from "~/core/navigation/navigation.util";
@@ -18,12 +18,16 @@ import { Logo } from "~/components/shared/layout/logo/logo.component";
 import { AuthMutation } from "~/features/auth/auth.mutation";
 import { SyncButton } from "~/features/sync/components/sync-button/sync-button.component";
 
+// One line always: "Follow-ups" would otherwise break at its hyphen as the bar fills.
 const MODULE_LINK =
-  "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-muted-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50";
+  "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm whitespace-nowrap text-muted-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50";
 
 /**
- * The modules, inline on wider screens and in a menu behind the hamburger on
- * a phone, so the bar never scrolls sideways. A module with several pages
+ * The modules, inline from lg and in a menu behind the hamburger below it,
+ * so the bar never scrolls sideways or wraps: inline they take about 56rem
+ * with the logo and the icons, more than md has. Settings and Sign out are
+ * in the account menu at every width, and the sync's words show from xl
+ * only, kept to a width, so a long one never pushes the bar. A module with several pages
  * opens a menu of them on click (never hover, so a touch screen works the
  * same); the page header then reads "Module › Page".
  */
@@ -39,7 +43,7 @@ export function NavBar() {
       <nav className="mx-auto flex h-full max-w-(--content-width) items-center gap-1 px-(--page-gutter)">
         <DropdownMenu>
           <DropdownMenuTrigger
-            render={<Button variant="ghost" size="icon-sm" className="-ml-1.5 md:hidden" aria-label="Menu" />}
+            render={<Button variant="ghost" size="icon" className="-ml-1.5 lg:hidden" aria-label="Menu" />}
           >
             <MenuIcon />
           </DropdownMenuTrigger>
@@ -62,10 +66,6 @@ export function NavBar() {
                 ))}
               </DropdownMenuGroup>
             ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem render={<Link to="/settings" />} className={settingsActive ? "bg-muted font-medium" : undefined}>
-              Settings
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -74,7 +74,7 @@ export function NavBar() {
           <Logo />
         </Link>
 
-        <div className="hidden items-center gap-1 md:flex">
+        <div className="hidden items-center gap-1 lg:flex">
           {MODULES.map((module) => (
             <ModuleLink key={module.label} module={module} active={current === module} pathname={pathname} />
           ))}
@@ -82,19 +82,28 @@ export function NavBar() {
 
         <div className="ml-auto flex items-center gap-1">
           <SyncButton />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Settings"
-            className={cn("hidden md:inline-flex", settingsActive && "bg-muted")}
-            render={<Link to="/settings" />}
-            nativeButton={false}
-          >
-            <SettingsIcon />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => signOut.mutate()}>
-            Sign out
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon" aria-label="Account" className={settingsActive ? "bg-muted" : undefined} />
+              }
+            >
+              <CircleUserIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem
+                render={<Link to="/settings" />}
+                aria-current={settingsActive ? "page" : undefined}
+                className={settingsActive ? "bg-muted font-medium" : undefined}
+              >
+                <SettingsIcon /> Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => signOut.mutate()}>
+                <LogOutIcon /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </nav>
     </header>

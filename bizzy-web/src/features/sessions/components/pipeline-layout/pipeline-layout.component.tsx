@@ -1,6 +1,8 @@
 import { cn } from "cn";
 import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CircleIcon, CircleMinusIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import { ActionBar } from "~/components/shared/actions/action-bar/action-bar.component";
 import { Card, CardContent } from "~/components/ui/card";
 import { useActiveSection, useCenteredCurrent } from "~/core/scroll-spy/scroll-spy.hook";
 
@@ -17,6 +19,10 @@ export interface PipelineStep {
   meta?: ReactNode;
   /** How many things it holds (documents, open follow-ups), beside its title; none at 0. */
   count?: number | undefined;
+  /** Beside the title: what acts on the step as a whole (Edit booking, Add follow-up). */
+  actions?: ReadonlyArray<Action> | undefined;
+  /** Beside the title on a wide screen, behind ⋯ below lg: the step shares its width with the rail. */
+  more?: ReadonlyArray<Action> | undefined;
   content: ReactNode;
 }
 
@@ -187,17 +193,21 @@ function Rail({ steps, active, onJump }: RailProps) {
 }
 
 function StepSection({ step }: { step: PipelineStep }) {
-  const { id, title, content } = step;
+  const { id, title, actions, more, content } = step;
   return (
     <section
       id={id}
       aria-labelledby={`${id}-title`}
       className="scroll-below-headers flex flex-col gap-3"
     >
-      <h2 id={`${id}-title`} className="flex h-6 min-w-0 items-center gap-2 type-section-title">
-        <StepIcon state={step.state} className="md:hidden" />
-        <span className="truncate">{title}</span>
-      </h2>
+      {/* As PageSections's heading: the title's height whatever sits beside it. */}
+      <div className="flex h-6 items-center justify-between gap-2">
+        <h2 id={`${id}-title`} className="flex min-w-0 items-center gap-2 type-section-title">
+          <StepIcon state={step.state} className="md:hidden" />
+          <span className="truncate">{title}</span>
+        </h2>
+        <ActionBar actions={actions} more={more} size="sm" foldBelow="lg" />
+      </div>
       <Card>
         <CardContent className="flex flex-col gap-4">{content}</CardContent>
       </Card>

@@ -327,9 +327,9 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
             disabled: isSubmitting,
           },
         ]}
-        moreActions={
+        menuActions={
           expense
-            ? [{ type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", onClick: () => setDeleting(true) }]
+            ? [{ type: "button", label: "Delete expense", icon: Trash2Icon, style: "destructive", onClick: () => setDeleting(true) }]
             : undefined
         }
         banners={
