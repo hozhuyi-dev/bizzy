@@ -44,6 +44,11 @@ func serve(ctx context.Context, run *txn.Runner, req events.LambdaFunctionURLReq
 		return respond(http.StatusMethodNotAllowed, router.Response{Error: &router.ErrorBody{Code: apperr.CodeInvalid, Message: "GET only"}})
 	}
 	token := strings.Trim(req.RawPath, "/")
+	// Every transaction reads the table a few times, and this function is
+	// open to anyone; a guess of the wrong shape costs none of its capacity.
+	if !documents.IsShareToken(token) {
+		return respond(http.StatusNotFound, router.Response{Error: &router.ErrorBody{Code: apperr.CodeNotFound, Message: documents.Shares.Gone}})
+	}
 	shared, err := txn.Read(ctx, run, func(tx *txn.Tx) (documents.SharedView, error) {
 		d, err := documents.Open(tx, token)
 		if err != nil {

@@ -5,7 +5,9 @@ import {
   Architecture,
   Code,
   Function as LambdaFunction,
+  LoggingFormat,
   Runtime,
+  SystemLogLevel,
 } from "aws-cdk-lib/aws-lambda";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
@@ -20,6 +22,11 @@ export interface GoFunctionProps {
   command: string;
   environmentVariables?: Record<string, string>;
   timeout?: Duration;
+  /**
+   * False drops Lambda's own START/END/REPORT lines, which are logged (and
+   * billed) once per invocation; the function's own logs stay.
+   */
+  platformLogs?: boolean;
 }
 
 /**
@@ -35,8 +42,14 @@ export class GoFunction extends Construct {
   constructor(scope: Construct, id: string, props: GoFunctionProps) {
     super(scope, id);
 
-    const { projectName, environment, command, environmentVariables, timeout } =
-      props;
+    const {
+      projectName,
+      environment,
+      command,
+      environmentVariables,
+      timeout,
+      platformLogs = true,
+    } = props;
 
     const functionName = `${projectName}-${environment}-${command}`;
 
@@ -54,6 +67,10 @@ export class GoFunction extends Construct {
       memorySize: 256,
       timeout: timeout ?? Duration.seconds(10),
       logGroup: logGroup,
+      // Log levels need the JSON format; the platform lines are INFO.
+      ...(platformLogs
+        ? {}
+        : { loggingFormat: LoggingFormat.JSON, systemLogLevelV2: SystemLogLevel.WARN }),
       environment: environmentVariables ?? {},
       code: Code.fromAsset(LAMBDA_ROOT, {
         bundling: {

@@ -38,6 +38,12 @@ func newShareToken() string {
 
 var shareTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
 
+// IsShareToken is whether token has a share token's shape. Anything else
+// opens nothing, so the public link answers it without reading the table.
+func IsShareToken(token string) bool {
+	return shareTokenPattern.MatchString(token)
+}
+
 // share gives a document a new token, retiring its old one.
 func share(tx *txn.Tx, d *Document) error {
 	if d.ShareToken != "" {
@@ -83,7 +89,7 @@ func ResetShare(tx *txn.Tx, id string) (*Document, error) {
 // die.
 func Open(tx *txn.Tx, token string) (*Document, error) {
 	gone := apperr.NotFound("%s", Shares.Gone)
-	if !shareTokenPattern.MatchString(token) {
+	if !IsShareToken(token) {
 		return nil, gone
 	}
 	s, ok, err := Shares.Find(tx, token)

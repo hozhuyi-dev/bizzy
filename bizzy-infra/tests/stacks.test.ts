@@ -263,6 +263,21 @@ describe("api", () => {
     backup(synth("production").api);
   });
 
+  test("lets migrate delete only its own table's backups", () => {
+    api.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: "dynamodb:DeleteBackup",
+            Resource: {
+              "Fn::Join": ["", [Match.objectLike({ "Fn::ImportValue": Match.anyValue() }), "/backup/*"]],
+            },
+          }),
+        ]),
+      },
+    });
+  });
+
   test("serves share links publicly, GET only", () => {
     api.resourceCountIs("AWS::Lambda::Url", 1);
     api.hasResourceProperties("AWS::Lambda::Url", {

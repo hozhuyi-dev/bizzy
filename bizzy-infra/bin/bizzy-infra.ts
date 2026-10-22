@@ -68,13 +68,19 @@ const apiStack = new ApiStack(app, `${projectName}-${environment}-api`, {
   syncTimeZone: syncTimeZone,
 });
 
-const webStack = new WebStack(app, `${projectName}-${environment}-web`, {
-  env: env,
-  projectName: projectName,
-  environment: environment,
-});
+// Development serves the app from localhost (`pnpm web:dev`), so it has no
+// hosting.
+const webStack =
+  environment === "development"
+    ? undefined
+    : new WebStack(app, `${projectName}-${environment}-web`, {
+        env: env,
+        projectName: projectName,
+        environment: environment,
+      });
 
 for (const stack of [authStack, dataStack, apiStack, webStack]) {
+  if (!stack) continue;
   cdk.Tags.of(stack).add("project", projectName);
   cdk.Tags.of(stack).add("environment", environment);
   cdk.Tags.of(stack).add("managed-by", "cdk");

@@ -19,6 +19,7 @@
     "infra:typecheck": "pnpm -F bizzy-infra typecheck",
     "cdk:diff": "pnpm -F bizzy-infra cdk:diff",
     "cdk:deploy": "pnpm -F bizzy-infra cdk:deploy",
+    "cdk:gc": "pnpm -F bizzy-infra cdk:gc",
     "dev:deploy": "pnpm cdk:deploy && pnpm lambda:migrate && pnpm web:env"
   },
   "packageManager": "pnpm@10.33.0"

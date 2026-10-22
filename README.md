@@ -34,12 +34,12 @@ scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs
 
 ### bizzy-infra
 
-Entry point: [bin/bizzy-infra.ts](bizzy-infra/bin/bizzy-infra.ts). It reads `.env.<ENVIRONMENT>` and creates four stacks, `<project>-<env>-{auth,data,api,web}`:
+Entry point: [bin/bizzy-infra.ts](bizzy-infra/bin/bizzy-infra.ts). It reads `.env.<ENVIRONMENT>` and creates the stacks `<project>-<env>-{auth,data,api,web}`:
 
 - **auth**: Cognito user pool (Google IdP) and identity pool, with role mapping to `ALLOWED_EMAIL`.
 - **data**: the DynamoDB table (5 generic LSIs, created up front) and the attachments bucket (versioned with 35-day noncurrent expiry in production).
 - **api**: the `api`, `public` (share links, Function URL, `GetItem` only), `job-quarterly` (EventBridge) and `migrate` (run by deploys) Go Lambdas.
-- **web**: S3 and CloudFront hosting the SPA.
+- **web** (staging and production; development runs the app on localhost): S3 and CloudFront hosting the SPA. A deploy drops the previous build's files.
 
 ### bizzy-lambda
 
@@ -114,7 +114,7 @@ The SQL migrations of the table. The code serves only a table at its own version
 
 - **Every change to a stored type or a `Meta`** needs one. `TestSchema` refuses to `-update` SCHEMA.md until there is one. One with no `Up` is enough when no item needs changing by hand: every run rewrites every item as the code writes it.
 - **Writing one**: `internal/migrations/NNN_<what>.go`, appended to `All` (never reorder or change a deployed one). It works on the stored JSON (`migrate.EachItem`), never on a feature's types, and imports only `platform`. Running it twice must change nothing. Give it `testdata/NNN/{before,after}.json`.
-- **Deploying**: CI dry-runs the migrations on an in-memory copy of the table, deploys, then invokes `cmd/migrate`. The run backs the table up (production), raises the fence (every request gets `unavailable`, "being updated"), runs the pending migrations, then reviews every item: it must decode strictly as its type. The run then rewrites them, checks every invariant, and lowers the fence. Any failure leaves the fence up until a fixed migration runs.
+- **Deploying**: CI dry-runs the migrations on an in-memory copy of the table, deploys, then invokes `cmd/migrate`. The run backs the table up (production, deleting its backups older than 35 days, which point-in-time recovery covers), raises the fence (every request gets `unavailable`, "being updated"), runs the pending migrations, then reviews every item: it must decode strictly as its type. The run then rewrites them, checks every invariant, and lowers the fence. Any failure leaves the fence up until a fixed migration runs.
 
 ### bizzy-web
 
@@ -150,6 +150,7 @@ pnpm lambda:migrate:dry  # what the next deploy's migrations would do (writes no
 pnpm web:dev           # http://localhost:4200
 pnpm web:env           # rewrite the web env only
 pnpm cdk:diff
+pnpm cdk:gc            # delete old Lambda builds no stack uses from the CDK assets bucket (now and then)
 
 pnpm web:test | web:lint | web:typecheck
 pnpm infra:test | infra:lint | infra:typecheck
@@ -162,3 +163,18 @@ Deeper runs (from `bizzy-lambda/`):
 go test ./internal/simulation -rapid.checks=1000 -rapid.steps=300
 TABLE_NAME=<dev table> go test ./internal/platform/dynamo   # the table contract against real DynamoDB
 ```
+
+## If share links are flooded
+
+The `public` function is the only thing anyone can call, and every call is billed and reads the table, whose small provisioned capacity the app shares. The account's limit of 10 concurrent executions caps what a flood costs. If that limit is ever raised, cap `public` too (`reservedConcurrentExecutions: 2` in [api-stack.ts](bizzy-infra/lib/api-stack.ts)).
+
+To stop it at once (share links fail, everything else keeps working):
+
+```sh
+aws lambda put-function-concurrency --function-name bizzy-<env>-public \
+  --reserved-concurrent-executions 0 --profile hozhuyi.dev --region ap-southeast-1
+aws lambda delete-function-concurrency --function-name bizzy-<env>-public \
+  --profile hozhuyi.dev --region ap-southeast-1   # turn it back on
+```
+
+A token reset (on the document) kills one link that leaked; this kills them all until turned back on.

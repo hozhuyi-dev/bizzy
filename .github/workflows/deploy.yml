@@ -96,6 +96,8 @@ jobs:
 
   web:
     needs: infra
+    # Development has no hosting; its app runs on localhost.
+    if: github.event.inputs.env_name != 'development'
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.env_name || (github.ref_name == 'production' && 'production') || 'staging' }}
 
@@ -157,6 +159,9 @@ jobs:
           # Entry document last, once everything it references is in place.
           aws s3 cp "$DIST/index.html" "s3://$SITE_BUCKET/index.html" \
             --cache-control "no-cache"
+          # Then drop the previous builds' files, which nothing references
+          # any more (each build names its assets anew, so they pile up).
+          aws s3 sync "$DIST" "s3://$SITE_BUCKET" --delete --size-only
 
       - name: Invalidate CloudFront
         run: |

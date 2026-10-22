@@ -181,14 +181,29 @@ export class ApiStack extends cdk.Stack {
     migrate.function.addToRolePolicy(
       new PolicyStatement({ actions: ["dynamodb:CreateBackup"], resources: [table.tableArn] }),
     );
+    // Backups older than point-in-time recovery's window are deleted after
+    // each new one. ListBackups can't be scoped to a table.
+    migrate.function.addToRolePolicy(
+      new PolicyStatement({ actions: ["dynamodb:ListBackups"], resources: ["*"] }),
+    );
+    migrate.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["dynamodb:DeleteBackup"],
+        resources: [`${table.tableArn}/backup/*`],
+      }),
+    );
 
     // The one thing reachable without signing in, so it is its own function
     // with its own role: it can read single items from the table and nothing
-    // else, whatever its code does.
+    // else, whatever its code does. Anyone can call it as often as they like
+    // and every call is billed, so a call that is stuck (DynamoDB throttling,
+    // retried with backoff) is cut short, and logs only what went wrong.
     this.public = new GoFunction(this, "Public", {
       projectName: projectName,
       environment: environment,
       command: "public",
+      timeout: Duration.seconds(3),
+      platformLogs: false,
       environmentVariables: { TABLE_NAME: table.tableName },
     });
     table.grant(this.public.function, "dynamodb:GetItem");
