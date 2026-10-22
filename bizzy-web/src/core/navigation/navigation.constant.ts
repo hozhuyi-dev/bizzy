@@ -33,6 +33,7 @@ export const MODULES: ReadonlyArray<Module> = [
     pages: [
       { to: "/expenses", label: "Expenses" },
       { to: "/expenses/items", label: "Items" },
+      { to: "/expenses/vendors", label: "Shops" },
       { to: "/expenses/categories", label: "Categories" },
     ],
   },

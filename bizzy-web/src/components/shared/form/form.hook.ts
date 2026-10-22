@@ -1,6 +1,7 @@
 import { createFormHook } from "@tanstack/react-form";
 import { fieldContext, formContext } from "./form-context.hook";
 import {
+  AutocompleteField,
   CheckboxField,
   ChoiceField,
   NumberField,
@@ -14,7 +15,7 @@ import { focusFirstInvalid } from "~/core/utils/form.util";
 const { useAppForm: useBaseForm, withForm } = createFormHook({
   fieldContext,
   formContext,
-  fieldComponents: { TextField, TextareaField, NumberField, SelectField, CheckboxField, ChoiceField },
+  fieldComponents: { TextField, AutocompleteField, TextareaField, NumberField, SelectField, CheckboxField, ChoiceField },
   formComponents: { SubmitButton },
 });
 

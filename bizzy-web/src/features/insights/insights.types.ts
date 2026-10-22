@@ -1,51 +1,41 @@
-/**
- * Two bases: "received" is money in the month it was paid (packages when
- * bought, which is what matters for tax); "earned" values sessions as they
- * happen.
- */
-export type Basis = "received" | "earned";
+// Mirrors bizzy-lambda/internal/app/insights.go.
 
-export interface MonthPoint {
+/** One month: money in and out, and sessions; mirrors app.InsightsMonth. */
+export interface InsightsMonth {
+  /** "2026-10". */
   month: string;
-  cents: number;
-  /** The same month a year earlier, for comparison. */
-  lastYearCents: number;
+  receivedCents: number;
+  spentCents: number;
   sessions: number;
-  homeSessions: number;
-  /** Earned per session delivered, whatever the basis. */
-  avgCents: number | undefined;
-  activeClients: number;
-  newClients: number;
+  /** Those of clients in the month of their first session. */
+  newSessions: number;
 }
 
-/** One month summed over every client. */
-export interface MonthTotal {
-  received: number;
-  earned: number;
-  sessions: number;
-  homeSessions: number;
-  homeEarned: number;
-  active: number;
-  new: number;
+/**
+ * A calendar year (Malaysia's tax year) at a glance; mirrors
+ * app.InsightsView. Money is as received, as the tax return counts it.
+ */
+export interface InsightsView {
+  year: number;
+  /** Those with money or sessions, and this one, latest first. */
+  years: Array<number>;
+  /** January to December, or to this month for this year. */
+  months: Array<InsightsMonth>;
+  /** Received over the same months a year earlier. */
+  previousReceivedCents: number;
+  /** The year's expenses by category id. */
+  spentByCategory: Record<string, number>;
+  /** What packages have left now, booked sessions taken off, and what that is worth. */
+  prepaidMinutes: number;
+  prepaidCents: number;
 }
 
-export interface YearPoint {
-  year: string;
-  cents: number;
+/** The year's totals, for the numbers at the top. */
+export interface InsightsTotals {
+  receivedCents: number;
+  spentCents: number;
+  leftCents: number;
   sessions: number;
-}
-
-export interface PeriodSummary {
-  cents: number;
-  sessions: number;
-  homeSessions: number;
-  homeCents: number;
-}
-
-export interface ClientShare {
-  id: string;
-  name: string;
-  cents: number;
-  /** Of the period's total, 0–1. */
-  share: number;
+  /** Received against the same months a year earlier, as a fraction; undefined with nothing to compare. */
+  receivedChange: number | undefined;
 }

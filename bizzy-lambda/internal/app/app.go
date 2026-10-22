@@ -83,7 +83,7 @@ func Kinds() []txn.AnyKind {
 		clients.Clients, settings.Store,
 		documents.Documents, documents.Links, documents.Revisions, documents.Shares, documents.Counters,
 		packages.Packages, attachments.Attachments, sessions.Sessions, sessions.Notes, followups.FollowUps,
-		expenses.Expenses, expenses.Items, expenses.Categories,
+		expenses.Expenses, expenses.Items, expenses.Vendors, expenses.Categories,
 		conflicts.Conflicts, googlesync.Links, googlesync.States, googleconnect.Connections,
 	}
 }
@@ -128,6 +128,7 @@ func New(d Deps) *App {
 	googlesync.Routes(r, sync)
 	statusRoutes(r, run, d.Google)
 	pageRoutes(r, run)
+	insightsRoutes(r, run)
 	if d.Google != nil {
 		googleconnect.Routes(r, run, d.Google)
 	}

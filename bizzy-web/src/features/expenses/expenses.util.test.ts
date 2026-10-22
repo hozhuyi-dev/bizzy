@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { linesCategories, linesSummary, totalsByCategory, vendorsOf, yearRange } from "./expenses.util";
+import { itemSuggestions, linesCategories, linesSummary, totalsByCategory, vendorSuggestions } from "./expenses.util";
 import type { CatalogueView, ExpenseView } from "./expenses.types";
+import { formatCents } from "~/core/utils/money.util";
 
 const expense = (vendor: string, lines: Array<[string, string, number]>): ExpenseView => ({
   id: vendor,
@@ -19,16 +20,19 @@ const catalogue: CatalogueView = {
     { id: "travel", name: "Travel" },
     { id: "rental", name: "Rental" },
   ],
-  items: [],
+  items: [
+    { id: "1", name: "Kinesio tape", categoryId: "purchases", lastAmountCents: 2500 },
+    { id: "2", name: "Gel", categoryId: "purchases" },
+    { id: "3", name: "Old", categoryId: "travel", archived: true },
+  ],
+  vendors: [
+    { id: "1", name: "Shopee", lastUsed: "2026-10-09" },
+    { id: "2", name: "Typo", lastUsed: "2026-10-08", archived: true },
+    { id: "3", name: "Petronas", lastUsed: "2026-09-01" },
+  ],
 };
 
 describe("expenses util", () => {
-  const year = [
-    expense("Shopee", [["Tape", "purchases", 4500], ["Gel", "purchases", 1200], ["Bag", "travel", 900]]),
-    expense("Petronas", [["Fuel", "travel", 8000]]),
-    expense("Shopee", [["Tape", "purchases", 4500]]),
-  ];
-
   it("names each category's total, largest first, leaving unused ones out", () => {
     const byCategory = { travel: 8900, purchases: 10200, rental: 0 };
     expect(totalsByCategory(byCategory, catalogue).map(({ category, cents }) => [category.id, cents])).toEqual([
@@ -37,13 +41,20 @@ describe("expenses util", () => {
     ]);
   });
 
-  it("suggests where she buys most often first", () => {
-    expect(vendorsOf(year)).toEqual(["Shopee", "Petronas"]);
+  it("suggests vendors as the API orders them, leaving archived ones out", () => {
+    expect(vendorSuggestions(catalogue).map((s) => s.value)).toEqual(["Shopee", "Petronas"]);
+  });
+
+  it("suggests items by name, with their category and last price", () => {
+    expect(itemSuggestions(catalogue)).toEqual([
+      { value: "Gel", detail: "Purchases" },
+      { value: "Kinesio tape", detail: `Purchases · ${formatCents(2500)}` },
+    ]);
   });
 
   it("summarises a receipt's lines", () => {
-    expect(linesSummary(year[0] as ExpenseView)).toBe("Tape, Gel +1");
-    expect(yearRange(2026)).toEqual({ from: "2026-01-01", to: "2026-12-31" });
+    const receipt = expense("Shopee", [["Tape", "purchases", 4500], ["Gel", "purchases", 1200], ["Bag", "travel", 900]]);
+    expect(linesSummary(receipt)).toBe("Tape, Gel +1");
   });
 });
 

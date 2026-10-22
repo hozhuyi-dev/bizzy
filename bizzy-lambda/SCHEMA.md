@@ -340,6 +340,21 @@ Checked on every change to one:
 
 - **items-are-filed**: Every item is in a category
 
+### EXPENSEVENDOR
+
+A shop or website receipts are from, suggested on the next one.
+
+| Field | Type |
+|---|---|
+| id | `string` |
+| name | `string` |
+| lastUsed | `string` |
+| archived | `bool` |
+
+Checked on every change to one:
+
+- **vendors-are-one-per-name**: A shop is listed once, however its name was typed
+
 ### EXPENSECATEGORIES
 
 Every expense category, in order: one item, ALL.

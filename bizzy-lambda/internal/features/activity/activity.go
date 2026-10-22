@@ -47,6 +47,9 @@ type Client struct {
 	// CreditsLeftMinutes is what their packages have left, booked
 	// sessions taken off.
 	CreditsLeftMinutes int `json:"creditsLeftMinutes,omitempty"`
+	// CreditsLeftCents is what those credits are worth, at their share of
+	// each package's price.
+	CreditsLeftCents int64 `json:"creditsLeftCents,omitempty"`
 	// OpenFollowUps counts the follow-ups not done; NextFollowUpAt is when
 	// the soonest is due (it may be past).
 	OpenFollowUps  int        `json:"openFollowUps,omitempty"`
@@ -201,7 +204,9 @@ func All(tx *txn.Tx) ([]Client, error) {
 	}
 	for _, p := range pkgs {
 		if left := p.Hours*60 - credit[p.ID]; left > 0 {
-			of(p.ClientID).CreditsLeftMinutes += left
+			c := of(p.ClientID)
+			c.CreditsLeftMinutes += left
+			c.CreditsLeftCents += p.ShareCents(charged[documents.PackageSource(p.ID)], credit[p.ID], left)
 		}
 	}
 

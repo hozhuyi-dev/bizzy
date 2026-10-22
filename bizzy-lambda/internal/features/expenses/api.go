@@ -1,11 +1,12 @@
 package expenses
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"time"
 
 	"bizzy-lambda/internal/features/attachments"
-	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/listing"
 	"bizzy-lambda/internal/platform/router"
@@ -40,24 +41,19 @@ type SearchView struct {
 	Totals *Totals `json:"totals,omitempty"`
 }
 
-// Totals are what expenses add up to: only their lines in the categories
-// searched for, when it was by category.
+// Totals are what the expenses found add up to: only their lines in the
+// categories searched for, when it was by category.
 type Totals struct {
+	Count      int   `json:"count"`
 	SpentCents int64 `json:"spentCents"`
-	// ByCategory is what was spent in each category, by its id.
-	ByCategory map[string]int64 `json:"byCategory"`
 }
 
-// CatalogueView is what lines are picked from.
+// CatalogueView is what the form suggests: the categories and items lines
+// are picked from, and the vendors, last used first.
 type CatalogueView struct {
 	Categories []Category `json:"categories"`
 	Items      []Item     `json:"items"`
-}
-
-type listRequest struct {
-	// From and To are days, YYYY-MM-DD, both included.
-	From string `json:"from"`
-	To   string `json:"to"`
+	Vendors    []Vendor   `json:"vendors"`
 }
 
 // searchRequest finds expenses by words in the vendor, the notes or the
@@ -77,6 +73,11 @@ type updateRequest struct {
 	Receipt
 }
 
+type archiveVendorRequest struct {
+	ID       string `json:"id"`
+	Archived bool   `json:"archived"`
+}
+
 type categoriesRequest struct {
 	Categories []Category `json:"categories"`
 }
@@ -92,28 +93,6 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 			return viewOf(tx, e)
 		})
 	}
-	r.Query("expenses.list", router.Typed(func(ctx context.Context, in listRequest) (any, error) {
-		from, errFrom := time.Parse(time.DateOnly, in.From)
-		to, errTo := time.Parse(time.DateOnly, in.To)
-		switch {
-		case errFrom != nil || errTo != nil || to.Before(from):
-			return nil, apperr.Invalid("From and to are days, from first.")
-		case to.Sub(from) > 400*24*time.Hour:
-			return nil, apperr.Invalid("Ask for at most a year at a time.")
-		}
-		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
-			all, err := Expenses.Between(tx, from, to)
-			out := []View{}
-			for _, e := range all {
-				v, err := viewOf(tx, e)
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, v)
-			}
-			return out, err
-		})
-	}))
 	// expenses.search finds expenses, latest first, a page at a time.
 	r.Query("expenses.search", router.Typed(func(ctx context.Context, in searchRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) (SearchView, error) {
@@ -135,13 +114,13 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 			}
 			var out SearchView
 			if in.After == "" {
-				out.Totals = &Totals{ByCategory: map[string]int64{}}
+				out.Totals = &Totals{}
 				_, err := Expenses.Each(tx, l, "", func(e *Expense) (bool, error) {
 					if found(e) {
+						out.Totals.Count++
 						for _, line := range e.Lines {
 							if listing.OneOf(in.CategoryIDs, line.CategoryID) {
 								out.Totals.SpentCents += line.AmountCents
-								out.Totals.ByCategory[line.CategoryID] += line.AmountCents
 							}
 						}
 					}
@@ -177,10 +156,20 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 				return CatalogueView{}, err
 			}
 			items, err := Items.All(tx)
-			out := CatalogueView{Categories: cats, Items: []Item{}}
+			if err != nil {
+				return CatalogueView{}, err
+			}
+			vendors, err := Vendors.All(tx)
+			out := CatalogueView{Categories: cats, Items: []Item{}, Vendors: []Vendor{}}
 			for _, it := range items {
 				out.Items = append(out.Items, *it)
 			}
+			for _, v := range vendors {
+				out.Vendors = append(out.Vendors, *v)
+			}
+			slices.SortFunc(out.Vendors, func(a, b Vendor) int {
+				return cmp.Or(cmp.Compare(b.LastUsed, a.LastUsed), cmp.Compare(a.Name, b.Name))
+			})
 			return out, err
 		})
 	}))
@@ -205,6 +194,15 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 				return Item{}, err
 			}
 			return *it, nil
+		})
+	}))
+	r.Mutation("expenses.archiveVendor", router.Typed(func(ctx context.Context, in archiveVendorRequest) (any, error) {
+		return txn.Run(ctx, run, func(tx *txn.Tx) (Vendor, error) {
+			v, err := ArchiveVendor(tx, in.ID, in.Archived)
+			if err != nil {
+				return Vendor{}, err
+			}
+			return *v, nil
 		})
 	}))
 	r.Mutation("expenses.saveCategories", router.Typed(func(ctx context.Context, in categoriesRequest) (any, error) {

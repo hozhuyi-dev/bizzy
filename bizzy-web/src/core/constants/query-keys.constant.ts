@@ -63,10 +63,19 @@ export const AttachmentKeys = {
 
 export const ExpenseKeys = {
   all: ["expenses"] as const,
-  list: (from: string, to: string) => [...ExpenseKeys.all, "list", from, to] as const,
   search: (request: object) => [...ExpenseKeys.all, "search", request] as const,
   detail: (id: string) => [...ExpenseKeys.all, "detail", id] as const,
-  catalogue: () => [...ExpenseKeys.all, "catalogue"] as const,
+};
+
+/** What the expense form suggests: categories, items and vendors. Apart from ExpenseKeys, so a receipt's file doesn't read it again. */
+export const CatalogueKeys = {
+  all: ["catalogue"] as const,
+};
+
+/** A year of the business at a glance (insights.year). */
+export const InsightKeys = {
+  all: ["insights"] as const,
+  year: (year: number) => [...InsightKeys.all, year] as const,
 };
 
 export const SettingsKeys = {
@@ -111,6 +120,7 @@ const BILLING = [
   ActivityKeys.all,
   DocumentKeys.all,
   TimelineKeys.all,
+  InsightKeys.all,
 ] as const;
 
 /**
@@ -131,9 +141,10 @@ export const CHANGED_KEYS: Readonly<Record<string, ReadonlyArray<ReadonlyArray<u
   FOLLOWUP: [FollowUpKeys.all, TodoKeys.all, TimelineKeys.all, SessionKeys.all, ClientKeys.all, ActivityKeys.all],
   CONFLICT: [ConflictKeys.all, TodoKeys.all, SessionKeys.all],
   ATTACHMENT: [AttachmentKeys.all, SessionKeys.all, TimelineKeys.all, ExpenseKeys.all],
-  EXPENSE: [ExpenseKeys.all],
-  EXPENSEITEM: [ExpenseKeys.all],
-  EXPENSECATEGORIES: [ExpenseKeys.all],
+  EXPENSE: [ExpenseKeys.all, InsightKeys.all],
+  EXPENSEITEM: [CatalogueKeys.all],
+  EXPENSEVENDOR: [CatalogueKeys.all],
+  EXPENSECATEGORIES: [CatalogueKeys.all],
   SETTINGS: [SettingsKeys.all, AppKeys.all, TodoKeys.all, SessionKeys.all, DocumentKeys.all],
   SYNC: [AppKeys.all],
   GOOGLE: [AppKeys.all, GoogleKeys.all],

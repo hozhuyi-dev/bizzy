@@ -124,11 +124,11 @@ export const QUIPS = {
     "No paperwork. Enjoy it while it lasts.",
     "Fresh out of receipts. Fresh in general.",
   ],
-  insightsTopClients: [
-    "No pollen collected this year.",
-    "The leaderboard is wide open.",
-    "Nobody's on the podium yet.",
-    "Quiet year. The charts are napping.",
+  insightsSpending: [
+    "Not a sen spent. Frugal bee.",
+    "The wallet's been napping.",
+    "No receipts in the hive.",
+    "Quiet year at the till.",
   ],
   // Placeholders: short enough for the box, and hinting words mix and match.
   searchPlaceholder: [

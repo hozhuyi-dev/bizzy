@@ -32,10 +32,9 @@ export interface ExpenseView {
 
 /** What the expenses found add up to; mirrors expenses.Totals. */
 export interface ExpenseTotals {
+  count: number;
   /** Only their lines in the categories searched for, when it was by category. */
   spentCents: number;
-  /** By category id. */
-  byCategory: Record<string, number>;
 }
 
 /** A page of expenses found and, on the first page, their totals; mirrors expenses.SearchView. */
@@ -71,10 +70,24 @@ export interface ExpenseCategory {
   archived?: boolean;
 }
 
-/** What lines are picked from; mirrors expenses.CatalogueView. */
+/**
+ * Somewhere the user buys from, suggested on the next receipt; mirrors
+ * expenses.Vendor. Receipts name it as text, so archiving it only stops
+ * the suggestion.
+ */
+export interface Vendor {
+  id: string;
+  name: string;
+  /** The latest receipt's day, YYYY-MM-DD. */
+  lastUsed: string;
+  archived?: boolean;
+}
+
+/** What the expense form suggests; mirrors expenses.CatalogueView. Vendors come last used first. */
 export interface CatalogueView {
   categories: Array<ExpenseCategory & { id: string }>;
   items: Array<ExpenseItem>;
+  vendors: Array<Vendor>;
 }
 
 /**

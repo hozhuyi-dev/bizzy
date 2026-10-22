@@ -13,10 +13,10 @@ import {
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
+import { AutocompleteInput } from "~/components/shared/form/autocomplete-input/autocomplete-input.component";
 import { formatSessionTime } from "~/core/utils/date.util";
 
-const REASON_SUGGESTIONS = ["Client cancelled", "No-show", "I cancelled"];
+const REASON_SUGGESTIONS = ["Client cancelled", "No-show", "I cancelled"].map((value) => ({ value }));
 
 interface CancelSessionDialogProps {
   session: SessionView | null;
@@ -54,17 +54,7 @@ function CancelSession({ session, clientName, onClose }: Omit<CancelSessionDialo
       </AlertDialogHeader>
       <Field>
         <FieldLabel htmlFor="cancel-reason">Why (optional)</FieldLabel>
-        <Input
-          id="cancel-reason"
-          list="cancel-reason-suggestions"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-        />
-        <datalist id="cancel-reason-suggestions">
-          {REASON_SUGGESTIONS.map((option) => (
-            <option key={option} value={option} />
-          ))}
-        </datalist>
+        <AutocompleteInput id="cancel-reason" value={reason} onValueChange={setReason} suggestions={REASON_SUGGESTIONS} />
       </Field>
       <AlertDialogFooter>
         <AlertDialogCancel>Keep it</AlertDialogCancel>

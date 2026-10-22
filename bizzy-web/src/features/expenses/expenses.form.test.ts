@@ -8,6 +8,7 @@ const catalogue: CatalogueView = {
     { id: "travel", name: "Travelling and transportation" },
   ],
   items: [{ id: "tape", name: "Kinesio tape", categoryId: "purchases", lastAmountCents: 4500 }],
+  vendors: [],
 };
 
 describe("withName", () => {

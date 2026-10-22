@@ -1,8 +1,10 @@
 import { EXPENSE_FACETS } from "./expenses.constant";
 import type { CatalogueView, CategoryTotal, ExpenseView, SearchExpensesRequest } from "./expenses.types";
+import type { Suggestion } from "~/components/shared/form/autocomplete-input/autocomplete-input.component";
 import type { Facet, ListFilter } from "~/core/list/filter.types";
 import type { Place } from "~/core/list/pager.types";
 import { filterUrl, listRequest } from "~/core/list/filter.util";
+import { formatCents } from "~/core/utils/money.util";
 
 /** The expenses list's filter in its URL: this year, the tax year, unless it says otherwise. */
 export const expensesUrl = filterUrl(EXPENSE_FACETS, () => String(new Date().getFullYear()));
@@ -12,12 +14,7 @@ export function expensePlace(expense: ExpenseView): Place {
   return { at: Date.parse(expense.date), id: expense.id };
 }
 
-/** A calendar year as days, both included: the tax year in Malaysia. */
-export function yearRange(year: number): { from: string; to: string } {
-  return { from: `${year}-01-01`, to: `${year}-12-31` };
-}
-
-/** The API's totals by category id as the categories, largest first, unused ones left out. */
+/** Totals by category id as the categories, largest first, unused ones left out. */
 export function totalsByCategory(byCategory: Readonly<Record<string, number>>, catalogue: CatalogueView): Array<CategoryTotal> {
   return catalogue.categories
     .flatMap((category) => {
@@ -52,13 +49,23 @@ export function linesCategories(expense: ExpenseView, catalogue: CatalogueView |
   return ids.flatMap((id) => names.get(id) ?? []).join(", ");
 }
 
-/** Where she has bought things, most often first, to suggest as she types. */
-export function vendorsOf(expenses: ReadonlyArray<ExpenseView>): Array<string> {
-  const counts = new Map<string, number>();
-  for (const { vendor } of expenses) {
-    if (vendor) counts.set(vendor, (counts.get(vendor) ?? 0) + 1);
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([vendor]) => vendor);
+/** Where the user has bought from, last used first (as the API orders them), to suggest as they type. */
+export function vendorSuggestions(catalogue: CatalogueView): Array<Suggestion> {
+  return catalogue.vendors.filter((vendor) => !vendor.archived).map((vendor) => ({ value: vendor.name }));
+}
+
+/** "Kinesio tape · Purchases · RM 25.00": the items lines are picked from, with their category and last price. */
+export function itemSuggestions(catalogue: CatalogueView): Array<Suggestion> {
+  const categories = new Map(catalogue.categories.map((category) => [category.id, category.name]));
+  return catalogue.items
+    .filter((item) => !item.archived)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((item) => ({
+      value: item.name,
+      detail: [categories.get(item.categoryId), item.lastAmountCents === undefined ? undefined : formatCents(item.lastAmountCents)]
+        .filter(Boolean)
+        .join(" · "),
+    }));
 }
 
 /** Item names compare however she typed them, as the API does. */

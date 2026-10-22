@@ -57,6 +57,28 @@ func (e Expense) TotalCents() int64 {
 	return total
 }
 
+// Spending is what the expenses dated in a span add up to.
+type Spending struct {
+	// ByMonth is by month, "2026-10".
+	ByMonth map[string]int64
+	// ByCategory is by category id.
+	ByCategory map[string]int64
+}
+
+// SpentBetween sums the expenses dated from one day to another, both
+// included.
+func SpentBetween(tx *txn.Tx, from, to time.Time) (Spending, error) {
+	out := Spending{ByMonth: map[string]int64{}, ByCategory: map[string]int64{}}
+	all, err := Expenses.Between(tx, from, to)
+	for _, e := range all {
+		for _, l := range e.Lines {
+			out.ByMonth[e.Date[:7]] += l.AmountCents
+			out.ByCategory[l.CategoryID] += l.AmountCents
+		}
+	}
+	return out, err
+}
+
 // Item is one thing the business buys, from the list lines are picked
 // from.
 type Item struct {
@@ -73,6 +95,25 @@ var Items = txn.Kind[Item]{
 	Name: "EXPENSEITEM", Gone: "This item is no longer in the list.",
 	Doc:   txn.Doc{What: "An item expense lines are picked from, in a category."},
 	Meta:  func(it *Item) txn.Meta { return txn.Meta{ID: it.ID} },
+	Whole: true,
+}
+
+// Vendor is somewhere the business buys from, from the list the form
+// suggests. A receipt names it as text, as it was typed: archiving one
+// hides it from the suggestions and leaves the receipts as they were.
+type Vendor struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// LastUsed is the latest receipt's day, YYYY-MM-DD: the most recent
+	// are suggested first.
+	LastUsed string `json:"lastUsed"`
+	Archived bool   `json:"archived,omitempty"`
+}
+
+var Vendors = txn.Kind[Vendor]{
+	Name: "EXPENSEVENDOR", Gone: "This shop is no longer in the list.",
+	Doc:   txn.Doc{What: "A shop or website receipts are from, suggested on the next one."},
+	Meta:  func(v *Vendor) txn.Meta { return txn.Meta{ID: v.ID} },
 	Whole: true,
 }
 

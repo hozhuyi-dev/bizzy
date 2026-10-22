@@ -6,12 +6,11 @@ import type {
   ExpenseView,
   ExpensesPage,
   SearchExpensesRequest,
+  Vendor,
 } from "./expenses.types";
 import { invoke } from "~/core/lambda/lambda.client";
 
 export const ExpensesService = {
-  /** Expenses dated between two days, both included. */
-  list: (from: string, to: string) => invoke<Array<ExpenseView>>("expenses.list", { from, to }),
   /** A page of the expenses found, latest first; the first page has their totals. */
   search: (request: SearchExpensesRequest) => invoke<ExpensesPage>("expenses.search", request),
   get: (id: string) => invoke<ExpenseView>("expenses.get", { id }),
@@ -21,6 +20,7 @@ export const ExpensesService = {
   update: (id: string, fields: ExpenseFields) => invoke<ExpenseView>("expenses.update", { id, ...fields }),
   delete: (id: string) => invoke<null>("expenses.delete", { id }),
   saveItem: (item: ExpenseItem) => invoke<ExpenseItem>("expenses.saveItem", item),
+  archiveVendor: (id: string, archived: boolean) => invoke<Vendor>("expenses.archiveVendor", { id, archived }),
   saveCategories: (categories: Array<ExpenseCategory>) =>
     invoke<CatalogueView["categories"]>("expenses.saveCategories", { categories }),
 };

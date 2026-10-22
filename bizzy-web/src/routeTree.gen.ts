@@ -24,6 +24,7 @@ import { Route as ExpensesIdRouteImport } from './routes/expenses/$id'
 import { Route as ExpensesCategoriesRouteImport } from './routes/expenses/categories'
 import { Route as ExpensesItemsRouteImport } from './routes/expenses/items'
 import { Route as ExpensesNewRouteImport } from './routes/expenses/new'
+import { Route as ExpensesVendorsRouteImport } from './routes/expenses/vendors'
 import { Route as FollowUpsIndexRouteImport } from './routes/follow-ups/index'
 import { Route as FollowUpsDoneRouteImport } from './routes/follow-ups/done'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
@@ -108,6 +109,11 @@ const ExpensesNewRoute = ExpensesNewRouteImport.update({
   path: '/expenses/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExpensesVendorsRoute = ExpensesVendorsRouteImport.update({
+  id: '/expenses/vendors',
+  path: '/expenses/vendors',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FollowUpsIndexRoute = FollowUpsIndexRouteImport.update({
   id: '/follow-ups/',
   path: '/follow-ups/',
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/expenses/categories': typeof ExpensesCategoriesRoute
   '/expenses/items': typeof ExpensesItemsRoute
   '/expenses/new': typeof ExpensesNewRoute
+  '/expenses/vendors': typeof ExpensesVendorsRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/expenses/categories': typeof ExpensesCategoriesRoute
   '/expenses/items': typeof ExpensesItemsRoute
   '/expenses/new': typeof ExpensesNewRoute
+  '/expenses/vendors': typeof ExpensesVendorsRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -214,6 +222,7 @@ export interface FileRoutesById {
   '/expenses/categories': typeof ExpensesCategoriesRoute
   '/expenses/items': typeof ExpensesItemsRoute
   '/expenses/new': typeof ExpensesNewRoute
+  '/expenses/vendors': typeof ExpensesVendorsRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
   '/invoices/$id': typeof InvoicesIdRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -241,6 +250,7 @@ export interface FileRouteTypes {
     | '/expenses/categories'
     | '/expenses/items'
     | '/expenses/new'
+    | '/expenses/vendors'
     | '/follow-ups/done'
     | '/invoices/$id'
     | '/receipts/$id'
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/expenses/categories'
     | '/expenses/items'
     | '/expenses/new'
+    | '/expenses/vendors'
     | '/follow-ups/done'
     | '/invoices/$id'
     | '/receipts/$id'
@@ -291,6 +302,7 @@ export interface FileRouteTypes {
     | '/expenses/categories'
     | '/expenses/items'
     | '/expenses/new'
+    | '/expenses/vendors'
     | '/follow-ups/done'
     | '/invoices/$id'
     | '/receipts/$id'
@@ -317,6 +329,7 @@ export interface RootRouteChildren {
   ExpensesCategoriesRoute: typeof ExpensesCategoriesRoute
   ExpensesItemsRoute: typeof ExpensesItemsRoute
   ExpensesNewRoute: typeof ExpensesNewRoute
+  ExpensesVendorsRoute: typeof ExpensesVendorsRoute
   FollowUpsDoneRoute: typeof FollowUpsDoneRoute
   InvoicesIdRoute: typeof InvoicesIdRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
@@ -436,6 +449,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExpensesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/expenses/vendors': {
+      id: '/expenses/vendors'
+      path: '/expenses/vendors'
+      fullPath: '/expenses/vendors'
+      preLoaderRoute: typeof ExpensesVendorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/follow-ups/': {
       id: '/follow-ups/'
       path: '/follow-ups'
@@ -509,6 +529,7 @@ const rootRouteChildren: RootRouteChildren = {
   ExpensesCategoriesRoute: ExpensesCategoriesRoute,
   ExpensesItemsRoute: ExpensesItemsRoute,
   ExpensesNewRoute: ExpensesNewRoute,
+  ExpensesVendorsRoute: ExpensesVendorsRoute,
   FollowUpsDoneRoute: FollowUpsDoneRoute,
   InvoicesIdRoute: InvoicesIdRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,

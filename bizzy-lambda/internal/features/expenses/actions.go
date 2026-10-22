@@ -91,6 +91,9 @@ func fill(tx *txn.Tx, e *Expense, in Receipt) error {
 	if e.TotalCents() <= 0 {
 		return apperr.Invalid("The receipt comes to nothing; enter what each line cost.")
 	}
+	if err := useVendor(tx, vendor, in.Date); err != nil {
+		return err
+	}
 	for _, l := range lines {
 		it, err := Items.Get(tx, l.ItemID)
 		if err != nil {
@@ -147,6 +150,38 @@ func resolveLines(tx *txn.Tx, in []Line) ([]Line, error) {
 		out[i] = l
 	}
 	return out, nil
+}
+
+// useVendor adds where a receipt is from to the list, or, when it is
+// there by name, moves its last use on to the receipt's day.
+func useVendor(tx *txn.Tx, name, day string) error {
+	if name == "" {
+		return nil
+	}
+	all, err := Vendors.All(tx)
+	if err != nil {
+		return err
+	}
+	for _, v := range all {
+		if normalizeName(v.Name) == normalizeName(name) {
+			if day > v.LastUsed {
+				v.LastUsed = day
+			}
+			return nil
+		}
+	}
+	return Vendors.Add(tx, &Vendor{ID: tx.NewID(), Name: name, LastUsed: day})
+}
+
+// ArchiveVendor hides a vendor from the suggestions, or brings it back.
+// Receipts name it as text, so they stay as they were.
+func ArchiveVendor(tx *txn.Tx, id string, archived bool) (*Vendor, error) {
+	v, err := Vendors.Get(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	v.Archived = archived
+	return v, nil
 }
 
 // SaveItem renames an item, moves it to another category (for lines from

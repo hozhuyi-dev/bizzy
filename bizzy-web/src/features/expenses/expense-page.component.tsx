@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, PlusIcon, Trash2Icon } from "lucide-react";
@@ -8,7 +8,7 @@ import { expenseLink } from "./expenses.columns";
 import { EXPENSES_LIST } from "./expenses.list";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
-import { expensePlace, expensesUrl, vendorsOf } from "./expenses.util";
+import { expensePlace, expensesUrl, itemSuggestions, vendorSuggestions } from "./expenses.util";
 import type { ReactNode } from "react";
 import type { CatalogueView, ExpenseView } from "./expenses.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
@@ -121,9 +121,8 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
   // The form starts from the expense once: attaching a file refetches it,
   // which must not undo what the user is typing. A save moves it on.
   const [defaultValues, setDefaultValues] = useState(() => toExpenseValues(expense));
-  const thisYear = ExpensesQuery.useYear(new Date().getFullYear());
-  const vendors = vendorsOf(thisYear.data ?? []);
-  const items = catalogue.items.filter((item) => !item.archived);
+  const vendors = useMemo(() => vendorSuggestions(catalogue), [catalogue]);
+  const items = useMemo(() => itemSuggestions(catalogue), [catalogue]);
   const categories = catalogue.categories.filter((category) => !category.archived);
 
   const form = useAppForm({
@@ -175,22 +174,16 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
           </form.AppField>
           <form.AppField name="vendor">
             {(field) => (
-              <field.TextField
+              <field.AutocompleteField
                 label="Where"
                 form={FORM_ID}
-                list="expense-vendors"
+                suggestions={vendors}
                 maxLength={MAX_VENDOR}
                 placeholder="Shopee, the pharmacy, Petronas"
-                autoComplete="off"
                 description="The shop or website it was bought from."
               />
             )}
           </form.AppField>
-          <datalist id="expense-vendors">
-            {vendors.map((vendor) => (
-              <option key={vendor} value={vendor} />
-            ))}
-          </datalist>
         </FieldGroup>
       ),
     },
@@ -202,11 +195,6 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
         <form.Field name="lines" mode="array">
           {(linesField) => (
             <div className="flex flex-col gap-3">
-              <datalist id="expense-items">
-                {items.map((item) => (
-                  <option key={item.id} value={item.name} />
-                ))}
-              </datalist>
               {linesField.state.value.map((_, i) => (
                 <div
                   key={i}
@@ -222,14 +210,13 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
                     }}
                   >
                     {(field) => (
-                      <field.TextField
+                      <field.AutocompleteField
                         label="Item"
                         labelClassName="md:sr-only"
                         form={FORM_ID}
-                        list="expense-items"
+                        suggestions={items}
                         maxLength={MAX_NAME}
                         placeholder="Kinesio tape"
-                        autoComplete="off"
                       />
                     )}
                   </form.AppField>

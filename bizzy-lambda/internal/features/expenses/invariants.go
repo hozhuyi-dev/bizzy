@@ -67,6 +67,23 @@ var Invariants = []txn.Invariant{
 		},
 	},
 	{
+		ID: "vendors-are-one-per-name", Why: "A shop is listed once, however its name was typed",
+		On: Vendors.Name,
+		Broken: func(tx *txn.Tx, id string) ([]string, error) {
+			v, ok, err := Vendors.Find(tx, id)
+			if err != nil || !ok {
+				return nil, err
+			}
+			all, err := Vendors.All(tx)
+			for _, other := range all {
+				if other.ID != id && normalizeName(other.Name) == normalizeName(v.Name) {
+					return []string{fmt.Sprintf("vendors %s and %s are both %q", id, other.ID, v.Name)}, err
+				}
+			}
+			return nil, err
+		},
+	},
+	{
 		ID: "receipts-are-an-expenses", Why: "A receipt's file is an expense's, and goes with it",
 		On: attachments.Attachments.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {

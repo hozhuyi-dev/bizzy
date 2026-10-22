@@ -426,6 +426,11 @@ var fileActions = []Action{
 			"categoryId": rapid.SampledFrom([]string{"purchases", "travel", "nowhere"}).Draw(t, "category"), "archived": rapid.Bool().Draw(t, "archived"),
 		})
 	}},
+	{Name: "expenses.archiveVendor", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		w.call(t, "expenses.archiveVendor", map[string]any{
+			"id": pick(t, w, "vendor", expenses.Vendors.All).ID, "archived": rapid.Bool().Draw(t, "archived"),
+		})
+	}},
 	{Name: "expenses.saveCategories", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		cats := read(t, w, expenses.CategoriesOf)
 		var out []map[string]any
@@ -448,7 +453,8 @@ var fileActions = []Action{
 
 func receipt(t *rapid.T) map[string]any {
 	return map[string]any{
-		"date": rapid.SampledFrom([]string{"2026-10-12", "2026-10-13", "not a day"}).Draw(t, "date"), "vendor": "Shopee",
+		"date":   rapid.SampledFrom([]string{"2026-10-12", "2026-10-13", "not a day"}).Draw(t, "date"),
+		"vendor": rapid.SampledFrom([]string{"Shopee", "  shopee ", "Guardian", ""}).Draw(t, "vendor"),
 		"lines": []map[string]any{{
 			"name":        rapid.SampledFrom([]string{"Kinesio tape", "kinesio  TAPE", "Parking"}).Draw(t, "item"),
 			"categoryId":  rapid.SampledFrom([]string{"purchases", "travel"}).Draw(t, "category"),

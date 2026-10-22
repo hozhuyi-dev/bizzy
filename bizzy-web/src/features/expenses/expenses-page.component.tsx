@@ -4,11 +4,8 @@ import { PlusIcon } from "lucide-react";
 import { cn } from "cn";
 import { ExpenseCard, createExpenseColumns, expenseLink } from "./expenses.columns";
 import { ExpensesQuery } from "./expenses.query";
-import { expenseFacets, expensesUrl, totalsByCategory } from "./expenses.util";
-import type { ExpenseTotals } from "./expenses.types";
-import type { ListFilter, When } from "~/core/list/filter.types";
-import { ActivityQuery } from "~/features/activity/activity.query";
-import { monthTotals } from "~/features/insights/insights-metrics.util";
+import { expenseFacets, expensesUrl } from "./expenses.util";
+import type { ListFilter } from "~/core/list/filter.types";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
@@ -16,9 +13,7 @@ import { LoadMore } from "~/components/shared/list/load-more/load-more.component
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
-import { Badge } from "~/components/ui/badge";
-import { Card, CardContent } from "~/components/ui/card";
-import { formatWhen, isNarrowed, pageItems, whenDays } from "~/core/list/filter.util";
+import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
@@ -29,9 +24,9 @@ interface ExpensesPageProps {
 }
 
 /**
- * Receipts, latest first, searched on the server a page at a time: what
- * was spent, on what (by Form B category, as the tax return asks), and,
- * over the days shown, what is left of the money received.
+ * Receipts, latest first, searched on the server a page at a time, with
+ * what those found add up to. A year at a glance, by category as the tax
+ * return asks, is on Insights.
  */
 export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
   const expenses = ExpensesQuery.useSearch(filter);
@@ -68,90 +63,31 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
       ) : expenses.error ? (
         <ErrorMessage>{expenses.error.message}</ErrorMessage>
       ) : (
-        <div className={cn("flex flex-col gap-6 transition-opacity", expenses.isPlaceholderData && "opacity-60")}>
-          {totals && <Summary when={filter.when} totals={totals} narrowed={isNarrowed(filter)} />}
-          {catalogue.data && totals && totals.spentCents > 0 && (
-            <CategoryTotals totals={totalsByCategory(totals.byCategory, catalogue.data)} />
+        <div className={cn("flex flex-col gap-2 transition-opacity", expenses.isPlaceholderData && "opacity-60")}>
+          {totals && totals.count > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {totals.count} {totals.count === 1 ? "expense" : "expenses"}
+              {filter.when ? ` in ${formatWhen(filter.when)}` : ""} ·{" "}
+              <span className="font-medium text-foreground tabular-nums">{formatCents(totals.spentCents)}</span>
+            </p>
           )}
-          <div>
-            <DataTable
-              table={table}
-              rowLink={(expense) => expenseLink(expense.id, search)}
-              empty={
-                isNarrowed(filter) || expenses.hasNextPage ? (
-                  <EmptyState quips={QUIPS.search}>No expenses found{expenses.hasNextPage ? " yet" : ""}.</EmptyState>
-                ) : (
-                  <EmptyState quips={QUIPS.expenses}>
-                    No expenses{filter.when ? ` in ${formatWhen(filter.when)}` : " yet"}. Add one with its receipt.
-                  </EmptyState>
-                )
-              }
-              renderCard={(row) => <ExpenseCard expense={row.original} catalogue={catalogue.data} search={search} />}
-            />
-            <LoadMore pages={expenses} found={data.length > 0} />
-          </div>
+          <DataTable
+            table={table}
+            rowLink={(expense) => expenseLink(expense.id, search)}
+            empty={
+              isNarrowed(filter) || expenses.hasNextPage ? (
+                <EmptyState quips={QUIPS.search}>No expenses found{expenses.hasNextPage ? " yet" : ""}.</EmptyState>
+              ) : (
+                <EmptyState quips={QUIPS.expenses}>
+                  No expenses{filter.when ? ` in ${formatWhen(filter.when)}` : " yet"}. Add one with its receipt.
+                </EmptyState>
+              )
+            }
+            renderCard={(row) => <ExpenseCard expense={row.original} catalogue={catalogue.data} search={search} />}
+          />
+          <LoadMore pages={expenses} found={data.length > 0} />
         </div>
       )}
     </>
-  );
-}
-
-/**
- * What the expenses found add up to and, over the days shown (all time
- * without any), what was received and is left. Received is by the month,
- * so days picked inside a month count all of it. Searching words or
- * categories leaves received out: it isn't theirs.
- */
-function Summary({ when, totals, narrowed }: { when: When | undefined; totals: ExpenseTotals; narrowed: boolean }) {
-  const activity = ActivityQuery.useList();
-  const received = useMemo(() => {
-    const days = when ? whenDays(when) : undefined;
-    let cents = 0;
-    for (const [month, total] of monthTotals(activity.data ?? [])) {
-      if (!days || (month >= days.from.slice(0, 7) && month <= days.to.slice(0, 7))) cents += total.received;
-    }
-    return cents;
-  }, [activity.data, when]);
-
-  return (
-    <dl className="grid grid-cols-3 gap-3">
-      <Stat label="Spent" value={formatCents(totals.spentCents)} />
-      {!narrowed && (
-        <>
-          <Stat label="Received" value={activity.data ? formatCents(received) : "…"} />
-          <Stat label="Left" value={activity.data ? formatCents(received - totals.spentCents) : "…"} />
-        </>
-      )}
-    </dl>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <Card size="sm">
-      <CardContent className="flex flex-col gap-0.5">
-        <dt className="text-xs text-muted-foreground">{label}</dt>
-        <dd className="text-lg font-semibold tabular-nums">{value}</dd>
-      </CardContent>
-    </Card>
-  );
-}
-
-function CategoryTotals({ totals }: { totals: ReturnType<typeof totalsByCategory> }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium">By category</h2>
-      <ul className="flex flex-col divide-y overflow-hidden rounded-xl bg-card text-sm ring-1 ring-foreground/10">
-        {totals.map(({ category, cents }) => (
-          <li key={category.id} className="flex h-10 items-center justify-between gap-2 px-4">
-            <span className="flex flex-wrap items-center gap-1.5">
-              {category.name}
-              {category.capital && <Badge variant="info">Capital allowance</Badge>}
-            </span>
-            <span className="tabular-nums">{formatCents(cents)}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }

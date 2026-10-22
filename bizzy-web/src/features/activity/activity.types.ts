@@ -26,6 +26,8 @@ export interface ActivityView {
   owedCents?: number;
   /** What their packages have left, booked sessions taken off. */
   creditsLeftMinutes?: number;
+  /** What those credits are worth, at their share of each package's price. */
+  creditsLeftCents?: number;
   openFollowUps?: number;
   /** When the soonest follow-up not done is due; it may be past. */
   nextFollowUpAt?: string;

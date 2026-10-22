@@ -1,8 +1,10 @@
 import { useId } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useFieldContext, useFormContext } from "./form-context.hook";
+import { AutocompleteInput } from "./autocomplete-input/autocomplete-input.component";
 import type { ComponentProps, ReactNode } from "react";
 import type { AnyFieldApi } from "@tanstack/react-form";
+import type { Suggestion } from "./autocomplete-input/autocomplete-input.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "~/components/ui/field";
@@ -109,6 +111,40 @@ export function TextField({
           {...input}
         />
       </Affixed>
+    </FieldFrame>
+  );
+}
+
+interface AutocompleteFieldProps extends FieldFrameProps, Pick<InputProps, "placeholder" | "maxLength" | "form"> {
+  /** In the order to offer them; those matching what is typed are shown. */
+  suggestions: ReadonlyArray<Suggestion>;
+  inputClassName?: string | undefined;
+}
+
+/** A line of text suggesting what was typed before (AutocompleteInput): anything may be typed. */
+export function AutocompleteField({
+  label,
+  labelClassName,
+  description,
+  hint,
+  className,
+  inputClassName,
+  ...input
+}: AutocompleteFieldProps) {
+  const field = useFieldContext<string>();
+  const id = useId();
+  const errors = useShownErrors(field);
+  return (
+    <FieldFrame {...{ label, labelClassName, description, hint, className, errors }} labelFor={id}>
+      <AutocompleteInput
+        id={id}
+        value={field.state.value}
+        onValueChange={(value) => field.handleChange(value)}
+        onBlur={field.handleBlur}
+        aria-invalid={errors.length > 0 || undefined}
+        className={inputClassName}
+        {...input}
+      />
     </FieldFrame>
   );
 }

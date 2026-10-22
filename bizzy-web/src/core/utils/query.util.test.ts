@@ -17,9 +17,9 @@ function cacheOf(...keys: Array<ReadonlyArray<unknown>>) {
 
 describe("refreshChanged", () => {
   test("reads again only what shows the kinds changed", async () => {
-    const { queryClient, stale } = cacheOf(TodoKeys.list(), ExpenseKeys.catalogue(), AppKeys.status());
+    const { queryClient, stale } = cacheOf(TodoKeys.list(), ExpenseKeys.detail("1"), AppKeys.status());
     await refreshChanged(queryClient, ["EXPENSE"]);
-    expect(stale()).toEqual([ExpenseKeys.catalogue()]);
+    expect(stale()).toEqual([ExpenseKeys.detail("1")]);
   });
 
   test("a kind no page shows reads nothing again", async () => {
@@ -35,15 +35,15 @@ describe("refreshChanged", () => {
   });
 
   test("a kind it doesn't know reads everything again but who is signed in", async () => {
-    const { queryClient, stale } = cacheOf(AuthKeys.state(), TodoKeys.list(), ExpenseKeys.catalogue());
+    const { queryClient, stale } = cacheOf(AuthKeys.state(), TodoKeys.list(), ExpenseKeys.detail("1"));
     await refreshChanged(queryClient, ["SOMETHINGNEW"]);
-    expect(stale()).toEqual([TodoKeys.list(), ExpenseKeys.catalogue()]);
+    expect(stale()).toEqual([TodoKeys.list(), ExpenseKeys.detail("1")]);
   });
 });
 
 describe("holdingChanges", () => {
   test("reads what a run of calls changed once it ends", async () => {
-    const { queryClient, stale } = cacheOf(TodoKeys.list(), ExpenseKeys.catalogue(), AppKeys.status());
+    const { queryClient, stale } = cacheOf(TodoKeys.list(), ExpenseKeys.detail("1"), AppKeys.status());
     const changes = holdingChanges(queryClient);
     const release = changes.hold();
     changes.changed(["SYNC"]);
@@ -51,6 +51,6 @@ describe("holdingChanges", () => {
     expect(stale()).toEqual([]);
     release();
     await Promise.resolve();
-    expect(stale()).toEqual([ExpenseKeys.catalogue(), AppKeys.status()]);
+    expect(stale()).toEqual([ExpenseKeys.detail("1"), AppKeys.status()]);
   });
 });
