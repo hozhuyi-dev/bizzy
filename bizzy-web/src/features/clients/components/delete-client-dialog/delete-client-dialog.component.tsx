@@ -20,9 +20,9 @@ interface DeleteClientDialogProps {
 }
 
 /**
- * Deletes a client with nothing left: one with sessions, packages,
- * documents or follow-ups is refused, saying which go first. Their Google
- * contact stays.
+ * Deletes a client added by mistake, with nothing of theirs (its
+ * `can.delete` says so); the others are archived. Their Google contact
+ * stays.
  */
 export function DeleteClientDialog({ client, open, onClose, onDeleted }: DeleteClientDialogProps) {
   const remove = ClientsMutation.useDelete();
@@ -30,7 +30,7 @@ export function DeleteClientDialog({ client, open, onClose, onDeleted }: DeleteC
     <SheetAlertDialog open={open} onClose={onClose}>
       <AlertDialogHeader>
         <AlertDialogTitle>Delete {client.name}?</AlertDialogTitle>
-        <AlertDialogDescription>Only a client with nothing recorded can go. Their Google contact stays.</AlertDialogDescription>
+        <AlertDialogDescription>For a client added by mistake: they go for good. Their Google contact stays.</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel>Keep them</AlertDialogCancel>

@@ -5,6 +5,7 @@ import type { ClientView } from "./clients.types";
 const client = (feeRates: ClientView["feeRates"] = []): ClientView => ({
   id: "c1",
   name: "Jane",
+  can: { archive: { ok: true }, unarchive: { ok: false }, delete: { ok: true } },
   aliases: [],
   feeRates,
   homeVisits: false,

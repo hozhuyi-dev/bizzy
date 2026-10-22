@@ -105,6 +105,9 @@ func calendarShowsBizzy(t *rapid.T, w *World) {
 			return nil, err
 		}
 		for _, s := range ss {
+			if s.Cancelled() {
+				continue // It shows in no event.
+			}
 			if err := add(googlesync.KindSession, s.ID); err != nil {
 				return nil, err
 			}

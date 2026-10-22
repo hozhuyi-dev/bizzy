@@ -3,7 +3,15 @@ import type { ClientView } from "./clients.types";
 import type { ActivityView } from "~/features/activity/activity.types";
 import { NO_FILTER } from "~/core/list/filter.util";
 
-const client: ClientView = { id: "c", name: "Jane", aliases: [], feeRates: [], homeVisits: false };
+const yes = { ok: true };
+const client: ClientView = {
+  id: "c",
+  name: "Jane",
+  aliases: [],
+  feeRates: [],
+  homeVisits: false,
+  can: { archive: yes, unarchive: { ok: false }, delete: yes },
+};
 const activity: ActivityView = { clientId: "c", months: {}, owedCents: 9000, lapsedMonths: 6 };
 const row = toClientRow(client, activity);
 
@@ -21,6 +29,13 @@ describe("clients list chips", () => {
     expect(matchesChips(row, { booked: ["no"] })).toBe(true);
     expect(matchesChips(row, { booked: ["yes"] })).toBe(false);
     expect(matchesChips(row, { followUp: ["yes"] })).toBe(false);
+  });
+
+  test("archived clients show only under their chip", () => {
+    const archived = toClientRow({ ...client, archivedAt: "2026-10-01T00:00:00Z" }, activity);
+    expect(matchesChips(archived, {})).toBe(false);
+    expect(matchesChips(archived, { archived: ["yes"] })).toBe(true);
+    expect(matchesChips(row, { archived: ["yes"] })).toBe(false);
   });
 
   test("Reconnect keeps a lapse when its chip comes off", () => {

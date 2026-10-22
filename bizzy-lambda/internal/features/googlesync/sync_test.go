@@ -212,28 +212,37 @@ func TestEveryEventIsBizzys(t *testing.T) {
 	}
 }
 
-func TestACalendarDeleteKeepsTheNotes(t *testing.T) {
+func TestACalendarDeleteCancelsWhatHasHistory(t *testing.T) {
 	a, _ := setup(t, "Jane Smith")
-	ev := a.Calendar.UserAdd("Jane Smith", at(-3), at(-2))
+	recorded := a.Calendar.UserAdd("Jane Smith", at(-3), at(-2))
+	booked := a.Calendar.UserAdd("Jane Smith", at(30), at(31))
 	sync(t, a)
-	s := listSessions(t, a)[0]
-	if err := a.Must("sessions.saveRecord", map[string]any{"id": s.ID, "summary": "Knee, better"}, nil); err != nil {
+	ss := listSessions(t, a)
+	if len(ss) != 2 {
+		t.Fatalf("sessions = %+v", ss)
+	}
+	past := ss[0]
+	if past.Start.After(ss[1].Start) {
+		past = ss[1]
+	}
+	if err := a.Must("sessions.saveRecord", map[string]any{"id": past.ID, "summary": "Knee, better"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	a.Calendar.UserDelete(ev)
+	// The one that happened is cancelled, with its notes; the one booked
+	// by mistake goes.
+	a.Calendar.UserDelete(recorded)
+	a.Calendar.UserDelete(booked)
 	sync(t, a)
-	w := waiting(t, a)
-	if len(w) != 1 || !w[0].Gone || len(listSessions(t, a)) != 1 {
+	if w := waiting(t, a); len(w) != 0 {
 		t.Fatalf("waiting = %+v", w)
 	}
-	// Putting it back writes it again, as a new event.
-	if err := a.Must("calendar.revert", map[string]any{"id": ev}, nil); err != nil {
-		t.Fatal(err)
+	ss = listSessions(t, a)
+	if len(ss) != 1 || ss[0].ID != past.ID || ss[0].CancelledAt == nil || ss[0].Record.Summary != "Knee, better" {
+		t.Fatalf("sessions = %+v", ss)
 	}
-	again := eventOf(t, a, googlesync.KindSession, s.ID)
-	if again == "" || again == ev || title(t, a, again) != "Jane Smith" || len(waiting(t, a)) != 0 {
-		t.Errorf("after revert: event %q, waiting %v", again, waiting(t, a))
+	if ev := eventOf(t, a, googlesync.KindSession, past.ID); ev != "" {
+		t.Errorf("the cancelled session still shows in %s", ev)
 	}
 }
 

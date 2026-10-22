@@ -2,6 +2,7 @@ import type { LapseMonths, StandingFacet } from "./clients.constant";
 import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactSummaryValue } from "~/features/contacts/contacts.types";
 import type { FilterSearch } from "~/core/list/filter.types";
+import type { Verdict } from "~/core/lambda/lambda.types";
 
 // Mirrors bizzy-lambda/internal/features/clients/api.go and client.go.
 
@@ -20,6 +21,17 @@ export interface ClientView {
   contact?: ClientContact;
   /** The hourly fee a session without one would be charged today; unset when no fee is set. */
   feeTodayCents?: number;
+  /** When the user put them away: kept with all that is theirs, out of lists and pickers, not booked until unarchived. */
+  archivedAt?: string;
+  can: ClientCan;
+}
+
+/** What each action on a client would say now; mirrors clients.Can. */
+export interface ClientCan {
+  archive: Verdict;
+  unarchive: Verdict;
+  /** Only one added by mistake, with nothing of theirs: the others are archived. */
+  delete: Verdict;
 }
 
 /**

@@ -31,10 +31,11 @@ export function bookingStep(session: SessionFullView, onCancel: () => void, sett
   return {
     id: "booking",
     title: "Booking",
-    state: session.tentative ? "current" : "done",
+    state: session.tentative && !session.cancelledAt ? "current" : "done",
     meta: (
       <Lines>
         {[
+          session.cancelledAt ? `Cancelled ${formatDate(session.cancelledAt)}` : undefined,
           session.tentative ? "Not confirmed" : session.confirmedAt ? `Confirmed ${formatDate(session.confirmedAt)}` : undefined,
           happened ? `Happened ${formatDate(session.start)}` : `Booked for ${formatSessionTime(session.start)}`,
         ]}
@@ -52,24 +53,18 @@ interface BookingStepProps {
 
 function BookingStep({ session, onCancel, settled }: BookingStepProps) {
   const confirm = useConfirmBooking();
-  const [editing, setEditing] = useState(Boolean(settled));
+  const [editing, setEditing] = useState(Boolean(settled) && session.can.update.ok);
 
   return (
     <>
-      {session.tentative && (
+      {session.tentative && session.can.cancel.ok && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-status-waiting px-3 py-2 text-sm text-status-waiting-foreground">
           <span>Not confirmed with the client yet.</span>
           <span className="flex gap-2">
             <Button size="sm" disabled={confirm.pending} onClick={() => void confirm.confirm(session.id).catch(toastRefusal)}>
               <CheckIcon /> Confirm
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!session.can.delete.ok}
-              title={session.can.delete.why}
-              onClick={onCancel}
-            >
+            <Button size="sm" variant="outline" onClick={onCancel}>
               Cancel booking
             </Button>
           </span>
@@ -84,7 +79,13 @@ function BookingStep({ session, onCancel, settled }: BookingStepProps) {
           {session.invoice && <> · {formatCents(session.feeCents)}</>}
           {!session.tentative && session.confirmedAt && <> · confirmed {formatDate(session.confirmedAt)}</>}
         </span>
-        <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!session.can.update.ok}
+          title={session.can.update.why}
+          onClick={() => setEditing(true)}
+        >
           <PencilIcon /> Edit booking
         </Button>
       </div>

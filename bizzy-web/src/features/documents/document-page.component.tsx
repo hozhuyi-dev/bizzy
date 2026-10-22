@@ -187,28 +187,26 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
         // nothing claims the always-visible slot and the title keeps the room
         // on a phone, and the rest waits behind ⋯ on a wide screen too.
         moreActions={[...share.send, viewPdf]}
-        menuActions={
-          cancelled
-            ? [downloadPdf, ...share.links]
-            : [
-                downloadPdf,
-                ...share.links,
-                {
-                  type: "button",
-                  label: "Revise",
-                  icon: PencilIcon,
-                  disabled: revise.isPending,
-                  onClick: () => revise.mutate(doc.id, { onError: (error) => toast.error(error.message) }),
-                },
-                {
-                  type: "button",
-                  label: `Cancel ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
-                  icon: BanIcon,
-                  style: "destructive",
-                  onClick: () => setCancelling(true),
-                },
-              ]
-        }
+        menuActions={[
+          downloadPdf,
+          ...share.links,
+          {
+            type: "button",
+            label: "Revise",
+            icon: PencilIcon,
+            disabled: revise.isPending,
+            can: doc.can.revise,
+            onClick: () => revise.mutate(doc.id, { onError: (error) => toast.error(error.message) }),
+          },
+          {
+            type: "button",
+            label: `Cancel ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
+            icon: BanIcon,
+            style: "destructive",
+            can: doc.can.cancel,
+            onClick: () => setCancelling(true),
+          },
+        ]}
         banners={
           cancelled && (
             <Banner
@@ -264,7 +262,7 @@ function useShareActions(
   const token = doc.shareToken;
 
   const actions: { send: Array<Action>; links: Array<Action> } = { send: [], links: [] };
-  if (doc.status === "issued") {
+  if (doc.can.send.ok) {
     actions.send.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, disabled: busy, onClick: () => send(to, [doc]) });
   }
   if (token) {

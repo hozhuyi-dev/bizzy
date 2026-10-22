@@ -23,7 +23,9 @@ export const SessionsService = {
   create: (fields: SessionFields) => invoke<SessionView>("sessions.create", fields),
   /** A patch: only what is set changes. */
   update: (id: string, fields: SessionFields) => invoke<SessionView>("sessions.update", { id, ...fields }),
-  /** keepPackage keeps the package bought in it as one on its own; it is deleted with it otherwise. */
+  /** Calls it off: it stays, with its record, but holds no time, costs nothing and leaves the calendar. */
+  cancel: (id: string, reason: string) => invoke<SessionView>("sessions.cancel", { id, reason }),
+  /** Only one booked by mistake. keepPackage keeps the package bought in it as one on its own; it is deleted with it otherwise. */
   delete: (id: string, keepPackage: boolean) => invoke<null>("sessions.delete", { id, keepPackage }),
   /** Leaving out the notes keeps them, for the summary alone. */
   saveRecord: (id: string, summary: string, notes?: string) =>

@@ -56,8 +56,17 @@ var clientActions = []Action{
 		}
 		w.call(t, "clients.update", in)
 	}},
+	{Name: "clients.archive", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		c := clientView(t, w)
+		w.callAsViewed(t, "clients.archive", map[string]any{"id": c.ID}, c.Can.Archive)
+	}},
+	{Name: "clients.unarchive", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		c := clientView(t, w)
+		w.callAsViewed(t, "clients.unarchive", map[string]any{"id": c.ID}, c.Can.Unarchive)
+	}},
 	{Name: "clients.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "clients.delete", map[string]any{"id": pick(t, w, "client", clients.Clients.All).ID})
+		c := clientView(t, w)
+		w.callAsViewed(t, "clients.delete", map[string]any{"id": c.ID}, c.Can.Delete)
 	}},
 	{Name: "contacts.create", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		given, family, _ := strings.Cut(rapid.SampledFrom(names).Draw(t, "name"), " ")
@@ -105,17 +114,28 @@ var sessionActions = []Action{
 			in["time"] = span(t, w)
 		}
 		addSessionFields(t, in, false)
+		v := sessionView(t, w, s)
+		if !v.Can.Update.OK {
+			w.callAsViewed(t, "sessions.update", in, v.Can.Update)
+			return
+		}
 		locked := read(t, w, func(tx *txn.Tx) (apperr.Locks, error) { return sessions.Locks(tx, s) })
-		w.callAsLocked(t, "sessions.update", in, locked, sessions.Fields{}, sessionChanges(sessionView(t, w, s), in)...)
+		w.callAsLocked(t, "sessions.update", in, locked, sessions.Fields{}, sessionChanges(v, in)...)
+	}},
+	{Name: "sessions.cancel", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		s := pick(t, w, "session", sessions.Sessions.All)
+		reason := rapid.SampledFrom([]string{"", "No-show", "Sick"}).Draw(t, "reason")
+		w.callAsViewed(t, "sessions.cancel", map[string]any{"id": s.ID, "reason": reason}, sessionView(t, w, s).Can.Cancel)
 	}},
 	{Name: "sessions.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		s := pick(t, w, "session", sessions.Sessions.All)
 		v := sessionView(t, w, s)
-		if rapid.Bool().Draw(t, "keep its package?") {
-			w.callAsViewed(t, "sessions.delete", map[string]any{"id": s.ID, "keepPackage": true}, v.Can.Delete)
-			return
+		viewed := v.Can.Delete
+		keep := rapid.Bool().Draw(t, "keep its package?")
+		if v.Bought != nil && !keep {
+			viewed = v.Can.DeleteWithPackage
 		}
-		w.call(t, "sessions.delete", map[string]any{"id": s.ID})
+		w.callAsViewed(t, "sessions.delete", map[string]any{"id": s.ID, "keepPackage": keep}, viewed)
 	}},
 	{Name: "sessions.saveRecord", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		s := pick(t, w, "session", sessions.Sessions.All)
@@ -182,14 +202,16 @@ var moneyActions = []Action{
 			in["note"] = "Gift"
 		}
 		in["updatePayment"] = rapid.Bool().Draw(t, "update the payment?")
-		v := read(t, w, func(tx *txn.Tx) (packages.View, error) { return packages.ViewOf(tx, p, sessions.CreditsUsed) })
+		v := packageView(t, w, p)
 		w.callAsLocked(t, "packages.update", in, v.Locked, packages.Fields{}, packageChanges(v, in)...)
 	}},
 	{Name: "packages.delete", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "packages.delete", map[string]any{"id": pick(t, w, "package", packages.Packages.All).ID})
+		v := packageView(t, w, pick(t, w, "package", packages.Packages.All))
+		w.callAsViewed(t, "packages.delete", map[string]any{"id": v.ID}, v.Can.Delete)
 	}},
 	{Name: "packages.makeStandalone", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "packages.makeStandalone", map[string]any{"id": pick(t, w, "package", packages.Packages.All).ID})
+		v := packageView(t, w, pick(t, w, "package", packages.Packages.All))
+		w.callAsViewed(t, "packages.makeStandalone", map[string]any{"id": v.ID}, v.Can.MakeStandalone)
 	}},
 	{Name: "payments.set", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		var payment map[string]any
@@ -212,8 +234,12 @@ var moneyActions = []Action{
 			w.callAsViewed(t, "payments.set", map[string]any{"items": items, "payment": payment}, viewed)
 			return
 		}
-		p := pick(t, w, "package", packages.Packages.All)
-		w.call(t, "payments.set", map[string]any{"items": []map[string]any{{"kind": "package", "id": p.ID}}, "payment": payment})
+		v := packageView(t, w, pick(t, w, "package", packages.Packages.All))
+		viewed := v.Can.Pay
+		if payment == nil {
+			viewed = v.Can.UndoPayment
+		}
+		w.callAsViewed(t, "payments.set", map[string]any{"items": []map[string]any{{"kind": "package", "id": v.ID}}, "payment": payment}, viewed)
 	}},
 	{Name: "documents.saveDraft", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		d := pick(t, w, "draft", drafts)
@@ -255,32 +281,40 @@ var moneyActions = []Action{
 		w.callAsLocked(t, "documents.saveDraft", map[string]any{"id": d.ID, "content": c}, locked, documents.Content{}, changed...)
 	}},
 	{Name: "documents.issue", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "documents.issue", map[string]any{"id": pick(t, w, "draft", drafts).ID})
+		d := pick(t, w, "document", documents.Documents.All)
+		w.callAsViewed(t, "documents.issue", map[string]any{"id": d.ID}, documentCan(t, w, d).Issue)
 	}},
 	{Name: "documents.revise", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "documents.revise", map[string]any{"id": pick(t, w, "document", documents.Documents.All).ID})
+		d := pick(t, w, "document", documents.Documents.All)
+		w.callAsViewed(t, "documents.revise", map[string]any{"id": d.ID}, documentCan(t, w, d).Revise)
 	}},
 	{Name: "documents.discardDraft", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "documents.discardDraft", map[string]any{"id": pick(t, w, "document", documents.Documents.All).ID})
+		d := pick(t, w, "document", documents.Documents.All)
+		w.callAsViewed(t, "documents.discardDraft", map[string]any{"id": d.ID}, documentCan(t, w, d).DiscardDraft)
 	}},
 	{Name: "documents.cancel", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "documents.cancel", map[string]any{"id": pick(t, w, "document", documents.Documents.All).ID, "reason": "Wrong"})
+		d := pick(t, w, "document", documents.Documents.All)
+		w.callAsViewed(t, "documents.cancel", map[string]any{"id": d.ID, "reason": "Wrong"}, documentCan(t, w, d).Cancel)
 	}},
 	{Name: "documents.moveLines", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		from := pick(t, w, "draft", drafts)
-		if len(from.Draft.Lines) == 0 {
+		from := pick(t, w, "document", documents.Documents.All)
+		c := from.Draft
+		if c == nil {
+			c = from.Content
+		}
+		if len(c.Lines) == 0 {
 			t.Skip("no lines")
 		}
-		in := map[string]any{"from": from.ID, "lineIds": []string{from.Draft.Lines[0].ID}}
+		in := map[string]any{"from": from.ID, "lineIds": []string{c.Lines[0].ID}}
 		if rapid.Bool().Draw(t, "onto another?") {
 			in["to"] = pick(t, w, "document", documents.Documents.All).ID
 		}
-		w.call(t, "documents.moveLines", in)
+		w.callRefusedAsViewed(t, "documents.moveLines", in, documentCan(t, w, from).MoveLines)
 	}},
 	{Name: "documents.combine", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		into := pick(t, w, "draft", drafts)
 		other := pick(t, w, "document", documents.Documents.All)
-		w.call(t, "documents.combine", map[string]any{"ids": []string{into.ID, other.ID}})
+		w.callRefusedAsViewed(t, "documents.combine", map[string]any{"ids": []string{into.ID, other.ID}}, documentCan(t, w, other).MoveLines)
 	}},
 	{Name: "documents.place", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		into := ""
@@ -486,6 +520,23 @@ func packageChanges(v packages.View, in map[string]any) []string {
 		out = append(out, "purchasedAt")
 	}
 	return out
+}
+
+// clientView is a client, drawn, as the app shows it.
+func clientView(t *rapid.T, w *World) clients.View {
+	return viewOf[clients.View](t, w, "clients.get", pick(t, w, "client", clients.Clients.All).ID)
+}
+
+// packageView is a package as the app shows it.
+func packageView(t *rapid.T, w *World, p *packages.Package) packages.View {
+	return read(t, w, func(tx *txn.Tx) (packages.View, error) { return packages.ViewOf(tx, p, sessions.CreditsUsed) })
+}
+
+// documentCan is what a document's page says each action on it would do.
+func documentCan(t *rapid.T, w *World, d *documents.Document) documents.Can {
+	return viewOf[struct {
+		Can documents.Can `json:"can"`
+	}](t, w, "documents.get", d.ID).Can
 }
 
 func sessionView(t *rapid.T, w *World, s *sessions.Session) sessions.View {

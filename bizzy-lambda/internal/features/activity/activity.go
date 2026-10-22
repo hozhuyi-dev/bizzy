@@ -148,6 +148,9 @@ func All(tx *txn.Tx) ([]Client, error) {
 	credit := map[string]int{} // minutes of each package's credits used so far, in session order
 	now := tx.Now()
 	for _, s := range all {
+		if s.Cancelled() {
+			continue // It holds no time, and costs nothing.
+		}
 		c := of(s.ClientID)
 		if s.Start.After(now) {
 			soonest(&c.NextBookedAt, s.Start)

@@ -39,7 +39,8 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
     columns: COLUMNS,
     data,
     getRowId: (doc) => doc.id,
-    enableRowSelection: (row) => row.original.status !== "cancelled",
+    // Ticked to send, or to put together: what its `can` allows.
+    enableRowSelection: (row) => row.original.can.send.ok || row.original.can.moveLines.ok,
     state: { rowSelection: selection },
     onRowSelectionChange: setSelection,
   });
@@ -48,7 +49,7 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
   const chosen = data.filter((doc) => selection[doc.id]);
   const to = { name: client.name, phone: client.contact?.phone };
   const together = combinable(chosen);
-  const sendable = chosen.length > 0 && chosen.every((doc) => doc.status === "issued");
+  const sendable = chosen.length > 0 && chosen.every((doc) => doc.can.send.ok);
 
   const actions: Array<Action> = [
     {
@@ -117,9 +118,9 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
   };
 }
 
-/** The type ticked drafts can be put together as: two or more, all drafts never issued, of one type. */
+/** The type ticked drafts can be put together as: two or more, each whose lines can move, of one type. */
 function combinable(docs: ReadonlyArray<DocumentSummary>) {
   const [first] = docs;
   if (!first || docs.length < 2) return undefined;
-  return docs.every((doc) => doc.status === "draft" && doc.type === first.type) ? first.type : undefined;
+  return docs.every((doc) => doc.can.moveLines.ok && doc.type === first.type) ? first.type : undefined;
 }

@@ -7,8 +7,9 @@ Back-office for a one-person physio practice: sessions, packages, invoices and r
 1. **bizzy is the truth; Google Calendar is a command surface.** A calendar edit is read as the same command the app would send and decided by the same rules. Every event in the chosen calendar is bizzy's: a session, a follow-up (`!`), or refused. Refused edits wait on the to-do list with remedies, one of which always puts bizzy's version back (for an event that shows nothing of bizzy's, that deletes it). Google Contacts stays the truth for contact details. The app keeps a read-only copy.
 2. **Documents own money.** A fee is its invoice line and a payment its receipt line. Drafts are made with every booking and payment, and stay editable until issued. Issued documents are immutable apart from non-legal corrections. Anything else goes through cancelling (later, credit/debit notes).
 3. **The app never reaches an invalid state.** Every change is an action that checks its own rules before anything is written. A refusal changes nothing and offers the remedies that would let it through. Invariants are checked again before every commit.
-4. **No business rule in the web app.** The API returns views with state, rules, to-do items, `can` verdicts and `locked` fields. The web only renders them.
-5. **Every rule is tested by use.** A property-based simulation drives every action, the calendar and the clock in random order and checks every invariant after every step.
+4. **Delete undoes a mistake; history stays.** Once an item has history (it happened, something was recorded on it, money or an issued document covers it), it can't be deleted. It is cancelled or archived instead (see [Lifecycle](#lifecycle)), and stays readable, out of the active lists.
+5. **No business rule in the web app.** Every view carries `can`, with a verdict for each action on it (ok, or why not plus remedies), and `locked`, the fields its update can't change now, each with its verdict. The web shows each action with its verdict and disables each locked field. It never reads state to decide what is allowed.
+6. **Every rule is tested by use.** A property-based simulation drives every action, the calendar and the clock in random order and checks every invariant after every step.
 
 Conventions: new identifiers say "user", never "her". Every change to how items are stored is a migration (see [Migrations](#migrations)). **Settings → Reset** (development and staging) only starts over.
 
@@ -65,7 +66,7 @@ flowchart TD
 - **Actions** are plain functions of a `txn.Tx` (`sessions.Update(tx, id, fields)`); nothing is written until they return. `Fields` is a patch, applied in fixed steps that each check their own rules and refuse with `apperr.Refused(message, remedies…)`. Rules about other items (overlap) use `tx.Later`, so changes made together are judged together.
 - **Invariants** (`<feature>/invariants.go`) are checked on every item a commit changes. One that breaks is a bug: an internal error, nothing written.
 - **Commits are serial**: each moves one counter, and an action that lost the race reruns on fresh data.
-- **The calendar is an adapter.** `googlesync` keeps a `Link` per event (the session it shows, and what it said when both last agreed). A changed event becomes the same `sessions.Create`/`Update`/`Delete` with only what the user changed, one commit per event. Refused events are retried after the others (together, for a swap); the rest wait as conflicts, with the remedies plus "put bizzy's version back". Changed sessions are written to their events after each commit, and the next sync finishes any failed write. A calendar is first read 60 days back, then backfilled a month per `sync.backfill` call. Choosing another calendar (typing its name to confirm) keeps all of bizzy's data: the sync forgets the old calendar's links, writes every item into the new one, and reads its events like any others. The old calendar is left untouched.
+- **The calendar is an adapter.** `googlesync` keeps a `Link` per event (the session it shows, and what it said when both last agreed). A changed event becomes the same `sessions.Create`/`Update` with only what the user changed, one commit per event; a deleted one deletes its session, or cancels it when it has history. Refused events are retried after the others (together, for a swap); the rest wait as conflicts, with the remedies plus "put bizzy's version back". Changed sessions are written to their events after each commit, and the next sync finishes any failed write. A calendar is first read 60 days back, then backfilled a month per `sync.backfill` call. Choosing another calendar (typing its name to confirm) keeps all of bizzy's data: the sync forgets the old calendar's links, writes every item into the new one, and reads its events like any others. The old calendar is left untouched.
 
 **Names** are the same in every feature. Outside a package you read `sessions.View`; the web writes `SessionView`.
 
@@ -92,9 +93,20 @@ flowchart TD
 - `internal/calendar`: Google Calendar events, title syntax and client, with no knowledge of features.
 - `internal/testutil`: `testapp` (the whole app on the memory table, with fakes of Google Calendar, Contacts and S3).
 - `internal/simulation`: a rapid state machine over `testapp`, with one action per mutation (enforced) plus calendar edits and clock moves. After each step it checks every invariant, that a refusal changed nothing, that each view's `can` matches the API, and that once synced the calendar shows bizzy.
-- **Refusals are written once**, as a `Can…` check the action calls. A view turns them into verdicts (`apperr.VerdictOf`) and field locks (`apperr.LocksOf`, keyed by the field's JSON path), which the simulation holds to what the API does (`callAsViewed`, `callAsLocked`). The action's refusal stays the last word.
+- **Refusals are written once**, as a read-only `Can<Action>(tx, item) error` that the action calls first. Each entity's view has a `Can` struct with every action on it (`apperr.VerdictOf`), and `Locked` for an update whose fields have rules (`apperr.LocksOf`, keyed by the field's JSON path). The simulation calls each mutation as its view said (`callAsViewed`, `callAsLocked`). The action's refusal stays the last word.
 - **Storage**: one partition per kind (`PK` = `SESSION`, `SK` = id), the item's JSON in `data`, and five LSIs (time, client, open, tag, ref) filled through `txn.Meta`. [SCHEMA.md](bizzy-lambda/SCHEMA.md) is generated from the code; a test fails when it is stale.
-- **A new feature** adds those four files, three lines in `app/app.go` (routes, invariants, kinds), a row in `dependencies_test.go`, a `Doc` per kind (then `-update` SCHEMA.md), and a simulation action per mutation.
+- **A new feature** adds those four files, three lines in `app/app.go` (routes, invariants, kinds), a row in `dependencies_test.go`, a `Doc` per kind (then `-update` SCHEMA.md), a `Can…` per action in its view, a place in [Lifecycle](#lifecycle), and a simulation action per mutation.
+
+#### Lifecycle
+
+Every entity follows one rule: **Delete** is for a mistake, refused once the item has history. After that it is **Cancelled** (void, kept as it was, changes no more) or **Archived** (put away, undone by unarchiving). Both stay readable, behind a list chip.
+
+| Entity | Delete while | Then |
+| --- | --- | --- |
+| Session | not happened (or tentative), nothing recorded, no payment, no issued invoice | **Cancel**: keeps its record, holds no time, costs nothing (credits freed, fee line dropped, a package bought in it kept on its own), leaves the calendar |
+| Client | nothing of theirs | **Archive**: out of lists and pickers, nothing new booked until unarchived |
+| Package | no credits used, no payment, no issued invoice | Stays; the list hides it once used up and paid |
+| Document | a draft never issued (discard) | **Cancel**: number stays used, lines go back to a draft |
 
 #### Migrations
 
@@ -113,7 +125,7 @@ Entry point: [src/main.tsx](bizzy-web/src/main.tsx) → `router.tsx` → `src/ro
 - Components reach data only through `query`, `mutation` and `hook`, never a `service`.
 - A feature's `types` mirror its `api.go`: a route's output is `<Entity>View` (`SessionView`), what a create or update sets is `<Entity>Fields` (sent as a patch on update: only what changed), and any other input is `<Action><Entity>Request`. The service calls each action by its API name.
 - `core/` holds shared infrastructure, `components/shared/` the app's shared components, and `components/ui/` the generated shadcn components (left untouched).
-- Forms disable what the view's `locked` names, with a `LockedHint` (its why and remedies) under the field.
+- **The web reads `can` and `locked`, never state, to decide what's allowed.** Each action passes its view's verdict as the `Action`'s `can`, which disables it and says why (a tooltip, or a line in the ⋯ menu). Forms disable what `locked` names, with a `LockedHint` (its why and remedies) under the field. Status is read only to show (badges, watermarks).
 - Actions are described (`Action`) and laid out by an `ActionBar`: a page's in its header, a section's beside its heading. A bar that shares its row with much (a header with a pager, a section beside its contents) folds all but its main action behind ⋯ below `lg` (`foldBelow`). A section that holds state of its own for its actions (a table's ticked rows) is a hook returning its `PageSection` (`useClientDocumentsSection`).
 - Every list page has one `FilterBar`: words, plus chips from the page's facets (a client, a stage, a month). The filter (`core/filter`) lives in the URL. Lists that grow without end (sessions, documents, follow-ups, expenses) send it to their `search` route and read pages with `usePages`. Lists loaded whole anyway (clients, packages) filter in the browser.
 - Tests mirror the file they test: `x.util.ts` → `x.util.test.ts`.

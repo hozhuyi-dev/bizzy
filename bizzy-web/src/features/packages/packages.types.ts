@@ -1,6 +1,6 @@
 import type { DocumentRef } from "~/features/documents/documents.types";
 import type { Paid, PaymentInput } from "~/features/payments/payments.types";
-import type { Locks } from "~/core/lambda/lambda.types";
+import type { Locks, Verdict } from "~/core/lambda/lambda.types";
 
 // Mirrors bizzy-lambda/internal/features/packages/api.go.
 
@@ -27,8 +27,20 @@ export interface PackageView {
   /** Its price while not received. */
   owedCents: number;
   todo: Array<PackageReason>;
+  /** What each action on it would say now. */
+  can: PackageCan;
   /** What its update can't change now. */
   locked: Locks;
+}
+
+/** What each action on a package would say now; mirrors packages.Can. */
+export interface PackageCan {
+  pay: Verdict;
+  undoPayment: Verdict;
+  /** Keeping one bought in a session as one on its own. */
+  makeStandalone: Verdict;
+  /** Only one bought by mistake: unused, unpaid, on no issued invoice. */
+  delete: Verdict;
 }
 
 /**

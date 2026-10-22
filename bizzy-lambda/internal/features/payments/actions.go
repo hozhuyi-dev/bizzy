@@ -105,13 +105,14 @@ func check(tx *txn.Tx, it Item, paying bool) ([]documents.Paying, error) {
 		if err != nil {
 			return nil, err
 		}
-		src := documents.PackageSource(p.ID)
+		check := packages.CanPay
 		if !paying {
-			if paid, err := documents.Received(tx, src); err != nil || paid == nil {
-				return nil, firstErr(err, apperr.Refused("No payment is recorded for it."))
-			}
+			check = packages.CanUndoPayment
 		}
-		return []documents.Paying{{Source: src, ClientID: p.ClientID, What: describe(tx, p)}}, nil
+		if err := check(tx, p); err != nil {
+			return nil, err
+		}
+		return []documents.Paying{{Source: documents.PackageSource(p.ID), ClientID: p.ClientID, What: describe(tx, p)}}, nil
 	}
 	return nil, apperr.Invalid("Unknown item kind %q.", it.Kind)
 }
@@ -128,11 +129,4 @@ func owes(tx *txn.Tx, src documents.Source) (bool, error) {
 
 func describe(tx *txn.Tx, p *packages.Package) string {
 	return fmt.Sprintf("the package bought on %s", p.PurchasedAt.In(tx.Location()).Format("2 Jan"))
-}
-
-func firstErr(err, fallback error) error {
-	if err != nil {
-		return err
-	}
-	return fallback
 }

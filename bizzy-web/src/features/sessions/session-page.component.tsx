@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CalendarPlusIcon, CalendarX2Icon, PlusIcon, Trash2Icon } from "lucide-react";
+import { BanIcon, CalendarPlusIcon, CalendarX2Icon, PlusIcon, Trash2Icon } from "lucide-react";
 import { bookingStep } from "./components/booking-step/booking-step.component";
 import { SessionPager } from "./components/session-pager/session-pager.component";
+import { CancelSessionDialog } from "./components/cancel-session-dialog/cancel-session-dialog.component";
 import { DeleteSessionDialog } from "./components/delete-session-dialog/delete-session-dialog.component";
 import { documentsStep } from "./components/documents-step/documents-step.component";
 import { followUpsStep } from "./components/follow-ups-step/follow-ups-step.component";
@@ -106,6 +107,7 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
   const conflicts = ConflictsQuery.useByTarget(session.id);
   const followUps = FollowUpsQuery.useBySession(session.id);
   const [deleting, setDeleting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
   const [nextVisit, setNextVisit] = useState<SessionDraft | null>(null);
   const settled = useSettleReturn(settle);
@@ -130,20 +132,15 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
         ] satisfies Array<Action>)
       : []),
   ];
-  // Rare, and undone only by booking it again.
+  // Rare, and undone only by booking it again: cancel one with history,
+  // delete one booked by mistake.
   const menu: Array<Action> = [
-    {
-      type: "button",
-      label: "Delete",
-      icon: Trash2Icon,
-      style: "destructive",
-      disabled: !session.can.delete.ok,
-      onClick: () => setDeleting(true),
-    },
+    { type: "button", label: "Cancel session", icon: BanIcon, can: session.can.cancel, onClick: () => setCancelling(true) },
+    { type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", can: session.can.delete, onClick: () => setDeleting(true) },
   ];
 
   const steps: Array<PipelineStep> = [
-    bookingStep(session, () => setDeleting(true), settled),
+    bookingStep(session, () => setCancelling(true), settled),
     recordStep(session, record),
     paymentStep(session, covering, bought),
     documentsStep(session, bought),
@@ -165,8 +162,13 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
         moreActions={more}
         menuActions={menu}
         banners={
-          waiting.length > 0 && (
+          (session.cancelledAt || waiting.length > 0) && (
             <>
+              {session.cancelledAt && (
+                <Banner tone="neutral" icon={BanIcon} title={`Cancelled ${formatDate(session.cancelledAt)}.`}>
+                  {session.cancelReason ? `${session.cancelReason}. ` : ""}It stays as it was, with what was recorded on it.
+                </Banner>
+              )}
               {waiting.map((conflict) => (
                 <ConflictBanner key={conflict.eventId} conflict={conflict} />
               ))}
@@ -180,6 +182,11 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
         clientName={client?.name ?? session.clientName}
         onClose={() => setDeleting(false)}
         onDeleted={leave}
+      />
+      <CancelSessionDialog
+        session={cancelling ? session : null}
+        clientName={client?.name ?? session.clientName}
+        onClose={() => setCancelling(false)}
       />
       <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
       <NextVisitDialog from={nextVisit} clientName={client?.name ?? session.clientName} onClose={() => setNextVisit(null)} />

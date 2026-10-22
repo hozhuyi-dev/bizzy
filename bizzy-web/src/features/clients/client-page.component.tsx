@@ -1,10 +1,22 @@
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
-import { BellPlusIcon, CalendarPlusIcon, CircleAlertIcon, MessageCircleIcon, PlusIcon, Trash2Icon, WalletIcon } from "lucide-react";
+import { toast } from "sonner";
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  BellPlusIcon,
+  CalendarPlusIcon,
+  CircleAlertIcon,
+  MessageCircleIcon,
+  PlusIcon,
+  Trash2Icon,
+  WalletIcon,
+} from "lucide-react";
 import { clientLink } from "./clients.columns";
 import { feeAmountError, feeStartError, toClientFields, toClientValues } from "./clients.form";
 import { useSaveClient } from "./clients.hook";
+import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
 import { ClientContact } from "./components/client-contact/client-contact.component";
 import { useClientDocumentsSection } from "./components/client-documents/client-documents.component";
@@ -23,6 +35,7 @@ import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
@@ -36,7 +49,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { todayISO } from "~/core/utils/date.util";
+import { formatDate, todayISO } from "~/core/utils/date.util";
 import { fieldErrors } from "~/core/utils/form.util";
 import { NO_FILTER } from "~/core/list/filter.util";
 
@@ -164,6 +177,8 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
   const [paying, setPaying] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const archive = ClientsMutation.useArchive();
+  const unarchive = ClientsMutation.useUnarchive();
 
   const details: Array<PageSection> = [
     {
@@ -386,12 +401,22 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
         foldBelow="lg"
         menuActions={
           client
-            ? [{ type: "button", label: "Delete client", icon: Trash2Icon, style: "destructive", onClick: () => setDeleting(true) }]
+            ? [
+                client.archivedAt
+                  ? { type: "button", label: "Unarchive", icon: ArchiveRestoreIcon, can: client.can.unarchive, onClick: () => unarchive.mutate(client.id, { onSuccess: () => toast.success(`${client.name} unarchived`), onError: toastRefusal }) }
+                  : { type: "button", label: "Archive", icon: ArchiveIcon, can: client.can.archive, onClick: () => archive.mutate(client.id, { onSuccess: () => toast.success(`${client.name} archived`), onError: toastRefusal }) },
+                { type: "button", label: "Delete client", icon: Trash2Icon, style: "destructive", can: client.can.delete, onClick: () => setDeleting(true) },
+              ]
             : undefined
         }
         banners={
-          (problem || save.error) && (
+          (client?.archivedAt || problem || save.error) && (
             <>
+              {client?.archivedAt && (
+                <Banner tone="neutral" icon={ArchiveIcon} title={`Archived ${formatDate(client.archivedAt)}.`}>
+                  Kept with all that is theirs, out of lists and pickers. Unarchive to book them again.
+                </Banner>
+              )}
               {problem && <Banner tone="attention" icon={CircleAlertIcon} title={`${problem}.`} />}
               {save.error && (
                 <Banner tone="attention" icon={CircleAlertIcon} title={save.error.message} role="alert" />

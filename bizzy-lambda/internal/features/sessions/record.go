@@ -49,7 +49,10 @@ func CanRecord(tx *txn.Tx, id string) error {
 	if err != nil {
 		return err
 	}
-	if s.Start.After(tx.Now()) {
+	switch {
+	case s.Cancelled():
+		return apperr.Refused("It was cancelled, so what was recorded on it stays as it was.")
+	case s.Start.After(tx.Now()):
 		return apperr.Refused("Notes and files can be added once the session has started.")
 	}
 	return nil
@@ -103,7 +106,7 @@ func setNotes(tx *txn.Tx, id, text string) error {
 }
 
 // HasRecord reports whether the user wrote or attached anything on a
-// session: what deleting its event in the calendar never takes with it.
+// session: what is never deleted with it (see CanDelete).
 func HasRecord(tx *txn.Tx, s *Session) (bool, error) {
 	if s.Record != nil {
 		return true, nil

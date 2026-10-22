@@ -180,16 +180,25 @@ func Uncharge(tx *txn.Tx, src Source) error {
 	return err
 }
 
-// Remove takes an item being deleted off its documents. What was received
-// for it is never deleted with it: the payment is undone first, on
-// purpose. what names the item in the refusal.
+// Remove takes an item being deleted or cancelled off its documents: it
+// costs nothing any more. what names the item in the refusal.
 func Remove(tx *txn.Tx, src Source, what string) error {
+	if err := CanRemove(tx, src, what); err != nil {
+		return err
+	}
+	return Uncharge(tx, src)
+}
+
+// CanRemove is the refusal for Remove: what was received for an item is
+// never dropped with it (the payment is undone first, on purpose), and an
+// issued invoice charging it is cancelled first.
+func CanRemove(tx *txn.Tx, src Source, what string) error {
 	if r, _, err := Receipt(tx, src); err != nil {
 		return err
 	} else if r != nil {
-		return apperr.Refused(fmt.Sprintf("Undo the payment first: deleting %s would lose the record of it.", what), undoPayment(src))
+		return apperr.Refused(fmt.Sprintf("A payment is recorded for %s. Undo it first, so the record of it isn't lost.", what), undoPayment(src))
 	}
-	return Uncharge(tx, src)
+	return CanChange(tx, src, TypeInvoice)
 }
 
 // MoveToClient moves an item's lines to drafts of another client: to the

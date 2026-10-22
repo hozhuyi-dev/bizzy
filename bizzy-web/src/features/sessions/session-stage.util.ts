@@ -19,6 +19,9 @@ export const REASON_BADGES: Record<SessionReason, StageBadge> = {
   collect: { label: "Unpaid", tone: "attention" },
 };
 
+/** How a cancelled session shows: it stays, as a record. */
+export const CANCELLED_BADGE: StageBadge = { label: "Cancelled", tone: "neutral" };
+
 export function hasHappened(session: SessionView, now = new Date()): boolean {
   return new Date(session.end) <= now;
 }
@@ -29,6 +32,7 @@ export function sessionMinutes(session: Pick<SessionView, "start" | "end">): num
 
 /** The badges a list shows for a session: what is left to do on it, or where it stands. */
 export function stageBadges(session: SessionView, now = new Date()): Array<StageBadge> {
+  if (session.cancelledAt) return [CANCELLED_BADGE];
   if (session.todo.length > 0) return session.todo.map((reason) => REASON_BADGES[reason]);
   if (!hasHappened(session, now)) return [{ label: "Booked", tone: "info" }];
   return [{ label: "Done", tone: "done" }];

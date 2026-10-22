@@ -6,6 +6,7 @@ import type { BookingValues, PriceIs } from "../../sessions.form";
 import type { CoverView, PreviewSessionRequest, SessionDraft, SessionView } from "../../sessions.types";
 import type { Locks } from "~/core/lambda/lambda.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { pickableClients } from "~/features/clients/clients.util";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { saidAbove } from "~/features/remedies/remedies.util";
@@ -70,9 +71,7 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
 
   const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
 
-  const items = (clients.data ?? [])
-    .map((client) => ({ value: client.id, label: client.name }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const items = pickableClients(clients.data ?? [], session?.clientId);
 
   // What would pay for it, as saving it will choose.
   const previewRequest = useStore(form.store, (state) => previewOf(state.values, session));

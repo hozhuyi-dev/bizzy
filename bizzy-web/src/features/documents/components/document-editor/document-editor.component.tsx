@@ -29,6 +29,8 @@ export function documentIssueAction(editor: DocumentEditorState): Action {
         : `Issue ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
     style: "primary",
     disabled: busy || invalid !== undefined,
+    // Saved as it is, the API says; changes are saved first, and it decides then.
+    can: editor.hasChanges ? undefined : doc.can.issue,
     onClick: () => void editor.issue(),
   };
 }
@@ -63,6 +65,7 @@ export function documentEditorActions(editor: DocumentEditorState): { more: Arra
         icon: Trash2Icon,
         style: "destructive",
         disabled: busy,
+        can: doc.can.discardDraft,
         onClick: editor.discard,
       },
     ],
@@ -148,7 +151,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       title: "Lines",
       // A draft invoice gathers more sessions from the drafts they are on.
       more:
-        doc.type === "invoice" && doc.status === "draft"
+        doc.type === "invoice" && doc.can.moveLines.ok
           ? [
               {
                 type: "button",
@@ -159,7 +162,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
               },
             ]
           : undefined,
-      description: editor.hasChanges && doc.status === "draft" ? "Save the draft to add or move sessions." : undefined,
+      description: editor.hasChanges && doc.can.moveLines.ok ? "Save the draft to add or move sessions." : undefined,
       content: (
         <form.Field name="lines" mode="array">
           {(linesField) => (

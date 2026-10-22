@@ -34,11 +34,13 @@ export type OpenStep =
 
 export type CallAction =
   | "calendar.revert"
+  | "clients.archive"
+  | "clients.unarchive"
   | "clients.update"
   | "documents.cancel"
   | "payments.set"
   | "packages.makeStandalone"
-  | "sessions.delete"
+  | "sessions.cancel"
   | "sessions.update";
 
 /**
@@ -82,12 +84,16 @@ export function remedyStep(remedy: Remedy, conflict?: ConflictView): RemedyStep 
       });
     case "packages.makeStandalone":
       return call("packages.makeStandalone", { done: "Kept as a package on its own", quip: false });
-    case "sessions.delete":
-      return call("sessions.delete", {
-        done: "Session deleted",
+    case "sessions.cancel":
+      return call("sessions.cancel", {
+        done: "Session cancelled",
         quip: false,
-        confirm: { question: "Delete it with its notes and files?", yes: "Delete" },
+        confirm: { question: "Cancel the session? It stays, with what was recorded on it.", yes: "Cancel it" },
       });
+    case "clients.archive":
+      return call("clients.archive", { done: "Archived", quip: false });
+    case "clients.unarchive":
+      return call("clients.unarchive", { done: "Unarchived", quip: false });
     case "sessions.update":
       // With what to change (confirm it), it is taken right there.
       return remedy.request

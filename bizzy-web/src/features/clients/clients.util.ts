@@ -77,6 +77,7 @@ const STANDING_OPTIONS: Record<StandingFacet, Facet> = {
   owes: { key: "owes", label: "Owes", single: true, options: [{ value: "yes", label: "Owes money", keywords: ["unpaid"] }] },
   credits: { key: "credits", label: "Credits", single: true, options: [{ value: "yes", label: "Has credits", keywords: ["package"] }] },
   followUp: { key: "followUp", label: "Follow-up", single: true, options: [{ value: "yes", label: "Open follow-up" }] },
+  archived: { key: "archived", label: "Archived", single: true, options: [{ value: "yes", label: "Archived" }] },
 };
 
 /** What All clients is narrowed by besides words, made once: its options never change. */
@@ -106,7 +107,19 @@ export function matchesChips(row: ClientRow, chips: ListFilter["chips"]): boolea
   if (chip("owes") && row.owedCents <= 0) return false;
   if (chip("credits") && row.creditsLeftMinutes <= 0) return false;
   if (chip("followUp") && !row.activity?.openFollowUps) return false;
-  return true;
+  // Archived clients are put away: only their chip shows them.
+  return Boolean(row.client.archivedAt) === Boolean(chip("archived"));
+}
+
+/**
+ * The clients a picker offers, A to Z: not the archived, unless one is
+ * already chosen (keepId), which stays.
+ */
+export function pickableClients(clients: ReadonlyArray<ClientView>, keepId?: string): Array<{ value: string; label: string }> {
+  return clients
+    .filter((client) => !client.archivedAt || client.id === keepId)
+    .map((client) => ({ value: client.id, label: client.name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /** All clients' filter both ways with its URL. */

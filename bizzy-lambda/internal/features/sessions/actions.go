@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"bizzy-lambda/internal/features/attachments"
@@ -38,7 +39,7 @@ func Create(tx *txn.Tx, f Fields) (*Session, error) {
 	if f.ClientID == nil || f.Time == nil {
 		return nil, apperr.Invalid("A session needs a client and a time.")
 	}
-	client, err := clients.Clients.Get(tx, *f.ClientID)
+	client, err := clients.Active(tx, *f.ClientID)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +59,19 @@ func Update(tx *txn.Tx, id string, f Fields) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := CanUpdate(s); err != nil {
+		return nil, err
+	}
 	return s, apply(tx, s, f, false)
+}
+
+// CanUpdate is the refusal for changing a session: not one cancelled,
+// which stays as it was.
+func CanUpdate(s *Session) error {
+	if s.Cancelled() {
+		return apperr.Refused("It was cancelled, so it stays as it was. Book a new session instead.")
+	}
+	return nil
 }
 
 // apply makes the changes f asks, in this order, since a later step reads
@@ -141,7 +154,7 @@ func reassign(tx *txn.Tx, s *Session, clientID *string, isNew bool) (bool, error
 	if clientID == nil || *clientID == s.ClientID {
 		return false, nil
 	}
-	if _, err := clients.Clients.Get(tx, *clientID); err != nil {
+	if _, err := clients.Active(tx, *clientID); err != nil {
 		return false, err
 	}
 	if !isNew {
@@ -241,15 +254,23 @@ func rebuy(tx *txn.Tx, s *Session, choice *PackageChoice, follow bool) (bool, er
 	return dropped || had == nil && p != nil, err
 }
 
-// Delete cancels a session with what was recorded on it, keeping the
-// package bought in it as one on its own, or deleting it too. It returns
-// the keys of its files, for the caller to delete once this commits.
+// Delete deletes a session booked by mistake, keeping the package bought
+// in it as one on its own, or deleting it too. It returns the keys of its
+// files, for the caller to delete once this commits.
 func Delete(tx *txn.Tx, id string, keepPackage bool) ([]string, error) {
 	s, err := Sessions.Get(tx, id)
 	if err != nil {
 		return nil, err
 	}
-	if err := CanDelete(tx, s); err != nil {
+	p, err := packages.BoughtIn(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	check := CanDelete
+	if p != nil && !keepPackage {
+		check = CanDeleteWithPackage
+	}
+	if err := check(tx, s); err != nil {
 		return nil, err
 	}
 	if err := documents.Remove(tx, s.Source(), Describe(tx, s)); err != nil {
@@ -258,9 +279,7 @@ func Delete(tx *txn.Tx, id string, keepPackage bool) ([]string, error) {
 	if err := Sessions.Delete(tx, id); err != nil {
 		return nil, err
 	}
-	if p, err := packages.BoughtIn(tx, id); err != nil {
-		return nil, err
-	} else if p != nil && keepPackage {
+	if p != nil && keepPackage {
 		if _, err := packages.MakeStandalone(tx, p.ID); err != nil {
 			return nil, err
 		}
@@ -275,21 +294,92 @@ func Delete(tx *txn.Tx, id string, keepPackage bool) ([]string, error) {
 	return attachments.RemoveAll(tx, attachments.OwnerSession, id)
 }
 
-// CanDelete is the refusal for deleting a session: what was received for
-// it is undone first, and an issued invoice charging it cancelled.
+// CanDelete is the refusal for deleting a session: only one booked by
+// mistake goes. One with history (it happened, something was recorded on
+// it, or it was cancelled) is cancelled instead, and what was received for
+// it, or an issued invoice charging it, is undone first either way.
 func CanDelete(tx *txn.Tx, s *Session) error {
-	if paid, err := documents.Received(tx, s.Source()); err != nil {
-		return err
-	} else if paid != nil {
-		return documents.Remove(tx, s.Source(), Describe(tx, s)) // Its refusal.
+	if s.Cancelled() {
+		return apperr.Refused("It was cancelled, so it stays, as a record.")
 	}
-	if inv, _, err := documents.Invoice(tx, s.Source()); err != nil {
+	if err := documents.CanRemove(tx, s.Source(), Describe(tx, s)); err != nil {
 		return err
-	} else if inv != nil && inv.Issued() {
-		return apperr.Refused(fmt.Sprintf("%s is issued for this session. Cancel it first.", inv.Number),
-			apperr.Remedy{Action: "documents.cancel", Target: inv.ID, Label: "Cancel " + inv.Number})
 	}
-	return nil
+	why := ""
+	if has, err := HasRecord(tx, s); err != nil {
+		return err
+	} else if has {
+		why = "Something is recorded on it"
+	} else if !s.Tentative && !s.Start.After(tx.Now()) {
+		why = "It happened"
+	}
+	if why == "" {
+		return nil
+	}
+	return apperr.Refused(why+", so it stays: cancel it instead.",
+		apperr.Remedy{Action: "sessions.cancel", Target: s.ID, Label: "Cancel it"})
+}
+
+// CanDeleteWithPackage is the refusal for deleting a session with the
+// package bought in it: the session can go, and the package can once it
+// has (see packages.CanDelete).
+func CanDeleteWithPackage(tx *txn.Tx, s *Session) error {
+	if err := CanDelete(tx, s); err != nil {
+		return err
+	}
+	p, err := packages.BoughtIn(tx, s.ID)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return apperr.Refused("No package was bought in it.")
+	}
+	return packages.CanDelete(tx, p, func(tx *txn.Tx, id string) (int, error) {
+		n, err := CreditsUsed(tx, id)
+		for _, c := range s.Credits {
+			if c.PackageID == id {
+				n -= c.Minutes // They go with the session.
+			}
+		}
+		return n, err
+	})
+}
+
+// Cancel calls a session off: the client cancelled, didn't come, or the
+// user did. It stays, with what was recorded on it, but holds no time,
+// costs nothing (its credits are free again, its fee off its invoice) and
+// leaves the calendar. The package bought in it stays, as one on its own.
+func Cancel(tx *txn.Tx, id, reason string) (*Session, error) {
+	s, err := Sessions.Get(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := CanCancel(tx, s); err != nil {
+		return nil, err
+	}
+	if err := documents.Remove(tx, s.Source(), Describe(tx, s)); err != nil {
+		return nil, err
+	}
+	if p, err := packages.BoughtIn(tx, id); err != nil {
+		return nil, err
+	} else if p != nil {
+		if _, err := packages.MakeStandalone(tx, p.ID); err != nil {
+			return nil, err
+		}
+	}
+	at := tx.Now().UTC()
+	s.Credits, s.CancelledAt, s.CancelReason = nil, &at, strings.TrimSpace(reason)
+	return s, nil
+}
+
+// CanCancel is the refusal for cancelling a session: not one cancelled
+// already, and what was received for it, or an issued invoice charging
+// it, is undone first.
+func CanCancel(tx *txn.Tx, s *Session) error {
+	if s.Cancelled() {
+		return apperr.Refused("It was cancelled already.")
+	}
+	return documents.CanRemove(tx, s.Source(), Describe(tx, s))
 }
 
 // CanReassign is the refusal for moving a session to another client: no
@@ -339,6 +429,9 @@ func CanRebuy(tx *txn.Tx, s *Session) error {
 // CanPay is the refusal for recording a payment for a session: it is
 // confirmed, and owes something.
 func CanPay(tx *txn.Tx, s *Session) error {
+	if s.Cancelled() {
+		return apperr.Refused("It was cancelled: nothing is owed on it.")
+	}
 	if s.Tentative {
 		return apperr.Refused("Confirm the session before recording its payment.",
 			apperr.Remedy{Action: "sessions.update", Target: s.ID, Request: map[string]any{"tentative": false}, Label: "Confirm it"})

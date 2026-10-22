@@ -83,7 +83,8 @@ func SessionOf(tx *txn.Tx, eventID string) (*sessions.Session, error) {
 	return s, err
 }
 
-// exists reports whether a link's item is still there.
+// exists reports whether a link's item is still there to show: a
+// cancelled session shows in no event, as a deleted one.
 func exists(tx *txn.Tx, kind ItemKind, id string) (bool, error) {
 	if id == "" {
 		return false, nil
@@ -92,8 +93,8 @@ func exists(tx *txn.Tx, kind ItemKind, id string) (bool, error) {
 		_, ok, err := followups.FollowUps.Find(tx, id)
 		return ok, err
 	}
-	_, ok, err := sessions.Sessions.Find(tx, id)
-	return ok, err
+	s, ok, err := sessions.Sessions.Find(tx, id)
+	return ok && !s.Cancelled(), err
 }
 
 // EventOf is the event an item shows: what bizzy writes to it. seen is

@@ -55,7 +55,14 @@ export const SessionsMutation = {
       refresh: true,
     }),
 
-  /** Deletes the session with anything recorded on it, and its event; keeps or deletes the package it bought. */
+  /** Calls the session off, keeping it and its record; its event goes. */
+  useCancel: () =>
+    useSessionMutation(({ id, reason }: { id: string; reason: string }) => SessionsService.cancel(id, reason), {
+      idOf: ({ id }) => id,
+      refresh: true,
+    }),
+
+  /** Deletes a session booked by mistake, and its event; keeps or deletes the package it bought. */
   useDelete: () =>
     useSessionMutation(
       ({ id, keepPackage }: { id: string; keepPackage: boolean }) => SessionsService.delete(id, keepPackage),

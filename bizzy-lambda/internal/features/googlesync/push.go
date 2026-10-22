@@ -79,7 +79,8 @@ type pushes struct {
 }
 
 // affected are the items whose events a commit's changes may change, and
-// the events to delete: those of deleted items, or that show nothing.
+// the events to delete: those of items deleted or cancelled, or that show
+// nothing.
 func affected(tx *txn.Tx, changes []txn.Change) (items []item, gone []string, err error) {
 	seen := map[item]bool{}
 	add := func(kind ItemKind, id string) {
@@ -95,7 +96,9 @@ func affected(tx *txn.Tx, changes []txn.Change) (items []item, gone []string, er
 			if c.Kind == followups.FollowUps.Name {
 				kind = KindFollowUp
 			}
-			if !c.Deleted {
+			if there, err := exists(tx, kind, c.ID); err != nil {
+				return nil, nil, err
+			} else if there {
 				add(kind, c.ID)
 			} else if l, err := LinkOf(tx, kind, c.ID); err != nil {
 				return nil, nil, err

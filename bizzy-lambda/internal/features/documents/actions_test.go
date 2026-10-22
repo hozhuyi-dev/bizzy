@@ -121,18 +121,18 @@ func TestDraftGoesWithWhatItCovers(t *testing.T) {
 	if err := a.Must("documents.saveDraft", map[string]any{"id": d.ID, "content": content}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Must("sessions.delete", map[string]any{"id": ss[0].ID}, nil); err != nil {
+	if err := a.Must("sessions.cancel", map[string]any{"id": ss[0].ID}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if docs := listed(t, a, jane); len(docs) != 2 || docs[0].TotalCents+docs[1].TotalCents != 9000+1500+9000 {
-		t.Errorf("after deleting one: %+v", docs)
+		t.Errorf("after cancelling one: %+v", docs)
 	}
 	// …and goes with the last one.
-	if err := a.Must("sessions.delete", map[string]any{"id": ss[1].ID}, nil); err != nil {
+	if err := a.Must("sessions.cancel", map[string]any{"id": ss[1].ID}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if docs := listed(t, a, jane); len(docs) != 1 || docs[0].ID != ss[2].Invoice.ID {
-		t.Errorf("after deleting both: %+v", docs)
+		t.Errorf("after cancelling both: %+v", docs)
 	}
 }
 

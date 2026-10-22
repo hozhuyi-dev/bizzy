@@ -20,7 +20,8 @@ import (
 //
 // A new event makes its item (sessions.Create, followups.Create); an
 // edited one changes it with the Fields the user changed (Update); a
-// deleted one deletes it. So the calendar can do what the app can, under
+// deleted one deletes it, or cancels a session with history (see
+// sessionDeleted). So the calendar can do what the app can, under
 // the same rules, and nothing else. Only the title syntax is checked
 // here; every business rule is the actions'.
 func FromCalendar(tx *txn.Tx, e calendar.Event) error {
@@ -93,14 +94,7 @@ func sessionChanged(tx *txn.Tx, l *Link, e calendar.Event) error {
 		return err
 	}
 	if e.Cancelled {
-		if has, err := sessions.HasRecord(tx, s); err != nil {
-			return err
-		} else if has {
-			return apperr.Refused(fmt.Sprintf("%s was deleted in the calendar, but it has notes or files.", capitalize(sessions.Describe(tx, s))),
-				apperr.Remedy{Action: "calendar.revert", Target: e.ID, Label: "Put the event back"},
-				apperr.Remedy{Action: "sessions.delete", Target: s.ID, Label: "Delete it with its notes"})
-		}
-		if _, err := sessions.Delete(tx, s.ID, false); err != nil {
+		if err := sessionDeleted(tx, s); err != nil {
 			return err
 		}
 		return Links.Delete(tx, e.ID)
@@ -121,6 +115,26 @@ func sessionChanged(tx *txn.Tx, l *Link, e calendar.Event) error {
 	}
 	l.Seen = now
 	return nil
+}
+
+// sessionDeleted is a session's event deleted: the session is deleted when
+// it can be, with the package bought in it unless that has to stay, and
+// cancelled when it has history (see sessions.CanDelete).
+func sessionDeleted(tx *txn.Tx, s *sessions.Session) error {
+	deletable, err := apperr.VerdictOf(sessions.CanDelete(tx, s))
+	if err != nil {
+		return err
+	}
+	if !deletable.OK {
+		_, err := sessions.Cancel(tx, s.ID, "Deleted in the calendar")
+		return err
+	}
+	withPackage, err := apperr.VerdictOf(sessions.CanDeleteWithPackage(tx, s))
+	if err != nil {
+		return err
+	}
+	_, err = sessions.Delete(tx, s.ID, !withPackage.OK)
+	return err
 }
 
 // sessionFields are the fields an event sets: all of them for a new
@@ -248,11 +262,4 @@ func sameFee(a, b *int64) bool {
 
 func samePackage(a, b *calendar.PackageSpec) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return string(s[0]-'a'+'A') + s[1:]
 }

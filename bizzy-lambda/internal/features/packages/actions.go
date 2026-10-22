@@ -31,7 +31,7 @@ func Create(tx *txn.Tx, f Fields, used Usage) (*Package, error) {
 	if f.ClientID == nil || f.Hours == nil || f.PriceCents == nil || f.PurchasedAt == nil {
 		return nil, apperr.Invalid("A package needs a client, how many hours, a price and when it was bought.")
 	}
-	if _, err := clients.Clients.Get(tx, *f.ClientID); err != nil {
+	if _, err := clients.Active(tx, *f.ClientID); err != nil {
 		return nil, err
 	}
 	p := &Package{ID: tx.NewID(), ClientID: *f.ClientID, CreatedAt: tx.Now().UTC()}
@@ -125,22 +125,31 @@ func Rebuy(tx *txn.Tx, sessionID, clientID string, at time.Time, b *Bought, into
 	return p, apply(tx, p, f, used, into)
 }
 
-// Delete deletes a package, with its lines. Refused while sessions use
-// its credits, or a payment is recorded for it.
+// Delete deletes a package bought by mistake, with its lines.
 func Delete(tx *txn.Tx, id string, used Usage) error {
 	p, err := Packages.Get(tx, id)
 	if err != nil {
 		return err
 	}
-	if n, err := used(tx, p.ID); err != nil {
+	if err := CanDelete(tx, p, used); err != nil {
 		return err
-	} else if n > 0 {
-		return apperr.Refused(fmt.Sprintf("Sessions use %s of this package's credits. Give them a fee instead first.", Hours(n)))
 	}
 	if err := documents.Remove(tx, documents.PackageSource(p.ID), describe(tx, p)); err != nil {
 		return err
 	}
 	return Packages.Delete(tx, id)
+}
+
+// CanDelete is the refusal for deleting a package: no session uses its
+// credits, no payment is recorded for it, and no issued invoice charges
+// it.
+func CanDelete(tx *txn.Tx, p *Package, used Usage) error {
+	if n, err := used(tx, p.ID); err != nil {
+		return err
+	} else if n > 0 {
+		return apperr.Refused(fmt.Sprintf("Sessions use %s of this package's credits. Give them a fee instead, or cancel them, first.", Hours(n)))
+	}
+	return documents.CanRemove(tx, documents.PackageSource(p.ID), describe(tx, p))
 }
 
 // MakeStandalone keeps a package bought in a session as one on its own,
@@ -150,11 +159,53 @@ func MakeStandalone(tx *txn.Tx, id string) (*Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p.BoughtIn == "" {
-		return nil, apperr.Refused("This package was bought on its own already.")
+	if err := CanMakeStandalone(p); err != nil {
+		return nil, err
 	}
 	p.BoughtIn = ""
 	return p, nil
+}
+
+// CanMakeStandalone is the refusal for keeping a package as one on its
+// own: one bought in a session.
+func CanMakeStandalone(p *Package) error {
+	if p.BoughtIn == "" {
+		return apperr.Refused("This package was bought on its own already.")
+	}
+	return nil
+}
+
+// CanPay is the refusal for recording a package paid: something is owed
+// on it.
+func CanPay(tx *txn.Tx, p *Package) error {
+	cents, _, err := documents.Charged(tx, documents.PackageSource(p.ID))
+	if err != nil {
+		return err
+	}
+	paid, err := documents.Received(tx, documents.PackageSource(p.ID))
+	if err != nil {
+		return err
+	}
+	if cents == 0 || paid != nil {
+		return apperr.Refused(fmt.Sprintf("Nothing is owed on %s.", describe(tx, p)))
+	}
+	return nil
+}
+
+// CanUndoPayment is the refusal for undoing a package's payment: one is
+// recorded, on a receipt not issued.
+func CanUndoPayment(tx *txn.Tx, p *Package) error {
+	paid, err := documents.Received(tx, documents.PackageSource(p.ID))
+	switch {
+	case err != nil:
+		return err
+	case paid == nil:
+		return apperr.Refused("No payment is recorded for it.")
+	case paid.Issued:
+		return apperr.Refused(fmt.Sprintf("%s records it. Cancel it first.", paid.ReceiptNumber),
+			apperr.Remedy{Action: "documents.cancel", Target: paid.ReceiptID, Label: "Cancel " + paid.ReceiptNumber})
+	}
+	return nil
 }
 
 // apply makes the changes f asks, in order: who, how many, when, then
@@ -172,7 +223,7 @@ func apply(tx *txn.Tx, p *Package, f Fields, used Usage, into string) error {
 	isNew := line == nil
 
 	if f.ClientID != nil && *f.ClientID != p.ClientID {
-		if _, err := clients.Clients.Get(tx, *f.ClientID); err != nil {
+		if _, err := clients.Active(tx, *f.ClientID); err != nil {
 			return err
 		}
 		if err := CanReassign(tx, p, used); err != nil {

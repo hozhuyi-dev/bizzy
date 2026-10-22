@@ -11,6 +11,7 @@ import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { UnsavedChangesPrompt } from "~/components/shared/unsaved-changes-prompt/unsaved-changes-prompt.component";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { pickableClients } from "~/features/clients/clients.util";
 import { Button } from "~/components/ui/button";
 import { DialogFooter } from "~/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
@@ -56,9 +57,7 @@ export function PackageForm({ pkg, clientId, onDone, quiet }: PackageFormProps) 
 
   const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
 
-  const items = (clients.data ?? [])
-    .map((client) => ({ value: client.id, label: client.name }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const items = pickableClients(clients.data ?? [], pkg?.clientId ?? clientId);
 
   return (
     <form

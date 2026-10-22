@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/router"
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -18,14 +19,26 @@ type View struct {
 	Contact    *Contact  `json:"contact,omitempty"`
 	// FeeTodayCents is the hourly fee a session without one would be
 	// charged today; nil when no fee is set.
-	FeeTodayCents *int64 `json:"feeTodayCents,omitempty"`
+	FeeTodayCents *int64     `json:"feeTodayCents,omitempty"`
+	ArchivedAt    *time.Time `json:"archivedAt,omitempty"`
+	Can           Can        `json:"can"`
 }
 
-func viewOf(tx *txn.Tx, c *Client) View {
+// Can is what each action on a client would say now.
+type Can struct {
+	Archive   apperr.Verdict `json:"archive"`
+	Unarchive apperr.Verdict `json:"unarchive"`
+	Delete    apperr.Verdict `json:"delete"`
+}
+
+// ViewOf is a client as of now; owners are the kinds of items a client
+// can have (see Delete).
+func ViewOf(tx *txn.Tx, c *Client, owners ...Owner) (View, error) {
 	v := View{
 		ID: c.ID, Name: c.Name, Aliases: c.Aliases, FeeRates: c.FeeRates, HomeVisits: c.HomeVisits,
 		Contact:       c.Contact,
 		FeeTodayCents: c.FeeOn(tx.Now().In(tx.Location()).Format(time.DateOnly)),
+		ArchivedAt:    c.ArchivedAt,
 	}
 	if v.Aliases == nil {
 		v.Aliases = []string{}
@@ -33,7 +46,20 @@ func viewOf(tx *txn.Tx, c *Client) View {
 	if v.FeeRates == nil {
 		v.FeeRates = []FeeRate{}
 	}
-	return v
+	for _, x := range []struct {
+		verdict *apperr.Verdict
+		check   error
+	}{
+		{&v.Can.Archive, CanArchive(c)},
+		{&v.Can.Unarchive, CanUnarchive(c)},
+		{&v.Can.Delete, CanDelete(tx, c, owners...)},
+	} {
+		var err error
+		if *x.verdict, err = apperr.VerdictOf(x.check); err != nil {
+			return View{}, err
+		}
+	}
+	return v, nil
 }
 
 // Linker reads the Google contact a client is linked to (see contacts),
@@ -76,23 +102,36 @@ func Routes(r *router.Router, run *txn.Runner, link Linker, owners ...Owner) {
 		return f, nil
 	}
 
+	view := func(tx *txn.Tx, c *Client, err error) (any, error) {
+		if err != nil {
+			return nil, err
+		}
+		return ViewOf(tx, c, owners...)
+	}
+
+	// clients.list lists every client, archived ones too: the app shows
+	// them apart, and still names them on what is theirs.
 	r.Query("clients.list", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
-		return txn.Read(ctx, run, func(tx *txn.Tx) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
 			all, err := Clients.All(tx)
+			if err != nil {
+				return nil, err
+			}
 			out := []View{}
 			for _, c := range all {
-				out = append(out, viewOf(tx, c))
+				v, err := ViewOf(tx, c, owners...)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, v)
 			}
-			return out, err
+			return out, nil
 		})
 	}))
 	r.Query("clients.get", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) (any, error) {
 			c, err := Clients.Get(tx, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			return viewOf(tx, c), nil
+			return view(tx, c, err)
 		})
 	}))
 	r.Mutation("clients.create", router.Typed(func(ctx context.Context, in saveRequest) (any, error) {
@@ -102,10 +141,7 @@ func Routes(r *router.Router, run *txn.Runner, link Linker, owners ...Owner) {
 		}
 		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) {
 			c, err := Create(tx, f)
-			if err != nil {
-				return nil, err
-			}
-			return viewOf(tx, c), nil
+			return view(tx, c, err)
 		})
 	}))
 	r.Mutation("clients.update", router.Typed(func(ctx context.Context, in saveRequest) (any, error) {
@@ -121,10 +157,19 @@ func Routes(r *router.Router, run *txn.Runner, link Linker, owners ...Owner) {
 				}
 			}
 			c, err := Update(tx, in.ID, f)
-			if err != nil {
-				return nil, err
-			}
-			return viewOf(tx, c), nil
+			return view(tx, c, err)
+		})
+	}))
+	r.Mutation("clients.archive", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
+		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) {
+			c, err := Archive(tx, in.ID)
+			return view(tx, c, err)
+		})
+	}))
+	r.Mutation("clients.unarchive", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
+		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) {
+			c, err := Unarchive(tx, in.ID)
+			return view(tx, c, err)
 		})
 	}))
 	r.Mutation("clients.delete", router.Typed(func(ctx context.Context, in idRequest) (any, error) {

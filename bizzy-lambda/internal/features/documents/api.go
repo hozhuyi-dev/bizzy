@@ -29,6 +29,24 @@ type Summary struct {
 	// Revising says an issued document has its next revision drafted.
 	Revising   bool   `json:"revising,omitempty"`
 	ShareToken string `json:"shareToken,omitempty"`
+	// Can is what a list offers to do with it.
+	Can SummaryCan `json:"can"`
+}
+
+// SummaryCan is what a list's actions on a document would say now:
+// sending it, and putting it together with other drafts.
+type SummaryCan struct {
+	Send      apperr.Verdict `json:"send"`
+	MoveLines apperr.Verdict `json:"moveLines"`
+}
+
+// Can is what each action on a document would say now, for its page.
+type Can struct {
+	SummaryCan
+	Issue        apperr.Verdict `json:"issue"`
+	Revise       apperr.Verdict `json:"revise"`
+	Cancel       apperr.Verdict `json:"cancel"`
+	DiscardDraft apperr.Verdict `json:"discardDraft"`
 }
 
 // SummaryOf is a document as lists show it.
@@ -37,6 +55,9 @@ func SummaryOf(d *Document) Summary {
 		ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, ClientID: d.ClientID,
 		Revising: d.Status == StatusIssued && d.Draft != nil, ShareToken: d.ShareToken,
 	}
+	// Both are the document's own steps, which never fail to say.
+	s.Can.Send, _ = apperr.VerdictOf(CanSend(d))
+	s.Can.MoveLines, _ = apperr.VerdictOf(CanMoveLines(d))
 	c := d.Content
 	if c == nil {
 		c = d.Draft
@@ -58,7 +79,9 @@ type View struct {
 	CancelledAt  *time.Time `json:"cancelledAt,omitempty"`
 	CancelReason string     `json:"cancelReason,omitempty"`
 	Revisions    []Revision `json:"revisions"`
-	// Locked is what its draft can't change (see Locks).
+	// Can is what each action on it would say now; Locked what its draft
+	// can't change (see Locks).
+	Can    Can          `json:"can"`
 	Locked apperr.Locks `json:"locked"`
 }
 
@@ -77,13 +100,28 @@ func Locks(d *Document) (apperr.Locks, error) {
 	})
 }
 
-func viewOf(tx *txn.Tx, d *Document) (*View, error) {
+func viewOf(tx *txn.Tx, d *Document, checks []Check) (*View, error) {
 	if d == nil {
 		return nil, nil
 	}
 	v := &View{
 		Summary: SummaryOf(d), Content: d.Content, Draft: d.Draft, CreatedAt: d.CreatedAt,
 		IssuedAt: d.IssuedAt, CancelledAt: d.CancelledAt, CancelReason: d.CancelReason, Revisions: []Revision{},
+	}
+	v.Can.SummaryCan = v.Summary.Can
+	for _, c := range []struct {
+		verdict *apperr.Verdict
+		check   error
+	}{
+		{&v.Can.Issue, CanIssue(tx, d, checks...)},
+		{&v.Can.Revise, CanRevise(d)},
+		{&v.Can.Cancel, CanCancel(d)},
+		{&v.Can.DiscardDraft, CanDiscardDraft(d)},
+	} {
+		var err error
+		if *c.verdict, err = apperr.VerdictOf(c.check); err != nil {
+			return nil, err
+		}
 	}
 	if d.Draft != nil && !d.Issued() {
 		cfg, err := settings.Get(tx)
@@ -192,7 +230,7 @@ func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
 					return nil, err
 				}
 			}
-			return viewOf(tx, d)
+			return viewOf(tx, d, checks)
 		})
 	}
 
@@ -250,7 +288,7 @@ func Routes(r *router.Router, run *txn.Runner, checks ...Check) {
 			if err != nil {
 				return nil, err
 			}
-			return viewOf(tx, d)
+			return viewOf(tx, d, checks)
 		})
 	}))
 	r.Mutation("documents.saveDraft", router.Typed(func(ctx context.Context, in saveDraftRequest) (any, error) {

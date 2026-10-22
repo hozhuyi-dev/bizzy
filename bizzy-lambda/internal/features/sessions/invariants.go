@@ -78,6 +78,21 @@ var Invariants = []txn.Invariant{
 		},
 	},
 	{
+		ID: "cancelled-costs-nothing", Why: cancelledWhy,
+		On: Sessions.Name, Broken: each(costsNothing),
+	},
+	{
+		// A commit that changes only documents is checked from their side.
+		ID: "cancelled-costs-nothing", Why: cancelledWhy,
+		On: documents.Links.Name,
+		Broken: func(tx *txn.Tx, id string) ([]string, error) {
+			if src, _, ok := documents.LinkSource(id); ok && src.Kind == documents.SourceSession {
+				return each(costsNothing)(tx, src.ID)
+			}
+			return nil, nil
+		},
+	},
+	{
 		ID: "credits-of-own-package", Why: "Credits pay for a session from packages of its own client, each once",
 		On: Sessions.Name,
 		Broken: each(func(tx *txn.Tx, s *Session) ([]string, error) {
@@ -179,6 +194,8 @@ var Invariants = []txn.Invariant{
 					return nil, err
 				case !found:
 					out = append(out, fmt.Sprintf("%s %s covers session %s, which doesn't exist", d.Type, id, line.Source.ID))
+				case s.Cancelled():
+					out = append(out, fmt.Sprintf("%s %s covers session %s, which was cancelled", d.Type, id, s.ID))
 				case s.ClientID != d.ClientID:
 					out = append(out, fmt.Sprintf("%s %s for %s covers %s's session %s", d.Type, id, d.ClientID, s.ClientID, s.ID))
 				case s.Tentative && d.Issued() && d.Type == documents.TypeInvoice:
@@ -244,8 +261,14 @@ var Invariants = []txn.Invariant{
 
 const paidForWhy = "Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more"
 
-// paidFor is what breaks a session being paid for (see paidForWhy).
+const cancelledWhy = "A cancelled session costs nothing: no credits, no invoice or receipt, no package bought in it"
+
+// paidFor is what breaks a session being paid for (see paidForWhy); a
+// cancelled one is paid for by nothing (see costsNothing).
 func paidFor(tx *txn.Tx, s *Session) ([]string, error) {
+	if s.Cancelled() {
+		return nil, nil
+	}
 	_, line, err := documents.Invoice(tx, s.Source())
 	if err != nil {
 		return nil, err
@@ -269,6 +292,32 @@ func paidFor(tx *txn.Tx, s *Session) ([]string, error) {
 	return nil, nil
 }
 
+// costsNothing is what breaks a cancelled session costing nothing (see
+// cancelledWhy).
+func costsNothing(tx *txn.Tx, s *Session) ([]string, error) {
+	if !s.Cancelled() {
+		return nil, nil
+	}
+	if len(s.Credits) > 0 {
+		return []string{"cancelled session " + s.ID + " uses credits"}, nil
+	}
+	inv, _, err := documents.Invoice(tx, s.Source())
+	if err != nil {
+		return nil, err
+	}
+	paid, err := documents.Received(tx, s.Source())
+	if err != nil {
+		return nil, err
+	}
+	if inv != nil || paid != nil {
+		return []string{"cancelled session " + s.ID + " is on a document"}, nil
+	}
+	if p, err := packages.BoughtIn(tx, s.ID); err != nil || p != nil {
+		return []string{"cancelled session " + s.ID + " buys a package"}, err
+	}
+	return nil, nil
+}
+
 // boughtFollows is what breaks a package bought in a session following it.
 func boughtFollows(tx *txn.Tx, p *packages.Package) ([]string, error) {
 	s, ok, err := Sessions.Find(tx, p.BoughtIn)
@@ -277,6 +326,8 @@ func boughtFollows(tx *txn.Tx, p *packages.Package) ([]string, error) {
 		return nil, err
 	case !ok:
 		return []string{fmt.Sprintf("package %s was bought in session %s, which doesn't exist", p.ID, p.BoughtIn)}, nil
+	case s.Cancelled():
+		return []string{fmt.Sprintf("package %s was bought in session %s, which was cancelled", p.ID, s.ID)}, nil
 	case s.ClientID != p.ClientID || !s.Start.Equal(p.PurchasedAt):
 		return []string{fmt.Sprintf("package %s isn't its session %s's client's, or day's", p.ID, s.ID)}, nil
 	}

@@ -42,7 +42,7 @@ function dateText(doc: DocumentSummary): string {
  */
 export function documentActions(doc: DocumentSummary): Array<Action> {
   const token = doc.shareToken;
-  if (doc.status !== "issued" || !token) return [];
+  if (!doc.can.send.ok || !token) return [];
   return [
     {
       type: "button",

@@ -132,6 +132,30 @@ func (w *World) callAsViewed(t *rapid.T, action string, payload any, viewed appe
 	}
 }
 
+// callRefusedAsViewed calls an action whose view said whether what it
+// acts on allows it, where what the request adds (another draft to move
+// lines to) may still be refused: a view that said no must be refused.
+func (w *World) callRefusedAsViewed(t *rapid.T, action string, payload any, viewed apperr.Verdict) {
+	t.Helper()
+	if _, refused := w.call(t, action, payload); !viewed.OK && refused == nil {
+		t.Fatalf("%s: the view said %q, the API took it", action, viewed.Why)
+	}
+}
+
+// viewOf reads an item's view as the app does, through a router query.
+func viewOf[T any](t *rapid.T, w *World, query string, id string) T {
+	t.Helper()
+	var v T
+	data, refused := w.call(t, query, map[string]any{"id": id})
+	if refused != nil {
+		t.Fatalf("%s %s: %s", query, id, refused.Message)
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatalf("%s %s: %v", query, id, err)
+	}
+	return v
+}
+
 // callAsLocked calls an update whose view locked some of its fields: one
 // that changes a locked field must be refused (one that changes none may
 // still be, for something else). changed are the fields payload changes;

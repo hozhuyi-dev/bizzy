@@ -4,6 +4,10 @@
 // afterwards (record.go). It knows nothing of the calendar: googlesync
 // reads the user's events as these same actions, and writes sessions to
 // events.
+//
+// A session booked by mistake is deleted. One with history (it happened,
+// or something was recorded on it) is cancelled instead: it stays, with
+// its record, but holds no time, costs nothing and leaves the calendar.
 package sessions
 
 import (
@@ -40,6 +44,10 @@ type Session struct {
 	// of their own (Notes), and its files are attachments.
 	Record    *Record   `json:"record,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
+	// CancelledAt is when it was called off (the client cancelled, didn't
+	// come, or the user did), and CancelReason why, as the user put it.
+	CancelledAt  *time.Time `json:"cancelledAt,omitempty"`
+	CancelReason string     `json:"cancelReason,omitempty"`
 }
 
 // Credit is the time of a session a package's credits pay for.
@@ -57,15 +65,19 @@ type Record struct {
 }
 
 // Sessions are filed by client and time, and as open while they will
-// need the user once they happen: to confirm, or to record. The sessions
-// using a package's credits are its client's (see CreditsUsed).
+// need the user once they happen: to confirm, or to record (never once
+// cancelled). The sessions using a package's credits are its client's
+// (see CreditsUsed).
 var Sessions = txn.Kind[Session]{
 	Name: "SESSION", Gone: "This session was deleted.",
-	Doc: txn.Doc{What: "A session: who, when, where, whether confirmed, the credits paying for it, and its summary.", Client: "its client, by start", Time: "its start", Open: "to confirm, or to record"},
+	Doc: txn.Doc{What: "A session: who, when, where, whether confirmed or cancelled, the credits paying for it, and its summary.", Client: "its client, by start", Time: "its start", Open: "to confirm, or to record"},
 	Meta: func(s *Session) txn.Meta {
-		return txn.Meta{ID: s.ID, Client: s.ClientID, Time: s.Start, Open: s.Tentative || !s.Recorded()}
+		return txn.Meta{ID: s.ID, Client: s.ClientID, Time: s.Start, Open: !s.Cancelled() && (s.Tentative || !s.Recorded())}
 	},
 }
+
+// Cancelled reports whether it was called off.
+func (s Session) Cancelled() bool { return s.CancelledAt != nil }
 
 // MaxLength is how long a session may last.
 const MaxLength = 12 * time.Hour
@@ -126,6 +138,7 @@ const (
 func (s Session) Todo(owedCents int64, now time.Time) []Reason {
 	out := []Reason{}
 	switch {
+	case s.Cancelled():
 	case s.Tentative:
 		out = append(out, ReasonConfirm)
 	case s.Happened(now):
@@ -164,9 +177,10 @@ func CreditsUsed(tx *txn.Tx, packageID string) (int, error) {
 	return total, err
 }
 
-// overlaps reports whether two sessions take up the same time.
+// overlaps reports whether two sessions take up the same time: a
+// cancelled one takes up none.
 func (s Session) overlaps(o Session) bool {
-	return s.ID != o.ID && o.Start.Before(s.End) && s.Start.Before(o.End)
+	return s.ID != o.ID && !s.Cancelled() && !o.Cancelled() && o.Start.Before(s.End) && s.Start.Before(o.End)
 }
 
 // overlapping is a session, anyone's, at the same time as s.

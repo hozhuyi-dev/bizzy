@@ -3,6 +3,7 @@ import { cn } from "cn";
 import { MoreHorizontalIcon } from "lucide-react";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
+import type { Verdict } from "~/core/lambda/lambda.types";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -28,6 +29,12 @@ interface ActionCommon {
   /** Left out, the bar's default: secondary, or quiet in a table row. */
   style?: ActionStyle | undefined;
   disabled?: boolean | undefined;
+  /**
+   * What the API says of it now (a view's `can`): a no disables it and
+   * says why. Every action on an entity passes its verdict here, so the web
+   * never decides what is allowed.
+   */
+  can?: Verdict | undefined;
   /** Only the icon on a phone, for room; the label stays its accessible name. */
   iconOnlyOnPhone?: boolean | undefined;
   /** The icon after the label, for one that points onward (Next to-do →). */
@@ -140,7 +147,8 @@ interface ActionButtonProps {
 
 /** One action as a button. */
 export function ActionButton({ action, size = "default", defaultStyle = "secondary", className }: ActionButtonProps) {
-  const { label, icon: Icon, style = defaultStyle, disabled, iconOnlyOnPhone, iconAfter } = action;
+  const { label, icon: Icon, style = defaultStyle, iconOnlyOnPhone, iconAfter } = action;
+  const disabled = isDisabled(action);
   const content = (
     <>
       {Icon && !iconAfter && <Icon />}
@@ -152,6 +160,7 @@ export function ActionButton({ action, size = "default", defaultStyle = "seconda
     variant: VARIANTS[style],
     size,
     disabled,
+    title: action.can?.why,
     "aria-label": iconOnlyOnPhone && Icon ? label : undefined,
     className: cn(
       style === "destructive" && "text-destructive hover:text-destructive",
@@ -226,11 +235,27 @@ export function ActionMenu({ actions, size = "default", className }: ActionMenuP
   );
 }
 
+/** Whether an action can't be taken now: disabled by its caller, or its verdict says no. */
+function isDisabled(action: Action): boolean {
+  return Boolean(action.disabled) || action.can?.ok === false;
+}
+
 function ActionMenuItem({ action }: { action: Action }) {
-  const { label, icon: Icon, style, disabled } = action;
+  const { label, icon: Icon, style } = action;
+  const disabled = isDisabled(action);
+  // Said under it, as a phone shows no tooltip.
+  const why = action.can?.ok === false ? action.can.why : undefined;
   const content = (
     <>
-      {Icon && <Icon />} {label}
+      {Icon && <Icon />}{" "}
+      {why ? (
+        <span className="flex flex-col">
+          <span>{label}</span>
+          <span className="max-w-64 text-xs text-muted-foreground">{why}</span>
+        </span>
+      ) : (
+        label
+      )}
     </>
   );
   const common = { variant: style === "destructive" ? "destructive" : "default", disabled } as const;

@@ -19,6 +19,8 @@ import { invalidateBilling } from "~/core/utils/query.util";
 /** What each remedy the app takes right there does. */
 const CALLS: Record<CallAction, (target: string, request: Record<string, unknown>) => Promise<unknown>> = {
   "calendar.revert": (eventId) => ConflictsService.revert(eventId),
+  "clients.archive": (id) => ClientsService.archive(id),
+  "clients.unarchive": (id) => ClientsService.unarchive(id),
   "clients.update": (id, request) => ClientsService.update(id, request),
   "documents.cancel": (id) => DocumentsService.cancel(id, "To change what it says"),
   "payments.set": (target) => {
@@ -27,7 +29,7 @@ const CALLS: Record<CallAction, (target: string, request: Record<string, unknown
     return PaymentsService.set({ items: [item], payment: null });
   },
   "packages.makeStandalone": (id) => PackagesService.makeStandalone(id),
-  "sessions.delete": (id) => SessionsService.delete(id, true),
+  "sessions.cancel": (id) => SessionsService.cancel(id, ""),
   "sessions.update": (id, request) => SessionsService.update(id, request),
 };
 

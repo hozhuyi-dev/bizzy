@@ -87,22 +87,20 @@ function PackageDocuments({ pkg }: { pkg: PackageView }) {
  * What can be done to a package: pay what it owes or see its payment;
  * behind ⋯, edit it (as a click on its row does, kept there for the
  * keyboard), keep one bought in a session as its own (so the session no
- * longer buys it), or delete it. The API refuses what its rules don't
- * allow, with what would let it through.
+ * longer buys it), or delete it: each as its `can` says.
  */
 export function packageActions(pkg: PackageView, handlers: PackageHandlers): RowActionSet {
   const set = { actions: [] as Array<Action>, more: [] as Array<Action> };
-  if (pkg.owedCents > 0) {
+  if (pkg.can.pay.ok) {
     set.actions.push({ type: "button", label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
-  }
-  if (pkg.paid) {
+  } else if (pkg.paid) {
     set.actions.push({ type: "button", label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
   set.more.push({ type: "button", label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) });
-  if (pkg.boughtIn) {
+  if (pkg.can.makeStandalone.ok) {
     set.more.push({ type: "button", label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
   }
-  set.more.push({ type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", onClick: () => handlers.onDelete(pkg) });
+  set.more.push({ type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", can: pkg.can.delete, onClick: () => handlers.onDelete(pkg) });
   return set;
 }
 

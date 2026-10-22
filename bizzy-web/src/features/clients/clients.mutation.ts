@@ -22,7 +22,24 @@ export const ClientsMutation = {
     });
   },
 
-  /** Only a client with nothing recorded goes. */
+  /** Puts a client away: out of lists and pickers, kept with all that is theirs. */
+  useArchive: () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: (id: string) => ClientsService.archive(id),
+      onSuccess: () => invalidateBilling(queryClient),
+    });
+  },
+
+  useUnarchive: () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: (id: string) => ClientsService.unarchive(id),
+      onSuccess: () => invalidateBilling(queryClient),
+    });
+  },
+
+  /** Only a client added by mistake, with nothing of theirs, goes. */
   useDelete: () => {
     const queryClient = useQueryClient();
     return useMutation({

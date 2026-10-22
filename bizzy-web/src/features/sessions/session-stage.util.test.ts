@@ -18,7 +18,7 @@ import type { PackageView } from "~/features/packages/packages.types";
 
 const yes = { ok: true };
 
-const can: SessionCan = { record: yes, pay: yes, undoPayment: yes, delete: yes };
+const can: SessionCan = { update: yes, record: yes, pay: yes, undoPayment: yes, cancel: yes, delete: yes, deleteWithPackage: yes };
 
 const now = new Date("2026-10-13T00:00:00Z");
 
@@ -58,6 +58,7 @@ function pkg(overrides: Partial<PackageView> = {}): PackageView {
     invoice: { id: "d1" },
     owedCents: 85000,
     todo: [],
+    can: { pay: yes, undoPayment: { ok: false }, makeStandalone: yes, delete: yes },
     locked: {},
     ...overrides,
   };
@@ -66,6 +67,10 @@ function pkg(overrides: Partial<PackageView> = {}): PackageView {
 describe("stageBadges", () => {
   test("shows what is left to do", () => {
     expect(stageBadges(session({ todo: ["record", "collect"] }), now).map((b) => b.label)).toEqual(["To record", "Unpaid"]);
+  });
+
+  test("a cancelled session says so, whatever else", () => {
+    expect(stageBadges(session({ todo: ["record"], cancelledAt: "2026-10-12T00:00:00Z" }), now).map((b) => b.label)).toEqual(["Cancelled"]);
   });
 
   test("a quiet session is booked or done", () => {

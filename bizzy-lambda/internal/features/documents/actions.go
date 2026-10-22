@@ -93,32 +93,12 @@ func Issue(tx *txn.Tx, id string, checks ...Check) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	if d.Draft == nil {
-		return nil, notAtStep("There is nothing to issue.")
-	}
-	for _, check := range checks {
-		if err := check(tx, d); err != nil {
-			return nil, err
-		}
-	}
-	cfg, err := settings.Get(tx)
+	content, err := issuable(tx, d, checks)
 	if err != nil {
 		return nil, err
 	}
-	client, err := clients.Clients.Get(tx, d.ClientID)
-	if err != nil {
-		return nil, err
-	}
-	content := Fill(*d.Draft, cfg, *client)
 	now := tx.Now().UTC()
-	if content.Date == "" {
-		content.Date = now.In(tx.Location()).Format(time.DateOnly)
-	}
-	content.TotalCents = content.Total()
 	if d.Issued() {
-		if what := Legal(*d.Content, content); what != "" {
-			return nil, stayIssued(d, what)
-		}
 		next := *d.Revision + 1
 		d.Revision = &next
 	} else {
@@ -140,6 +120,45 @@ func Issue(tx *txn.Tx, id string, checks ...Check) (*Document, error) {
 	return d, relink(tx, d)
 }
 
+// CanIssue is the refusal for issuing a document (see issuable).
+func CanIssue(tx *txn.Tx, d *Document, checks ...Check) error {
+	_, err := issuable(tx, d, checks)
+	return err
+}
+
+// issuable is what issuing a document would print, or the refusal to: it
+// has a draft, other features' checks pass, and a revision corrects only
+// what has no legal weight.
+func issuable(tx *txn.Tx, d *Document, checks []Check) (Content, error) {
+	if d.Draft == nil {
+		return Content{}, notAtStep("There is nothing to issue.")
+	}
+	for _, check := range checks {
+		if err := check(tx, d); err != nil {
+			return Content{}, err
+		}
+	}
+	cfg, err := settings.Get(tx)
+	if err != nil {
+		return Content{}, err
+	}
+	client, err := clients.Clients.Get(tx, d.ClientID)
+	if err != nil {
+		return Content{}, err
+	}
+	content := Fill(*d.Draft, cfg, *client)
+	if content.Date == "" {
+		content.Date = tx.Now().In(tx.Location()).Format(time.DateOnly)
+	}
+	content.TotalCents = content.Total()
+	if d.Issued() {
+		if what := Legal(*d.Content, content); what != "" {
+			return Content{}, stayIssued(d, what)
+		}
+	}
+	return content, nil
+}
+
 // Revise opens an issued document for a correction. The issued revision
 // stays the one that counts until the next is issued.
 func Revise(tx *txn.Tx, id string) (*Document, error) {
@@ -147,12 +166,24 @@ func Revise(tx *txn.Tx, id string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	if d.Status != StatusIssued || d.Draft != nil {
-		return nil, notAtStep("Only an issued document can be revised.")
+	if err := CanRevise(d); err != nil {
+		return nil, err
 	}
 	draft := clone(*d.Content)
 	d.Draft = &draft
 	return d, nil
+}
+
+// CanRevise is the refusal for revising a document: it is issued, and not
+// being revised already.
+func CanRevise(d *Document) error {
+	switch {
+	case d.Status != StatusIssued:
+		return notAtStep("Only an issued document can be revised.")
+	case d.Draft != nil:
+		return notAtStep("Its next revision is being drafted already.")
+	}
+	return nil
 }
 
 // DiscardDraft throws a draft away: a revision goes back to the issued
@@ -164,19 +195,29 @@ func DiscardDraft(tx *txn.Tx, id string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch {
-	case d.Draft == nil:
-		return nil, notAtStep("There is no draft to discard.")
-	case d.Issued():
+	if err := CanDiscardDraft(d); err != nil {
+		return nil, err
+	}
+	if d.Issued() {
 		d.Draft = nil
 		return d, nil
-	case d.Type == TypeInvoice && slices.ContainsFunc(d.Draft.Lines, func(l Line) bool { return l.Source != nil }):
-		return nil, apperr.Refused("This draft charges what it covers, so it goes when they do: move its lines to another draft, or delete what it charges.")
 	}
 	if err := Documents.Delete(tx, d.ID); err != nil {
 		return nil, err
 	}
 	return nil, relink(tx, d)
+}
+
+// CanDiscardDraft is the refusal for discarding a draft: there is one, and
+// a never-issued invoice goes only with what it charges.
+func CanDiscardDraft(d *Document) error {
+	switch {
+	case d.Draft == nil:
+		return notAtStep("There is no draft to discard.")
+	case !d.Issued() && d.Type == TypeInvoice && slices.ContainsFunc(d.Draft.Lines, func(l Line) bool { return l.Source != nil }):
+		return apperr.Refused("This draft charges what it covers, so it goes when they do: move its lines to another draft, or delete what it charges.")
+	}
+	return nil
 }
 
 // Cancel voids an issued document. Its number stays used and its
@@ -188,8 +229,8 @@ func Cancel(tx *txn.Tx, id, reason string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	if d.Status != StatusIssued {
-		return nil, notAtStep("Only an issued document can be cancelled; a draft goes with what it covers.")
+	if err := CanCancel(d); err != nil {
+		return nil, err
 	}
 	draft, err := newDraft(tx, d.Type, d.ClientID)
 	if err != nil {
@@ -207,6 +248,40 @@ func Cancel(tx *txn.Tx, id, reason string) (*Document, error) {
 		return nil, err
 	}
 	return d, relink(tx, draft)
+}
+
+// CanCancel is the refusal for cancelling a document: it is issued and not
+// cancelled already.
+func CanCancel(d *Document) error {
+	if d.Status != StatusIssued {
+		return notAtStep("Only an issued document can be cancelled; a draft goes with what it covers.")
+	}
+	return nil
+}
+
+// CanSend is the refusal for sending a document to its client: it is
+// issued, and still counts.
+func CanSend(d *Document) error {
+	switch d.Status {
+	case StatusDraft:
+		return notAtStep("Issue it first: a draft isn't sent.")
+	case StatusCancelled:
+		return notAtStep("It was cancelled.")
+	}
+	return nil
+}
+
+// CanMoveLines is the refusal for moving lines off a document, or putting
+// it together with others: it is a draft never issued. Where they go may
+// still refuse them (see MoveLines).
+func CanMoveLines(d *Document) error {
+	switch {
+	case d.Issued():
+		return refuseIssued(d)
+	case d.Status != StatusDraft:
+		return notAtStep("Lines move only between drafts not issued yet.")
+	}
+	return nil
 }
 
 // MoveLines moves lines from one draft to another of the same client and
@@ -228,8 +303,8 @@ func moveLines(tx *txn.Tx, fromID, toID string, lineIDs []string) (*Document, er
 	if len(lineIDs) == 0 {
 		return nil, apperr.Invalid("Choose the lines to move.")
 	}
-	if from.Status != StatusDraft {
-		return nil, notAtStep("Lines move only between drafts not issued yet.")
+	if err := CanMoveLines(from); err != nil {
+		return nil, err
 	}
 	var to *Document
 	if toID == "" {
@@ -312,11 +387,8 @@ func Combine(tx *txn.Tx, ids []string) (*Document, error) {
 		if err != nil {
 			return nil, err
 		}
-		if d.Issued() {
-			return nil, refuseIssued(d)
-		}
-		if d.Draft == nil {
-			return nil, notAtStep("Only drafts not issued yet are put together.")
+		if err := CanMoveLines(d); err != nil {
+			return nil, err
 		}
 		var lineIDs []string
 		for _, l := range d.Draft.Lines {

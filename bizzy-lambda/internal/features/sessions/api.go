@@ -41,7 +41,10 @@ type View struct {
 	OwedCents int64           `json:"owedCents"`
 	Record    RecordView      `json:"record"`
 	Todo      []Reason        `json:"todo"`
-	Can       Can             `json:"can"`
+	// CancelledAt is when it was called off, and CancelReason why.
+	CancelledAt  *time.Time `json:"cancelledAt,omitempty"`
+	CancelReason string     `json:"cancelReason,omitempty"`
+	Can          Can        `json:"can"`
 }
 
 // Hit is a session a search found, with the part of its notes that has
@@ -88,12 +91,16 @@ type RecordView struct {
 	Files    int    `json:"files"`
 }
 
-// Can is what each action on a session would say now.
+// Can is what each action on a session would say now. Delete keeps the
+// package bought in it; DeleteWithPackage deletes that too.
 type Can struct {
-	Record      apperr.Verdict `json:"record"`
-	Pay         apperr.Verdict `json:"pay"`
-	UndoPayment apperr.Verdict `json:"undoPayment"`
-	Delete      apperr.Verdict `json:"delete"`
+	Update            apperr.Verdict `json:"update"`
+	Record            apperr.Verdict `json:"record"`
+	Pay               apperr.Verdict `json:"pay"`
+	UndoPayment       apperr.Verdict `json:"undoPayment"`
+	Cancel            apperr.Verdict `json:"cancel"`
+	Delete            apperr.Verdict `json:"delete"`
+	DeleteWithPackage apperr.Verdict `json:"deleteWithPackage"`
 }
 
 // FullView is a session with its notes, and what its update can't
@@ -135,6 +142,7 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 		ID: s.ID, ClientID: s.ClientID, ClientName: client.Name, Start: s.Start, End: s.End,
 		Tentative: s.Tentative, ConfirmedAt: s.ConfirmedAt, Location: s.Location,
 		Hours: hours(s.Billable()), Credits: creditViews(s.Credits),
+		CancelledAt: s.CancelledAt, CancelReason: s.CancelReason,
 	}
 	inv, line, err := documents.Invoice(tx, s.Source())
 	if err != nil {
@@ -173,10 +181,13 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 		verdict *apperr.Verdict
 		check   error
 	}{
+		{&v.Can.Update, CanUpdate(s)},
 		{&v.Can.Record, CanRecord(tx, s.ID)},
 		{&v.Can.Pay, CanPay(tx, s)},
 		{&v.Can.UndoPayment, CanUndoPayment(tx, s)},
+		{&v.Can.Cancel, CanCancel(tx, s)},
 		{&v.Can.Delete, CanDelete(tx, s)},
+		{&v.Can.DeleteWithPackage, CanDeleteWithPackage(tx, s)},
 	} {
 		if *c.verdict, err = apperr.VerdictOf(c.check); err != nil {
 			return View{}, err
@@ -207,18 +218,32 @@ type listRequest struct {
 }
 
 // searchRequest finds sessions by words in the client's name, the summary
-// or the notes, and by days, clients, place and what is left to do; an
-// empty filter takes every value.
+// or the notes, and by days, clients, place and stage: what is left to do,
+// or Cancelled; an empty filter takes every value.
 type searchRequest struct {
 	listing.Request
 	ClientIDs []string   `json:"clientIds"`
 	Locations []Location `json:"locations"`
 	Todo      []Reason   `json:"todo"`
+	Cancelled bool       `json:"cancelled"`
+}
+
+// stageOf reports whether a session is at one of the stages asked for.
+func (in searchRequest) stageOf(v View) bool {
+	if len(in.Todo) == 0 && !in.Cancelled {
+		return true
+	}
+	return in.Cancelled && v.CancelledAt != nil || len(in.Todo) > 0 && listing.AnyOf(in.Todo, v.Todo)
 }
 
 type updateRequest struct {
 	ID string `json:"id"`
 	Fields
+}
+
+type cancelRequest struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
 }
 
 type deleteRequest struct {
@@ -290,7 +315,7 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 					return Hit{}, false, err
 				}
 				v, err := ViewOf(tx, s)
-				return Hit{View: v, Excerpt: excerpt}, err == nil && listing.AnyOf(in.Todo, v.Todo), err
+				return Hit{View: v, Excerpt: excerpt}, err == nil && in.stageOf(v), err
 			})
 		})
 	}))
@@ -329,6 +354,9 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 	}))
 	r.Mutation("sessions.saveRecord", router.Typed(func(ctx context.Context, in recordRequest) (any, error) {
 		return one(ctx, func(tx *txn.Tx) (*Session, error) { return SaveRecord(tx, in.ID, in.Summary, in.Notes) })
+	}))
+	r.Mutation("sessions.cancel", router.Typed(func(ctx context.Context, in cancelRequest) (any, error) {
+		return one(ctx, func(tx *txn.Tx) (*Session, error) { return Cancel(tx, in.ID, in.Reason) })
 	}))
 	r.Mutation("sessions.delete", router.Typed(func(ctx context.Context, in deleteRequest) (any, error) {
 		keys, err := txn.Run(ctx, run, func(tx *txn.Tx) ([]string, error) { return Delete(tx, in.ID, in.KeepPackage) })

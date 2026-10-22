@@ -12,7 +12,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { SheetAlertDialog } from "~/components/shared/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
-import { Field, FieldLabel } from "~/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { formatSessionTime } from "~/core/utils/date.util";
 
@@ -29,11 +29,9 @@ interface DeleteSessionDialogProps {
 }
 
 /**
- * Deletes a session that didn't happen (or a booking the client cancelled),
- * from the calendar too, with what was recorded on it. A package bought in
- * it is kept or deleted, as the user chooses here. What can't go (money received,
- * an issued invoice, credits other sessions use) is refused with what to do
- * first.
+ * Deletes a session booked by mistake, from the calendar too. One with
+ * history is cancelled instead (its `can.delete` says so). A package bought
+ * in it is kept or, where its `can.deleteWithPackage` allows, deleted too.
  */
 export function DeleteSessionDialog({ session, clientName, onClose, onDeleted }: DeleteSessionDialogProps) {
   return (
@@ -54,11 +52,8 @@ function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omi
       <AlertDialogHeader>
         <AlertDialogTitle>Delete {clientName}'s session?</AlertDialogTitle>
         <AlertDialogDescription>
-          {formatSessionTime(session.start)}. The event is deleted from your calendar too
-          {session.record.summary || session.record.hasNotes || session.record.files > 0
-            ? ", with the notes and files recorded here"
-            : ""}
-          .
+          {formatSessionTime(session.start)}. For a booking made by mistake: it goes, and its event leaves your
+          calendar.
         </AlertDialogDescription>
       </AlertDialogHeader>
       {session.bought && (
@@ -70,12 +65,19 @@ function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omi
             </SelectTrigger>
             <SelectContent>
               {PACKAGE_CHOICES.map((choice) => (
-                <SelectItem key={choice.value} value={choice.value}>
+                <SelectItem
+                  key={choice.value}
+                  value={choice.value}
+                  disabled={choice.value === "delete" && !session.can.deleteWithPackage.ok}
+                >
                   {choice.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {!session.can.deleteWithPackage.ok && (
+            <FieldDescription>It stays: {session.can.deleteWithPackage.why}</FieldDescription>
+          )}
         </Field>
       )}
       <AlertDialogFooter>

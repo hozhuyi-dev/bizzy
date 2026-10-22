@@ -56,22 +56,89 @@ type Owner struct {
 	Has  func(tx *txn.Tx, clientID string) (bool, error)
 }
 
-// Delete removes a client who has nothing left.
+// Delete removes a client added by mistake, who has nothing left.
 func Delete(tx *txn.Tx, id string, owners ...Owner) error {
 	c, err := Clients.Get(tx, id)
 	if err != nil {
 		return err
 	}
+	if err := CanDelete(tx, c, owners...); err != nil {
+		return err
+	}
+	return Clients.Delete(tx, id)
+}
+
+// CanDelete is the refusal for deleting a client: one with anything of
+// theirs is archived instead.
+func CanDelete(tx *txn.Tx, c *Client, owners ...Owner) error {
 	for _, o := range owners {
-		has, err := o.Has(tx, id)
+		has, err := o.Has(tx, c.ID)
 		if err != nil {
 			return err
 		}
 		if has {
-			return apperr.Refused(fmt.Sprintf("%s still has %s. Delete those first.", c.Name, o.What))
+			return apperr.Refused(fmt.Sprintf("%s has %s, which stay. Archive them instead.", c.Name, o.What), archiveRemedy(c))
 		}
 	}
-	return Clients.Delete(tx, id)
+	return nil
+}
+
+// Archive puts a client away, with all that is theirs.
+func Archive(tx *txn.Tx, id string) (*Client, error) {
+	c, err := Clients.Get(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := CanArchive(c); err != nil {
+		return nil, err
+	}
+	at := tx.Now().UTC()
+	c.ArchivedAt = &at
+	return c, nil
+}
+
+// Unarchive brings an archived client back.
+func Unarchive(tx *txn.Tx, id string) (*Client, error) {
+	c, err := Clients.Get(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := CanUnarchive(c); err != nil {
+		return nil, err
+	}
+	c.ArchivedAt = nil
+	return c, nil
+}
+
+// CanArchive is the refusal for archiving a client: not one archived.
+func CanArchive(c *Client) error {
+	if c.Archived() {
+		return apperr.Refused(fmt.Sprintf("%s is archived already.", c.Name))
+	}
+	return nil
+}
+
+// CanUnarchive is the refusal for unarchiving a client: one archived.
+func CanUnarchive(c *Client) error {
+	if !c.Archived() {
+		return apperr.Refused(fmt.Sprintf("%s isn't archived.", c.Name))
+	}
+	return nil
+}
+
+// Active is a client new sessions and packages can be for: one not
+// archived.
+func Active(tx *txn.Tx, id string) (*Client, error) {
+	c, err := Clients.Get(tx, id)
+	if err != nil || !c.Archived() {
+		return c, err
+	}
+	return nil, apperr.Refused(fmt.Sprintf("%s is archived. Unarchive them first.", c.Name),
+		apperr.Remedy{Action: "clients.unarchive", Target: c.ID, Label: "Unarchive " + c.Name})
+}
+
+func archiveRemedy(c *Client) apperr.Remedy {
+	return apperr.Remedy{Action: "clients.archive", Target: c.ID, Label: "Archive " + c.Name}
 }
 
 // apply makes the changes f asks, each step checking its own rules.

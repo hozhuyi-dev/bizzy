@@ -20,7 +20,7 @@ import { PaymentPanel } from "~/features/payments/components/payment-panel/payme
 import { PaymentsMutation } from "~/features/payments/payments.mutation";
 import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { DeleteSessionDialog } from "~/features/sessions/components/delete-session-dialog/delete-session-dialog.component";
+import { CancelSessionDialog } from "~/features/sessions/components/cancel-session-dialog/cancel-session-dialog.component";
 import { owedText, sessionPayables } from "~/features/sessions/session-payment.util";
 import { SessionsMutation } from "~/features/sessions/sessions.mutation";
 import { useConfirmBooking } from "~/features/sessions/sessions-booking.hook";
@@ -82,11 +82,10 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
 
   const dialogs = (
     <>
-      <DeleteSessionDialog
+      <CancelSessionDialog
         session={cancelling}
         clientName={cancelling?.clientName ?? "the client"}
         onClose={() => setCancelling(null)}
-        onDeleted={() => undefined}
       />
       <FollowUpDialog target={editingFollowUp} onClose={() => setEditingFollowUp(null)} />
       <SheetDialog open={paying !== null} onClose={() => setPaying(null)}>
@@ -313,7 +312,7 @@ function QuickActions({ session, onCancel, onWrite, onPayOther }: QuickActionsPr
         <Button size="sm" disabled={confirm.pending} onClick={() => void confirm.confirm(session.id).catch(toastRefusal)}>
           <CheckIcon /> Confirm
         </Button>
-        <Button size="sm" variant="outline" disabled={!can.delete.ok} title={can.delete.why} onClick={() => onCancel(session)}>
+        <Button size="sm" variant="outline" disabled={!can.cancel.ok} title={can.cancel.why} onClick={() => onCancel(session)}>
           <XIcon /> Cancel session
         </Button>
       </>

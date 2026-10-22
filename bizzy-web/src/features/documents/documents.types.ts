@@ -1,7 +1,7 @@
 import type { PaymentMethod } from "~/features/payments/payments.types";
 import type { DOCUMENT_FACETS } from "./documents.constant";
 import type { FilterSearch, ListRequest } from "~/core/list/filter.types";
-import type { Locks } from "~/core/lambda/lambda.types";
+import type { Locks, Verdict } from "~/core/lambda/lambda.types";
 
 // Mirrors bizzy-lambda/internal/features/documents/api.go and document.go.
 // Documents are where money lives: a session's fee is its invoice's line,
@@ -82,6 +82,24 @@ export interface DocumentSummary {
   revising?: boolean;
   /** Opens the issued content at /d/<token> without signing in. */
   shareToken?: string;
+  /** What a list's actions on it would say now. */
+  can: DocumentSummaryCan;
+}
+
+/** What a list's actions on a document would say now; mirrors documents.SummaryCan. */
+export interface DocumentSummaryCan {
+  /** Sending it to the client: issued, and not cancelled. */
+  send: Verdict;
+  /** Moving its lines, or putting it together with other drafts: a draft never issued. */
+  moveLines: Verdict;
+}
+
+/** What each action on a document would say now, for its page; mirrors documents.Can. */
+export interface DocumentCan extends DocumentSummaryCan {
+  issue: Verdict;
+  revise: Verdict;
+  cancel: Verdict;
+  discardDraft: Verdict;
 }
 
 /** The invoices or receipts list's filter, as its URL keeps it; their documents' pages take it too. */
@@ -117,6 +135,7 @@ export interface DocumentView extends DocumentSummary {
   cancelledAt?: string;
   cancelReason?: string;
   revisions: Array<DocumentRevision>;
+  can: DocumentCan;
   /** What its draft can't change: on a revision, what has legal weight. */
   locked: Locks;
 }

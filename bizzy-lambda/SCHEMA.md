@@ -23,7 +23,7 @@ Schema version (migrations in `internal/migrations`): 0
 
 ### CLIENT
 
-A client: name, calendar names, usual hourly fees and place, and a copy of their Google contact.
+A client: name, calendar names, usual hourly fees and place, a copy of their Google contact, and whether archived.
 
 | Field | Type |
 |---|---|
@@ -33,6 +33,7 @@ A client: name, calendar names, usual hourly fees and place, and a copy of their
 | feeRates | `[]clients.FeeRate` |
 | homeVisits | `bool` |
 | contact | `*clients.Contact` |
+| archivedAt | `*time.Time` |
 
 Checked on every change to one:
 
@@ -128,6 +129,7 @@ Checked on every change to one:
 - **paid-in-full**: What a receipt says was received for an item is what its invoice charges, and something is charged
 - **packages-are-invoiced**: A package is always on an invoice, which says its price
 - **paid-for**: Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more
+- **cancelled-costs-nothing**: A cancelled session costs nothing: no credits, no invoice or receipt, no package bought in it
 
 ### DOCREV
 
@@ -222,7 +224,7 @@ Checked on every change to one:
 
 ### SESSION
 
-A session: who, when, where, whether confirmed, the credits paying for it, and its summary.
+A session: who, when, where, whether confirmed or cancelled, the credits paying for it, and its summary.
 
 | Field | Type |
 |---|---|
@@ -236,6 +238,8 @@ A session: who, when, where, whether confirmed, the credits paying for it, and i
 | credits | `[]sessions.Credit` |
 | record | `*sessions.Record` |
 | createdAt | `time.Time` |
+| cancelledAt | `*time.Time` |
+| cancelReason | `string` |
 
 | Index | For it |
 |---|---|
@@ -249,6 +253,7 @@ Checked on every change to one:
 - **sessions-last-a-while**: A session ends after it starts, within a day's work, at a place
 - **sessions-are-a-clients**: Every session is a client's
 - **paid-for**: Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more
+- **cancelled-costs-nothing**: A cancelled session costs nothing: no credits, no invoice or receipt, no package bought in it
 - **credits-of-own-package**: Credits pay for a session from packages of its own client, each once
 - **credits-in-hand**: Sessions use no more of a package's credits than it has, and a package used isn't deleted
 - **confirmed-before-invoiced**: An invoice is issued, and a payment recorded, for a confirmed session only

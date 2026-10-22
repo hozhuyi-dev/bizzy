@@ -46,10 +46,10 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
     adding,
     setAdding,
     /**
-     * Whether its lines can move between drafts: never issued, and saved,
-     * as moving one starts the editor afresh from what is stored.
+     * Whether its lines can move between drafts: as its `can` says, and
+     * saved, as moving one starts the editor afresh from what is stored.
      */
-    canMove: doc.status === "draft" && !hasChanges,
+    canMove: doc.can.moveLines.ok && !hasChanges,
 
     /** Puts a line on a draft of its own, from one that covers other things too. */
     moveOut: (lineId: string) =>

@@ -37,11 +37,18 @@ export interface RecordView {
 
 /** What each action on a session would say now; mirrors sessions.Can. */
 export interface SessionCan {
+  /** Its booking can change: not once cancelled. */
+  update: Verdict;
   /** Notes and files can be written or attached. */
   record: Verdict;
   pay: Verdict;
   undoPayment: Verdict;
+  /** Calling it off, keeping it and its record. */
+  cancel: Verdict;
+  /** Deleting it, booked by mistake, keeping the package bought in it. */
   delete: Verdict;
+  /** Deleting it with the package bought in it. */
+  deleteWithPackage: Verdict;
 }
 
 /**
@@ -73,6 +80,9 @@ export interface SessionView {
   owedCents: number;
   record: RecordView;
   todo: Array<SessionReason>;
+  /** When it was called off, and why; a cancelled session stays as it was. */
+  cancelledAt?: string;
+  cancelReason?: string;
   can: SessionCan;
 }
 
@@ -87,6 +97,8 @@ export interface SearchSessionsRequest extends ListRequest {
   clientIds: Array<string>;
   locations: Array<SessionLocation>;
   todo: Array<SessionReason>;
+  /** The cancelled ones too, at the stages asked for. */
+  cancelled: boolean;
 }
 
 /** A session with its notes, and what its update can't change, for its page; mirrors sessions.FullView. */

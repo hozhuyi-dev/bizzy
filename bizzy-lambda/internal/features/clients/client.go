@@ -30,11 +30,18 @@ type Client struct {
 	// Contact is the linked Google contact, where the client's details
 	// live, with a copy of them.
 	Contact *Contact `json:"contact,omitempty"`
+	// ArchivedAt is when the user put the client away: kept with all that
+	// is theirs, out of the lists and pickers, and booked again only once
+	// unarchived (see Active).
+	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
 }
+
+// Archived reports whether the client was put away.
+func (c Client) Archived() bool { return c.ArchivedAt != nil }
 
 var Clients = txn.Kind[Client]{
 	Name: "CLIENT", Gone: "This client was deleted.",
-	Doc:  txn.Doc{What: "A client: name, calendar names, usual hourly fees and place, and a copy of their Google contact."},
+	Doc:  txn.Doc{What: "A client: name, calendar names, usual hourly fees and place, a copy of their Google contact, and whether archived."},
 	Meta: func(c *Client) txn.Meta { return txn.Meta{ID: c.ID} },
 }
 

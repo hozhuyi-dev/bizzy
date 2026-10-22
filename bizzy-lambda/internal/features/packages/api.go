@@ -32,8 +32,18 @@ type View struct {
 	Paid        *documents.Paid `json:"paid,omitempty"`
 	OwedCents   int64           `json:"owedCents"`
 	Todo        []Reason        `json:"todo"`
-	// Locked is what its update can't change now (see Locks).
+	// Can is what each action on it would say now; Locked what its update
+	// can't change (see Locks).
+	Can    Can          `json:"can"`
 	Locked apperr.Locks `json:"locked"`
+}
+
+// Can is what each action on a package would say now.
+type Can struct {
+	Pay            apperr.Verdict `json:"pay"`
+	UndoPayment    apperr.Verdict `json:"undoPayment"`
+	MakeStandalone apperr.Verdict `json:"makeStandalone"`
+	Delete         apperr.Verdict `json:"delete"`
 }
 
 // Locks are what an update to a package can't change now.
@@ -77,7 +87,21 @@ func ViewOf(tx *txn.Tx, p *Package, used Usage) (View, error) {
 	}
 	v.Todo = p.Todo(v.OwedCents, tx.Now())
 	// The credits used, counted above, rather than counted again.
-	v.Locked, err = Locks(tx, p, func(*txn.Tx, string) (int, error) { return n, nil })
+	counted := func(*txn.Tx, string) (int, error) { return n, nil }
+	for _, c := range []struct {
+		verdict *apperr.Verdict
+		check   error
+	}{
+		{&v.Can.Pay, CanPay(tx, p)},
+		{&v.Can.UndoPayment, CanUndoPayment(tx, p)},
+		{&v.Can.MakeStandalone, CanMakeStandalone(p)},
+		{&v.Can.Delete, CanDelete(tx, p, counted)},
+	} {
+		if *c.verdict, err = apperr.VerdictOf(c.check); err != nil {
+			return View{}, err
+		}
+	}
+	v.Locked, err = Locks(tx, p, counted)
 	return v, err
 }
 

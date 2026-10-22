@@ -1,5 +1,5 @@
-import { SESSION_FACETS, SESSION_PLACES } from "./sessions.constant";
-import { REASON_BADGES } from "./session-stage.util";
+import { CANCELLED_STAGE, SESSION_FACETS, SESSION_PLACES } from "./sessions.constant";
+import { CANCELLED_BADGE, REASON_BADGES } from "./session-stage.util";
 import type { SearchSessionsRequest, SessionLocation, SessionReason, SessionSearch, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { Facet, ListFilter } from "~/core/list/filter.types";
@@ -29,7 +29,10 @@ export function sessionFacets(clients: ReadonlyArray<ClientView>): Array<Facet> 
     {
       key: "stage",
       label: "Stage",
-      options: Object.entries(REASON_BADGES).map(([reason, badge]) => ({ value: reason, label: badge.label })),
+      options: [
+        ...Object.entries(REASON_BADGES).map(([reason, badge]) => ({ value: reason, label: badge.label })),
+        { value: CANCELLED_STAGE, label: CANCELLED_BADGE.label },
+      ],
     },
     { key: "place", label: "Place", options: Object.entries(SESSION_PLACES).map(([value, label]) => ({ value, label })) },
   ];
@@ -41,6 +44,7 @@ export function searchSessionsRequest(filter: ListFilter): SearchSessionsRequest
     ...listRequest(filter),
     clientIds: [...(filter.chips.client ?? [])],
     locations: [...(filter.chips.place ?? [])] as Array<SessionLocation>,
-    todo: [...(filter.chips.stage ?? [])] as Array<SessionReason>,
+    todo: [...(filter.chips.stage ?? [])].filter((stage) => stage !== CANCELLED_STAGE) as Array<SessionReason>,
+    cancelled: (filter.chips.stage ?? []).includes(CANCELLED_STAGE),
   };
 }
