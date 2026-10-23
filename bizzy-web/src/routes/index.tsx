@@ -1,17 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { HomePage } from "~/features/home/home-page.component";
+import { ClientsQuery } from "~/features/clients/clients.query";
+import { SessionsQuery } from "~/features/sessions/sessions.query";
+import { TodoQuery } from "~/features/todo/todo.query";
+import { dayRange } from "~/core/utils/date.util";
+import { pageData, prefetch } from "~/core/utils/page-data.util";
 
 export const Route = createFileRoute("/")({
-  component: SessionsRoute,
+  loader: () => {
+    const { from, to } = dayRange();
+    return pageData(prefetch(TodoQuery.list()), prefetch(SessionsQuery.range(from, to)), prefetch(ClientsQuery.list()));
+  },
+  component: HomePage,
 });
-
-// Becomes the sessions inbox once the sync persists sessions.
-function SessionsRoute() {
-  return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-lg font-semibold">Sessions</h1>
-      <p className="text-sm text-muted-foreground">
-        Sessions from the calendar will appear here after the first sync.
-      </p>
-    </div>
-  );
-}

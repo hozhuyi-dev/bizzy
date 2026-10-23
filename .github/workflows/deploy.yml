@@ -62,22 +62,15 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # CloudFormation can't create SecureStrings, so the key goes to SSM here
-      # and the sync Lambda reads it at runtime. Via a file so the JSON never
-      # appears on a command line.
-      - name: Store Google service account key
-        run: |
-          set -euo pipefail
-          key_file="$RUNNER_TEMP/service-account.json"
-          trap 'rm -f "$key_file"' EXIT
-          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_KEY" > "$key_file"
-          aws ssm put-parameter \
-            --name "/${{ vars.PROJECT_NAME }}/${{ vars.ENVIRONMENT }}/google-service-account" \
-            --type SecureString \
-            --value "file://$key_file" \
-            --overwrite > /dev/null
+      # This checkout's migrations on a copy of the table, before anything is
+      # deployed: a migration that would fail stops the deploy here, while
+      # the app still runs.
+      - name: Dry-run migrations
+        run: node scripts/migrate.mjs --dry-run
         env:
-          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
 
       - name: Deploy stacks
         run: pnpm -F bizzy-infra cdk:deploy:ci
@@ -91,11 +84,31 @@ jobs:
           ALLOWED_EMAIL: ${{ secrets.ALLOWED_EMAIL }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
           SYNC_TIME_ZONE: ${{ secrets.SYNC_TIME_ZONE }}
+
+      # The updated functions refuse the table until it is at their schema.
+      - name: Migrate
+        run: node scripts/migrate.mjs
+        env:
+          ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+      # Every deploy uploads new Lambda builds to the CDK assets bucket, which
+      # keeps the old ones until collected: delete those no stack in the
+      # account uses. Ones under a day old stay, for a deploy of another
+      # environment still on its way. Cleanup only, so it never fails a deploy.
+      - name: Delete unused Lambda builds
+        continue-on-error: true
+        run: pnpm -F bizzy-infra exec cdk gc "aws://${AWS_ACCOUNT_ID}/${AWS_REGION}" --unstable=gc --type=s3 --confirm=false
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
 
   web:
     needs: infra
+    # Development has no hosting; its app runs on localhost.
+    if: github.event.inputs.env_name != 'development'
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.env_name || (github.ref_name == 'production' && 'production') || 'staging' }}
 
@@ -157,6 +170,9 @@ jobs:
           # Entry document last, once everything it references is in place.
           aws s3 cp "$DIST/index.html" "s3://$SITE_BUCKET/index.html" \
             --cache-control "no-cache"
+          # Then drop the previous builds' files, which nothing references
+          # any more (each build names its assets anew, so they pile up).
+          aws s3 sync "$DIST" "s3://$SITE_BUCKET" --delete --size-only
 
       - name: Invalidate CloudFront
         run: |

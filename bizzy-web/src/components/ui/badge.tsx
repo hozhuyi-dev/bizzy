@@ -18,6 +18,12 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // Status tones (tokens in app.css), named by what the status means.
+        neutral: "bg-status-neutral text-status-neutral-foreground",
+        done: "bg-status-done text-status-done-foreground",
+        info: "bg-status-info text-status-info-foreground",
+        waiting: "bg-status-waiting text-status-waiting-foreground",
+        attention: "bg-status-attention text-status-attention-foreground",
       },
     },
     defaultVariants: {

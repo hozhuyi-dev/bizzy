@@ -1,10 +1,11 @@
-import { RemovalPolicy } from "aws-cdk-lib";
+import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import {
   Distribution,
   Function as CloudFrontFunction,
   FunctionCode,
   FunctionEventType,
   FunctionRuntime,
+  HttpVersion,
   PriceClass,
   ViewerProtocolPolicy,
 } from "aws-cdk-lib/aws-cloudfront";
@@ -13,6 +14,7 @@ import {
   BlockPublicAccess,
   Bucket,
   BucketEncryption,
+  ObjectOwnership,
 } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import type { Environment } from "../../../utils/environment.util";
@@ -22,6 +24,15 @@ export interface WebHostingProps {
   environment: Environment;
 }
 
+/**
+ * The app's SPA: a private bucket behind CloudFront.
+ *
+ * Kept cheap: the bucket isn't versioned, and each deploy deletes the
+ * previous build's files once the new one is up (deploy.yml), so no old
+ * build is kept at all; the cheapest price class; no logging. Hashed assets
+ * are cached for a year, and the deploy's one invalidation ("/*") counts as
+ * a single path, well inside the free 1,000 a month.
+ */
 export class WebHosting extends Construct {
   readonly bucket: Bucket;
   readonly distribution: Distribution;
@@ -36,9 +47,12 @@ export class WebHosting extends Construct {
     this.bucket = new Bucket(this, "SiteBucket", {
       encryption: BucketEncryption.S3_MANAGED,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
       enforceSSL: true,
       removalPolicy: retained ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
       autoDeleteObjects: !retained,
+      // An upload a deploy didn't finish would otherwise be billed for good.
+      lifecycleRules: [{ id: "abort-incomplete-uploads", abortIncompleteMultipartUploadAfter: Duration.days(1) }],
     });
 
     // SPA fallback. This is deliberately a viewer-request rewrite rather than
@@ -71,6 +85,7 @@ function handler(event) {
       comment: `${projectName}-${environment}-web`,
       defaultRootObject: "index.html",
       priceClass: PriceClass.PRICE_CLASS_100,
+      httpVersion: HttpVersion.HTTP2_AND_3,
       defaultBehavior: {
         origin: S3BucketOrigin.withOriginAccessControl(this.bucket),
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,

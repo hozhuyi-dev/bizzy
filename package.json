@@ -11,13 +11,17 @@
     "web:typecheck": "pnpm -F bizzy-web typecheck",
     "lambda:test": "cd bizzy-lambda && go test ./...",
     "lambda:vet": "cd bizzy-lambda && go vet ./...",
-    "lambda:deploy": "pnpm -F bizzy-infra cdk:hotswap",
+    "lambda:deploy": "pnpm -F bizzy-infra cdk:hotswap && pnpm lambda:migrate",
+    "lambda:migrate": "node scripts/migrate.mjs",
+    "lambda:migrate:dry": "node scripts/migrate.mjs --dry-run",
+    "data:copy": "node scripts/copy.mjs",
     "infra:test": "pnpm -F bizzy-infra test",
     "infra:lint": "pnpm -F bizzy-infra lint",
     "infra:typecheck": "pnpm -F bizzy-infra typecheck",
     "cdk:diff": "pnpm -F bizzy-infra cdk:diff",
     "cdk:deploy": "pnpm -F bizzy-infra cdk:deploy",
-    "dev:deploy": "pnpm cdk:deploy && pnpm web:env"
+    "cdk:gc": "pnpm -F bizzy-infra cdk:gc",
+    "dev:deploy": "pnpm cdk:deploy && pnpm lambda:migrate && pnpm web:env && pnpm cdk:gc"
   },
   "packageManager": "pnpm@10.33.0"
 }

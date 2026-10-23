@@ -2,6 +2,7 @@ import { RemovalPolicy } from "aws-cdk-lib";
 import {
   AttributeType,
   BillingMode,
+  ProjectionType,
   Table,
 } from "aws-cdk-lib/aws-dynamodb";
 import { Construct } from "constructs";
@@ -13,9 +14,18 @@ export interface DataTableProps {
 }
 
 /**
+ * Local secondary indexes can only be created with the table, and a table has
+ * at most five, so all five exist from the start with generic names. Each
+ * entity decides what its LSIn sort key means; see bizzy-lambda's
+ * platform/dynamo package. Anything else later can be a GSI, which can be
+ * added to a live table.
+ */
+const LOCAL_INDEXES = ["LSI1", "LSI2", "LSI3", "LSI4", "LSI5"];
+
+/**
  * The single bizzy table. Each entity type lives in one partition
- * (PK = "CLIENT", "SESSION", ...) with SK ordering it; see bizzy-lambda's
- * platform/dynamo package.
+ * (PK = "CLIENT", "SESSION", ...) with SK identifying the item; see
+ * bizzy-lambda's platform/dynamo package.
  */
 export class DataTable extends Construct {
   readonly table: Table;
@@ -45,5 +55,15 @@ export class DataTable extends Construct {
       },
       removalPolicy: retained ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     });
+
+    for (const indexName of LOCAL_INDEXES) {
+      this.table.addLocalSecondaryIndex({
+        indexName: indexName,
+        sortKey: { name: `${indexName}SK`, type: AttributeType.STRING },
+        // A projection can't be changed later either; ALL keeps every index
+        // usable for any entity.
+        projectionType: ProjectionType.ALL,
+      });
+    }
   }
 }

@@ -24,7 +24,6 @@ const logoutUrls = parseEnvList(process.env.LOGOUT_URLS);
 const allowedEmail = process.env.ALLOWED_EMAIL;
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-const googleCalendarId = process.env.GOOGLE_CALENDAR_ID;
 const syncTimeZone = process.env.SYNC_TIME_ZONE;
 
 assert.ok(projectName, "PROJECT_NAME is required");
@@ -34,7 +33,6 @@ assert.ok(callbackUrls.length > 0, "CALLBACK_URLS are required");
 assert.ok(allowedEmail, "ALLOWED_EMAIL is required");
 assert.ok(googleClientId, "GOOGLE_CLIENT_ID is required");
 assert.ok(googleClientSecret, "GOOGLE_CLIENT_SECRET is required");
-assert.ok(googleCalendarId, "GOOGLE_CALENDAR_ID is required");
 assert.ok(syncTimeZone, "SYNC_TIME_ZONE is required");
 
 const env = { account: awsAccountId, region: awsRegion };
@@ -54,6 +52,8 @@ const dataStack = new DataStack(app, `${projectName}-${environment}-data`, {
   env: env,
   projectName: projectName,
   environment: environment,
+  // "http://localhost:4200/" → "http://localhost:4200": CORS matches the origin.
+  allowedOrigins: callbackUrls.map((url) => new URL(url).origin),
 });
 
 const apiStack = new ApiStack(app, `${projectName}-${environment}-api`, {
@@ -61,18 +61,28 @@ const apiStack = new ApiStack(app, `${projectName}-${environment}-api`, {
   projectName: projectName,
   environment: environment,
   table: dataStack.data.table,
+  files: dataStack.files.bucket,
+  paySite: dataStack.paySite.bucket,
+  payUrl: dataStack.paySite.url,
   authenticatedRole: authStack.auth.authenticatedRole,
-  googleCalendarId: googleCalendarId,
+  googleClientId: googleClientId,
+  googleClientSecret: googleClientSecret,
   syncTimeZone: syncTimeZone,
 });
 
-const webStack = new WebStack(app, `${projectName}-${environment}-web`, {
-  env: env,
-  projectName: projectName,
-  environment: environment,
-});
+// Development serves the app from localhost (`pnpm web:dev`), so it has no
+// hosting.
+const webStack =
+  environment === "development"
+    ? undefined
+    : new WebStack(app, `${projectName}-${environment}-web`, {
+        env: env,
+        projectName: projectName,
+        environment: environment,
+      });
 
 for (const stack of [authStack, dataStack, apiStack, webStack]) {
+  if (!stack) continue;
   cdk.Tags.of(stack).add("project", projectName);
   cdk.Tags.of(stack).add("environment", environment);
   cdk.Tags.of(stack).add("managed-by", "cdk");

@@ -1,106 +1,135 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
-import { createClientColumns, extraAliases } from "./clients.columns";
+import { CLIENT_SORTING, ClientCard, clientLink, createClientColumns } from "./clients.columns";
+import { useClientRows } from "./clients.hook";
 import { ClientsQuery } from "./clients.query";
-import { ClientForm } from "./components/client-form/client-form.component";
-import type { Client } from "./clients.types";
-import { DataTable } from "~/components/shared/data-table/data-table.component";
-import { dataTableFeatures } from "~/components/shared/data-table/data-table.features";
-import { Button } from "~/components/ui/button";
-import { Card, CardContent } from "~/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "~/components/ui/dialog";
-import { queryMatch } from "~/core/utils/query.util";
-import { formatCents } from "~/core/utils/money.util";
+import { CLIENT_FACETS, CLIENT_PRESETS, clientsUrl } from "./clients.util";
+import type { ClientRow, ClientView, ClientsListSearch } from "./clients.types";
+import type { ListFilter } from "~/core/list/filter.types";
+import type { Loadable } from "~/core/utils/query.util";
+import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
+import { ActivityQuery } from "~/features/activity/activity.query";
+import { DataTable } from "~/components/shared/list/data-table/data-table.component";
+import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
+import { sortingFromFilter } from "~/components/shared/list/data-table/data-table-sort.util";
+import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { FollowUpsMutation } from "~/features/follow-ups/follow-ups.mutation";
+import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
+import { allOf } from "~/core/utils/query.util";
+import { QUIPS } from "~/core/constants/quips.constant";
+import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
-// Stable fallback: a fresh [] each render would rebuild the row models.
-const NO_CLIENTS: Array<Client> = [];
+interface ClientsPageProps {
+  /** Words, and chips: where each client stands, how long since they were seen, what is missing. */
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
+}
 
-type Editing = { mode: "new" } | { mode: "edit"; client: Client } | null;
-
-export function ClientsPage() {
+/**
+ * Every client and where each stands, narrowed by chips and presets; one
+ * of them, Reconnect, is those with no session in a while, nothing booked
+ * and nothing waiting, most valuable first. Every client is loaded
+ * already, so the search filters here.
+ */
+export function ClientsPage({ filter, onFilterChange }: ClientsPageProps) {
   const clients = ClientsQuery.useList();
-  const [editing, setEditing] = useState<Editing>(null);
+  // Where each stands comes with their activity.
+  const activity = ActivityQuery.useList();
+  const rows = useClientRows(filter);
+  // Each client's page steps through this list.
+  const search = useMemo(() => clientsUrl.toSearch(filter), [filter]);
 
-  const columns = useMemo(
-    () => createClientColumns((client) => setEditing({ mode: "edit", client })),
-    [],
+  return (
+    <>
+      <PageHeader
+        title="Clients"
+        actions={[{ type: "link", label: "New client", icon: PlusIcon, style: "primary", link: { to: "/clients/new" } }]}
+        toolbar={
+          <FilterBar
+            label="Search clients"
+            value={filter}
+            onChange={onFilterChange}
+            facets={CLIENT_FACETS}
+            presets={CLIENT_PRESETS}
+          />
+        }
+      />
+
+      <ClientsTable
+        rows={rows}
+        source={allOf(clients, activity)}
+        filter={filter}
+        onFilterChange={onFilterChange}
+        search={search}
+      />
+    </>
   );
+}
+
+interface ClientsTableProps {
+  rows: Array<ClientRow>;
+  source: Loadable;
+  /** Its words are searched in the table; its sort orders it. */
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
+  search: ClientsListSearch;
+}
+
+function ClientsTable({ rows, source, filter, onFilterChange, search }: ClientsTableProps) {
+  const { mutate: reachedOut } = FollowUpsMutation.useReachedOut();
+  const { mutate: undo } = FollowUpsMutation.useDelete();
+  const [remind, setRemind] = useState<FollowUpTarget | null>(null);
+  const onRemind = useCallback((client: ClientView) => setRemind({ mode: "new", clientId: client.id }), []);
+
+  // A follow-up done today is the record of it; deleting it undoes a mis-tap.
+  const onContacted = useCallback(
+    (client: ClientView) =>
+      reachedOut(client.id, {
+        onSuccess: (followUp) =>
+          toastWithQuip(`Marked ${client.name} as contacted`, QUIPS.todoDone, {
+            action: { label: "Undo", onClick: () => undo(followUp.id) },
+          }),
+        onError: toastRefusal,
+      }),
+    [reachedOut, undo],
+  );
+
+  const whatsapp = useWhatsApp();
+  const onWhatsApp = useCallback((client: ClientView) => whatsapp.message(client.contact?.phone), [whatsapp]);
+  const handlers = useMemo(() => ({ onWhatsApp, onContacted, onRemind }), [onWhatsApp, onContacted, onRemind]);
+  const columns = useMemo(() => createClientColumns(handlers, search), [handlers, search]);
 
   const table = useTable({
     features: dataTableFeatures,
     columns,
-    data: clients.data ?? NO_CLIENTS,
-    getRowId: (client) => client.id,
-    initialState: { sorting: [{ id: "name", desc: false }] },
+    data: rows,
+    getRowId: (row) => row.client.id,
+    // Kept in the URL, so a client's page steps through it in this order.
+    ...sortingFromFilter(filter, onFilterChange, CLIENT_SORTING, columns),
   });
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Clients</h1>
-        <Button onClick={() => setEditing({ mode: "new" })}>
-          <PlusIcon /> New client
-        </Button>
-      </div>
-
-      {queryMatch(clients, {
-        pending: () => <p className="text-sm text-muted-foreground">Loading…</p>,
-        error: (error) => (
-          <p role="alert" className="text-sm text-destructive">
-            {error.message}
-          </p>
-        ),
-        success: () => (
-          <DataTable
-            table={table}
-            emptyMessage="No clients yet. Add one, or link an unmatched calendar entry."
-            renderCard={(row) => (
-              <Card
-                size="sm"
-                role="button"
-                tabIndex={0}
-                onClick={() => setEditing({ mode: "edit", client: row.original })}
-              >
-                <CardContent className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{row.original.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {extraAliases(row.original).join(", ")}
-                    </p>
-                  </div>
-                  <span className="text-sm">
-                    {row.original.defaultFeeCents === undefined
-                      ? "—"
-                      : formatCents(row.original.defaultFeeCents)}
-                  </span>
-                </CardContent>
-              </Card>
-            )}
-          />
-        ),
-      })}
-
-      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing?.mode === "edit" ? "Edit client" : "New client"}</DialogTitle>
-          </DialogHeader>
-          {editing && (
-            <ClientForm
-              // Remount per client so the form starts from that client's values.
-              key={editing.mode === "edit" ? editing.client.id : "new"}
-              {...(editing.mode === "edit" ? { client: editing.client } : {})}
-              onDone={() => setEditing(null)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+    <>
+      <DataTable
+        table={table}
+        source={source}
+        query={filter.text}
+        rowLink={(row) => clientLink(row.client.id, search)}
+        empty={
+          filter.chips.lapse?.length ? (
+            <EmptyState quips={QUIPS.clientsReconnect}>Nobody to get back in touch with right now.</EmptyState>
+          ) : (
+            <EmptyState quips={QUIPS.clients}>No clients yet. Add one, or link an unmatched calendar entry.</EmptyState>
+          )
+        }
+        renderCard={(row) => <ClientCard row={row.original} search={search} {...handlers} />}
+      />
+      <FollowUpDialog target={remind} onClose={() => setRemind(null)} />
+    </>
   );
 }

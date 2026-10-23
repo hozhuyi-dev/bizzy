@@ -1,0 +1,78 @@
+// Package googleconnect is the user's Google connection, made once in
+// Settings: which account, and which of its calendars bizzy reads. The
+// grant itself (the refresh token) is kept by googleauth.
+package googleconnect
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	"bizzy-lambda/internal/calendar"
+	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/googleauth"
+	"bizzy-lambda/internal/platform/txn"
+)
+
+// Connection is the connected account and the calendar the user chose;
+// CalendarID is "" until they choose one.
+type Connection struct {
+	Email        string    `json:"email"`
+	CalendarID   string    `json:"calendarId"`
+	CalendarName string    `json:"calendarName"`
+	ConnectedAt  time.Time `json:"connectedAt"`
+}
+
+const connectionID = "CONNECTION"
+
+var Connections = txn.Kind[Connection]{
+	Name: "GOOGLE", Gone: "Google isn't connected yet. Connect it in Settings.",
+	Doc:   txn.Doc{What: "The connected Google account and calendar: one item, CONNECTION."},
+	Meta:  func(c *Connection) txn.Meta { return txn.Meta{ID: connectionID} },
+	Whole: true,
+}
+
+// Auth is the part of googleauth.Auth this feature uses.
+type Auth interface {
+	Exchange(ctx context.Context, code, redirectURI string) (googleauth.Grant, error)
+	Store(ctx context.Context, refreshToken string) error
+	Revoke(ctx context.Context) error
+	Check(ctx context.Context) error
+	Client(ctx context.Context) (*http.Client, error)
+}
+
+// errNoCalendar is the sync before a calendar is chosen. The app sends the
+// user to Settings for it, as for a lost connection.
+var errNoCalendar = apperr.Disconnected("Choose the calendar you book sessions in, in Settings.")
+
+// Calendar opens the calendar the user chose, acting as the user; once per
+// calendar in a request, which may open it many times.
+func Calendar(run *txn.Runner, auth Auth) func(ctx context.Context) (calendar.Calendar, error) {
+	return func(ctx context.Context) (calendar.Calendar, error) {
+		conn, err := txn.Read(ctx, run, func(tx *txn.Tx) (*Connection, error) { return Connections.Get(tx, connectionID) })
+		if err != nil {
+			return nil, err
+		}
+		if conn.CalendarID == "" {
+			return nil, errNoCalendar
+		}
+		var opened map[string]calendar.Calendar
+		if scope := txn.ScopeOf(ctx); scope != nil {
+			opened = scope.Value(openedKey{}, func() any { return map[string]calendar.Calendar{} }).(map[string]calendar.Calendar)
+			if cal, ok := opened[conn.CalendarID]; ok {
+				return cal, nil
+			}
+		}
+		client, err := auth.Client(ctx)
+		if err != nil {
+			return nil, err
+		}
+		cal, err := calendar.NewGoogle(ctx, client, conn.CalendarID)
+		if err == nil && opened != nil {
+			opened[conn.CalendarID] = cal
+		}
+		return cal, err
+	}
+}
+
+type openedKey struct{}

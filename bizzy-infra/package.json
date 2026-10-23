@@ -11,7 +11,8 @@
     "cdk:diff": "cdk diff --profile hozhuyi.dev",
     "cdk:deploy": "cdk deploy --all --profile hozhuyi.dev",
     "cdk:deploy:ci": "cdk deploy --all --require-approval never",
-    "cdk:hotswap": "cdk deploy \"*-development-api\" --hotswap --profile hozhuyi.dev"
+    "cdk:hotswap": "cdk deploy \"*-development-api\" --hotswap --profile hozhuyi.dev",
+    "cdk:gc": "cdk gc --unstable=gc --type=s3 --confirm=false --profile hozhuyi.dev"
   },
   "packageManager": "pnpm@10.33.0",
   "dependencies": {

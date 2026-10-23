@@ -1,0 +1,255 @@
+package simulation
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"maps"
+	"slices"
+	"time"
+
+	"pgregory.net/rapid"
+
+	"bizzy-lambda/internal/app"
+	"bizzy-lambda/internal/calendar"
+	"bizzy-lambda/internal/features/attachments"
+	"bizzy-lambda/internal/features/documents"
+	"bizzy-lambda/internal/features/followups"
+	"bizzy-lambda/internal/features/googlesync"
+	"bizzy-lambda/internal/features/packages"
+	"bizzy-lambda/internal/features/sessions"
+	"bizzy-lambda/internal/features/settings"
+	"bizzy-lambda/internal/migrations"
+	"bizzy-lambda/internal/platform/migrate"
+	"bizzy-lambda/internal/platform/txn"
+	"bizzy-lambda/internal/testutil/testapp"
+)
+
+// check runs after every action. Refused actions are checked as they
+// happen (World.call), views against the API around the actions they
+// offer (World.callAsViewed), and the app bringing on conflicts around
+// each user action (simulation_test.go).
+func check(t *rapid.T, w *World) {
+	t.Helper()
+	invariantsHold(t, w)
+	deployable(t, w)
+	filesAreThere(t, w)
+	payPageShowsSettings(t, w)
+	asksAsViewed(t, w)
+	if w.InSync {
+		calendarShowsBizzy(t, w)
+	}
+}
+
+// invariantsHold: every feature's invariants, over everything stored.
+func invariantsHold(t *rapid.T, w *World) {
+	t.Helper()
+	broken, err := txn.CheckAll(context.Background(), w.Runner, app.Kinds()...)
+	if err != nil {
+		t.Fatalf("checking invariants: %v", err)
+	}
+	if len(broken) > 0 {
+		t.Fatalf("invariants broken: %v", broken)
+	}
+}
+
+// deployable: a deploy's review passes over everything stored, so the
+// next deploy can migrate it: every item reads as the code reads it, and
+// is stored exactly as the code writes it (see platform/migrate).
+func deployable(t *rapid.T, w *World) {
+	t.Helper()
+	o := migrate.Options{Runner: w.Runner, Kinds: app.Kinds(), Migrations: migrations.All}
+	if _, err := migrate.Run(context.Background(), o); err != nil {
+		t.Fatalf("a deploy would fail: %v", err)
+	}
+}
+
+// filesAreThere: every attachment's file is in the file store, kept (not
+// pending): the table is written before a file is deleted, never after.
+// Every issued revision's PDF is kept too, as issued.
+func filesAreThere(t *rapid.T, w *World) {
+	t.Helper()
+	for _, a := range read(t, w, attachments.Attachments.All) {
+		if blob, ok := w.Blobs.Blobs[a.Key]; !ok || blob.Pending {
+			t.Fatalf("attachment %s's file %s isn't kept", a.ID, a.Key)
+		}
+	}
+	for _, r := range read(t, w, documents.Revisions.All) {
+		blob, ok := w.Blobs.Blobs[documents.PDFKey(r)]
+		if sum := sha256.Sum256(blob.Body); !ok || hex.EncodeToString(sum[:]) != r.PDFSha256 {
+			t.Fatalf("%s's PDF isn't kept as issued", documents.Label(r.Number, r.Revision))
+		}
+	}
+}
+
+// payPageShowsSettings: the payment page is the one the settings make,
+// once they are saved, and there is none before (or after a reset). The
+// images are checked by being there: they are drawn from what the page
+// shows, and the page names them by it.
+func payPageShowsSettings(t *rapid.T, w *World) {
+	t.Helper()
+	saved := read(t, w, settings.Store.All)
+	if len(saved) == 0 {
+		if len(w.PaySite.Blobs) > 0 {
+			t.Fatalf("a payment page is published with no settings saved: %v", slices.Sorted(maps.Keys(w.PaySite.Blobs)))
+		}
+		return
+	}
+	p := settings.PayPageOf(*saved[0])
+	want, err := p.HTML(testapp.PayURL)
+	if err != nil {
+		t.Fatalf("the payment page doesn't render: %v", err)
+	}
+	if page := w.PaySite.Blobs[settings.PayPageKey]; !bytes.Equal(page.Body, want) {
+		t.Fatalf("the published payment page isn't the one the settings make")
+	}
+	for key, there := range map[string]bool{
+		settings.PayPreviewKey: true, settings.PayRobotsKey: true, settings.PayQRKey: p.QR != "",
+	} {
+		if _, ok := w.PaySite.Blobs[key]; ok != there {
+			t.Fatalf("the payment page's %s is published: %v; want %v", key, ok, there)
+		}
+	}
+}
+
+// calendarShowsBizzy: once synced, within the sync's window, every
+// session's and follow-up's event shows it, unless the user's edit of it
+// waits as a conflict; every event in the calendar shows one, or waits:
+// all of them are bizzy's; and no deleted item's event is left.
+func calendarShowsBizzy(t *rapid.T, w *World) {
+	t.Helper()
+	from, to := w.Now.Add(-googlesync.Window), w.Now.Add(googlesync.Window)
+	in := func(at time.Time) bool { return !at.Before(from) && !at.After(to) }
+	live := map[string]calendar.Event{}
+	for _, e := range w.Calendar.Live {
+		live[e.ID] = e
+	}
+	type shown struct {
+		kind googlesync.ItemKind
+		id   string
+		want calendar.Snapshot
+		link *googlesync.Link
+	}
+	all := read(t, w, func(tx *txn.Tx) ([]shown, error) {
+		var out []shown
+		add := func(kind googlesync.ItemKind, id string) error {
+			l, err := googlesync.LinkOf(tx, kind, id)
+			if err != nil {
+				return err
+			}
+			var seen *calendar.Snapshot
+			if l != nil {
+				seen = &l.Seen
+			}
+			want, err := googlesync.EventOf(tx, kind, id, seen)
+			out = append(out, shown{kind, id, want, l})
+			return err
+		}
+		ss, err := sessions.Sessions.Between(tx, from, to)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range ss {
+			if s.Cancelled() {
+				continue // It shows in no event.
+			}
+			if err := add(googlesync.KindSession, s.ID); err != nil {
+				return nil, err
+			}
+		}
+		fs, err := followups.FollowUps.Between(tx, from, to)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range fs {
+			if err := add(googlesync.KindFollowUp, f.ID); err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
+	})
+	waiting := conflictIDs(t, w)
+	for _, x := range all {
+		if x.link == nil {
+			t.Fatalf("%s %s has no event after a sync", x.kind, x.id)
+		}
+		if waiting[x.link.EventID] {
+			continue
+		}
+		e, ok := live[x.link.EventID]
+		switch {
+		case !ok:
+			t.Fatalf("%s %s's event %s isn't in the calendar", x.kind, x.id, x.link.EventID)
+		case !shownAs(x.kind, e).Same(x.link.Seen):
+			t.Fatalf("%s %s's event says %+v, not %+v as last agreed", x.kind, x.id, shownAs(x.kind, e), x.link.Seen)
+		case !x.want.Same(x.link.Seen):
+			t.Fatalf("%s %s's event says %+v, but it is %+v", x.kind, x.id, x.link.Seen, x.want)
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(live)) {
+		e := live[id]
+		if !in(e.At()) || waiting[id] {
+			continue
+		}
+		l := read(t, w, func(tx *txn.Tx) (*googlesync.Link, error) {
+			l, ok, err := googlesync.Links.Find(tx, id)
+			if !ok {
+				return nil, err
+			}
+			return l, err
+		})
+		if l == nil || l.ItemID == "" {
+			t.Fatalf("event %s %q shows nothing, and waits for nothing", id, e.Title)
+		}
+	}
+}
+
+func shownAs(kind googlesync.ItemKind, e calendar.Event) calendar.Snapshot {
+	if kind == googlesync.KindFollowUp {
+		return calendar.NotedSnapshotOf(e)
+	}
+	return calendar.SnapshotOf(e)
+}
+
+// noNewConflicts: the app refuses what isn't allowed before anything is
+// written, so only the calendar, edited directly, can bring on a conflict.
+func noNewConflicts(t *rapid.T, action string, before, after map[string]bool) {
+	t.Helper()
+	for id := range after {
+		if !before[id] {
+			t.Fatalf("%s in the app brought on a conflict over event %s", action, id)
+		}
+	}
+}
+
+// asksAsViewed: what a session, a package and a document, one of each
+// drawn, say of asking to pay for it and sending its documents is what
+// the API does. They are queries, so no user action calls them as viewed.
+func asksAsViewed(t *rapid.T, w *World) {
+	t.Helper()
+	if s := drawn(t, w, "session to ask from", sessions.Sessions.All); s != nil {
+		v := sessionView(t, w, s)
+		w.callAsViewed(t, "documents.ask", map[string]any{"items": v.Sources}, v.Can.AskToPay)
+		w.callAsViewed(t, "documents.records", map[string]any{"items": v.Sources}, v.Can.SendRecords)
+	}
+	if p := drawn(t, w, "package to ask from", packages.Packages.All); p != nil {
+		v := packageView(t, w, p)
+		items := []documents.Source{documents.PackageSource(p.ID)}
+		w.callAsViewed(t, "documents.ask", map[string]any{"items": items}, v.Can.AskToPay)
+		w.callAsViewed(t, "documents.records", map[string]any{"items": items}, v.Can.SendRecords)
+	}
+	if d := drawn(t, w, "document to ask from", documents.Documents.All); d != nil {
+		w.callAsViewed(t, "documents.ask", map[string]any{"ids": []string{d.ID}}, documentCan(t, w, d).AskToPay)
+	}
+}
+
+// drawn is one of a list, or nil when it is empty: pick, for a check.
+func drawn[T any](t *rapid.T, w *World, label string, list func(tx *txn.Tx) ([]*T, error)) *T {
+	t.Helper()
+	all := read(t, w, list)
+	if len(all) == 0 {
+		return nil
+	}
+	return rapid.SampledFrom(all).Draw(t, label)
+}

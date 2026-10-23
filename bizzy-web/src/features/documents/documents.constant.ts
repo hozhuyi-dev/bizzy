@@ -1,0 +1,30 @@
+import type { DocumentStatus, DocumentType, DocumentTypeSpec } from "./documents.types";
+
+/**
+ * What differs between document types in the app. Adding a type (quotation,
+ * credit note …) is an entry here plus one in the API's documents.Types,
+ * which prints them; the lifecycle and editor are shared.
+ */
+export const DOCUMENT_TYPES: Record<DocumentType, DocumentTypeSpec> = {
+  invoice: {
+    title: "Invoice",
+    plural: "Invoices",
+    recipientLabel: "Bill to",
+    totalLabel: "Total",
+  },
+  receipt: {
+    title: "Receipt",
+    plural: "Receipts",
+    recipientLabel: "Received from",
+    totalLabel: "Total received",
+  },
+};
+
+/** What the documents list can be narrowed by, as its URL names them. */
+export const DOCUMENT_FACETS = ["type", "client", "status", "payment"] as const;
+
+export const DOCUMENT_STATUS: Record<DocumentStatus, { label: string; variant: "waiting" | "done" | "neutral" }> = {
+  draft: { label: "Draft", variant: "waiting" },
+  issued: { label: "Issued", variant: "done" },
+  cancelled: { label: "Cancelled", variant: "neutral" },
+};

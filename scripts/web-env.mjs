@@ -1,58 +1,25 @@
 #!/usr/bin/env node
 // Writes bizzy-web/.env.<environment> from the deployed stacks' outputs, so
 // the web app (local `pnpm web:dev` or a CI build) talks to that
-// environment's real Cognito, Lambda and DynamoDB.
-//
-// Locally: reads PROJECT_NAME / AWS_REGION from bizzy-infra/.env[.<env>] and
-// uses the AWS_PROFILE profile (default hozhuyi.dev).
-// In CI: reads them from the environment and uses the ambient credentials.
+// environment's real Cognito, Lambda and DynamoDB. See aws.mjs for where the
+// environment and credentials come from.
 
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseEnv } from "node:util";
-
-const root = join(import.meta.dirname, "..");
-const environment = process.env.ENVIRONMENT?.trim() || "development";
-const isCI = Boolean(process.env.CI);
-
-function readEnvFile(path) {
-  return existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};
-}
-
-const infraEnv = {
-  ...readEnvFile(join(root, "bizzy-infra", ".env")),
-  ...readEnvFile(join(root, "bizzy-infra", `.env.${environment}`)),
-};
-
-const projectName = process.env.PROJECT_NAME || infraEnv.PROJECT_NAME || "bizzy";
-const region = process.env.AWS_REGION || infraEnv.AWS_REGION;
-const profile = isCI ? undefined : process.env.AWS_PROFILE || "hozhuyi.dev";
-
-if (!region) {
-  console.error(`AWS_REGION is not set (looked in bizzy-infra/.env.${environment}).`);
-  process.exit(1);
-}
+import { aws, environment, projectName, region, root } from "./aws.mjs";
 
 function stackOutputs(stack) {
   const stackName = `${projectName}-${environment}-${stack}`;
-  const json = execFileSync(
-    "aws",
-    [
-      "cloudformation",
-      "describe-stacks",
-      "--stack-name",
-      stackName,
-      "--region",
-      region,
-      ...(profile ? ["--profile", profile] : []),
-      "--query",
-      "Stacks[0].Outputs",
-      "--output",
-      "json",
-    ],
-    { encoding: "utf8" },
-  );
+  const json = aws([
+    "cloudformation",
+    "describe-stacks",
+    "--stack-name",
+    stackName,
+    "--query",
+    "Stacks[0].Outputs",
+    "--output",
+    "json",
+  ]);
 
   const outputs = Object.fromEntries(
     (JSON.parse(json) ?? []).map((o) => [o.OutputKey, o.OutputValue]),
@@ -70,11 +37,15 @@ function stackOutputs(stack) {
 }
 
 const auth = stackOutputs("auth");
+const data = stackOutputs("data");
 const api = stackOutputs("api");
 
 const values = {
   VITE_AWS_REGION: region,
   VITE_API_FUNCTION_NAME: api("ApiFunctionName"),
+  VITE_PUBLIC_URL: api("PublicUrl"),
+  VITE_PAY_URL: data("PayUrl"),
+  VITE_GOOGLE_CLIENT_ID: api("GoogleClientId"),
   VITE_AMPLIFY_USER_POOL_ID: auth("UserPoolId"),
   VITE_AMPLIFY_USER_POOL_CLIENT_ID: auth("UserPoolClientId"),
   VITE_AMPLIFY_IDENTITY_POOL_ID: auth("IdentityPoolId"),

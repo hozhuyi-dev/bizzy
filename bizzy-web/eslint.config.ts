@@ -20,6 +20,33 @@ const config: Array<Linter.Config> = [
   ...pluginRouter.configs["flat/recommended"],
   ...pluginQuery.configs["flat/recommended"],
   pluginReactHooks.configs.flat.recommended,
+  // The web's layers, as the README lays them out: shared code builds on no
+  // feature, and components reach data only through query, mutation and hook.
+  {
+    files: ["src/components/shared/**", "src/core/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [{ group: ["~/features/*"], message: "Shared code builds on no feature: move it to core, or pass it in." }] },
+      ],
+    },
+  },
+  {
+    files: ["src/features/**/*.component.tsx", "src/routes/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/*.service"],
+              message: "Components reach data through a query, mutation or hook, never a service.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 export default config;

@@ -1,0 +1,8 @@
+import { createFileRoute, redirect } from "@tanstack/react-router";
+
+/** Receipts are a type in the documents list now; an old link lands there, with what it asked for. */
+export const Route = createFileRoute("/receipts/")({
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: "/documents", search: { ...search, type: ["receipt"] }, replace: true });
+  },
+});

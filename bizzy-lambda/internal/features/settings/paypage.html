@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{.Title}}</title>
+<meta name="description" content="{{.Summary}}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{.SiteURL}}/">
+<meta property="og:site_name" content="{{with .Page.Business}}{{.}}{{else}}Payment details{{end}}">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{.Summary}}">
+<meta property="og:image" content="{{.SiteURL}}/preview.png?v={{.Version}}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{.PreviewAlt}}">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f5f5f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c0a09" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23da8a11' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cstyle%3E@media (prefers-color-scheme: dark) %7B svg %7B stroke: %23f1ba4b %7D %7D%3C/style%3E%3Cpath d='M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1'/%3E%3Cpath d='M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4'/%3E%3C/svg%3E">
+<style>
+:root {
+  {{- /* The app's honey for fills, and a deep honey brown for small text,
+     as the honey is too light to read on white. (Comments here are the
+     template's: html/template drops CSS and script ones, leaving blank
+     lines.) */}}
+  --bg: #f5f5f4; --card: #ffffff; --text: #1c1917; --muted: #736b66; --line: #e7e5e4;
+  --brand: #da8a11; --brand-text: #1c1917; --accent: #5d3917; --accent-soft: #fef0d4;
+  --done: #15803d; --failed: #b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0a09; --card: #1c1917; --text: #fafaf9; --muted: #a8a29e; --line: #292524;
+    --brand: #f1ba4b; --brand-text: #1c1917; --accent: #f1ba4b; --accent-soft: #3c2a0e;
+    --done: #4ade80; --failed: #f87171;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); border-top: 6px solid var(--brand);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 30rem; margin: 0 auto; padding: 2rem 1rem 3rem; display: grid; gap: 1rem; }
+header { padding: 0 .25rem .5rem; }
+.eyebrow { margin: 0; color: var(--accent); font-size: .8125rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+h1 { margin: .25rem 0 .5rem; font-size: 1.75rem; line-height: 1.2; letter-spacing: -.01em; }
+h2 { margin: 0; font-size: 1.0625rem; }
+p { margin: 0; }
+.muted { color: var(--muted); font-size: .9375rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 1rem; padding: 1.25rem; display: grid; gap: 1rem; }
+.qr { display: block; width: 100%; max-width: 17rem; height: auto; margin: 0 auto; border-radius: .75rem; background: #fff; padding: .5rem; image-rendering: pixelated; }
+.steps { margin: 0; padding-left: 1.25rem; display: grid; gap: .25rem; font-size: .9375rem; color: var(--muted); }
+.rows { margin: 0; display: grid; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .75rem 0; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; padding-top: 0; }
+.row:last-child { padding-bottom: 0; }
+dt { color: var(--muted); font-size: .8125rem; }
+dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.number { font-variant-numeric: tabular-nums; letter-spacing: .02em; font-size: 1.0625rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.chip { background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: .25rem .75rem; font-size: .875rem; font-weight: 600; }
+.button, button {
+  -webkit-appearance: none; appearance: none; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1rem;
+  border-radius: .75rem; border: 1px solid var(--line); background: var(--card); color: var(--text); flex: none;
+}
+.button.primary { background: var(--brand); color: var(--brand-text); border-color: var(--brand); width: 100%; }
+button.done { color: var(--done); border-color: var(--done); }
+button.failed { color: var(--failed); border-color: var(--failed); }
+footer { text-align: center; padding-top: .5rem; }
+.thanks { text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Payment details</p>
+    <h1>{{with .Page.Business}}{{.}}{{else}}How to pay{{end}}</h1>
+    <p class="muted">Thank you for coming in! 😊 Pay whichever way is easiest for you, then send me a screenshot of the payment.</p>
+  </header>
+{{- if .Page.QR}}
+  <section class="card" aria-labelledby="qr-title">
+    <div>
+      <h2 id="qr-title">DuitNow QR</h2>
+      <p class="muted">Scan with any bank app, Touch 'n Go eWallet, GrabPay, Boost or ShopeePay.</p>
+    </div>
+    <img class="qr" src="qr.png?v={{.Version}}" width="{{.QRWidth}}" height="{{.QRHeight}}" alt="DuitNow QR to pay {{.Page.Business}}">
+    <ol class="steps">
+      <li>Press and hold the QR to save it to your photos.</li>
+      <li>In your bank or e-wallet app, tap Scan, then choose the photo.</li>
+    </ol>
+    <a class="button" id="save-qr" href="qr.png?v={{.Version}}" download="duitnow-qr.png">Save QR</a>
+  </section>
+{{- end}}
+{{- with .Page.Bank}}
+  <section class="card" aria-labelledby="bank-title">
+    <div>
+      <h2 id="bank-title">Bank transfer</h2>
+      <p class="muted">Use the reference from my message, so I can match your payment.</p>
+    </div>
+    <dl class="rows">
+      <div class="row"><div><dt>Bank</dt><dd>{{.Name}}</dd></div></div>
+      <div class="row"><div><dt>Account name</dt><dd>{{.AccountName}}</dd></div><button type="button" data-copy="{{.AccountName}}" aria-label="Copy account name">Copy</button></div>
+      <div class="row"><div><dt>Account number</dt><dd class="number">{{.AccountNo}}</dd></div><button type="button" data-copy="{{$.AccountDigits}}" aria-label="Copy account number">Copy</button></div>
+    </dl>
+  </section>
+{{- end}}
+{{- if .Page.Phone}}
+  <section class="card" aria-labelledby="phone-title">
+    <h2 id="phone-title">Pay to my phone</h2>
+    <div class="chips">{{range .Page.Apps}}<span class="chip">{{.Label}}</span>{{end}}</div>
+    <dl class="rows">
+      <div class="row"><div><dt>Phone number</dt><dd class="number">{{.Page.Phone}}</dd></div><button type="button" data-copy="{{.PhoneDigits}}" aria-label="Copy phone number">Copy</button></div>
+    </dl>
+  </section>
+{{- end}}
+{{- if .Page.ProofTo}}
+  <footer>
+    <a class="button primary" href="https://wa.me/{{.Page.ProofTo}}?text=Hi%21%20Here%27s%20my%20payment%20%F0%9F%98%8A">Paid? Send me the screenshot</a>
+  </footer>
+{{- end}}
+  <p class="muted thanks">Thank you, and take care! 🙏</p>
+</main>
+<script>
+(function () {
+  {{- /* Copy: first a textarea selected and copied inside the tap, which
+     every browser allows; then the clipboard API, which turns a copy down
+     once the page has lost focus (after a download, say). A copy that
+     fails says so, and selects the value to copy by hand. */}}
+  function copyInTap(text) {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.contentEditable = "true";
+    area.style.cssText = "position:fixed;top:0;left:-9999px;font-size:16px";
+    document.body.appendChild(area);
+    var focused = document.activeElement, ok = false;
+    try {
+      area.focus();
+      area.select();
+      area.setSelectionRange(0, text.length);
+      ok = document.execCommand("copy");
+    } catch (e) {}
+    area.blur();
+    document.body.removeChild(area);
+    if (focused && focused.focus) focused.focus();
+    return ok;
+  }
+  function show(button, label, state, ms) {
+    clearTimeout(button.timer);
+    button.textContent = label;
+    button.className = state;
+    button.timer = setTimeout(function () { button.textContent = "Copy"; button.className = ""; }, ms);
+  }
+  function copied(button) { show(button, "Copied", "done", 1500); }
+  function failed(button) {
+    show(button, "Couldn't copy", "failed", 2000);
+    var value = button.parentNode.querySelector("dd"), range = document.createRange(), selection = window.getSelection();
+    range.selectNodeContents(value);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  {{- /* Save QR: on a phone, the share sheet (with Save Image), as
+     following the link would leave the page, or in WhatsApp's browser
+     show only the picture. The QR is fetched ahead, so the sheet opens
+     inside the tap; one that won't open falls back to the link. */}}
+  var qr = document.getElementById("save-qr"), qrFile = null;
+  if (qr && navigator.share && navigator.canShare && window.fetch && window.File && matchMedia("(pointer: coarse)").matches) {
+    fetch(qr.href).then(function (response) { return response.blob(); }).then(function (blob) {
+      var file = new File([blob], qr.getAttribute("download"), { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) qrFile = file;
+    }).catch(function () {});
+  }
+
+  document.addEventListener("click", function (event) {
+    if (qrFile && event.target.closest("#save-qr")) {
+      event.preventDefault();
+      navigator.share({ files: [qrFile] }).catch(function (e) {
+        if (e.name !== "AbortError") { qrFile = null; qr.click(); }
+      });
+      return;
+    }
+    var button = event.target.closest("[data-copy]");
+    if (!button) return;
+    var text = button.getAttribute("data-copy");
+    if (copyInTap(text)) return copied(button);
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return failed(button);
+    window.focus();
+    navigator.clipboard.writeText(text).then(function () { copied(button); }, function () { failed(button); });
+  });
+})();
+</script>
+</body>
+</html>
