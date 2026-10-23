@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { cn } from "cn";
-import { ChevronDownIcon, CircleUserIcon, LogOutIcon, MenuIcon, SettingsIcon } from "lucide-react";
+import { CalendarIcon, ChevronDownIcon, CircleUserIcon, LogOutIcon, MenuIcon, SettingsIcon } from "lucide-react";
+import { useState } from "react";
 import type { Module } from "~/core/navigation/navigation.types";
 import { MODULES } from "~/core/navigation/navigation.constant";
 import { moduleOf, pageOf } from "~/core/navigation/navigation.util";
@@ -17,6 +18,7 @@ import {
 import { Logo } from "~/components/shared/layout/logo/logo.component";
 import { AuthMutation } from "~/features/auth/auth.mutation";
 import { SyncButton } from "~/features/sync/components/sync-button/sync-button.component";
+import { CalendarGuideDialog } from "~/features/sync/components/calendar-guide-dialog/calendar-guide-dialog.component";
 
 // One line always: "Follow-ups" would otherwise break at its hyphen as the bar fills.
 const MODULE_LINK =
@@ -25,8 +27,8 @@ const MODULE_LINK =
 /**
  * The modules, inline from lg and in a menu behind the hamburger below it,
  * so the bar never scrolls sideways or wraps: inline they take about 56rem
- * with the logo and the icons, more than md has. Settings and Sign out are
- * in the account menu at every width, and the sync's words show from xl
+ * with the logo and the icons, more than md has. Settings, the calendar
+ * guide and Sign out are in the account menu at every width, and the sync's words show from xl
  * only, kept to a width, so a long one never pushes the bar. A module with several pages
  * opens a menu of them on click (never hover, so a touch screen works the
  * same); the page header then reads "Module › Page".
@@ -36,6 +38,7 @@ export function NavBar() {
   const signOut = AuthMutation.useSignOut();
   const current = moduleOf(pathname);
   const settingsActive = pathname.startsWith("/settings");
+  const [guideOpen, setGuideOpen] = useState(false);
 
   return (
     // --nav-height (app.css) is this bar's height: PageHeader sticks right below it.
@@ -98,12 +101,16 @@ export function NavBar() {
               >
                 <SettingsIcon /> Settings
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setGuideOpen(true)}>
+                <CalendarIcon /> Calendar guide
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => signOut.mutate()}>
                 <LogOutIcon /> Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <CalendarGuideDialog open={guideOpen} onClose={() => setGuideOpen(false)} />
         </div>
       </nav>
     </header>
