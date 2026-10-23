@@ -13,7 +13,7 @@ Back-office for a one-person physio practice: sessions, packages, invoices and r
 7. **Every rule is tested by use.** A property-based simulation drives every action, the calendar and the clock in random order, checking every invariant after every step.
 8. **Reads are the budget; Google is the wait.** The table is small and provisioned, and every consistent read costs a unit however small the item, so reads add up per call, not per byte. A request reads the versions item and what changed since; a response says what it changed, and the web reads again only what shows that; a page is one call. A call to Google takes hundreds of milliseconds: none is made twice in a request, and those that don't wait on each other run at once.
 
-Conventions: identifiers say "user", never "her". Until production holds data, a change to how items are stored is a reset, not a migration: delete `bizzy-lambda/SCHEMA.md`, regenerate it, deploy and **Settings → Reset** (development and staging only). After that, every such change is a [migration](#migrations).
+Conventions: identifiers say "user", never "her". Until production holds data, a change to how items are stored is a reset, not a migration: delete `bizzy-lambda/SCHEMA.md`, regenerate it, deploy (development by `pnpm dev:deploy`, staging by merging to `main`) and **Settings → Reset** in each. Production has no Reset, and connecting Google there syncs its calendar in: from then on, every such change is a [migration](#migrations).
 
 ## Tech stack
 
@@ -171,6 +171,8 @@ Staging deploys from `main` and production from `production`, by GitHub Actions 
 3. In the Google OAuth client, add the redirect URI `https://bizzy-<env>.auth.ap-southeast-1.amazoncognito.com/oauth2/idpresponse`.
 4. Push the branch (or run **Actions → Deploy**).
 5. Add `<SiteUrl>/google-callback` to the OAuth client's redirect URIs, `SiteUrl` being the `<project>-<env>-web` stack's output. Then open the site, sign in, and connect Google in Settings.
+
+**Status:** staging is live. Production has done 1–3; left: push a `production` branch from `main` (4), then 5.
 
 ## Commands
 
