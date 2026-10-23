@@ -5,6 +5,7 @@ import { ApiStack } from "../lib/api-stack";
 import { AuthStack } from "../lib/auth-stack";
 import { DataStack } from "../lib/data-stack";
 import { WebStack } from "../lib/web-stack";
+import { appUrls } from "../utils/app-urls.util";
 import type { Environment } from "../utils/environment.util";
 
 const env = { account: "123456789012", region: "ap-southeast-5" };
@@ -13,12 +14,19 @@ function synth(environment: Environment) {
   // Templates are all these tests read, so skip compiling the Go assets.
   const app = new cdk.App({ context: { "aws:cdk:bundling-stacks": [] } });
 
+  // As bin/bizzy-infra.ts wires them: the site first, then localhost.
+  const web = new WebStack(app, "web", { env, projectName: "bizzy", environment });
+  const urls = appUrls(web.siteOrigin, {
+    callbackUrls: ["http://localhost:4200/"],
+    logoutUrls: ["http://localhost:4200/"],
+  });
+
   const auth = new AuthStack(app, "auth", {
     env,
     projectName: "bizzy",
     environment,
-    callbackUrls: ["http://localhost:4200/"],
-    logoutUrls: ["http://localhost:4200/"],
+    callbackUrls: urls.callbackUrls,
+    logoutUrls: urls.logoutUrls,
     googleClientId: "client-id",
     googleClientSecret: "client-secret",
     allowedEmail: "owner@example.com",
@@ -28,7 +36,7 @@ function synth(environment: Environment) {
     env,
     projectName: "bizzy",
     environment,
-    allowedOrigins: ["http://localhost:4200"],
+    allowedOrigins: urls.origins,
   });
 
   const api = new ApiStack(app, "api", {
@@ -45,8 +53,6 @@ function synth(environment: Environment) {
     syncTimeZone: "Asia/Kuala_Lumpur",
   });
 
-  const web = new WebStack(app, "web", { env, projectName: "bizzy", environment });
-
   return {
     auth: Template.fromStack(auth),
     data: Template.fromStack(data),
@@ -55,8 +61,22 @@ function synth(environment: Environment) {
   };
 }
 
+/** The web stack's CloudFront URL as another stack imports it, then `path`. */
+function siteUrl(path: string) {
+  const parts = ["https://", { "Fn::ImportValue": Match.stringLikeRegexp("^web:") }];
+  return { "Fn::Join": ["", path ? [...parts, path] : parts] };
+}
+
 describe("auth", () => {
   const { auth } = synth("staging");
+
+  test("signs in and out at the hosted site first, then localhost", () => {
+    auth.hasResourceProperties("AWS::Cognito::UserPoolClient", {
+      CallbackURLs: [siteUrl("/"), "http://localhost:4200/"],
+      LogoutURLs: [siteUrl("/"), "http://localhost:4200/"],
+      DefaultRedirectURI: siteUrl("/"),
+    });
+  });
 
   test("disables self sign-up", () => {
     auth.hasResourceProperties("AWS::Cognito::UserPool", {
@@ -139,7 +159,7 @@ describe("files", () => {
         ],
       }),
       CorsConfiguration: {
-        CorsRules: [Match.objectLike({ AllowedOrigins: ["http://localhost:4200"] })],
+        CorsRules: [Match.objectLike({ AllowedOrigins: [siteUrl(""), "http://localhost:4200"] })],
       },
     });
     data.hasResourceProperties("AWS::S3::BucketPolicy", {

@@ -21,6 +21,8 @@
     "cdk:diff": "pnpm -F bizzy-infra cdk:diff",
     "cdk:deploy": "pnpm -F bizzy-infra cdk:deploy",
     "cdk:gc": "pnpm -F bizzy-infra cdk:gc",
+    "ci:diff": "pnpm -F bizzy-infra ci:diff",
+    "ci:deploy": "pnpm -F bizzy-infra ci:deploy",
     "dev:deploy": "pnpm cdk:deploy && pnpm lambda:migrate && pnpm web:env && pnpm cdk:gc"
   },
   "packageManager": "pnpm@10.33.0"

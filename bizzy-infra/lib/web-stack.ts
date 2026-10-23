@@ -11,6 +11,8 @@ interface WebStackProps extends cdk.StackProps {
 
 export class WebStack extends cdk.Stack {
   readonly hosting: WebHosting;
+  /** "https://d123.cloudfront.net", which sign-in and the file bucket's CORS take. */
+  readonly siteOrigin: string;
 
   constructor(scope: Construct, id: string, props: WebStackProps) {
     super(scope, id, props);
@@ -22,8 +24,10 @@ export class WebStack extends cdk.Stack {
       environment: environment,
     });
 
+    this.siteOrigin = `https://${this.hosting.distribution.distributionDomainName}`;
+
     new CfnOutput(this, "SiteUrl", {
-      value: `https://${this.hosting.distribution.distributionDomainName}`,
+      value: this.siteOrigin,
     });
 
     new CfnOutput(this, "DistributionId", {

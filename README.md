@@ -28,7 +28,7 @@ Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets identity-pool credentia
 ## Code layout
 
 ```
-bizzy-infra/    bin/bizzy-infra.ts → lib/{auth,data,api,web}-stack.ts, constructs in lib/common/
+bizzy-infra/    bin/bizzy-infra.ts → lib/{auth,data,api,web}-stack.ts, bin/bizzy-ci.ts → lib/ci-stack.ts, constructs in lib/common/
 bizzy-lambda/   cmd/{api,public,job-quarterly,migrate,copy}/main.go, internal/{app,features,migrations,platform,calendar,simulation,testutil}/
 bizzy-web/      src/main.tsx, src/routes/ (file routes), src/features/<feature>/
 scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs; migrate.mjs, copy.mjs: run cmd/migrate, cmd/copy
@@ -41,7 +41,9 @@ scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs; mig
 - **auth**: Cognito user pool (Google IdP) and identity pool, mapped to `ALLOWED_EMAIL`.
 - **data**: the DynamoDB table (5 generic LSIs, created up front) and the file bucket: `attachments/` and issued PDFs under `documents/`. Production versions it (35-day noncurrent expiry) and has Object Lock on. Also the payment page's site, in every environment: its own bucket (no versions; Settings rewrites it) behind CloudFront.
 - **api**: the `api`, `public` (share links: a Function URL that can only `GetItem` and read issued PDFs), `job-quarterly` (EventBridge) and `migrate` (run by deploys) Go Lambdas.
-- **web** (staging and production): S3 and CloudFront for the SPA. A deploy drops the previous build's files, and the bucket keeps no versions, so no old build is kept. Each deploy also deletes the Lambda builds no stack uses from the CDK assets bucket (`cdk gc`).
+- **web** (staging and production): S3 and CloudFront for the SPA, made first: its URL is the first of Cognito's callback and logout URLs and of the file bucket's CORS origins, before any from `CALLBACK_URLS`. A deploy drops the previous build's files, and the bucket keeps no versions, so no old build is kept. Each deploy also deletes the Lambda builds no stack uses from the CDK assets bucket (`cdk gc`).
+
+[bin/bizzy-ci.ts](bizzy-infra/bin/bizzy-ci.ts) is a separate app, `bizzy-ci`, deployed by hand (`pnpm ci:deploy`) so a deploy can't change what deploys may do. It holds `bizzy-{staging,production}-github`, the roles [deploy.yml](.github/workflows/deploy.yml) assumes through the account's GitHub OIDC provider (made by hand and shared with other projects, so only looked up). Each is assumable only from its GitHub environment, and may do only what the workflow does outside CloudFormation, on its own environment (the migrate Lambda, reading the table, the site upload), plus `cdk gc`'s reads. `cdk deploy` goes through the bootstrap roles, which serve the whole account, so this scoping prevents mistakes; the GitHub environments' branch rules are what keep `main` out of production.
 
 ### bizzy-lambda
 
@@ -160,7 +162,15 @@ Requires Node 24, pnpm 10, Go (see `go.mod`) and the AWS CLI. The local frontend
 3. `pnpm install && pnpm aws:login && pnpm dev:deploy`
 4. `pnpm web:dev`, open http://localhost:4200, and connect a **test** Google account in Settings.
 
-Staging (`main`) and production (`production`) deploy from GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)). They need `cdk bootstrap`, an OIDC role (which also reads the table, calls `DescribeTable` and `UpdateTable` on it for the dry run's capacity, and invokes `migrate`), and GitHub environments with the variables and secrets that workflow lists. None exist yet.
+### Staging and production
+
+Staging deploys from `main` and production from `production`, by GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)). The account is bootstrapped and has GitHub's OIDC provider. For each environment:
+
+1. `pnpm ci:deploy` (once, for both; again only when the workflow needs a new permission), and copy its `<env>RoleArn` output.
+2. In GitHub, **Settings → Environments → New environment** `<env>`, with deployment branches limited to its branch (`main` or `production`; production may also require you as reviewer). Variables: `ENVIRONMENT` (`staging`/`production`), `PROJECT_NAME` (`bizzy`), `AWS_ROLE_ARN`, `AWS_ACCOUNT_ID`, `AWS_REGION` (`ap-southeast-1`), `ALLOWED_EMAIL`, `GOOGLE_CLIENT_ID`, `SYNC_TIME_ZONE` (`Asia/Kuala_Lumpur`), and optionally `CALLBACK_URLS` and `LOGOUT_URLS` (see `.env.example`). Secret: `GOOGLE_CLIENT_SECRET`.
+3. In the Google OAuth client, add the redirect URI `https://bizzy-<env>.auth.ap-southeast-1.amazoncognito.com/oauth2/idpresponse`.
+4. Push the branch (or run **Actions → Deploy**).
+5. Add `<SiteUrl>/google-callback` to the OAuth client's redirect URIs, `SiteUrl` being the `<project>-<env>-web` stack's output. Then open the site, sign in, and connect Google in Settings.
 
 ## Commands
 
@@ -173,6 +183,7 @@ pnpm web:dev             # http://localhost:4200
 pnpm web:env             # rewrite the web env only
 pnpm cdk:diff
 pnpm cdk:gc              # delete old Lambda builds no stack uses from the CDK assets bucket (dev:deploy and CI deploys run it too)
+pnpm ci:diff | ci:deploy # the GitHub deploy roles (bizzy-ci), by hand only
 
 pnpm web:test | web:lint | web:typecheck
 pnpm infra:test | infra:lint | infra:typecheck

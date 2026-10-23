@@ -18,6 +18,7 @@ coverage
 
 # CDK
 bizzy-infra/cdk.out
+bizzy-infra/cdk.out.ci
 bizzy-infra/.cdk.staging
 
 # Go
