@@ -29,9 +29,9 @@ Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets identity-pool credentia
 
 ```
 bizzy-infra/    bin/bizzy-infra.ts → lib/{auth,data,api,web}-stack.ts, constructs in lib/common/
-bizzy-lambda/   cmd/{api,public,job-quarterly,migrate}/main.go, internal/{app,features,migrations,platform,calendar,simulation,testutil}/
+bizzy-lambda/   cmd/{api,public,job-quarterly,migrate,copy}/main.go, internal/{app,features,migrations,platform,calendar,simulation,testutil}/
 bizzy-web/      src/main.tsx, src/routes/ (file routes), src/features/<feature>/
-scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs
+scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs; migrate.mjs, copy.mjs: run cmd/migrate, cmd/copy
 ```
 
 ### bizzy-infra
@@ -123,6 +123,7 @@ The table's SQL-style migrations. The code serves only a table at its own versio
 - **Every change to a stored type or a `Meta`** needs one (once production holds data; see Conventions). `TestSchema` refuses to `-update` SCHEMA.md without one. One with no `Up` is enough when no item needs changing by hand: every run rewrites every item as the code writes it.
 - **Writing one**: `internal/migrations/NNN_<what>.go`, appended to `All` (never reorder or change a deployed one). It works on stored JSON (`migrate.EachItem`), never a feature's types, imports only `platform`, changes nothing when run twice, and has `testdata/NNN/{before,after}.json`.
 - **Deploying**: CI dry-runs the migrations on an in-memory copy, deploys, then invokes `cmd/migrate`: back up (production; backups older than 35 days are deleted, point-in-time recovery covers them), raise the fence (requests get `unavailable`), migrate, decode every item strictly, rewrite them, check every invariant, lower the fence. A failure leaves the fence up until a fixed migration runs.
+- **Capacity**: the table's 5 reads and writes a second would take hours over every item once it holds a few years of data. So every run over every item (a deploy's review and dry run, a migration, `data:copy`) first raises the capacity to what the table's size needs to finish in about 5 minutes, then sets it back ([dynamo/capacity.go](bizzy-lambda/internal/platform/dynamo/capacity.go)). Capacity is billed by the hour it is set, used or not, so a raise costs cents, and a small table is never raised.
 
 ### bizzy-web
 
@@ -159,7 +160,7 @@ Requires Node 24, pnpm 10, Go (see `go.mod`) and the AWS CLI. The local frontend
 3. `pnpm install && pnpm aws:login && pnpm dev:deploy`
 4. `pnpm web:dev`, open http://localhost:4200, and connect a **test** Google account in Settings.
 
-Staging (`main`) and production (`production`) deploy from GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)). They need `cdk bootstrap`, an OIDC role (which also reads the table and invokes `migrate`), and GitHub environments with the variables and secrets that workflow lists. None exist yet.
+Staging (`main`) and production (`production`) deploy from GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)). They need `cdk bootstrap`, an OIDC role (which also reads the table, calls `DescribeTable` and `UpdateTable` on it for the dry run's capacity, and invokes `migrate`), and GitHub environments with the variables and secrets that workflow lists. None exist yet.
 
 ## Commands
 
@@ -167,6 +168,7 @@ Staging (`main`) and production (`production`) deploy from GitHub Actions ([depl
 pnpm dev:deploy          # deploy development stacks, migrate, write bizzy-web/.env.development
 pnpm lambda:deploy       # hotswap development Lambdas after Go changes, then migrate
 pnpm lambda:migrate:dry  # what the next deploy's migrations would do (writes nothing)
+pnpm data:copy production staging   # replace staging's (or development's) data with production's; see below
 pnpm web:dev             # http://localhost:4200
 pnpm web:env             # rewrite the web env only
 pnpm cdk:diff
@@ -185,6 +187,18 @@ go test ./internal/features/documents -run TestRender -update   # rewrite the sa
 go test ./internal/features/settings -run TestPayPageFiles -update   # the same for the payment page and its images (testdata/paypage)
 TABLE_NAME=<scratch table> go test ./internal/platform/dynamo   # the table contract against real DynamoDB; it wipes the table
 ```
+
+## Copying data between environments
+
+`pnpm data:copy <from> <to>` ([cmd/copy](bizzy-lambda/cmd/copy/main.go)) replaces development's or staging's data with another environment's, to try the app (or the next migration) on real data. Run it from the code deployed to `<to>`, as it migrates the copy with this checkout's migrations. It:
+
+- raises both tables' capacity as far as the source's size needs, then sets it back;
+- fences `<to>`, wipes it except its Google connection, and copies every item except the sync's state, event links and conflicts;
+- copies issued PDFs as they are, and puts a small placeholder in for every attachment (the list still shows the original's size);
+- migrates, then publishes `<to>`'s payment page from the copied settings;
+- empties `<to>`'s chosen calendar and syncs, so it shows every copied session and follow-up. It refuses when that calendar is `<from>`'s. With none chosen, choose an empty one in Settings.
+
+Clients' contacts stay linked to `<from>`'s Google account: in a test account the sync marks them missing, and keeps the copied details.
 
 ## If share links are flooded
 

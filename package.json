@@ -14,6 +14,7 @@
     "lambda:deploy": "pnpm -F bizzy-infra cdk:hotswap && pnpm lambda:migrate",
     "lambda:migrate": "node scripts/migrate.mjs",
     "lambda:migrate:dry": "node scripts/migrate.mjs --dry-run",
+    "data:copy": "node scripts/copy.mjs",
     "infra:test": "pnpm -F bizzy-infra test",
     "infra:lint": "pnpm -F bizzy-infra lint",
     "infra:typecheck": "pnpm -F bizzy-infra typecheck",

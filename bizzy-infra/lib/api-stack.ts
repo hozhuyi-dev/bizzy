@@ -223,6 +223,15 @@ export class ApiStack extends cdk.Stack {
     migrate.function.addToRolePolicy(
       new PolicyStatement({ actions: ["dynamodb:CreateBackup"], resources: [table.tableArn] }),
     );
+    // A run over every item raises the table's capacity for its minutes,
+    // once the table is big enough to need it (see bizzy-lambda's
+    // platform/dynamo capacity.go), and sets it back.
+    migrate.function.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["dynamodb:DescribeTable", "dynamodb:UpdateTable"],
+        resources: [table.tableArn],
+      }),
+    );
     // Backups older than point-in-time recovery's window are deleted after
     // each new one. ListBackups can't be scoped to a table.
     migrate.function.addToRolePolicy(

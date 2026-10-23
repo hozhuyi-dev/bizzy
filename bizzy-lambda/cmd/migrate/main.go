@@ -58,12 +58,12 @@ func main() {
 	}
 
 	if os.Getenv("AWS_LAMBDA_RUNTIME_API") != "" {
-		lambda.Start(func(ctx context.Context, in request) (migrate.Report, error) { return run(ctx, o, in.DryRun) })
+		lambda.Start(func(ctx context.Context, in request) (migrate.Report, error) { return run(ctx, tb, o, in.DryRun) })
 		return
 	}
 	dryRun := flag.Bool("dry-run", false, "migrate a copy of the table in memory, writing nothing")
 	flag.Parse()
-	rep, err := run(ctx, o, *dryRun)
+	rep, err := run(ctx, tb, o, *dryRun)
 	out, _ := json.MarshalIndent(rep, "", "  ")
 	log.Printf("%s", out)
 	if err != nil {
@@ -71,9 +71,43 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, o migrate.Options, dryRun bool) (migrate.Report, error) {
+func run(ctx context.Context, tb *dynamo.Table, o migrate.Options, dryRun bool) (migrate.Report, error) {
+	// Every run reads every item, at least: the table's small capacity is
+	// raised for it once the table is big enough to need it.
+	whole, err := passes(ctx, tb, len(o.Migrations), dryRun)
+	if err != nil {
+		return migrate.Report{}, err
+	}
+	need, err := tb.Need(ctx, whole)
+	if err != nil {
+		return migrate.Report{}, err
+	}
+	restore, err := tb.Boost(ctx, need)
+	if err != nil {
+		return migrate.Report{}, err
+	}
+	defer func() {
+		if err := restore(context.WithoutCancel(ctx)); err != nil {
+			log.Printf("%v: set it back by hand", err)
+		}
+	}()
 	if dryRun {
 		return migrate.DryRun(ctx, o)
 	}
 	return migrate.Run(ctx, o)
+}
+
+// passes is how often a run reads and writes every item: a dry run reads
+// them once into memory; a run with nothing pending reviews them; one with
+// migrations pending also has them read and write the items, then rewrites
+// them and checks every invariant.
+func passes(ctx context.Context, tb *dynamo.Table, migrations int, dryRun bool) (dynamo.Whole, error) {
+	if dryRun {
+		return dynamo.Whole{Reads: 1}, nil
+	}
+	s, err := txn.ReadSchema(ctx, tb)
+	if err != nil || (s.Version == migrations && !s.Migrating) {
+		return dynamo.Whole{Reads: 1}, err
+	}
+	return dynamo.Whole{Reads: 3, Writes: 2}, nil
 }
