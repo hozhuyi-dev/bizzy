@@ -1,5 +1,6 @@
+import { vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { holdingChanges, refreshChanged } from "./query.util";
+import { allOf, holdingChanges, refreshChanged } from "./query.util";
 import { AppKeys, AuthKeys, ExpenseKeys, SessionKeys, TodoKeys } from "~/core/constants/query-keys.constant";
 
 /** A cache holding one of each of these, all fresh. */
@@ -52,5 +53,37 @@ describe("holdingChanges", () => {
     release();
     await Promise.resolve();
     expect(stale()).toEqual([ExpenseKeys.detail("1"), AppKeys.status()]);
+  });
+});
+
+describe("allOf", () => {
+  const query = (state: { isPending?: boolean; error?: Error }) => ({
+    isPending: state.isPending ?? false,
+    error: state.error ?? null,
+    refetch: vi.fn(),
+  });
+
+  test("waits until every query has data", () => {
+    expect(allOf(query({}), query({ isPending: true })).isPending).toBe(true);
+    expect(allOf(query({}), query({})).isPending).toBe(false);
+  });
+
+  test("fails once any has, even while another loads", () => {
+    const error = new Error("no");
+    const both = allOf(query({ isPending: true }), query({ error }));
+    expect(both).toMatchObject({ isPending: false, error });
+  });
+
+  test("stands in while any shows another read's data", () => {
+    expect(allOf(query({}), { ...query({}), isPlaceholderData: true }).isPlaceholderData).toBe(true);
+    expect(allOf(query({}), query({})).isPlaceholderData).toBe(false);
+  });
+
+  test("tries again only what failed", async () => {
+    const ok = query({});
+    const failed = query({ error: new Error("no") });
+    await allOf(ok, failed).refetch();
+    expect(failed.refetch).toHaveBeenCalledOnce();
+    expect(ok.refetch).not.toHaveBeenCalled();
   });
 });

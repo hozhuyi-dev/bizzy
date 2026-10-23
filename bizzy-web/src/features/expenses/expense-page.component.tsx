@@ -10,6 +10,7 @@ import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
 import { expensePlace, expensesUrl, itemSuggestions, vendorSuggestions } from "./expenses.util";
 import type { ReactNode } from "react";
+import type { LinkOptions } from "@tanstack/react-router";
 import type { CatalogueView, ExpenseView } from "./expenses.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
 import type { ListFilter } from "~/core/list/filter.types";
@@ -35,7 +36,9 @@ import { moneyError, requiredError } from "~/core/utils/form.util";
 import { todayISO } from "~/core/utils/date.util";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { allOf } from "~/core/utils/query.util";
+import { isApiError } from "~/core/utils/api-error.util";
 
 const FORM_ID = "expense-form";
 
@@ -74,7 +77,11 @@ export function ExpensePage(props: ExpensePageProps) {
             <ListPager
               list={EXPENSES_LIST}
               filter={props.filter}
-              current={{ id: props.id, place: expense.data && expensePlace(expense.data) }}
+              current={{
+                id: props.id,
+                place: expense.data && expensePlace(expense.data),
+                gone: isApiError(expense.error, "not_found"),
+              }}
               itemLink={(next) => expenseLink(next, expensesUrl.toSearch(props.filter))}
               panel={{
                 onApply: props.onFilterChange,
@@ -85,23 +92,27 @@ export function ExpensePage(props: ExpensePageProps) {
         }
       : { parent: parentOf(undefined) };
 
-  const pending = catalogue.isPending || (props.mode === "edit" && expense.isPending);
-  const error = catalogue.error ?? (props.mode === "edit" ? expense.error : null);
-  if (pending || error || !catalogue.data) {
+  const current = props.mode === "edit" ? expense.data : undefined;
+  if (catalogue.data && (props.mode === "new" || current)) {
     return (
-      <>
-        <PageHeader {...header} title={error ? "Not available" : "…"} />
-        {error ? (
-          <ErrorMessage>{error.message}</ErrorMessage>
-        ) : (
-          <LoadingState />
-        )}
-      </>
+      <ExpenseEditor key={current?.id ?? "new"} expense={current ?? undefined} catalogue={catalogue.data} header={header} />
     );
   }
-  const current = props.mode === "edit" ? expense.data : undefined;
+  const page = props.mode === "edit" ? allOf(catalogue, expense) : catalogue;
   return (
-    <ExpenseEditor key={current?.id ?? "new"} expense={current ?? undefined} catalogue={catalogue.data} header={header} />
+    <>
+      <PageHeader {...header} title={page.error ? "Not available" : "…"} />
+      {page.error ? (
+        <ErrorState
+          error={page.error}
+          retry={page.refetch}
+          size="page"
+          back={{ label: `Back to ${header.parent.label}`, link: header.parent as LinkOptions }}
+        />
+      ) : (
+        <LoadingState shape="page" />
+      )}
+    </>
   );
 }
 

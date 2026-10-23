@@ -11,7 +11,8 @@ import { totalsByCategory } from "~/features/expenses/expenses.util";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { useQuip } from "~/components/shared/feedback/quip/quip.hook";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { allOf } from "~/core/utils/query.util";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
 import {
@@ -57,6 +58,9 @@ interface InsightsPageProps {
  */
 export function InsightsPage({ year, onYearChange }: InsightsPageProps) {
   const insights = InsightsQuery.useYear(year);
+  // Spending is named by the categories: it opens with them.
+  const catalogue = ExpensesQuery.useCatalogue();
+  const page = allOf(insights, catalogue);
   const years = insights.data?.years ?? [year];
 
   return (
@@ -83,14 +87,14 @@ export function InsightsPage({ year, onYearChange }: InsightsPageProps) {
         }
       />
 
-      {insights.isPending ? (
-        <LoadingState />
-      ) : insights.error ? (
-        <ErrorMessage>{insights.error.message}</ErrorMessage>
-      ) : (
+      {insights.data && catalogue.data ? (
         <div className={cn("transition-opacity", insights.isPlaceholderData && "opacity-60")}>
           <Insights view={insights.data} />
         </div>
+      ) : page.error ? (
+        <ErrorState error={page.error} retry={page.refetch} size="page" />
+      ) : (
+        <LoadingState shape="page" />
       )}
     </>
   );

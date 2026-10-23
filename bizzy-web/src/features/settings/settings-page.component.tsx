@@ -17,7 +17,6 @@ import { FieldGroup } from "~/components/ui/field";
 import { Button } from "~/components/ui/button";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { emailError, placeholdersError, wholeNumberError } from "~/core/utils/form.util";
-import { queryMatch } from "~/core/utils/query.util";
 import {
   DEFAULT_DOCUMENT_MESSAGE,
   DEFAULT_PAYMENT_MESSAGE,
@@ -29,26 +28,22 @@ import { ComputerWhatsAppSettings } from "~/features/whatsapp/components/compute
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 
 export function SettingsPage() {
   const settings = SettingsQuery.useGet();
 
-  return queryMatch(settings, {
-    pending: () => (
-      <>
-        <PageHeader title="Settings" />
-        <LoadingState />
-      </>
-    ),
-    error: (error) => (
-      <>
-        <PageHeader title="Settings" />
-        <ErrorMessage>{error.message}</ErrorMessage>
-      </>
-    ),
-    success: (data) => <SettingsForm saved={data} />,
-  });
+  if (settings.data) return <SettingsForm saved={settings.data} />;
+  return (
+    <>
+      <PageHeader title="Settings" />
+      {settings.error ? (
+        <ErrorState error={settings.error} retry={settings.refetch} size="page" />
+      ) : (
+        <LoadingState shape="page" />
+      )}
+    </>
+  );
 }
 
 const FORM_ID = "settings-form";

@@ -12,11 +12,10 @@ import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.compon
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { allOf } from "~/core/utils/query.util";
 
 interface ExpensesPageProps {
   filter: ListFilter;
@@ -58,12 +57,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
         toolbar={<FilterBar label="Search expenses" value={filter} onChange={onFilterChange} facets={facets} dates />}
       />
 
-      {expenses.isPending ? (
-        <LoadingState />
-      ) : expenses.error ? (
-        <ErrorMessage>{expenses.error.message}</ErrorMessage>
-      ) : (
-        <div className={cn("flex flex-col gap-2 transition-opacity", expenses.isPlaceholderData && "opacity-60")}>
+      <div className={cn("flex flex-col gap-2 transition-opacity", expenses.isPlaceholderData && "opacity-60")}>
           {totals && totals.count > 0 && (
             <p className="text-sm text-muted-foreground">
               {totals.count} {totals.count === 1 ? "expense" : "expenses"}
@@ -73,6 +67,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
           )}
           <DataTable
             table={table}
+            source={allOf(expenses, catalogue)}
             rowLink={(expense) => expenseLink(expense.id, search)}
             empty={
               isNarrowed(filter) || expenses.hasNextPage ? (
@@ -87,7 +82,6 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
           />
           <LoadMore pages={expenses} found={data.length > 0} />
         </div>
-      )}
     </>
   );
 }

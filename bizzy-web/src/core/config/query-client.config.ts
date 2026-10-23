@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { onChanged } from "~/core/lambda/lambda.client";
+import { ApiError, onChanged } from "~/core/lambda/lambda.client";
 import { holdingChanges } from "~/core/utils/query.util";
 
 /**
@@ -14,9 +14,17 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60_000,
       refetchOnWindowFocus: false,
+      // A read is tried again only when it may work a moment later: what
+      // the API answered (gone, invalid) shows at once.
+      retry: (failures, error) => failures < 2 && mayPassLater(error),
     },
   },
 });
+
+/** An error that trying again shortly may clear: the API out of reach, busy, crashed or migrating. */
+export function mayPassLater(error: unknown): boolean {
+  return !(error instanceof ApiError) || ["unreachable", "busy", "internal", "unavailable", "conflict"].includes(error.code);
+}
 
 /** What calls change, read again now, or once a held run of calls ends (see holdingChanges). */
 export const changes = holdingChanges(queryClient);

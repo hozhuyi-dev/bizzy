@@ -2,6 +2,35 @@ import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { AuthKeys, CHANGED_KEYS } from "~/core/constants/query-keys.constant";
 
+/**
+ * What a part of a page waits on before it shows: its query, or the
+ * several it reads together (see allOf).
+ */
+export interface Loadable {
+  isPending: boolean;
+  error: Error | null;
+  /** Shows another read's data (the filter before) while its own comes. */
+  isPlaceholderData?: boolean | undefined;
+  /** Reads again what failed. */
+  refetch: () => unknown;
+}
+
+/**
+ * Several queries as one, for a part that shows what they say together
+ * (sessions with their clients' names): pending until every one has data,
+ * so nothing fills in after it shows; failed once any has, and trying
+ * again reads again only what failed.
+ */
+export function allOf(...queries: ReadonlyArray<Loadable>): Loadable {
+  const failed = queries.filter((query) => query.error);
+  return {
+    isPending: failed.length === 0 && queries.some((query) => query.isPending),
+    error: failed[0]?.error ?? null,
+    isPlaceholderData: queries.some((query) => query.isPlaceholderData === true),
+    refetch: () => Promise.all(failed.map((query) => query.refetch())),
+  };
+}
+
 interface QueryState<TData, TError extends Error = Error> {
   isPending: boolean;
   error: TError | null;

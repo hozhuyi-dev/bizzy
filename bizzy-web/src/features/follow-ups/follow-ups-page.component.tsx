@@ -12,10 +12,8 @@ import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.compon
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { isNarrowed, pageItems } from "~/core/list/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface FollowUpsPageProps {
   view: FollowUpList;
@@ -65,14 +63,10 @@ export function FollowUpsPage({ view, filter, onFilterChange, open, onOpenChange
         toolbar={<FilterBar label="Search follow-ups" value={filter} onChange={onFilterChange} facets={facets} dates />}
       />
 
-      {list.isPending ? (
-        <LoadingState />
-      ) : list.error ? (
-        <ErrorMessage>{list.error.message}</ErrorMessage>
-      ) : (
-        <div className={cn("transition-opacity", list.isPlaceholderData && "opacity-60")}>
+      <div className={cn("transition-opacity", list.isPlaceholderData && "opacity-60")}>
           <FollowUpsTable
             followUps={items}
+            source={list}
             onEdit={edit}
             empty={
               isNarrowed(filter) || filter.when || list.hasNextPage ? (
@@ -88,7 +82,6 @@ export function FollowUpsPage({ view, filter, onFilterChange, open, onOpenChange
           />
           <LoadMore pages={list} found={items.length > 0} />
         </div>
-      )}
 
       <FollowUpDialog target={target} onClose={close} />
     </>

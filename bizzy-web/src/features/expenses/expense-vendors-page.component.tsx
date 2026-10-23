@@ -10,7 +10,6 @@ import { DataTable } from "~/components/shared/list/data-table/data-table.compon
 import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { SearchInput } from "~/components/shared/list/search-input/search-input.component";
@@ -18,7 +17,6 @@ import { Badge } from "~/components/ui/badge";
 import { formatDate } from "~/core/utils/date.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 const NO_VENDORS: Array<Vendor> = [];
 
@@ -101,13 +99,9 @@ export function ExpenseVendorsPage() {
   return (
     <>
       <PageHeader title="Shops" toolbar={<SearchInput label="Search shops" value={search} onChange={setSearch} />} />
-      {catalogue.isPending ? (
-        <LoadingState />
-      ) : catalogue.error ? (
-        <ErrorMessage>{catalogue.error.message}</ErrorMessage>
-      ) : (
-        <DataTable
+      <DataTable
           table={table}
+          source={catalogue}
           query={search}
           empty={<EmptyState quips={QUIPS.expenses}>No shops yet. They're added as you record expenses.</EmptyState>}
           renderCard={(row) => (
@@ -123,7 +117,6 @@ export function ExpenseVendorsPage() {
             />
           )}
         />
-      )}
     </>
   );
 }

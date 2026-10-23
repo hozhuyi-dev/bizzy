@@ -9,7 +9,7 @@ import { isApiError } from "~/core/utils/api-error.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 
 interface ContactDetailsDialogProps {
   /** The contact to edit; null closes the dialog. */
@@ -48,7 +48,7 @@ function ContactDetailsEditor({
       {queryMatch(detail, {
         pending: () => <LoadingState />,
         error: (error) => (
-          <ErrorMessage>{error.message}</ErrorMessage>
+          <ErrorState error={error} retry={detail.refetch} />
         ),
         success: (contact) => (
           <ContactDetailsForm

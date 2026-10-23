@@ -28,6 +28,7 @@ import { RecordPaymentDialog } from "./components/record-payment-dialog/record-p
 import { CLIENTS_LIST } from "./clients.list";
 import { clientsListLink, clientsListSearch, contactProblem } from "./clients.util";
 import type { ReactNode } from "react";
+import type { LinkOptions } from "@tanstack/react-router";
 import type { ClientFormValues } from "./clients.form";
 import type { ChosenContact, ClientView } from "./clients.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
@@ -54,7 +55,9 @@ import { formatDate } from "~/core/utils/date.util";
 import { fieldErrors, moneyError, requiredError } from "~/core/utils/form.util";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { NO_FILTER } from "~/core/list/filter.util";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { NotFoundPage } from "~/components/shared/feedback/not-found-page/not-found-page.component";
+import { allOf } from "~/core/utils/query.util";
 
 const FORM_ID = "client-form";
 
@@ -91,6 +94,8 @@ export type ClientPageProps =
  */
 export function ClientPage(props: ClientPageProps) {
   const clients = ClientsQuery.useList();
+  // What they owe is in the header: it opens with it.
+  const activity = ActivityQuery.useList();
 
   if (props.mode === "new") {
     return (
@@ -112,25 +117,29 @@ export function ClientPage(props: ClientPageProps) {
     ),
   };
 
-  if (clients.isPending) {
-    return (
-      <>
-        <PageHeader {...header} title="…" />
-        <LoadingState />
-      </>
-    );
-  }
-  const client = clients.data?.find((c) => c.id === props.id);
-  if (!client) {
+  const back = { label: "Back to Clients", link: header.parent as LinkOptions };
+  if (clients.data && activity.data) {
+    const client = clients.data.find((c) => c.id === props.id);
+    // Keyed so a different client starts the form afresh.
+    if (client) return <ClientEditor key={client.id} client={client} settle={props.settle} header={header} />;
     return (
       <>
         <PageHeader {...header} title="Not available" />
-        <ErrorMessage>{clients.error?.message ?? "This client doesn't exist, or was removed."}</ErrorMessage>
+        <NotFoundPage message="This client was deleted." back={back} />
       </>
     );
   }
-  // Keyed so a different client starts the form afresh.
-  return <ClientEditor key={client.id} client={client} settle={props.settle} header={header} />;
+  const page = allOf(clients, activity);
+  return (
+    <>
+      <PageHeader {...header} title={page.error ? "Not available" : "…"} />
+      {page.error ? (
+        <ErrorState error={page.error} retry={page.refetch} size="page" back={back} />
+      ) : (
+        <LoadingState shape="page" />
+      )}
+    </>
+  );
 }
 
 /** The header's way back and, for a client, its pager: the same while they load. */

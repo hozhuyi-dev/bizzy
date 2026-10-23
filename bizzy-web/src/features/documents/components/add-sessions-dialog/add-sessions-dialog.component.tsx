@@ -9,6 +9,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 import { pageItems } from "~/core/list/filter.util";
 import { formatSessionTime } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
@@ -55,7 +56,9 @@ function AddSessions({ doc, onClose }: Omit<AddSessionsDialogProps, "open">) {
         <DialogTitle>Add sessions</DialogTitle>
         <DialogDescription>Put more of {doc.recipientName}'s sessions on this invoice, from the drafts they are on.</DialogDescription>
       </DialogHeader>
-      {found.isPending ? (
+      {found.error && others.length === 0 ? (
+        <ErrorState error={found.error} retry={found.refetch} />
+      ) : found.isPending ? (
         <LoadingState />
       ) : others.length === 0 ? (
         <p className="text-sm text-muted-foreground">No other session of theirs is on a draft invoice.</p>

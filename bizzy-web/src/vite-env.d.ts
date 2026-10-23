@@ -12,6 +12,11 @@ interface ImportMetaEnv {
   readonly VITE_AMPLIFY_USER_POOL_CLIENT_ID: string;
   readonly VITE_AMPLIFY_IDENTITY_POOL_ID: string;
   readonly VITE_AMPLIFY_OAUTH_DOMAIN: string;
+  /** Development only: actions to slow down ("*" for all), and by how much; see rehearse in lambda.client. */
+  readonly VITE_SLOW_ACTIONS?: string;
+  readonly VITE_SLOW_MS?: string;
+  /** Development only: actions to fail, to see their error state. */
+  readonly VITE_FAIL_ACTIONS?: string;
 }
 
 interface ImportMeta {

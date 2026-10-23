@@ -22,6 +22,7 @@ import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 
 /**
  * The Google account bizzy acts as: sessions come from one of its
@@ -34,7 +35,7 @@ export function GoogleConnectionSettings() {
   return queryMatch(status, {
     pending: () => <LoadingState />,
     error: (error) => (
-      <ErrorMessage>{error.message}</ErrorMessage>
+      <ErrorState error={error} retry={status.refetch} />
     ),
     success: (connection) =>
       connection ? (

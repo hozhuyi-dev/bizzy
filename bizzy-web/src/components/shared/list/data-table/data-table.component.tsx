@@ -7,8 +7,12 @@ import type { LinkOptions } from "@tanstack/react-router";
 import type { ReactTable, Row, RowData } from "@tanstack/react-table";
 import type { DataTableFeatures } from "./data-table.config";
 import type { DataTableColumnMeta } from "./data-table.types";
+import type { Loadable } from "~/core/utils/query.util";
 import { useOpenRow } from "~/core/list/open-row.hook";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { ProgressStripe } from "~/components/shared/feedback/progress-stripe/progress-stripe.component";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -18,6 +22,14 @@ interface DataTableProps<TData extends RowData> {
   renderCard: (row: Row<DataTableFeatures, TData>) => ReactNode;
   /** Shown in place of the rows; usually an EmptyState. */
   empty: ReactNode;
+  /**
+   * What the rows are read from (its query, or allOf what they show):
+   * while it loads, the bee and a quip stand in one row; if it fails, it
+   * says so in their place. The header stays put either way. With rows
+   * already shown (cached, or the filter before), a stripe slides along
+   * the table's top instead, so it never grows a row only to lose it.
+   */
+  source?: Loadable | undefined;
   /** Words to find rows by, across every column; see core/list/text-search. */
   query?: string | undefined;
   /** The row's page: a click anywhere on the row opens it (its card has its own `open`). */
@@ -44,14 +56,21 @@ export function DataTable<TData extends RowData>({
   query = "",
   rowLink,
   onRowOpen,
+  source,
 }: DataTableProps<TData>) {
   const container = useRef<HTMLDivElement>(null);
   const tableElement = useRef<HTMLTableElement>(null);
   const tooWide = useTooWide(container, tableElement);
   const allRows = table.getRowModel().rows;
   const rows = shownRows(table, query);
+  const shown = allRows.length > 0;
+  const loading = source?.isPending === true && !shown;
+  const refreshing = shown && (source?.isPending === true || source?.isPlaceholderData === true);
+  // Once rows have come, a failed read of more (the next page) leaves them shown.
+  const failed = !loading && allRows.length === 0 ? source?.error : undefined;
   const emptyState =
     allRows.length > 0 ? <EmptyState quips={QUIPS.search}>No matches for “{query.trim()}”.</EmptyState> : emptyContent;
+  const columnCount = table.getAllLeafColumns().length;
 
   const openRow = useOpenRow();
 
@@ -60,7 +79,7 @@ export function DataTable<TData extends RowData>({
       <div
         ref={container}
         className={cn(
-          "hidden rounded-xl bg-card ring-1 ring-foreground/10 md:block",
+          "relative hidden rounded-xl bg-card ring-1 ring-foreground/10 md:block",
           tooWide ? "overflow-x-auto" : "overflow-clip",
         )}
       >
@@ -98,11 +117,26 @@ export function DataTable<TData extends RowData>({
           <TableBody>
             {/* An empty table keeps its header, so the page doesn't jump. */}
             {/* One row high, each line cut short: the first row to come takes its place without a shift. */}
-            {rows.length === 0 && (
+            {/* One row, as when empty: the rows to come grow the table rather than shrink it. */}
+            {loading && (
+              <TableRow className="h-(--row-height) hover:bg-transparent">
+                <TableCell colSpan={columnCount} className={cn(CELL, ONE_LINE)}>
+                  <LoadingState />
+                </TableCell>
+              </TableRow>
+            )}
+            {failed && (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={columnCount} className={CELL}>
+                  <ErrorState error={failed} retry={source?.refetch} />
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && !failed && rows.length === 0 && (
               <TableRow className="h-(--row-height) hover:bg-transparent">
                 <TableCell
-                  colSpan={table.getAllLeafColumns().length}
-                  className={cn(CELL, "max-w-0 [&_p]:max-w-full [&_p]:truncate")}
+                  colSpan={columnCount}
+                  className={cn(CELL, ONE_LINE)}
                 >
                   {emptyState}
                 </TableCell>
@@ -128,10 +162,23 @@ export function DataTable<TData extends RowData>({
             ))}
           </TableBody>
         </table>
+        {/* After the table, so it lies over the header's top edge (the same layer). */}
+        {refreshing && <ProgressStripe label="Loading" className="absolute inset-x-0 top-0 z-(--z-sticky)" />}
       </div>
 
-      <ul className="flex flex-col gap-2 md:hidden">
-        {rows.length === 0 && <li className="py-10">{emptyState}</li>}
+      <ul className="relative flex flex-col gap-2 md:hidden">
+        {refreshing && <ProgressStripe label="Loading" className="absolute inset-x-0 -top-1.5" />}
+        {loading && (
+          <li className="py-10">
+            <LoadingState />
+          </li>
+        )}
+        {failed && (
+          <li>
+            <ErrorState error={failed} retry={source?.refetch} />
+          </li>
+        )}
+        {!loading && !failed && rows.length === 0 && <li className="py-10">{emptyState}</li>}
         {rows.map((row) => (
           <li key={row.id}>{renderCard(row)}</li>
         ))}
@@ -144,6 +191,8 @@ export function DataTable<TData extends RowData>({
 // room at the table's edges.
 const HEAD = "h-9 px-3 text-xs font-medium text-muted-foreground first:pl-4 last:pr-4";
 const CELL = "px-3 py-1.5 first:pl-4 last:pr-4";
+// A state in place of the rows (empty, loading): one row high, each line cut short.
+const ONE_LINE = "max-w-0 [&_p]:max-w-full [&_p]:truncate";
 
 /** Whether the table is wider than its box, as the screen or its rows change. */
 function useTooWide(container: RefObject<HTMLElement | null>, table: RefObject<HTMLElement | null>): boolean {

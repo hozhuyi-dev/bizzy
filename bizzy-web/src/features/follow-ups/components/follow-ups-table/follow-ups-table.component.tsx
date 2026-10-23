@@ -5,6 +5,8 @@ import { useMarkDone } from "../../follow-ups.hook";
 import type { ReactNode } from "react";
 import type { FollowUpHandlers } from "../../follow-ups.columns";
 import type { FollowUpView } from "../../follow-ups.types";
+import type { Loadable } from "~/core/utils/query.util";
+import { allOf } from "~/core/utils/query.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
@@ -15,13 +17,16 @@ interface FollowUpsTableProps {
   onEdit: (followUp: FollowUpView) => void;
   /** Shown when there are none; usually an EmptyState. */
   empty: ReactNode;
+  /** What they are read from: the table loads and fails in its own body (with the names it shows). */
+  source?: Loadable | undefined;
 }
 
 /**
  * Follow-ups with what can be done to them in place: tick off (or back),
  * and edit. A follow-up has no page: a click on its row opens it to edit.
  */
-export function FollowUpsTable({ followUps, onEdit, empty }: FollowUpsTableProps) {
+export function FollowUpsTable({ followUps, onEdit, empty, source }: FollowUpsTableProps) {
+  const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const { mark, isPending } = useMarkDone();
 
@@ -44,6 +49,7 @@ export function FollowUpsTable({ followUps, onEdit, empty }: FollowUpsTableProps
     <DataTable
       table={table}
       empty={empty}
+      source={source && allOf(source, clients)}
       onRowOpen={onEdit}
       renderCard={(row) => <FollowUpCard followUp={row.original} handlers={handlers} />}
     />

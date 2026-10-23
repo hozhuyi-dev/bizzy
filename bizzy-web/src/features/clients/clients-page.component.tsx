@@ -7,22 +7,22 @@ import { ClientsQuery } from "./clients.query";
 import { clientsListSearch, facetsOf } from "./clients.util";
 import type { ClientRow, ClientView, ClientsFilter, ClientsListSearch } from "./clients.types";
 import type { ListFilter } from "~/core/list/filter.types";
+import type { Loadable } from "~/core/utils/query.util";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
+import { ActivityQuery } from "~/features/activity/activity.query";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { sortingFromFilter } from "~/components/shared/list/data-table/data-table-sort.util";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpsMutation } from "~/features/follow-ups/follow-ups.mutation";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
-import { queryMatch } from "~/core/utils/query.util";
+import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface ClientsPageProps {
   /** All clients, or Reconnect: those worth getting back in touch with. */
@@ -39,6 +39,8 @@ interface ClientsPageProps {
  */
 export function ClientsPage({ view, filter, onFilterChange }: ClientsPageProps) {
   const clients = ClientsQuery.useList();
+  // Where each stands comes with their activity.
+  const activity = ActivityQuery.useList();
   const rows = useClientRows(filter);
   // Each client's page steps through this list.
   const search = useMemo(() => clientsListSearch(filter), [filter]);
@@ -51,23 +53,16 @@ export function ClientsPage({ view, filter, onFilterChange }: ClientsPageProps) 
         toolbar={<FilterBar label="Search clients" value={filter} onChange={onFilterChange} facets={facetsOf(view)} />}
       />
 
-      {queryMatch(clients, {
-        pending: () => <LoadingState />,
-        error: (error) => (
-          <ErrorMessage>{error.message}</ErrorMessage>
-        ),
-        // Keyed by view: each view has its own columns and sort order.
-        success: () => (
-          <ClientsTable
-            key={view}
-            view={view}
-            rows={rows}
-            filter={filter}
-            onFilterChange={onFilterChange}
-            search={search}
-          />
-        ),
-      })}
+      {/* Keyed by view: each view has its own columns and sort order. */}
+      <ClientsTable
+        key={view}
+        view={view}
+        rows={rows}
+        source={allOf(clients, activity)}
+        filter={filter}
+        onFilterChange={onFilterChange}
+        search={search}
+      />
     </>
   );
 }
@@ -75,13 +70,14 @@ export function ClientsPage({ view, filter, onFilterChange }: ClientsPageProps) 
 interface ClientsTableProps {
   view: ClientsFilter;
   rows: Array<ClientRow>;
+  source: Loadable;
   /** Its words are searched in the table; its sort orders it. */
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
   search: ClientsListSearch;
 }
 
-function ClientsTable({ view, rows, filter, onFilterChange, search }: ClientsTableProps) {
+function ClientsTable({ view, rows, source, filter, onFilterChange, search }: ClientsTableProps) {
   const { mutate: reachedOut } = FollowUpsMutation.useReachedOut();
   const { mutate: undo } = FollowUpsMutation.useDelete();
   const reconnect = view === "reconnect";
@@ -122,6 +118,7 @@ function ClientsTable({ view, rows, filter, onFilterChange, search }: ClientsTab
     <>
       <DataTable
         table={table}
+        source={source}
         query={filter.text}
         rowLink={(row) => clientLink(row.client.id, search)}
         empty={

@@ -10,7 +10,6 @@ import { DataTable } from "~/components/shared/list/data-table/data-table.compon
 import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
 import { CellEmpty } from "~/components/shared/list/data-table/data-table-cell.component";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
@@ -24,7 +23,6 @@ import { requiredError } from "~/core/utils/form.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 /** As the API keeps an item's name. */
 const MAX_NAME = 100;
@@ -103,13 +101,9 @@ export function ExpenseItemsPage() {
   return (
     <>
       <PageHeader title="Items" toolbar={<SearchInput label="Search items" value={search} onChange={setSearch} />} />
-      {catalogue.isPending ? (
-        <LoadingState />
-      ) : catalogue.error ? (
-        <ErrorMessage>{catalogue.error.message}</ErrorMessage>
-      ) : (
-        <DataTable
+      <DataTable
           table={table}
+          source={catalogue}
           query={search}
           onRowOpen={setEditing}
           empty={<EmptyState quips={QUIPS.expenses}>No items yet. They're added as you record expenses.</EmptyState>}
@@ -128,7 +122,6 @@ export function ExpenseItemsPage() {
             />
           )}
         />
-      )}
 
       <SheetDialog open={editing !== null} onClose={() => setEditing(null)}>
         {editing && catalogue.data && (

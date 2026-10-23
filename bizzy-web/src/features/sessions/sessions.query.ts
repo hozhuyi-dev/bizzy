@@ -18,7 +18,14 @@ const page = (id: string) =>
     refetchOnWindowFocus: false,
   });
 
+const range = (from: string, to: string) =>
+  queryOptions({ queryKey: SessionKeys.range(from, to), queryFn: () => SessionsService.list(from, to) });
+
 export const SessionsQuery = {
+  /** For a route's loader (see pageData). */
+  page,
+  range,
+
   /** One session and its notes. */
   useDetail: (id: string) => useQuery({ ...page(id), select: (p) => p.session }),
 
@@ -35,11 +42,7 @@ export const SessionsQuery = {
   },
 
   /** Sessions starting in [from, to). */
-  useRange: (from: string, to: string) =>
-    useQuery({
-      queryKey: SessionKeys.range(from, to),
-      queryFn: () => SessionsService.list(from, to),
-    }),
+  useRange: (from: string, to: string) => useQuery(range(from, to)),
 
   /** What would pay for a booking; keeps the last answer while the form changes. */
   usePreview: (request: PreviewSessionRequest | undefined) =>

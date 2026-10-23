@@ -18,9 +18,7 @@ import { toastRefusal } from "~/features/remedies/components/remedy-buttons/reme
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 import { Button } from "~/components/ui/button";
 
 const COLUMNS = createClientDocumentColumns();
@@ -92,11 +90,7 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
         : "Tick invoices to ask to pay for, issued ones to send, or drafts to put on one document.",
     more: all.length > 0 ? actions : undefined,
     bare: true,
-    content: docs.isPending ? (
-      <LoadingState />
-    ) : docs.error ? (
-      <ErrorMessage>{docs.error.message}</ErrorMessage>
-    ) : (
+    content: (
       <div className="flex flex-col gap-3">
         {all.length > 0 && (
           <TypeChips
@@ -111,6 +105,7 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
         )}
         <DataTable
           table={table}
+          source={docs}
           rowLink={(doc) => documentLink(doc)}
           empty={<EmptyState quips={QUIPS.timeline}>No invoices or receipts yet. They're drafted with each session.</EmptyState>}
           renderCard={(row) => (

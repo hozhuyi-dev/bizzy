@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ChevronDownIcon, ChevronUpIcon, ListFilterIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon, ListFilterIcon, LoaderCircleIcon } from "lucide-react";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import type { FilteredPagerList, PagerList } from "~/core/list/pager.types";
+import type { FilteredPagerList, PagerList, Side } from "~/core/list/pager.types";
 import type { Current } from "~/core/list/pager.util";
 import type { ListFilter } from "~/core/list/filter.types";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
@@ -43,7 +43,11 @@ export function ListPager<T>({ list, filter, current, itemLink, panel }: ListPag
   const pager = usePager({ list, window, current, filterKey: JSON.stringify(filter), itemLink });
   useStepKeys(pager.step);
 
-  const at = pager.stepping ? "…" : (pager.position?.at ?? "…");
+  // Stays where it is while a step goes: the button stepped with spins
+  // instead (and, still enabled so it stays bright, does nothing more).
+  const at = pager.position?.at ?? "…";
+  const stepIcon = (side: Side, Icon: typeof ChevronUpIcon) =>
+    pager.stepping === side ? <LoaderCircleIcon className="motion-safe:animate-spin" /> : <Icon />;
   const of = pager.position?.of ?? "…";
   const count = (
     <span className="tabular-nums">
@@ -63,10 +67,11 @@ export function ListPager<T>({ list, filter, current, itemLink, panel }: ListPag
         size="icon-sm"
         aria-label={`Previous ${list.noun}`}
         title={`Previous ${list.noun} (K)`}
-        disabled={!pager.canStep.before || pager.stepping}
+        disabled={!pager.canStep.before || (pager.stepping !== undefined && pager.stepping !== "before")}
+        aria-busy={pager.stepping === "before"}
         onClick={() => pager.step("before")}
       >
-        <ChevronUpIcon />
+        {stepIcon("before", ChevronUpIcon)}
       </Button>
       {panel ? (
         <FilterPanel list={list} filter={filter} panel={panel}>
@@ -80,10 +85,11 @@ export function ListPager<T>({ list, filter, current, itemLink, panel }: ListPag
         size="icon-sm"
         aria-label={`Next ${list.noun}`}
         title={`Next ${list.noun} (J)`}
-        disabled={!pager.canStep.after || pager.stepping}
+        disabled={!pager.canStep.after || (pager.stepping !== undefined && pager.stepping !== "after")}
+        aria-busy={pager.stepping === "after"}
         onClick={() => pager.step("after")}
       >
-        <ChevronDownIcon />
+        {stepIcon("after", ChevronDownIcon)}
       </Button>
     </nav>
   );

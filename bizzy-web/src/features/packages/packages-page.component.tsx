@@ -23,13 +23,11 @@ import { sortingFromFilter } from "~/components/shared/list/data-table/data-tabl
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { formatDate, formatHours } from "~/core/utils/date.util";
-import { queryMatch } from "~/core/utils/query.util";
+import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 /** How packages sort until a column is picked: by client. */
 const BY_CLIENT = [{ id: "client", desc: false }];
@@ -123,14 +121,9 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
         toolbar={<FilterBar label="Search packages" value={filter} onChange={onFilterChange} facets={facets} />}
       />
 
-      {queryMatch(packages, {
-        pending: () => <LoadingState />,
-        error: (error) => (
-          <ErrorMessage>{error.message}</ErrorMessage>
-        ),
-        success: () => (
-          <DataTable
+      <DataTable
             table={table}
+            source={allOf(packages, clients)}
             query={filter.text}
             onRowOpen={handlers.onEdit}
             empty={
@@ -139,9 +132,7 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
               </EmptyState>
             }
             renderCard={(row) => <PackageCard pkg={row.original} handlers={handlers} />}
-          />
-        ),
-      })}
+      />
 
       <SheetDialog open={editing !== null} onClose={() => setEditing(null)}>
         <DialogHeader>

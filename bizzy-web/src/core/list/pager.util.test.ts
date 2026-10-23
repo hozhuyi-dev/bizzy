@@ -33,6 +33,13 @@ describe("locate", () => {
     expect(locate(top, { id: "x" }, list)).toEqual({ kind: "loading" });
   });
 
+  test("steps one gone into the list: down from its top, up from its end once read", () => {
+    expect(locate(top, { id: "x", gone: true }, list)).toEqual({ kind: "out", prev: 2, next: 0 });
+    const more = state(top.items as Array<Place>, { hasAfter: true });
+    expect(locate(more, { id: "x", gone: true }, list)).toEqual({ kind: "out", prev: undefined, next: 0 });
+    expect(locate(state([]), { id: "x", gone: true }, list)).toEqual({ kind: "out", prev: undefined, next: undefined });
+  });
+
   test("places one not in the list between its neighbours", () => {
     expect(locate(top, { id: "x", place: item(35, "x") }, list)).toEqual({ kind: "out", prev: 1, next: 2 });
     expect(locate(top, { id: "x", place: item(60, "x") }, list)).toEqual({ kind: "out", prev: undefined, next: 0 });

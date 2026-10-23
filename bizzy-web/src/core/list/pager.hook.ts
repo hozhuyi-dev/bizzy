@@ -56,8 +56,12 @@ export interface Pager {
   spot: Spot;
   position: { at: string; of: string } | undefined;
   canStep: Record<Side, boolean>;
-  /** Reading pages before a step can go. */
-  stepping: boolean;
+  /**
+   * The way a step is going, until its page opens: reading the list on to
+   * find the next item, then the next page's data (see pageData), while
+   * this page stays on screen.
+   */
+  stepping: Side | undefined;
   step: (side: Side) => void;
 }
 
@@ -69,7 +73,7 @@ export interface Pager {
  */
 export function usePager<T>({ list, window, current, filterKey, itemLink }: PagerOptions<T>): Pager {
   const router = useRouter();
-  const [stepping, setStepping] = useState(false);
+  const [stepping, setStepping] = useState<Side | undefined>(undefined);
 
   // Where it was last found, for this filter: an edit that takes it out
   // (a session paid, off an Unpaid list) still steps on from there.
@@ -107,20 +111,22 @@ export function usePager<T>({ list, window, current, filterKey, itemLink }: Page
     if (stepping) return;
     let state: WindowState<T> = window;
     let move = stepFrom(spot, side, state);
-    if (move && "read" in move) setStepping(true);
+    if (!move) return;
+    setStepping(side);
     try {
       // Reads on until the step can go; each read either finds it or moves the end on.
       while (move && "read" in move) {
         state = await window.load(move.read);
         move = stepFrom(locate(state, current, list, seenHere), side, state);
       }
+      const target = move ? state.items[move.to] : undefined;
+      // Resolves once the next page is ready to show, or the step was blocked.
+      if (target !== undefined) await router.navigate({ ...itemLink(list.idOf(target)), replace: true });
     } catch {
-      move = undefined;
+      // A page that fails shows on the list's own page; the step just doesn't go.
     } finally {
-      setStepping(false);
+      setStepping(undefined);
     }
-    const target = move ? state.items[move.to] : undefined;
-    if (target !== undefined) void router.navigate({ ...itemLink(list.idOf(target)), replace: true });
   };
 
   return {

@@ -11,6 +11,8 @@ interface SessionPagerProps {
   id: string;
   /** The session, once loaded: where it would sit in a list it isn't in. */
   session?: SessionView | undefined;
+  /** It isn't there (deleted): steps go into the list. */
+  gone?: boolean | undefined;
   returnTo: SessionReturnTo | undefined;
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
@@ -20,14 +22,14 @@ interface SessionPagerProps {
  * Steps through the list the session was opened from: Home's to-do list,
  * to work through it in one go, or the sessions list with its filter.
  */
-export function SessionPager({ id, session, returnTo, filter, onFilterChange }: SessionPagerProps) {
+export function SessionPager({ id, session, gone, returnTo, filter, onFilterChange }: SessionPagerProps) {
   if (returnTo === "home") {
     return (
       <ListPager
         key="home"
         list={TODO_SESSIONS}
         filter={NO_FILTER}
-        current={{ id }}
+        current={{ id, gone }}
         itemLink={(next) => sessionLink(next, { from: "home" })}
       />
     );
@@ -37,7 +39,7 @@ export function SessionPager({ id, session, returnTo, filter, onFilterChange }: 
       key="sessions"
       list={SESSIONS_LIST}
       filter={filter}
-      current={{ id, place: session && sessionPlace(session) }}
+      current={{ id, place: session && sessionPlace(session), gone }}
       itemLink={(next) => sessionLink(next, sessionsUrl.toSearch(filter))}
       panel={{
         onApply: onFilterChange,

@@ -10,6 +10,8 @@ import { pageItems } from "~/core/list/filter.util";
 import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { allOf } from "~/core/utils/query.util";
 
 interface RecordPaymentDialogProps {
   client: ClientView;
@@ -33,6 +35,7 @@ export function RecordPaymentDialog({ client, open, onClose }: RecordPaymentDial
 function RecordPayment({ client, onClose }: Omit<RecordPaymentDialogProps, "open">) {
   const owing = SessionsQuery.useSearch({ text: "", when: undefined, chips: { client: [client.id], stage: ["collect"] } });
   const packages = PackagesQuery.useList(true);
+  const reads = allOf(owing, packages);
 
   const own = (packages.data ?? []).filter((pkg) => pkg.clientId === client.id);
   const byId = new Map(own.map((pkg) => [pkg.id, pkg]));
@@ -51,7 +54,9 @@ function RecordPayment({ client, onClose }: Omit<RecordPaymentDialogProps, "open
         <DialogTitle>Record a payment</DialogTitle>
         <DialogDescription>What {client.name} paid, in full for each item ticked: one receipt for it all.</DialogDescription>
       </DialogHeader>
-      {owing.isPending || packages.isPending ? (
+      {reads.error ? (
+        <ErrorState error={reads.error} retry={reads.refetch} />
+      ) : reads.isPending ? (
         <LoadingState />
       ) : payables.length === 0 ? (
         <p className="text-sm text-muted-foreground">{client.name} owes nothing.</p>

@@ -19,6 +19,7 @@ import { useConfirmBooking } from "./session-booking.hook";
 import { sessionsUrl } from "./sessions.util";
 import { SessionsQuery } from "./sessions.query";
 import type { ReactNode } from "react";
+import type { LinkOptions } from "@tanstack/react-router";
 import type { PipelineStep } from "./components/pipeline-layout/pipeline-layout.component";
 import type { SessionDraft, SessionFullView, SessionReturnTo } from "./sessions.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
@@ -38,7 +39,9 @@ import { PageHeader } from "~/components/shared/layout/page-header/page-header.c
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { clientOf } from "~/features/clients/clients.util";
 import { formatDate } from "~/core/utils/date.util";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { allOf } from "~/core/utils/query.util";
+import { isApiError } from "~/core/utils/api-error.util";
 
 /**
  * `settle`: the calendar edit it was opened to settle, by changing its
@@ -66,29 +69,41 @@ function parentOf(returnTo: SessionReturnTo | undefined, filter?: ListFilter) {
  */
 export function SessionPage({ id, returnTo, settle, filter, onFilterChange }: SessionPageProps) {
   const detail = SessionsQuery.useDetail(id);
+  // What it shows names and credits from: it opens with them, so nothing fills in after.
+  const clients = ClientsQuery.useList();
+  const packages = PackagesQuery.useList(true);
   const parent = parentOf(returnTo, filter);
   // Steps on while the next one loads, so the header stays put.
   const pager = (
-    <SessionPager id={id} session={detail.data} returnTo={returnTo} filter={filter} onFilterChange={onFilterChange} />
+    <SessionPager
+      id={id}
+      session={detail.data}
+      gone={isApiError(detail.error, "not_found")}
+      returnTo={returnTo}
+      filter={filter}
+      onFilterChange={onFilterChange}
+    />
   );
 
-  if (detail.isPending) {
-    return (
-      <>
-        <PageHeader parent={parent} title="…" pager={pager} />
-        <LoadingState />
-      </>
-    );
+  if (detail.data && clients.data && packages.data) {
+    return <SessionPipeline session={detail.data} returnTo={returnTo} settle={settle} filter={filter} pager={pager} />;
   }
-  if (detail.error) {
-    return (
-      <>
-        <PageHeader parent={parent} title="Not available" pager={pager} />
-        <ErrorMessage>{detail.error.message}</ErrorMessage>
-      </>
-    );
-  }
-  return <SessionPipeline session={detail.data} returnTo={returnTo} settle={settle} filter={filter} pager={pager} />;
+  const page = allOf(detail, clients, packages);
+  return (
+    <>
+      <PageHeader parent={parent} title={page.error ? "Not available" : "…"} pager={pager} />
+      {page.error ? (
+        <ErrorState
+          error={page.error}
+          retry={page.refetch}
+          size="page"
+          back={{ label: `Back to ${parent.label}`, link: parent as LinkOptions }}
+        />
+      ) : (
+        <LoadingState shape="page" />
+      )}
+    </>
+  );
 }
 
 interface SessionPipelineProps {

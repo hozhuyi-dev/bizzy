@@ -3,6 +3,11 @@ import type { ClientsListSearch } from "~/features/clients/clients.types";
 import { ClientPage } from "~/features/clients/client-page.component";
 import { clientsListFilter, clientsListSearch, validateClientsListSearch } from "~/features/clients/clients.util";
 import { textParam } from "~/core/utils/url-param.util";
+import { ClientsQuery } from "~/features/clients/clients.query";
+import { ActivityQuery } from "~/features/activity/activity.query";
+import { DocumentsQuery } from "~/features/documents/documents.query";
+import { PackagesQuery } from "~/features/packages/packages.query";
+import { pageData, prefetch } from "~/core/utils/page-data.util";
 
 export interface ClientSearch extends ClientsListSearch {
   /** The calendar edit it was opened to settle: once saved, back to the to-do list. */
@@ -15,6 +20,14 @@ export const Route = createFileRoute("/clients/$id")({
     ...validateClientsListSearch(search),
     settle: textParam(search.settle),
   }),
+  // Its timeline, read a page at a time with its own filter, shows its own loading.
+  loader: ({ params }) =>
+    pageData(
+      prefetch(ClientsQuery.list()),
+      prefetch(ActivityQuery.list()),
+      prefetch(DocumentsQuery.byClient(params.id)),
+      prefetch(PackagesQuery.list(true)),
+    ),
   component: ClientRoute,
 });
 

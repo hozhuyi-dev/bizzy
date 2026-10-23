@@ -18,7 +18,7 @@ import { Card, CardContent } from "~/components/ui/card";
 import { NO_FILTER, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { formatMonth, monthKey } from "~/core/utils/date.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 
 /** How many of what is coming show before the rest are asked for: the nearest. */
 const UPCOMING_SHOWN = 3;
@@ -41,10 +41,14 @@ export function ClientTimeline({ client }: { client: ClientView }) {
   const onEditFollowUp = (f: FollowUpView) => setFollowUp({ mode: "edit", followUp: f });
 
   let body;
-  if (pages.isPending) body = <LoadingState />;
-  else if (pages.error) {
+  // Both in the card the timeline fills, so it lands without a jump.
+  if (pages.isPending || (pages.error && past.length === 0)) {
     body = (
-      <ErrorMessage>{pages.error.message}</ErrorMessage>
+      <Card>
+        <CardContent>
+          {pages.error ? <ErrorState error={pages.error} retry={pages.refetch} /> : <LoadingState />}
+        </CardContent>
+      </Card>
     );
   } else if (upcoming.length === 0 && past.length === 0 && !pages.hasNextPage) {
     body = isNarrowed(filter) ? (

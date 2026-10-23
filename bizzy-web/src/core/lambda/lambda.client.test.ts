@@ -16,6 +16,7 @@ function reply(body: unknown, functionError?: string) {
   send.mockResolvedValueOnce({
     Payload: new TextEncoder().encode(JSON.stringify(body)),
     FunctionError: functionError,
+    $metadata: { requestId: "req-1" },
   });
 }
 
@@ -48,6 +49,28 @@ describe("invoke", () => {
     const error = await invoke("clients.get").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ code: "refused", message: "taken" });
+  });
+
+  test("says which call failed, and its request id", async () => {
+    reply({ error: { code: "refused", message: "taken" } });
+    await expect(invoke("clients.get")).rejects.toMatchObject({
+      trace: { action: "clients.get", requestId: "req-1" },
+    });
+  });
+
+  test("says plainly when the API can't be reached, keeping the cause", async () => {
+    const cause = new TypeError("Failed to fetch");
+    send.mockRejectedValueOnce(cause);
+    await expect(invoke("clients.list")).rejects.toMatchObject({
+      code: "unreachable",
+      cause,
+      trace: { action: "clients.list" },
+    });
+  });
+
+  test("says it is busy when Lambda throttles", async () => {
+    send.mockRejectedValueOnce(Object.assign(new Error("Rate exceeded"), { name: "TooManyRequestsException" }));
+    await expect(invoke("clients.list")).rejects.toMatchObject({ code: "busy" });
   });
 
   test("tells the listener what a call changed, even when refused", async () => {

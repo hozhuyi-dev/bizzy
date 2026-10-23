@@ -9,6 +9,7 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Navigate } from "@tanstack/react-router";
 import {
   documentEditorActions,
   documentEditorSections,
@@ -25,6 +26,7 @@ import { DOCUMENT_TYPES } from "./documents.constant";
 import { useDocumentPdf } from "./documents.hook";
 import type { PdfSource } from "./documents.hook";
 import type { ReactNode } from "react";
+import type { LinkOptions } from "@tanstack/react-router";
 import type { DocumentContent, DocumentRevision, DocumentType, DocumentView, Recipient } from "./documents.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ListFilter } from "~/core/list/filter.types";
@@ -48,12 +50,13 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
-import { queryMatch } from "~/core/utils/query.util";
+import { allOf } from "~/core/utils/query.util";
+import { isApiError } from "~/core/utils/api-error.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { useWhatsAppMenu } from "~/features/whatsapp/whatsapp.hook";
 import { clientOf } from "~/features/clients/clients.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 
 /** The breadcrumb, which already says what kind of document this is: its list, with the filter it was left at. */
 function parentOf(type: DocumentType, filter: ListFilter) {
@@ -71,6 +74,8 @@ interface DocumentPageProps {
 
 export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageProps) {
   const detail = DocumentsQuery.useDetail(id);
+  // Its client's name is in the header: it opens with it.
+  const clients = ClientsQuery.useList();
   const parent = parentOf(type, filter);
   const header = {
     parent,
@@ -78,7 +83,7 @@ export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageP
       <ListPager
         list={DOCUMENT_LISTS[type]}
         filter={filter}
-        current={{ id, place: detail.data && documentPlace(detail.data) }}
+        current={{ id, place: detail.data && documentPlace(detail.data), gone: isApiError(detail.error, "not_found") }}
         itemLink={(next) => documentLink({ id: next, type }, documentsUrl.toSearch(filter))}
         panel={{
           onApply: onFilterChange,
@@ -88,27 +93,32 @@ export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageP
     ),
   };
 
-  return queryMatch(detail, {
-    pending: () => (
-      <>
-        <PageHeader {...header} title="…" />
-        <LoadingState />
-      </>
-    ),
-    error: (error) => (
-      <>
-        <PageHeader {...header} title="Not available" />
-        <ErrorMessage>{error.message}</ErrorMessage>
-      </>
-    ),
-    success: (doc) => {
-      if (doc.draft) {
-        // Remount on every save so the form restarts from what was stored.
-        return <DraftDocument key={detail.dataUpdatedAt} doc={doc} draft={doc.draft} revisions={doc.revisions} header={header} />;
-      }
-      return doc.content ? <IssuedDocument doc={doc} content={doc.content} revisions={doc.revisions} header={header} /> : null;
-    },
-  });
+  const doc = detail.data;
+  if (doc && clients.data) {
+    // A link to it under the other type's address (an invoice's id as a receipt): its own page.
+    if (doc.type !== type) return <Navigate {...documentLink(doc)} replace />;
+    if (doc.draft) {
+      // Remount on every save so the form restarts from what was stored.
+      return <DraftDocument key={detail.dataUpdatedAt} doc={doc} draft={doc.draft} revisions={doc.revisions} header={header} />;
+    }
+    return doc.content ? <IssuedDocument doc={doc} content={doc.content} revisions={doc.revisions} header={header} /> : null;
+  }
+  const page = allOf(detail, clients);
+  return (
+    <>
+      <PageHeader {...header} title={page.error ? "Not available" : "…"} />
+      {page.error ? (
+        <ErrorState
+          error={page.error}
+          retry={page.refetch}
+          size="page"
+          back={{ label: `Back to ${parent.label}`, link: parent as LinkOptions }}
+        />
+      ) : (
+        <LoadingState shape="page" />
+      )}
+    </>
+  );
 }
 
 /** The header's way back and pager, the same while the document loads. */
@@ -219,7 +229,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
             id: "document",
             title: DOCUMENT_TYPES[doc.type].title,
             bare: true,
-            content: <DocumentPdfView file={pdf.data} error={pdf.error} />,
+            content: <DocumentPdfView file={pdf.data} error={pdf.error} retry={pdf.refetch} />,
           },
           ...(history ? [history] : []),
         ]}

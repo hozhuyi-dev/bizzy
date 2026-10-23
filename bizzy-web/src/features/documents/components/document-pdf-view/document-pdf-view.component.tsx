@@ -4,12 +4,15 @@ import { cn } from "cn";
 import { pdfBlob } from "../../documents.util";
 import type { DocumentFile } from "../../documents.types";
 import { Button } from "~/components/ui/button";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 
 interface DocumentPdfViewProps {
   /** Undefined while it comes. */
   file: DocumentFile | undefined;
   error?: Error | null | undefined;
+  /** Reads it again after an error. */
+  retry?: (() => unknown) | undefined;
   /** Takes the height its column leaves (a flex column), not a set share of the screen. */
   fill?: boolean | undefined;
 }
@@ -19,7 +22,7 @@ interface DocumentPdfViewProps {
  * can't show a PDF inline (Chrome on Android) gets a button that opens it
  * in its viewer instead.
  */
-export function DocumentPdfView({ file, error, fill = false }: DocumentPdfViewProps) {
+export function DocumentPdfView({ file, error, retry, fill = false }: DocumentPdfViewProps) {
   const url = useMemo(() => (file ? URL.createObjectURL(pdfBlob(file)) : undefined), [file]);
   useEffect(
     () => () => {
@@ -32,12 +35,21 @@ export function DocumentPdfView({ file, error, fill = false }: DocumentPdfViewPr
     "flex w-full items-center justify-center rounded-xl bg-muted/40 ring-1 ring-foreground/10",
     fill ? "min-h-0 flex-1" : "h-[75dvh] min-h-96",
   );
-  if (error) {
+  // Both in the frame the PDF will fill, so it lands without a jump.
+  if (error && !file) {
     return (
-      <ErrorMessage>{error.message}</ErrorMessage>
+      <div className={frame}>
+        <ErrorState error={error} retry={retry} />
+      </div>
     );
   }
-  if (!url || !file) return <div className={frame} aria-busy="true" />;
+  if (!url || !file) {
+    return (
+      <div className={frame}>
+        <LoadingState />
+      </div>
+    );
+  }
   if (!navigator.pdfViewerEnabled) {
     return (
       <div className={cn(frame, "h-auto min-h-0 flex-none flex-col gap-3 p-6 text-center text-sm text-muted-foreground")}>

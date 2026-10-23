@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/** What went wrong, in place of what would have shown: a page that didn't load, a save refused. */
+/** What went wrong, inline in a form: a save refused, a picker that can't read. A read a page or part waits on fails as an ErrorState. */
 export function ErrorMessage({ children }: { children: ReactNode }) {
   return (
     <p role="alert" className="text-sm text-destructive">

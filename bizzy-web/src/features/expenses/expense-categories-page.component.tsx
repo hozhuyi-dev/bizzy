@@ -12,7 +12,7 @@ import { useAppForm } from "~/components/shared/form/form.hook";
 import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { requiredError } from "~/core/utils/form.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 
 /**
  * The categories items are filed under. They start as the expenses on LHDN's
@@ -22,23 +22,17 @@ import { ErrorMessage } from "~/components/shared/feedback/error-message/error-m
  */
 export function ExpenseCategoriesPage() {
   const catalogue = ExpensesQuery.useCatalogue();
-  if (catalogue.isPending) {
-    return (
-      <>
-        <PageHeader title="Categories" />
-        <LoadingState />
-      </>
-    );
-  }
-  if (catalogue.error) {
-    return (
-      <>
-        <PageHeader title="Categories" />
-        <ErrorMessage>{catalogue.error.message}</ErrorMessage>
-      </>
-    );
-  }
-  return <CategoriesEditor initial={catalogue.data.categories} />;
+  if (catalogue.data) return <CategoriesEditor initial={catalogue.data.categories} />;
+  return (
+    <>
+      <PageHeader title="Categories" />
+      {catalogue.error ? (
+        <ErrorState error={catalogue.error} retry={catalogue.refetch} size="page" />
+      ) : (
+        <LoadingState shape="page" />
+      )}
+    </>
+  );
 }
 
 const FORM_ID = "categories-form";

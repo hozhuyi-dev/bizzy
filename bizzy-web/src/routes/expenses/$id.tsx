@@ -2,10 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { ExpensesSearch } from "~/features/expenses/expenses.types";
 import { ExpensePage } from "~/features/expenses/expense-page.component";
 import { expensesUrl } from "~/features/expenses/expenses.util";
+import { ExpensesQuery } from "~/features/expenses/expenses.query";
+import { pageData, prefetch } from "~/core/utils/page-data.util";
 
 export const Route = createFileRoute("/expenses/$id")({
   // The expenses list it steps through.
   validateSearch: (search: Record<string, unknown>): ExpensesSearch => expensesUrl.validate(search),
+  loader: ({ params }) => pageData(prefetch(ExpensesQuery.detail(params.id)), prefetch(ExpensesQuery.catalogue())),
   component: ExpenseRoute,
 });
 

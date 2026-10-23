@@ -13,12 +13,10 @@ import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.compon
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
-import { queryMatch } from "~/core/utils/query.util";
+import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface DocumentsPageProps {
   type: DocumentType;
@@ -66,15 +64,10 @@ export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPagePro
           />
         }
       />
-      {queryMatch(documents, {
-        pending: () => <LoadingState />,
-        error: (error) => (
-          <ErrorMessage>{error.message}</ErrorMessage>
-        ),
-        success: () => (
-          <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
+      <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
             <DataTable
               table={table}
+              source={allOf(documents, clients)}
               rowLink={(doc) => documentLink(doc, search)}
               empty={
                 isNarrowed(filter) || documents.hasNextPage ? (
@@ -93,9 +86,7 @@ export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPagePro
               renderCard={(row) => <DocumentCard doc={row.original} search={search} />}
             />
             <LoadMore pages={documents} found={data.length > 0} />
-          </div>
-        ),
-      })}
+      </div>
     </>
   );
 }

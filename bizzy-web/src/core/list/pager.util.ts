@@ -4,6 +4,8 @@ import type { PagerList, Place, Side, WindowState } from "./pager.types";
 export interface Current {
   id: string;
   place?: Place | undefined;
+  /** It isn't there (deleted, or a stale link): no place will come, so steps go into the list. */
+  gone?: boolean | undefined;
 }
 
 /** Where the item was last found in the list, to step on from once an edit takes it out. */
@@ -46,7 +48,9 @@ function nearest(seen: Seen, way: -1 | 1, ids: ReadonlyArray<string>): number | 
  * neighbours it had. Otherwise its place says where it would be: between
  * two items loaded, or past an end with more to read there, where it may
  * yet be. A list with no order to place it by has it anywhere below until
- * the end is read; then either way steps into the list.
+ * the end is read; then either way steps into the list. One gone has no
+ * place to wait for: a step down enters the list at its top, and a step up
+ * at its end once that is read.
  */
 export function locate<T>(
   state: WindowState<T>,
@@ -63,6 +67,11 @@ export function locate<T>(
     const prev = nearest(seen, -1, ids);
     const next = nearest(seen, 1, ids);
     if (prev !== undefined || next !== undefined) return { kind: "out", prev, next };
+  }
+
+  if (current.gone) {
+    if (items.length === 0) return { kind: "out", prev: undefined, next: undefined };
+    return { kind: "out", prev: hasAfter ? undefined : items.length - 1, next: hasBefore ? undefined : 0 };
   }
 
   const { placeOf } = list;

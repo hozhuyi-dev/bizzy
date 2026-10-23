@@ -11,11 +11,8 @@ import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.compon
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
-import { queryMatch } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 
 interface SessionsPageProps {
   filter: ListFilter;
@@ -45,16 +42,11 @@ export function SessionsPage({ filter, onFilterChange }: SessionsPageProps) {
         toolbar={<FilterBar label="Search sessions" value={filter} onChange={onFilterChange} facets={facets} dates />}
       />
 
-      {queryMatch(sessions, {
-        pending: () => <LoadingState />,
-        error: (error) => (
-          <ErrorMessage>{error.message}</ErrorMessage>
-        ),
-        success: () => (
-          <div className={cn("transition-opacity", sessions.isPlaceholderData && "opacity-60")}>
+      <div className={cn("transition-opacity", sessions.isPlaceholderData && "opacity-60")}>
             <SessionsTable
               sessions={rows}
               search={search}
+              source={sessions}
               empty={
                 isNarrowed(filter) || sessions.hasNextPage ? (
                   <EmptyState quips={QUIPS.search}>No sessions found{sessions.hasNextPage ? " yet" : ""}.</EmptyState>
@@ -67,9 +59,7 @@ export function SessionsPage({ filter, onFilterChange }: SessionsPageProps) {
               }
             />
             <LoadMore pages={sessions} found={rows.length > 0} />
-          </div>
-        ),
-      })}
+      </div>
     </>
   );
 }

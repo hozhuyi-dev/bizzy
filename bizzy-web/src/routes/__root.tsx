@@ -8,6 +8,7 @@ import { SyncOnLoad } from "~/features/sync/components/sync-on-load/sync-on-load
 import { queryClient } from "~/core/config/query-client.config";
 import { AppBannerContext } from "~/components/shared/layout/page-header/page-header.hook";
 import { SetupNotice } from "~/features/settings/components/setup-notice/setup-notice.component";
+import { NavigationProgress } from "~/components/shared/feedback/navigation-progress/navigation-progress.component";
 import "~/styles/app.css";
 
 export const Route = createRootRoute({
@@ -37,6 +38,7 @@ function AuthGate() {
     <div className="min-h-dvh">
       <SyncOnLoad />
       <NavBar />
+      <NavigationProgress />
       <main className="mx-auto max-w-(--content-width) px-(--page-gutter) pb-(--page-bottom)">
         {/* What is left to set up, on every page's header. */}
         <AppBannerContext value={<SetupNotice />}>
