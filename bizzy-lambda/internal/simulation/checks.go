@@ -17,6 +17,7 @@ import (
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googlesync"
+	"bizzy-lambda/internal/features/packages"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/migrations"
@@ -35,6 +36,7 @@ func check(t *rapid.T, w *World) {
 	deployable(t, w)
 	filesAreThere(t, w)
 	payPageShowsSettings(t, w)
+	asksAsViewed(t, w)
 	if w.InSync {
 		calendarShowsBizzy(t, w)
 	}
@@ -219,4 +221,35 @@ func noNewConflicts(t *rapid.T, action string, before, after map[string]bool) {
 			t.Fatalf("%s in the app brought on a conflict over event %s", action, id)
 		}
 	}
+}
+
+// asksAsViewed: what a session, a package and a document, one of each
+// drawn, say of asking to pay for it and sending its documents is what
+// the API does. They are queries, so no user action calls them as viewed.
+func asksAsViewed(t *rapid.T, w *World) {
+	t.Helper()
+	if s := drawn(t, w, "session to ask from", sessions.Sessions.All); s != nil {
+		v := sessionView(t, w, s)
+		w.callAsViewed(t, "documents.ask", map[string]any{"items": v.Sources}, v.Can.AskToPay)
+		w.callAsViewed(t, "documents.records", map[string]any{"items": v.Sources}, v.Can.SendRecords)
+	}
+	if p := drawn(t, w, "package to ask from", packages.Packages.All); p != nil {
+		v := packageView(t, w, p)
+		items := []documents.Source{documents.PackageSource(p.ID)}
+		w.callAsViewed(t, "documents.ask", map[string]any{"items": items}, v.Can.AskToPay)
+		w.callAsViewed(t, "documents.records", map[string]any{"items": items}, v.Can.SendRecords)
+	}
+	if d := drawn(t, w, "document to ask from", documents.Documents.All); d != nil {
+		w.callAsViewed(t, "documents.ask", map[string]any{"ids": []string{d.ID}}, documentCan(t, w, d).AskToPay)
+	}
+}
+
+// drawn is one of a list, or nil when it is empty: pick, for a check.
+func drawn[T any](t *rapid.T, w *World, label string, list func(tx *txn.Tx) ([]*T, error)) *T {
+	t.Helper()
+	all := read(t, w, list)
+	if len(all) == 0 {
+		return nil
+	}
+	return rapid.SampledFrom(all).Draw(t, label)
 }

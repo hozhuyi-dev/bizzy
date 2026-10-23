@@ -58,6 +58,7 @@ dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .button.primary { background: var(--button); color: var(--button-text); border-color: var(--button); width: 100%; }
 button.done { color: var(--done); border-color: var(--done); }
 footer { text-align: center; padding-top: .5rem; }
+.thanks { text-align: center; }
 </style>
 </head>
 <body>
@@ -65,10 +66,13 @@ footer { text-align: center; padding-top: .5rem; }
   <header>
     <p class="eyebrow">Payment details</p>
     <h1>Physio Co</h1>
-    <p class="muted">Pay whichever way suits you, then send us a screenshot of the payment.</p>
+    <p class="muted">Thank you for coming in! 😊 Pay whichever way is easiest for you, then send me a screenshot of the payment.</p>
   </header>
   <section class="card" aria-labelledby="bank-title">
-    <h2 id="bank-title">Bank transfer</h2>
+    <div>
+      <h2 id="bank-title">Bank transfer</h2>
+      <p class="muted">Use the reference from my message, so I can match your payment.</p>
+    </div>
     <dl class="rows">
       <div class="row"><div><dt>Bank</dt><dd>Maybank</dd></div></div>
       <div class="row"><div><dt>Account name</dt><dd>Physio Co Sdn Bhd</dd></div><button type="button" data-copy="Physio Co Sdn Bhd" aria-label="Copy account name">Copy</button></div>
@@ -76,8 +80,9 @@ footer { text-align: center; padding-top: .5rem; }
     </dl>
   </section>
   <footer>
-    <a class="button primary" href="https://wa.me/60123456789">Send payment screenshot on WhatsApp</a>
+    <a class="button primary" href="https://wa.me/60123456789?text=Hi%21%20Here%27s%20my%20payment%20%F0%9F%98%8A">Paid? Send me the screenshot</a>
   </footer>
+  <p class="muted thanks">Thank you, and take care! 🙏</p>
 </main>
 <script>
 document.addEventListener("click", function (event) {

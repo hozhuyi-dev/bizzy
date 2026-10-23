@@ -75,7 +75,7 @@ func TestPayPageOf(t *testing.T) {
 	if bare.Bank != nil || bare.Phone != "" || bare.QR != "" {
 		t.Errorf("PayPageOf without the details = %+v", bare)
 	}
-	if got := bare.summary(); got != "Ask us how to pay." {
+	if got := bare.summary(); got != "Ask me how to pay." {
 		t.Errorf("summary with nothing to pay by = %q", got)
 	}
 }
@@ -94,7 +94,7 @@ func TestPayPageHTML(t *testing.T) {
 		`Physio &lt;Co&gt; &amp; &#34;Sons&#34;`,
 		`data-copy="514012345678"`, // The account number as a bank app takes it.
 		`data-copy="0123456789"`,
-		`href="https://wa.me/60123456789"`,
+		`href="https://wa.me/60123456789?text=`, // Proof of payment, with a greeting typed in.
 		`src="qr.png?v=`,
 		`<span class="chip">Touch &#39;n Go eWallet</span>`,
 	} {

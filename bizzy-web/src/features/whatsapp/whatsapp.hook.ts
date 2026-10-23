@@ -1,13 +1,17 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { toast } from "sonner";
+import { FileTextIcon, HandCoinsIcon, MessageCircleIcon } from "lucide-react";
 import { documentsMessage, paymentMessage } from "./whatsapp-message.util";
 import { WhatsAppService } from "./whatsapp.service";
 import { whatsappNumber } from "./whatsapp.util";
-import type { PaymentAsk } from "./whatsapp-message.util";
 import type { ComputerWhatsApp } from "./whatsapp.constant";
 import type { SendableDocument, WhatsAppRecipient } from "./whatsapp.types";
+import type { Action, MenuItemAction } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { AskDocumentsRequest, DocumentSource } from "~/features/documents/documents.types";
+import type { Verdict } from "~/core/lambda/lambda.types";
 import { DocumentsMutation } from "~/features/documents/documents.mutation";
+import { DocumentsService } from "~/features/documents/documents.service";
 import { SettingsQuery } from "~/features/settings/settings.query";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
 /** Where WhatsApp opens on this computer, and a setter that remembers a new choice. */
 export function useComputerWhatsApp(): [ComputerWhatsApp, (value: ComputerWhatsApp) => void] {
@@ -33,30 +37,10 @@ export function useWhatsApp() {
 }
 
 /**
- * Opens the client's chat with a message asking to pay: the amount, the
- * payment page's link, her bank details and the reference to give.
- * Undefined until the settings it fills in are loaded.
- */
-export function useAskToPay(): ((to: WhatsAppRecipient, ask: Omit<PaymentAsk, "clientName">) => void) | undefined {
-  const settings = SettingsQuery.useGet();
-  const whatsapp = useWhatsApp();
-  const saved = settings.data;
-  return useMemo(
-    () =>
-      saved &&
-      ((to, ask) => {
-        const text = paymentMessage(saved, { ...ask, clientName: to.name });
-        if (!whatsapp.message(to.phone, text)) toast.error(`${to.name} has no phone number WhatsApp can use.`);
-      }),
-    [saved, whatsapp],
-  );
-}
-
-/**
  * Composes the message with links to issued documents. Documents issued
  * before links existed get one first; everything since has one already.
  */
-export function useDocumentsMessage() {
+function useDocumentsMessage() {
   const settings = SettingsQuery.useGet();
   const share = DocumentsMutation.useShare();
   const { mutateAsync } = share;
@@ -72,51 +56,101 @@ export function useDocumentsMessage() {
     [settings.data, mutateAsync],
   );
 
-  return { compose, isPending: share.isPending, ready: Boolean(settings.data) };
+  return { compose, busy: share.isPending || !settings.data };
 }
 
 /**
- * Opens WhatsApp on the client's chat with links to the documents typed in.
- * Problems (no phone number, a failed request) are shown as toasts.
+ * Opens the client's chat with a message composed from the API's answer.
+ * WhatsApp Web's tab is opened now, while this is still the user's click:
+ * a tab opened after the request would be blocked as a popup. A refusal
+ * shows as a toast, with its remedies.
  */
-export function useSendDocuments() {
-  const { compose, isPending, ready } = useDocumentsMessage();
+function openWith(to: WhatsAppRecipient, compose: () => Promise<string>): void {
+  const on = WhatsAppService.device();
+  const tab = on === "web" ? window.open("", "_blank") : null;
+  compose()
+    .then((text) => {
+      const url = WhatsAppService.link(to.phone, text, on);
+      if (!url) tab?.close();
+      else if (tab) tab.location.href = url;
+      else WhatsAppService.open(url);
+    })
+    .catch((error: unknown) => {
+      tab?.close();
+      toastRefusal(error);
+    });
+}
 
-  const send = useCallback(
-    (to: WhatsAppRecipient, docs: ReadonlyArray<SendableDocument>) => {
-      if (!whatsappNumber(to.phone)) {
-        toast.error(`${to.name} has no phone number WhatsApp can use.`);
-        return;
-      }
-      // WhatsApp Web's tab is opened now, while this is still her click: a
-      // tab opened after the request for links would be blocked as a popup.
-      const on = WhatsAppService.device();
-      const tab = on === "web" ? window.open("", "_blank") : null;
-      compose(to.name, docs)
-        .then((text) => {
-          const url = WhatsAppService.link(to.phone, text, on);
-          if (!url) return;
-          if (tab) tab.location.href = url;
-          else WhatsAppService.open(url);
-        })
-        .catch((error: unknown) => {
-          tab?.close();
-          toast.error(error instanceof Error ? error.message : "Couldn't prepare the message.");
+/** What a WhatsApp menu offers for something; a way it leaves out isn't offered. */
+export interface WhatsAppTarget {
+  to: WhatsAppRecipient;
+  /** Asking to pay for items and invoices, as its view's verdict says. */
+  askToPay?: { request: AskDocumentsRequest; can: Verdict } | undefined;
+  /** Sending issued documents for the client's records: these, or those covering items, as its view's verdict says. */
+  sendRecords?:
+    | { docs: ReadonlyArray<SendableDocument>; can: Verdict }
+    | { items: Array<DocumentSource>; can: Verdict }
+    | undefined;
+  /** Opening the chat with nothing typed in. */
+  openChat?: boolean | undefined;
+}
+
+/**
+ * Makes the WhatsApp menu (WhatsApp ▾) for something: ask to pay, send
+ * for records, open the chat, each as its verdict says, and none without
+ * a phone number WhatsApp can use. A message opens typed in, ready to send.
+ */
+export function useWhatsAppMenu(): (target: WhatsAppTarget) => Action {
+  const settings = SettingsQuery.useGet().data;
+  const records = useDocumentsMessage();
+  const { compose } = records;
+  const busy = records.busy || !settings;
+
+  return useCallback(
+    ({ to, askToPay, sendRecords, openChat }: WhatsAppTarget): Action => {
+      const noPhone: Verdict | undefined = whatsappNumber(to.phone)
+        ? undefined
+        : { ok: false, why: `${to.name} has no phone number WhatsApp can use.` };
+      const actions: Array<MenuItemAction> = [];
+      if (askToPay) {
+        actions.push({
+          type: "button",
+          label: "Ask to pay",
+          icon: HandCoinsIcon,
+          can: noPhone ?? askToPay.can,
+          disabled: busy,
+          onClick: () =>
+            openWith(to, async () => {
+              const ask = await DocumentsService.ask(askToPay.request);
+              if (!settings) throw new Error("Settings are still loading.");
+              return paymentMessage(settings, to.name, ask);
+            }),
         });
+      }
+      if (sendRecords) {
+        actions.push({
+          type: "button",
+          label: "Send for records",
+          icon: FileTextIcon,
+          can: noPhone ?? sendRecords.can,
+          disabled: busy,
+          onClick: () =>
+            openWith(to, async () =>
+              compose(to.name, "docs" in sendRecords ? sendRecords.docs : await DocumentsService.records(sendRecords.items)),
+            ),
+        });
+      }
+      if (openChat) {
+        actions.push({
+          type: "button",
+          label: "Open chat",
+          icon: MessageCircleIcon,
+          can: noPhone,
+          onClick: () => openWith(to, () => Promise.resolve("")),
+        });
+      }
+      return { type: "menu", label: "WhatsApp", icon: MessageCircleIcon, actions };
     },
-    [compose],
+    [settings, compose, busy],
   );
-
-  /** The same message, to paste anywhere (e.g. from a computer). */
-  const copy = useCallback(
-    (to: WhatsAppRecipient, docs: ReadonlyArray<SendableDocument>) => {
-      compose(to.name, docs)
-        .then((text) => navigator.clipboard.writeText(text))
-        .then(() => toast.success("Message copied"))
-        .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Couldn't copy the message."));
-    },
-    [compose],
-  );
-
-  return { send, copy, busy: isPending || !ready };
 }

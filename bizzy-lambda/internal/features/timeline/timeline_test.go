@@ -69,7 +69,7 @@ func label(e timeline.Entry) string {
 	case timeline.KindFollowUp:
 		return "follow-up " + e.FollowUp.Summary
 	case timeline.KindDocument:
-		return fmt.Sprintf("document of %d", e.Document.Covers)
+		return fmt.Sprintf("document of %d", e.Document.Covers.Sessions+e.Document.Covers.Packages)
 	case timeline.KindPackage:
 		return "package " + e.Package.Note
 	}

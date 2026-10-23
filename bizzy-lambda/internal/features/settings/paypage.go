@@ -247,7 +247,7 @@ func (p PayPage) summary() string {
 	}
 	switch len(ways) {
 	case 0:
-		return "Ask us how to pay."
+		return "Ask me how to pay."
 	case 1:
 		return "Pay by " + ways[0] + "."
 	}

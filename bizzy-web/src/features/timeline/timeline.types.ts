@@ -35,9 +35,7 @@ export interface TimelinePackage extends PackageView {
 }
 
 /** A document covering more than one session or package; mirrors timeline.Document. */
-export interface TimelineDocument extends DocumentSummary {
-  covers: number;
-}
+export type TimelineDocument = DocumentSummary;
 
 /** One thing in a client's story; the part its kind names is set. Mirrors timeline.Entry. */
 export type TimelineEntry =

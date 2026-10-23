@@ -30,14 +30,54 @@ type Summary struct {
 	// Revising says an issued document has its next revision drafted.
 	Revising   bool   `json:"revising,omitempty"`
 	ShareToken string `json:"shareToken,omitempty"`
+	// Covers is what its lines are for, so a list tells documents apart.
+	Covers Covers `json:"covers"`
 	// Can is what a list offers to do with it.
 	Can SummaryCan `json:"can"`
 }
 
+// Covers is what a document's lines are for: how many sessions, packages
+// and other lines, and the span of their service dates (empty when none
+// has one). Worked out from the item a list reads already.
+type Covers struct {
+	Sessions int    `json:"sessions"`
+	Packages int    `json:"packages"`
+	Other    int    `json:"other"`
+	From     string `json:"from,omitempty"`
+	To       string `json:"to,omitempty"`
+}
+
+// coversOf counts lines by what they cover and spans their dates.
+func coversOf(lines []Line) Covers {
+	var c Covers
+	for _, l := range lines {
+		switch {
+		case l.Source != nil && l.Source.Kind == SourceSession:
+			c.Sessions++
+		case l.Source != nil && l.Source.Kind == SourcePackage:
+			c.Packages++
+		default:
+			c.Other++
+		}
+		if l.Date == "" {
+			continue
+		}
+		if c.From == "" || l.Date < c.From {
+			c.From = l.Date
+		}
+		if l.Date > c.To {
+			c.To = l.Date
+		}
+	}
+	return c
+}
+
 // SummaryCan is what a list's actions on a document would say now:
-// sending it, and putting it together with other drafts.
+// sending it for the client's records, asking to pay for it, and putting
+// it together with other drafts.
 type SummaryCan struct {
 	Send      apperr.Verdict `json:"send"`
+	AskToPay  apperr.Verdict `json:"askToPay"`
 	MoveLines apperr.Verdict `json:"moveLines"`
 }
 
@@ -50,14 +90,16 @@ type Can struct {
 	DiscardDraft apperr.Verdict `json:"discardDraft"`
 }
 
-// SummaryOf is a document as lists show it.
-func SummaryOf(d *Document) Summary {
+// SummaryOf is a document as lists show it, with what is owed now (read
+// once for the list).
+func SummaryOf(d *Document, owing Owing) Summary {
 	s := Summary{
 		ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, ClientID: d.ClientID,
 		Revising: d.Status == StatusIssued && d.Draft != nil, ShareToken: d.ShareToken,
 	}
-	// Both are the document's own steps, which never fail to say.
+	// The document's own steps, which never fail to say.
 	s.Can.Send, _ = apperr.VerdictOf(CanSend(d))
+	s.Can.AskToPay, _ = apperr.VerdictOf(owing.canAskOn(d))
 	s.Can.MoveLines, _ = apperr.VerdictOf(CanMoveLines(d))
 	c := d.Content
 	if c == nil {
@@ -65,6 +107,7 @@ func SummaryOf(d *Document) Summary {
 	}
 	if c != nil {
 		s.Date, s.TotalCents, s.RecipientName = c.Date, c.TotalCents, c.Recipient.Name
+		s.Covers = coversOf(c.Lines)
 	}
 	return s
 }
@@ -105,8 +148,12 @@ func viewOf(tx *txn.Tx, d *Document, checks []Check) (*View, error) {
 	if d == nil {
 		return nil, nil
 	}
+	owing, err := OwingOf(tx)
+	if err != nil {
+		return nil, err
+	}
 	v := &View{
-		Summary: SummaryOf(d), Content: d.Content, Draft: d.Draft, CreatedAt: d.CreatedAt,
+		Summary: SummaryOf(d, owing), Content: d.Content, Draft: d.Draft, CreatedAt: d.CreatedAt,
 		IssuedAt: d.IssuedAt, CancelledAt: d.CancelledAt, CancelReason: d.CancelReason, Revisions: []Revision{},
 	}
 	v.Can.SummaryCan = v.Summary.Can
@@ -219,6 +266,17 @@ type placeRequest struct {
 	Items []Source `json:"items"`
 }
 
+// askRequest is what to ask to pay for: items (a session and the package
+// bought in it, a package) and invoices.
+type askRequest struct {
+	Items []Source `json:"items"`
+	IDs   []string `json:"ids"`
+}
+
+type recordsRequest struct {
+	Items []Source `json:"items"`
+}
+
 type shareRequest struct {
 	IDs []string `json:"ids"`
 }
@@ -261,11 +319,15 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 				l = txn.List{Client: in.ClientIDs[0], From: from, To: to, Latest: true}
 			}
 			words := in.Words()
+			owing, err := OwingOf(tx)
+			if err != nil {
+				return listing.Page[Summary]{}, err
+			}
 			return listing.Read(tx, Documents, l, in.Request, func(d *Document) (Summary, bool, error) {
 				if d.Type != in.Type || !listing.OneOf(in.ClientIDs, d.ClientID) || !listing.OneOf(in.Statuses, d.Status) {
 					return Summary{}, false, nil
 				}
-				s := SummaryOf(d)
+				s := SummaryOf(d, owing)
 				client, err := clients.Clients.Get(tx, d.ClientID)
 				if err != nil {
 					return Summary{}, false, err
@@ -279,7 +341,10 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 	r.Query("documents.listByClient", router.Typed(func(ctx context.Context, in clientRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) ([]Summary, error) {
 			all, err := Documents.OfClient(tx, in.ClientID)
-			out := summaries(all)
+			if err != nil {
+				return nil, err
+			}
+			out, err := summaries(tx, all)
 			draft := func(s Summary) int {
 				if s.Number == "" {
 					return 1
@@ -382,6 +447,30 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 			return d, nil
 		})
 	}))
+	// documents.ask is what a message asking to pay says (see AskFor).
+	r.Query("documents.ask", router.Typed(func(ctx context.Context, in askRequest) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) (Ask, error) {
+			a, err := AskFor(tx, in.Items, in.IDs)
+			if err != nil {
+				return Ask{}, err
+			}
+			return a, askable(a)
+		})
+	}))
+	// documents.records is the issued documents covering items, to send
+	// for the client's records (see Records).
+	r.Query("documents.records", router.Typed(func(ctx context.Context, in recordsRequest) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) ([]Summary, error) {
+			docs, err := Records(tx, in.Items)
+			if err == nil {
+				err = sendable(docs)
+			}
+			if err != nil {
+				return nil, err
+			}
+			return summaries(tx, docs)
+		})
+	}))
 	r.Mutation("documents.share", router.Typed(func(ctx context.Context, in shareRequest) (any, error) {
 		if len(in.IDs) == 0 {
 			return nil, apperr.Invalid("Choose what to share.")
@@ -393,10 +482,11 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 	}))
 }
 
-func summaries(all []*Document) []Summary {
+func summaries(tx *txn.Tx, all []*Document) ([]Summary, error) {
+	owing, err := OwingOf(tx)
 	out := []Summary{}
 	for _, d := range all {
-		out = append(out, SummaryOf(d))
+		out = append(out, SummaryOf(d, owing))
 	}
-	return out
+	return out, err
 }

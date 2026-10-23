@@ -31,7 +31,20 @@ interface ActionCommon {
 }
 
 /** One thing the user can do, described rather than built, so any bar can show it. */
-export type Action = ActionCommon &
+export type Action =
+  | MenuItemAction
+  | (ActionCommon & {
+      /**
+       * A few ways to do one thing behind one button (WhatsApp ▾: ask to
+       * pay, send documents, open the chat), so a bar keeps few buttons.
+       * Behind ⋯ they are a group under its label.
+       */
+      type: "menu";
+      actions: ReadonlyArray<MenuItemAction>;
+    });
+
+/** An action a menu can hold: any but another menu. */
+export type MenuItemAction = ActionCommon &
   (
     | { type: "button"; onClick: () => void }
     /** Submits the form with this id, from outside it. */

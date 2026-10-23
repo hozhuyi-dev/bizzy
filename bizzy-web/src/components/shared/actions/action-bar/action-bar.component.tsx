@@ -1,13 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { cn } from "cn";
-import { MoreHorizontalIcon } from "lucide-react";
-import type { Action, ActionSize, ActionStyle, FoldWidth } from "./action-bar.types";
+import { ChevronDownIcon, MoreHorizontalIcon } from "lucide-react";
+import type { Action, ActionSize, ActionStyle, FoldWidth, MenuItemAction } from "./action-bar.types";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 
@@ -157,6 +160,20 @@ export function ActionButton({ action, size = "default", defaultStyle = "seconda
           {content}
         </Button>
       );
+    case "menu":
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button {...common} />}>
+            {content}
+            <ChevronDownIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-auto">
+            {action.actions.map((item) => (
+              <ActionMenuItem key={item.label} action={item} />
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
   }
 }
 
@@ -168,7 +185,7 @@ interface ActionMenuProps {
 
 const ICON_SIZES = { default: "icon", sm: "icon-sm", xs: "icon-xs" } as const satisfies Record<ActionSize, string>;
 
-/** The same actions behind ⋯: a toggle ticks, a destructive one is red. */
+/** The same actions behind ⋯: a toggle ticks, a destructive one is red, a menu is a group under its label. */
 export function ActionMenu({ actions, size = "default", className }: ActionMenuProps) {
   if (actions.length === 0) return null;
   return (
@@ -179,9 +196,20 @@ export function ActionMenu({ actions, size = "default", className }: ActionMenuP
         <MoreHorizontalIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto">
-        {actions.map((action) => (
-          <ActionMenuItem key={action.label} action={action} />
-        ))}
+        {actions.map((action, i) =>
+          action.type === "menu" ? (
+            <DropdownMenuGroup key={action.label}>
+              {i > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuLabel>{action.label}</DropdownMenuLabel>
+              {action.actions.map((item) => (
+                <ActionMenuItem key={item.label} action={item} />
+              ))}
+              {i < actions.length - 1 && <DropdownMenuSeparator />}
+            </DropdownMenuGroup>
+          ) : (
+            <ActionMenuItem key={action.label} action={action} />
+          ),
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -192,7 +220,7 @@ function isDisabled(action: Action): boolean {
   return Boolean(action.disabled) || action.can?.ok === false;
 }
 
-function ActionMenuItem({ action }: { action: Action }) {
+function ActionMenuItem({ action }: { action: MenuItemAction }) {
   const { label, icon: Icon, style } = action;
   const disabled = isDisabled(action);
   // Said under it, as a phone shows no tooltip.

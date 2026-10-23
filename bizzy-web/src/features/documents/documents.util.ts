@@ -1,5 +1,6 @@
 import { DOCUMENT_FACETS, DOCUMENT_STATUS, DOCUMENT_TYPES } from "./documents.constant";
 import type {
+  DocumentCovers,
   DocumentFile,
   DocumentLink,
   DocumentRef,
@@ -14,7 +15,7 @@ import type { Facet, ListFilter } from "~/core/list/filter.types";
 import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
 import { filterUrl, listRequest } from "~/core/list/filter.util";
-import { monthKey } from "~/core/utils/date.util";
+import { formatSpan, monthKey } from "~/core/utils/date.util";
 
 /** The invoices and receipts lists' filter in their URLs: this month unless it says otherwise. */
 export const documentsUrl = filterUrl(DOCUMENT_FACETS, () => monthKey(new Date()));
@@ -67,6 +68,27 @@ export function coveringDocuments(item: Covered | undefined): Array<DocumentLink
     links.push({ type: "receipt", ref: receiptNumber ? { id: receiptId, number: receiptNumber } : { id: receiptId }, issued });
   }
   return links;
+}
+
+/**
+ * What a document's lines are for, to tell it from others in a list:
+ * "Session, 5 Oct", "3 sessions, 5–19 Oct", "2 sessions, 1 package, 28 Sept – 19 Oct".
+ */
+export function coversText({ sessions, packages, other, from, to }: DocumentCovers): string {
+  const counts: Array<[number, string]> = [
+    [sessions, "session"],
+    [packages, "package"],
+    [other, "item"],
+  ];
+  const kinds = counts.filter(([n]) => n > 0);
+  const [only] = kinds;
+  const what =
+    kinds.length === 0
+      ? "No lines"
+      : kinds.length === 1 && only?.[0] === 1
+        ? only[1].charAt(0).toUpperCase() + only[1].slice(1)
+        : kinds.map(([n, noun]) => `${n} ${noun}${n === 1 ? "" : "s"}`).join(", ");
+  return from && to ? `${what}, ${formatSpan(from, to)}` : what;
 }
 
 /** The link that opens a shared document, on whichever origin the app runs. */

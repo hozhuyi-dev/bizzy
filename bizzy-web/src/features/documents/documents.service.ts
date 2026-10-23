@@ -1,4 +1,6 @@
 import type {
+  AskDocumentsRequest,
+  DocumentAsk,
   DocumentContent,
   DocumentFile,
   DocumentSource,
@@ -48,6 +50,10 @@ export const DocumentsService = {
   /** Null when a never-issued draft goes: a receipt, with its payment. */
   discardDraft: (id: string) => invoke<DocumentView | null>("documents.discardDraft", { id }),
   cancel: (id: string, reason: string) => invoke<DocumentView | null>("documents.cancel", { id, reason }),
+  /** What a message asking to pay for items and invoices says; refused when nothing on them is owed. */
+  ask: (request: AskDocumentsRequest) => invoke<DocumentAsk>("documents.ask", request),
+  /** The issued documents covering items, invoices first; refused when none is. */
+  records: (items: Array<DocumentSource>) => invoke<Array<DocumentSummary>>("documents.records", { items }),
   /** Share tokens by id, giving one to any issued document without. */
   share: (ids: Array<string>) => invoke<Record<string, string>>("documents.share", { ids }),
   /** A new share token: links already sent stop working. */

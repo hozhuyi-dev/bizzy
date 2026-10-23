@@ -37,6 +37,10 @@ export interface PackageView {
 export interface PackageCan {
   pay: Verdict;
   undoPayment: Verdict;
+  /** Asking the client to pay for it on WhatsApp: it is owed. */
+  askToPay: Verdict;
+  /** Sending its documents for the client's records: one is issued. */
+  sendRecords: Verdict;
   /** Keeping one bought in a session as one on its own. */
   makeStandalone: Verdict;
   /** Only one bought by mistake: unused, unpaid, on no issued invoice. */

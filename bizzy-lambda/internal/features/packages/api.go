@@ -42,6 +42,8 @@ type View struct {
 type Can struct {
 	Pay            apperr.Verdict `json:"pay"`
 	UndoPayment    apperr.Verdict `json:"undoPayment"`
+	AskToPay       apperr.Verdict `json:"askToPay"`
+	SendRecords    apperr.Verdict `json:"sendRecords"`
 	MakeStandalone apperr.Verdict `json:"makeStandalone"`
 	Delete         apperr.Verdict `json:"delete"`
 }
@@ -94,6 +96,8 @@ func ViewOf(tx *txn.Tx, p *Package, used Usage) (View, error) {
 	}{
 		{&v.Can.Pay, CanPay(tx, p)},
 		{&v.Can.UndoPayment, CanUndoPayment(tx, p)},
+		{&v.Can.AskToPay, documents.CanAskToPay(tx, []documents.Source{src}, nil)},
+		{&v.Can.SendRecords, documents.CanSendRecords(tx, []documents.Source{src})},
 		{&v.Can.MakeStandalone, CanMakeStandalone(p)},
 		{&v.Can.Delete, CanDelete(tx, p, counted)},
 	} {

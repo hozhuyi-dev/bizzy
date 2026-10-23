@@ -15,7 +15,6 @@ import { useRecordDraft } from "./components/record-editor/record-editor.hook";
 import { recordStep } from "./components/record-step/record-step.component";
 import { boughtIn, coveringCredits } from "./session-stage.util";
 import { draftOf } from "./sessions.form";
-import { useAskToPayAction } from "./sessions.hook";
 import { useConfirmBooking } from "./session-booking.hook";
 import { sessionsUrl } from "./sessions.util";
 import { SessionsQuery } from "./sessions.query";
@@ -33,6 +32,7 @@ import { toastRefusal } from "~/features/remedies/components/remedy-buttons/reme
 import { conflictKind } from "~/features/conflicts/conflicts.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
+import { useWhatsAppMenu } from "~/features/whatsapp/whatsapp.hook";
 import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
@@ -124,17 +124,20 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
   const waiting = conflicts.data ?? [];
   const unconfirmed = session.tentative && !session.cancelledAt;
 
-  const askToPay = useAskToPayAction(session, client);
+  const whatsappMenu = useWhatsAppMenu();
   const addFollowUp = client && (() => setFollowUp({ mode: "new", clientId: client.id, sessionId: session.id }));
   // Whatever step it is at, so in the header rather than by a step.
-  const more: Array<Action> = [
-    ...(askToPay ? [askToPay] : []),
-    ...(client
-      ? ([
-          { type: "button", label: "Next visit", icon: CalendarPlusIcon, onClick: () => setNextVisit(draftOf(session)) },
-        ] satisfies Array<Action>)
-      : []),
-  ];
+  const more: Array<Action> = client
+    ? [
+        whatsappMenu({
+          to: { name: client.name, phone: client.contact?.phone },
+          askToPay: { request: { items: session.sources }, can: session.can.askToPay },
+          sendRecords: { items: session.sources, can: session.can.sendRecords },
+          openChat: true,
+        }),
+        { type: "button", label: "Next visit", icon: CalendarPlusIcon, onClick: () => setNextVisit(draftOf(session)) },
+      ]
+    : [];
   // Rare, and undone only by booking it again: cancel one with history,
   // delete one booked by mistake.
   const menu: Array<Action> = [

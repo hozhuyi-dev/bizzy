@@ -84,16 +84,61 @@ export interface DocumentSummary {
   revising?: boolean;
   /** Opens the issued content at /d/<token> without signing in. */
   shareToken?: string;
+  /** What its lines are for, so a list tells documents apart. */
+  covers: DocumentCovers;
   /** What a list's actions on it would say now. */
   can: DocumentSummaryCan;
 }
 
+/** How many lines cover sessions, packages and anything else, and their service dates' span; mirrors documents.Covers. */
+export interface DocumentCovers {
+  sessions: number;
+  packages: number;
+  other: number;
+  /** YYYY-MM-DD; none when no line has a date. */
+  from?: string;
+  to?: string;
+}
+
 /** What a list's actions on a document would say now; mirrors documents.SummaryCan. */
 export interface DocumentSummaryCan {
-  /** Sending it to the client: issued, and not cancelled. */
+  /** Sending it to the client for their records: issued, and not cancelled. */
   send: Verdict;
+  /** Asking the client to pay for it: an invoice with something on it owed. */
+  askToPay: Verdict;
   /** Moving its lines, or putting it together with other drafts: a draft never issued. */
   moveLines: Verdict;
+}
+
+/**
+ * What a message asking to pay says, worked out by the API from what is
+ * owed; mirrors documents.Ask.
+ */
+export interface DocumentAsk {
+  clientId: string;
+  /** Oldest first. */
+  lines: Array<DocumentAskLine>;
+  totalCents: number;
+  /** What the client types as the transfer's reference: the invoice's number, or "AISYAH 05OCT". */
+  ref: string;
+}
+
+/** One thing owed: an item as its invoice line says it, or an issued invoice as a whole, with its link. */
+export interface DocumentAskLine {
+  description: string;
+  /** YYYY-MM-DD. */
+  date?: string;
+  amountCents: number;
+  /** An issued invoice's. */
+  number?: string;
+  revision?: number;
+  shareToken?: string;
+}
+
+/** documents.ask's request: items (a session's sources, a package) and invoices. */
+export interface AskDocumentsRequest {
+  items?: Array<DocumentSource>;
+  ids?: Array<string>;
 }
 
 /** What each action on a document would say now, for its page; mirrors documents.Can. */

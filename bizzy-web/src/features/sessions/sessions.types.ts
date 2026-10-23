@@ -45,6 +45,10 @@ export interface SessionCan {
   record: Verdict;
   pay: Verdict;
   undoPayment: Verdict;
+  /** Asking the client to pay for it on WhatsApp: something of it is owed. */
+  askToPay: Verdict;
+  /** Sending its documents for the client's records: one is issued. */
+  sendRecords: Verdict;
   /** Calling it off, keeping it and its record. */
   cancel: Verdict;
   /** Deleting it, booked by mistake, keeping the package bought in it. */
@@ -80,6 +84,8 @@ export interface SessionView {
   bought?: BoughtView;
   /** Still to collect with it: its fee unless received, plus the package bought in it unless paid. */
   owedCents: number;
+  /** What its invoice and receipt lines cover (it, and the package bought in it): what asking to pay and sending its documents go by. */
+  sources: Array<DocumentSource>;
   record: RecordView;
   todo: Array<SessionReason>;
   /** When it was called off, and why; a cancelled session stays as it was. */

@@ -36,3 +36,20 @@ func TestLegal(t *testing.T) {
 		}
 	}
 }
+
+// coversOf counts lines by what they cover and spans the dates they have.
+func TestCoversOf(t *testing.T) {
+	lines := []Line{
+		{Date: "2026-10-19", Source: &Source{Kind: SourceSession, ID: "s2"}},
+		{Date: "2026-09-28", Source: &Source{Kind: SourceSession, ID: "s1"}},
+		{Date: "2026-10-02", Source: &Source{Kind: SourcePackage, ID: "p1"}},
+		{Description: "Exercise band"},
+	}
+	want := Covers{Sessions: 2, Packages: 1, Other: 1, From: "2026-09-28", To: "2026-10-19"}
+	if got := coversOf(lines); got != want {
+		t.Errorf("coversOf = %+v, want %+v", got, want)
+	}
+	if got := coversOf(nil); got != (Covers{}) {
+		t.Errorf("coversOf(nil) = %+v, want none", got)
+	}
+}

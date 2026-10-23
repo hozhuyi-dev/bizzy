@@ -39,6 +39,10 @@ type View struct {
 	Paid      *documents.Paid `json:"paid,omitempty"`
 	Bought    *BoughtView     `json:"bought,omitempty"`
 	OwedCents int64           `json:"owedCents"`
+	// Sources are what its invoice and receipt lines cover: it, and the
+	// package bought in it. Asking to pay and sending its documents go by
+	// them.
+	Sources []documents.Source `json:"sources"`
 	Record    RecordView      `json:"record"`
 	Todo      []Reason        `json:"todo"`
 	// CancelledAt is when it was called off, and CancelReason why.
@@ -98,6 +102,8 @@ type Can struct {
 	Record            apperr.Verdict `json:"record"`
 	Pay               apperr.Verdict `json:"pay"`
 	UndoPayment       apperr.Verdict `json:"undoPayment"`
+	AskToPay          apperr.Verdict `json:"askToPay"`
+	SendRecords       apperr.Verdict `json:"sendRecords"`
 	Cancel            apperr.Verdict `json:"cancel"`
 	Delete            apperr.Verdict `json:"delete"`
 	DeleteWithPackage apperr.Verdict `json:"deleteWithPackage"`
@@ -160,7 +166,7 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 		ID: s.ID, ClientID: s.ClientID, ClientName: client.Name, Start: s.Start, End: s.End,
 		Tentative: s.Tentative, ConfirmedAt: s.ConfirmedAt, Location: s.Location,
 		Hours: hours(s.Billable()), Credits: creditViews(s.Credits),
-		CancelledAt: s.CancelledAt, CancelReason: s.CancelReason,
+		CancelledAt: s.CancelledAt, CancelReason: s.CancelReason, Sources: []documents.Source{s.Source()},
 	}
 	inv, line, err := documents.Invoice(tx, s.Source())
 	if err != nil {
@@ -184,6 +190,7 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 			return View{}, err
 		}
 		v.Bought = &BoughtView{ID: p.ID, Hours: p.Hours, PriceCents: price, Paid: paid != nil}
+		v.Sources = append(v.Sources, documents.PackageSource(p.ID))
 	}
 	if v.OwedCents, err = owed(tx, s); err != nil {
 		return View{}, err
@@ -203,6 +210,8 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 		{&v.Can.Record, CanRecord(tx, s.ID)},
 		{&v.Can.Pay, CanPay(tx, s)},
 		{&v.Can.UndoPayment, CanUndoPayment(tx, s)},
+		{&v.Can.AskToPay, documents.CanAskToPay(tx, v.Sources, nil)},
+		{&v.Can.SendRecords, documents.CanSendRecords(tx, v.Sources)},
 		{&v.Can.Cancel, CanCancel(tx, s)},
 		{&v.Can.Delete, CanDelete(tx, s)},
 		{&v.Can.DeleteWithPackage, CanDeleteWithPackage(tx, s)},

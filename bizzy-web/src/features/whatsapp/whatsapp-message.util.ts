@@ -1,76 +1,84 @@
-import type { DocumentSummary } from "~/features/documents/documents.types";
+import { DEFAULT_DOCUMENT_MESSAGE, DEFAULT_PAYMENT_MESSAGE } from "./whatsapp.constant";
+import type { DocumentAsk, DocumentAskLine, DocumentSummary } from "~/features/documents/documents.types";
 import type { SentDocument } from "./whatsapp.types";
 import type { SettingsView } from "~/features/settings/settings.types";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
-import { documentLabel, shareUrl  } from "~/features/documents/documents.util";
+import { documentLabel, shareUrl } from "~/features/documents/documents.util";
 import { formatCents } from "~/core/utils/money.util";
-import { formatDate, referenceDay } from "~/core/utils/date.util";
-import { PAY_URL } from "~/features/settings/settings.constant";
+import { formatDate } from "~/core/utils/date.util";
+import { PAY_APP_OPTIONS, PAY_URL } from "~/features/settings/settings.constant";
 
 /**
- * The WhatsApp messages she sends, filled in from her templates in Settings.
- * A {placeholder} the message has no value for is left as typed, so a typo
- * shows up in the chat before she sends it rather than vanishing.
+ * The two WhatsApp messages the user sends, filled in from their templates
+ * in Settings (the app's wording while blank): asking to pay, and issued
+ * documents for the client's records. What they list comes from the API.
  */
 
+const PLACEHOLDER = /\{(\w+)\}/g;
+
+/**
+ * Fills in the {placeholders}. One the message has no value for is left as
+ * typed, so a typo shows up in the chat before it is sent rather than
+ * vanishing; a line of only placeholders that all came out empty is left
+ * out, and so is a blank line it leaves doubled.
+ */
 export function fillMessage(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
+  const lines = template.split("\n").flatMap((line) => {
+    const names = [...line.matchAll(PLACEHOLDER)].map((match) => match[1] ?? "");
+    const empty = names.length > 0 && names.every((name) => values[name] === "") && line.replace(PLACEHOLDER, "").trim() === "";
+    return empty ? [] : [line.replace(PLACEHOLDER, (match, key: string) => values[key] ?? match)];
+  });
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function person(name: string) {
   return { name, firstName: name.trim().split(/\s+/)[0] ?? name };
 }
 
-/** Her bank details, one per line, skipping what she hasn't filled in. */
+/** The user's bank details, one per line, skipping what isn't filled in. */
 export function bankDetails(settings: SettingsView): string {
   return [settings.bankName, settings.accountName, settings.accountNo].filter(Boolean).join("\n");
 }
 
-/** What a payment message asks for: a session, or a package bought on its own. */
-export interface PaymentAsk {
-  clientName: string;
-  /** What it is for, as the message reads it: "your session on 5 Oct 2026". */
-  item: string;
-  /** Its day: the session's start, or the day the package was bought. */
-  date: string;
-  amountCents?: number | undefined;
-  /** Its invoice's number, once issued. */
-  invoiceNumber?: string | undefined;
-  /** A package, which the reference says. */
-  isPackage?: boolean;
+/**
+ * The apps that pay the user's phone and its number, as the payment page
+ * says them: "DuitNow / TnG eWallet / GrabPay: 012-345 6789"; empty with
+ * none. The number is the pay phone, else the business phone.
+ */
+export function phonePay(settings: SettingsView): string {
+  const apps = PAY_APP_OPTIONS.filter((app) => settings.payApps?.includes(app.value)).map((app) => app.label);
+  const phone = settings.payPhone || settings.phone;
+  return apps.length > 0 && phone ? `${apps.join(" / ")}: ${phone}` : "";
 }
 
-/** The most a Malaysian bank app takes as a transfer's reference. */
-const REFERENCE_LENGTH = 20;
+/** "Physiotherapy session · 5 Oct 2026 · RM 95.00", or an issued invoice's number, with its link on the next line. */
+function askLine(line: DocumentAskLine): string {
+  const label = line.number ? `${line.description} ${documentLabel(line.number, line.revision)}` : line.description;
+  const date = line.date ? ` · ${formatDate(line.date)}` : "";
+  const link = line.shareToken ? `\n${shareUrl(line.shareToken)}` : "";
+  return `${label}${date} · ${formatCents(line.amountCents)}${link}`;
+}
 
-const referenceText = (text: string) => text.toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-/**
- * What the client types as the transfer's reference, so the payment is easy
- * to match: its invoice number once issued, else the client's first name
- * and the day ("AISYAH 05OCT", "AISYAH PKG 05OCT" for a package). Letters,
- * digits and spaces only, at most 20, as bank apps take them.
- */
-export function paymentReference(ask: Pick<PaymentAsk, "clientName" | "date" | "invoiceNumber" | "isPackage">): string {
-  if (ask.invoiceNumber) return referenceText(ask.invoiceNumber).slice(0, REFERENCE_LENGTH);
-  const suffix = `${ask.isPackage ? " PKG" : ""} ${referenceDay(ask.date)}`;
-  const name = referenceText(person(ask.clientName).firstName).slice(0, REFERENCE_LENGTH - suffix.length);
-  return `${name}${suffix}`.trim();
+/** {items}: what is owed, a line each, and the total under several. */
+export function askItems(ask: Pick<DocumentAsk, "lines" | "totalCents">): string {
+  const lines = ask.lines.map(askLine);
+  if (lines.length > 1) lines.push(`Total: ${formatCents(ask.totalCents)}`);
+  return lines.join("\n");
 }
 
 /**
- * Asks for payment: the amount, a link to the payment page (every way to
- * pay), her bank details and the reference to give.
+ * Asks for payment: what is owed, a link to the payment page (every way to
+ * pay), the bank details, the phone e-wallets pay, and the reference to give.
  */
-export function paymentMessage(settings: SettingsView, ask: PaymentAsk, payUrl: string = PAY_URL): string {
-  return fillMessage(settings.paymentMessage, {
-    ...person(ask.clientName),
-    item: ask.item,
-    date: formatDate(ask.date),
-    amount: ask.amountCents !== undefined ? formatCents(ask.amountCents) : "",
+export function paymentMessage(settings: SettingsView, clientName: string, ask: DocumentAsk, payUrl: string = PAY_URL): string {
+  return fillMessage(settings.paymentMessage || DEFAULT_PAYMENT_MESSAGE, {
+    ...person(clientName),
+    items: askItems(ask),
+    amount: formatCents(ask.totalCents),
     payLink: payUrl,
     bank: bankDetails(settings),
-    ref: paymentReference(ask),
+    phonePay: phonePay(settings),
+    ref: ask.ref,
     business: settings.businessName,
   });
 }
@@ -94,13 +102,27 @@ function documentLine(doc: SentDocument): string {
   return `${label}${date} · ${formatCents(doc.totalCents)}\n${shareUrl(doc.shareToken)}`;
 }
 
-/** Sends links to one or more issued documents, of any types. */
+/** Sends links to one or more issued documents, of any types, for the client's records. */
 export function documentsMessage(settings: SettingsView, clientName: string, docs: ReadonlyArray<SentDocument>): string {
-  return fillMessage(settings.documentMessage, {
+  return fillMessage(settings.documentMessage || DEFAULT_DOCUMENT_MESSAGE, {
     ...person(clientName),
     title: documentsTitle(docs),
     documents: docs.map(documentLine).join("\n\n"),
     total: formatCents(docs.reduce((sum, doc) => sum + doc.totalCents, 0)),
     business: settings.businessName,
   });
+}
+
+const SAMPLE_CLIENT = "Aisyah binti Ahmad";
+
+/** The message asking to pay as a client would get it for a session, for Settings to preview the template. */
+export function paymentPreview(settings: SettingsView): string {
+  const line = { description: settings.serviceName, date: "2026-10-05", amountCents: 9500 };
+  return paymentMessage(settings, SAMPLE_CLIENT, { clientId: "", lines: [line], totalCents: 9500, ref: "AISYAH 05OCT" });
+}
+
+/** The message sending a receipt as a client would get it, for Settings to preview the template. */
+export function documentsPreview(settings: SettingsView): string {
+  const receipt = { type: "receipt", number: "RCP260001", revision: 0, date: "2026-10-05", totalCents: 9500, shareToken: "sample" } as const;
+  return documentsMessage(settings, SAMPLE_CLIENT, [receipt]);
 }

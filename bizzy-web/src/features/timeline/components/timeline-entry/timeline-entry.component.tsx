@@ -5,7 +5,7 @@ import type { Action } from "~/components/shared/actions/action-bar/action-bar.t
 import { lengthAndPlace, recordText, stageBadges } from "~/features/sessions/session-stage.util";
 import { DocumentStatusBadge } from "~/features/documents/documents.columns";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
-import { documentRoute, refLabel } from "~/features/documents/documents.util";
+import { coversText, documentRoute, refLabel } from "~/features/documents/documents.util";
 import { useMarkDone } from "~/features/follow-ups/follow-ups.hook";
 import { formatDue, isOverdue } from "~/features/follow-ups/follow-ups.util";
 import { TextLink } from "~/components/shared/link/text-link/text-link.component";
@@ -156,7 +156,7 @@ export function DocumentItem({ doc }: { doc: TimelineDocument }) {
       when={doc.date ? formatDate(doc.date) : "Dated when issued"}
       badges={<DocumentStatusBadge status={doc.status} revising={doc.revising} />}
       title={<TextLink {...page}>{refLabel(doc.type, doc, doc.status !== "draft")}</TextLink>}
-      meta={`${DOCUMENT_TYPES[doc.type].title} for ${doc.covers} sessions and packages · ${formatCents(doc.totalCents)}`}
+      meta={`${DOCUMENT_TYPES[doc.type].title} · ${coversText(doc.covers)} · ${formatCents(doc.totalCents)}`}
       open={page}
     />
   );

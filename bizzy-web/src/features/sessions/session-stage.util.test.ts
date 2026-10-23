@@ -18,7 +18,17 @@ import type { PackageView } from "~/features/packages/packages.types";
 
 const yes = { ok: true };
 
-const can: SessionCan = { update: yes, record: yes, pay: yes, undoPayment: yes, cancel: yes, delete: yes, deleteWithPackage: yes };
+const can: SessionCan = {
+  update: yes,
+  record: yes,
+  pay: yes,
+  undoPayment: yes,
+  askToPay: yes,
+  sendRecords: yes,
+  cancel: yes,
+  delete: yes,
+  deleteWithPackage: yes,
+};
 
 const now = new Date("2026-10-13T00:00:00Z");
 
@@ -38,6 +48,7 @@ function session(overrides: Partial<SessionView> = {}): SessionView {
     feeTyped: false,
     invoice: { id: "d1" },
     owedCents: 9500,
+    sources: [{ kind: "session", id: "s1" }],
     record: { summary: "", hasNotes: false, files: 0 },
     todo: [],
     can,
@@ -58,7 +69,7 @@ function pkg(overrides: Partial<PackageView> = {}): PackageView {
     invoice: { id: "d1" },
     owedCents: 85000,
     todo: [],
-    can: { pay: yes, undoPayment: { ok: false }, makeStandalone: yes, delete: yes },
+    can: { pay: yes, undoPayment: { ok: false }, askToPay: yes, sendRecords: yes, makeStandalone: yes, delete: yes },
     locked: {},
     ...overrides,
   };

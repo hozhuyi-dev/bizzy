@@ -14,10 +14,17 @@ import { PageSections } from "~/components/shared/layout/page-sections/page-sect
 import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { FieldGroup } from "~/components/ui/field";
+import { Button } from "~/components/ui/button";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { emailError, placeholdersError, wholeNumberError } from "~/core/utils/form.util";
 import { queryMatch } from "~/core/utils/query.util";
-import { DOCUMENT_PLACEHOLDERS, PAYMENT_PLACEHOLDERS } from "~/features/whatsapp/whatsapp.constant";
+import {
+  DEFAULT_DOCUMENT_MESSAGE,
+  DEFAULT_PAYMENT_MESSAGE,
+  DOCUMENT_PLACEHOLDERS,
+  PAYMENT_PLACEHOLDERS,
+} from "~/features/whatsapp/whatsapp.constant";
+import { documentsPreview, paymentPreview } from "~/features/whatsapp/whatsapp-message.util";
 import { ComputerWhatsAppSettings } from "~/features/whatsapp/components/computer-whatsapp-settings/computer-whatsapp-settings.component";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -48,12 +55,33 @@ const FORM_ID = "settings-form";
 
 const placeholderList = (names: ReadonlyArray<string>) => names.map((name) => `{${name}}`).join(" ");
 
+type Messages = Pick<SettingsView, "paymentMessage" | "documentMessage">;
+
+/** The messages as the form shows them: the app's wording while the user's own is blank. */
+function shownMessages<T extends Messages>(values: T): T {
+  return {
+    ...values,
+    paymentMessage: values.paymentMessage || DEFAULT_PAYMENT_MESSAGE,
+    documentMessage: values.documentMessage || DEFAULT_DOCUMENT_MESSAGE,
+  };
+}
+
+/** Saved blank while they are the app's wording, so a better default reaches them. */
+function savedMessages<T extends Messages>(values: T): T {
+  const own = (value: string, wording: string) => (value.trim() === wording ? "" : value);
+  return {
+    ...values,
+    paymentMessage: own(values.paymentMessage, DEFAULT_PAYMENT_MESSAGE),
+    documentMessage: own(values.documentMessage, DEFAULT_DOCUMENT_MESSAGE),
+  };
+}
+
 function SettingsForm({ saved }: { saved: SettingsView }) {
   const save = SettingsMutation.useSave();
 
   const form = useAppForm({
     defaultValues: {
-      ...saved,
+      ...shownMessages(saved),
       bankName: saved.bankName ?? "",
       accountName: saved.accountName ?? "",
       accountNo: saved.accountNo ?? "",
@@ -63,8 +91,8 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
     },
     onSubmit: async ({ value, formApi }) => {
       try {
-        await save.mutateAsync(value);
-        formApi.reset(value);
+        await save.mutateAsync(savedMessages(value));
+        formApi.reset(shownMessages(value));
         toastWithQuip("Settings saved", QUIPS.saved);
       } catch (error) {
         toastRefusal(error);
@@ -74,6 +102,8 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
 
   const isSubmitting = useSelector(form.store, (state) => state.isSubmitting);
   const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
+  // What the message previews fill in, as typed.
+  const values = useSelector(form.store, (state) => state.values);
 
   return (
     <>
@@ -148,7 +178,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
           {
             id: "bank",
             title: "Bank details",
-            description: "Printed on invoices and sent in the WhatsApp message asking to pay, so all three are needed. Receipts confirm money already paid, so they don't print them.",
+            description: "Shown on invoices and in the message asking to pay.",
             content: (
               <div className="grid gap-4 sm:grid-cols-3">
                 <form.AppField name="bankName">{(field) => <field.TextField label="Bank" form={FORM_ID} />}</form.AppField>
@@ -165,7 +195,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
             id: "payment-page",
             title: "Payment page",
             description:
-              "One page with every way to pay: your DuitNow QR, bank details and the phone number e-wallets pay. The message asking to pay links to it ({payLink}). Saving updates it within a minute.",
+              "Every way to pay, on one page the message asking to pay links to. Updates a minute after saving.",
             actions: PAY_URL
               ? [{ type: "external", label: "Open page", icon: ExternalLinkIcon, href: PAY_URL }]
               : undefined,
@@ -222,7 +252,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
             id: "whatsapp",
             title: "WhatsApp messages",
             description:
-              "WhatsApp opens the client's chat with the message typed in, ready to send. Leave one blank to go back to the default.",
+              "Typed into the client's chat, ready to send.",
             content: (
               <FieldGroup>
                 <form.AppField
@@ -231,10 +261,17 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
                 >
                   {(field) => (
                     <field.TextareaField
-                      label="Asking for payment"
+                      label="Asking to pay"
                       form={FORM_ID}
-                      rows={3}
-                      description={`From a session, or a package bought on its own. {item} reads "your session on 5 Oct 2026" or "your 10-hour package", {payLink} is your payment page, and {ref} is the invoice number, or the client's name and the day ("AISYAH 05OCT") until one is issued. ${placeholderList(PAYMENT_PLACEHOLDERS)}`}
+                      rows={10}
+                      description={`When something is owed. Can use ${placeholderList(PAYMENT_PLACEHOLDERS)}`}
+                      hint={
+                        <MessageHint
+                          preview={paymentPreview({ ...values, paymentMessage: field.state.value })}
+                          isDefault={field.state.value.trim() === DEFAULT_PAYMENT_MESSAGE}
+                          onReset={() => field.handleChange(DEFAULT_PAYMENT_MESSAGE)}
+                        />
+                      }
                     />
                   )}
                 </form.AppField>
@@ -244,10 +281,17 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
                 >
                   {(field) => (
                     <field.TextareaField
-                      label="Sending documents"
+                      label="Sending for records"
                       form={FORM_ID}
-                      rows={3}
-                      description={`From an invoice or receipt, a session or a client; {documents} lists each with its link, and {title} reads "invoice", "receipts" or "documents" as it fits. ${placeholderList(DOCUMENT_PLACEHOLDERS)}`}
+                      rows={6}
+                      description={`Issued invoices or receipts, when a client asks. Can use ${placeholderList(DOCUMENT_PLACEHOLDERS)}`}
+                      hint={
+                        <MessageHint
+                          preview={documentsPreview({ ...values, documentMessage: field.state.value })}
+                          isDefault={field.state.value.trim() === DEFAULT_DOCUMENT_MESSAGE}
+                          onReset={() => field.handleChange(DEFAULT_DOCUMENT_MESSAGE)}
+                        />
+                      }
                     />
                   )}
                 </form.AppField>
@@ -258,7 +302,7 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
             id: "whatsapp-computer",
             title: "WhatsApp on PC",
             description:
-              "Browser opens WhatsApp Web in a new tab each time; the desktop app needs WhatsApp installed. Changes right away and is remembered on this device. Your phone always uses the WhatsApp app.",
+              "Where WhatsApp opens on this computer. Your phone always uses the app.",
             content: <ComputerWhatsAppSettings />,
           },
           {
@@ -325,5 +369,23 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
       />
       <UnsavedChangesDialog when={hasChanges} />
     </>
+  );
+}
+
+interface MessageHintProps {
+  preview: string;
+  isDefault: boolean;
+  onReset: () => void;
+}
+
+/** Under a message template: the message as a client would get it, and going back to the app's wording. */
+function MessageHint({ preview, isDefault, onReset }: MessageHintProps) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="rounded-md bg-muted p-3 text-sm whitespace-pre-wrap">{preview}</p>
+      <Button type="button" variant="outline" size="sm" className="self-start" disabled={isDefault} onClick={onReset}>
+        Reset to default
+      </Button>
+    </div>
   );
 }

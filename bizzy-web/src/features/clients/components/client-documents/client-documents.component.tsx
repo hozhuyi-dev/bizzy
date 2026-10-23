@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
-import { CopyIcon, MergeIcon, MessageCircleIcon } from "lucide-react";
+import { MergeIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ClientDocumentCard, createClientDocumentColumns } from "../../client-documents.columns";
 import type { RowSelectionState } from "@tanstack/react-table";
@@ -8,11 +8,12 @@ import type { ClientView } from "../../clients.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
 import type { DocumentSummary, DocumentType } from "~/features/documents/documents.types";
+import type { Verdict } from "~/core/lambda/lambda.types";
 import { DocumentsMutation } from "~/features/documents/documents.mutation";
 import { DocumentsQuery } from "~/features/documents/documents.query";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { documentLink } from "~/features/documents/documents.columns";
-import { useSendDocuments } from "~/features/whatsapp/whatsapp.hook";
+import { useWhatsAppMenu } from "~/features/whatsapp/whatsapp.hook";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
@@ -26,16 +27,17 @@ const COLUMNS = createClientDocumentColumns();
 
 /**
  * The client's documents section: every invoice and receipt, newest first,
- * drafts last, narrowed to one type by its chips. The user ticks issued
- * ones to send in one WhatsApp message (or copy it), or drafts of one type
- * to put on one document; the section's actions do either. A new client
- * has none.
+ * drafts last, narrowed to one type by its chips. The user ticks invoices
+ * to ask to pay for in one WhatsApp message (what drafts list, issued ones
+ * as a whole with their links), issued ones to send for the client's
+ * records, or drafts of one type to put on one document. A new client has
+ * none.
  */
 export function useClientDocumentsSection(client: ClientView | undefined): PageSection | undefined {
   const docs = DocumentsQuery.useByClient(client?.id ?? "");
   const [type, setType] = useState<DocumentType>();
   const [selection, setSelection] = useState<RowSelectionState>({});
-  const { send, copy, busy } = useSendDocuments();
+  const whatsappMenu = useWhatsAppMenu();
   const combine = DocumentsMutation.useCombine();
 
   const all = useMemo(() => docs.data ?? [], [docs.data]);
@@ -45,8 +47,8 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
     columns: COLUMNS,
     data,
     getRowId: (doc) => doc.id,
-    // Ticked to send, or to put together: what its `can` allows.
-    enableRowSelection: (row) => row.original.can.send.ok || row.original.can.moveLines.ok,
+    // Ticked to ask to pay, send, or put together: what its `can` allows.
+    enableRowSelection: (row) => row.original.can.askToPay.ok || row.original.can.send.ok || row.original.can.moveLines.ok,
     state: { rowSelection: selection },
     onRowSelectionChange: setSelection,
   });
@@ -55,7 +57,6 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
   const chosen = data.filter((doc) => selection[doc.id]);
   const to = { name: client.name, phone: client.contact?.phone };
   const together = combinable(chosen);
-  const sendable = chosen.length > 0 && chosen.every((doc) => doc.can.send.ok);
 
   const actions: Array<Action> = [
     {
@@ -75,20 +76,11 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
           },
         ),
     },
-    {
-      type: "button",
-      label: "Copy message",
-      icon: CopyIcon,
-      disabled: !sendable || busy,
-      onClick: () => copy(to, chosen),
-    },
-    {
-      type: "button",
-      label: "Send on WhatsApp",
-      icon: MessageCircleIcon,
-      disabled: !sendable || busy,
-      onClick: () => send(to, chosen),
-    },
+    whatsappMenu({
+      to,
+      askToPay: { request: { ids: chosen.map((doc) => doc.id) }, can: allOf(chosen, (doc) => doc.can.askToPay) },
+      sendRecords: { docs: chosen, can: allOf(chosen, (doc) => doc.can.send) },
+    }),
   ];
 
   return {
@@ -96,8 +88,8 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
     title: "Documents",
     description:
       chosen.length > 0
-        ? `${chosen.length} ticked. Send issued ones; put drafts of one kind on one document.`
-        : "Tick issued ones to send, or drafts to put on one document.",
+        ? `${chosen.length} ticked. Ask to pay for invoices, send issued ones, or put drafts of one kind on one document.`
+        : "Tick invoices to ask to pay for, issued ones to send, or drafts to put on one document.",
     more: all.length > 0 ? actions : undefined,
     bare: true,
     content: docs.isPending ? (
@@ -133,6 +125,12 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
       </div>
     ),
   };
+}
+
+/** What every ticked one's verdict allows: the first no, or no while none is ticked. */
+function allOf(chosen: ReadonlyArray<DocumentSummary>, verdict: (doc: DocumentSummary) => Verdict): Verdict {
+  if (chosen.length === 0) return { ok: false, why: "Tick the documents first." };
+  return chosen.map(verdict).find((v) => !v.ok) ?? { ok: true };
 }
 
 const TYPES = Object.keys(DOCUMENT_TYPES) as Array<DocumentType>;

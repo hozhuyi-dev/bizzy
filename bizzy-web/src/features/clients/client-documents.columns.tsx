@@ -2,7 +2,7 @@ import { FileTextIcon, ReceiptIcon } from "lucide-react";
 import type { DocumentSummary } from "~/features/documents/documents.types";
 import { DocumentStatusBadge, documentLink } from "~/features/documents/documents.columns";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
-import { documentLabel } from "~/features/documents/documents.util";
+import { coversText, documentLabel } from "~/features/documents/documents.util";
 import { CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
@@ -18,9 +18,10 @@ export function clientDocumentLabel(doc: DocumentSummary): string {
   return doc.number ? `${title} ${documentLabel(doc.number, doc.revision)}` : `Draft ${title.toLowerCase()}`;
 }
 
-/** A draft takes the day it is issued. */
-function dateText(doc: DocumentSummary): string {
-  return doc.date ? formatDate(doc.date) : "Dated when issued";
+/** What its lines are for, then its date: "3 sessions, 5–19 Oct · dated 21 Oct 2026". A draft takes the day it is issued. */
+function aboutText(doc: DocumentSummary): string {
+  const covers = coversText(doc.covers);
+  return doc.date ? `${covers} · dated ${formatDate(doc.date)}` : covers;
 }
 
 /**
@@ -53,12 +54,12 @@ export const createClientDocumentColumns = () =>
       id: "number",
       header: "Document",
       sortFn: "alphanumeric",
-      meta: { width: "grow", search: (doc: DocumentSummary) => [clientDocumentLabel(doc), dateText(doc)] },
+      meta: { width: "grow", search: (doc: DocumentSummary) => [clientDocumentLabel(doc), aboutText(doc)] },
       cell: ({ row }) => {
         const doc = row.original;
         const Icon = doc.type === "invoice" ? FileTextIcon : ReceiptIcon;
         return (
-          <CellText sub={dateText(doc)}>
+          <CellText sub={aboutText(doc)}>
             <span className="flex min-w-0 items-center gap-2">
               <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <CellLink {...documentLink(doc)}>{clientDocumentLabel(doc)}</CellLink>
@@ -98,7 +99,7 @@ export function ClientDocumentCard({ doc, selectable, selected, onSelectedChange
         </>
       }
       value={formatCents(doc.totalCents)}
-      meta={dateText(doc)}
+      meta={aboutText(doc)}
       actions={
         selectable
           ? [{ type: "toggle", label: selected ? "Ticked" : "Tick", pressed: selected, onPressedChange: onSelectedChange }]

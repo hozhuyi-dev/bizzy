@@ -5,7 +5,6 @@ import {
   EyeIcon,
   FileCheckIcon,
   LinkIcon,
-  MessageCircleIcon,
   PencilIcon,
   RefreshCwIcon,
 } from "lucide-react";
@@ -26,7 +25,7 @@ import { DOCUMENT_TYPES } from "./documents.constant";
 import { useDocumentPdf } from "./documents.hook";
 import type { PdfSource } from "./documents.hook";
 import type { ReactNode } from "react";
-import type { DocumentContent, DocumentRevision, DocumentType, DocumentView } from "./documents.types";
+import type { DocumentContent, DocumentRevision, DocumentType, DocumentView, Recipient } from "./documents.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
@@ -51,7 +50,7 @@ import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { useSendDocuments } from "~/features/whatsapp/whatsapp.hook";
+import { useWhatsAppMenu } from "~/features/whatsapp/whatsapp.hook";
 import { clientOf } from "~/features/clients/clients.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
@@ -128,6 +127,7 @@ interface DraftDocumentProps {
 function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
   const editor = useDocumentEditor(doc, draft);
   const editorActions = documentEditorActions(editor);
+  const whatsapp = useDocumentWhatsApp(doc, draft.recipient);
   const history = historySection(doc, revisions);
 
   return (
@@ -137,7 +137,7 @@ function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
         title={documentLabel(doc.number, doc.revision)}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
         actions={[documentIssueAction(editor)]}
-        moreActions={editorActions.more}
+        moreActions={[whatsapp, ...editorActions.more]}
         menuActions={editorActions.menu}
       />
       <form
@@ -168,7 +168,8 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
   const pdf = DocumentsQuery.usePdf(doc.id, doc.revision, doc.status);
   const [viewPdf, downloadPdf] = usePdfActions(pdf.data ? { file: pdf.data } : { id: doc.id });
   const [resettingLink, setResettingLink] = useState(false);
-  const share = useShareActions(doc, content, () => setResettingLink(true));
+  const whatsapp = useDocumentWhatsApp(doc, content.recipient);
+  const links = useLinkActions(doc, () => setResettingLink(true));
 
   return (
     <>
@@ -179,10 +180,10 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
         // An issued receipt is mostly sent and viewed; revising is rare, so
         // nothing claims the always-visible slot and the title keeps the room
         // on a phone, and the rest waits behind ⋯ on a wide screen too.
-        moreActions={[...share.send, viewPdf]}
+        moreActions={[whatsapp, viewPdf]}
         menuActions={[
           downloadPdf,
-          ...share.links,
+          ...links,
           {
             type: "button",
             label: "Revise",
@@ -230,41 +231,42 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
 }
 
 /**
- * Sending the document's link: WhatsApp (the app on her phone, WhatsApp Web
- * on her computer), Copy link, and Reset link for one sent to the wrong person. A cancelled document's
- * link still opens (marked cancelled), so it can be reset but not sent.
+ * The document's WhatsApp menu: asking to pay for an invoice (what is owed
+ * on it), sending an issued one for the client's records, or the chat.
  */
-function useShareActions(
-  doc: DocumentView,
-  content: DocumentContent,
-  onReset: () => void,
-): { send: Array<Action>; links: Array<Action> } {
+function useDocumentWhatsApp(doc: DocumentView, recipient: Recipient): Action {
   const clientsById = ClientsQuery.useById();
-  const { send, busy } = useSendDocuments();
+  const whatsappMenu = useWhatsAppMenu();
   const client = clientOf(clientsById, doc.clientId);
-  const to = { name: client?.name ?? content.recipient.name, phone: client?.contact?.phone ?? content.recipient.phone };
-  const token = doc.shareToken;
+  return whatsappMenu({
+    to: { name: client?.name ?? recipient.name, phone: client?.contact?.phone ?? recipient.phone },
+    askToPay: doc.type === "invoice" ? { request: { ids: [doc.id] }, can: doc.can.askToPay } : undefined,
+    sendRecords: { docs: [doc], can: doc.can.send },
+    openChat: true,
+  });
+}
 
-  const actions: { send: Array<Action>; links: Array<Action> } = { send: [], links: [] };
-  if (doc.can.send.ok) {
-    actions.send.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, disabled: busy, onClick: () => send(to, [doc]) });
-  }
-  if (token) {
-    actions.links.push(
-      {
-        type: "button",
-        label: "Copy link",
-        icon: LinkIcon,
-        onClick: () =>
-          void navigator.clipboard
-            .writeText(shareUrl(token))
-            .then(() => toast.success("Link copied"))
-            .catch(() => toast.error("Couldn't copy the link")),
-      },
-      { type: "button", label: "Reset link", icon: RefreshCwIcon, onClick: onReset },
-    );
-  }
-  return actions;
+/**
+ * The document's link, to send some other way: Copy link, and Reset link
+ * for one sent to the wrong person. A cancelled document's link still
+ * opens (marked cancelled), so it can be reset.
+ */
+function useLinkActions(doc: DocumentView, onReset: () => void): Array<Action> {
+  const token = doc.shareToken;
+  if (!token) return [];
+  return [
+    {
+      type: "button",
+      label: "Copy link",
+      icon: LinkIcon,
+      onClick: () =>
+        void navigator.clipboard
+          .writeText(shareUrl(token))
+          .then(() => toast.success("Link copied"))
+          .catch(() => toast.error("Couldn't copy the link")),
+    },
+    { type: "button", label: "Reset link", icon: RefreshCwIcon, onClick: onReset },
+  ];
 }
 
 function ResetLinkDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean; onClose: () => void }) {

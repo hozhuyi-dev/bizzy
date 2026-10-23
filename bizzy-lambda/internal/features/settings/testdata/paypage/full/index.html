@@ -58,6 +58,7 @@ dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .button.primary { background: var(--button); color: var(--button-text); border-color: var(--button); width: 100%; }
 button.done { color: var(--done); border-color: var(--done); }
 footer { text-align: center; padding-top: .5rem; }
+.thanks { text-align: center; }
 </style>
 </head>
 <body>
@@ -65,12 +66,12 @@ footer { text-align: center; padding-top: .5rem; }
   <header>
     <p class="eyebrow">Payment details</p>
     <h1>Physio Co</h1>
-    <p class="muted">Pay whichever way suits you, then send us a screenshot of the payment.</p>
+    <p class="muted">Thank you for coming in! 😊 Pay whichever way is easiest for you, then send me a screenshot of the payment.</p>
   </header>
   <section class="card" aria-labelledby="qr-title">
     <div>
       <h2 id="qr-title">DuitNow QR</h2>
-      <p class="muted">Any bank app, Touch 'n Go eWallet, GrabPay, Boost or ShopeePay.</p>
+      <p class="muted">Scan with any bank app, Touch 'n Go eWallet, GrabPay, Boost or ShopeePay.</p>
     </div>
     <img class="qr" src="qr.png?v=c648dd5e14ad" width="588" height="698" alt="DuitNow QR to pay Physio Co">
     <ol class="steps">
@@ -80,7 +81,10 @@ footer { text-align: center; padding-top: .5rem; }
     <a class="button" href="qr.png?v=c648dd5e14ad" download="duitnow-qr.png">Save QR</a>
   </section>
   <section class="card" aria-labelledby="bank-title">
-    <h2 id="bank-title">Bank transfer</h2>
+    <div>
+      <h2 id="bank-title">Bank transfer</h2>
+      <p class="muted">Use the reference from my message, so I can match your payment.</p>
+    </div>
     <dl class="rows">
       <div class="row"><div><dt>Bank</dt><dd>Maybank</dd></div></div>
       <div class="row"><div><dt>Account name</dt><dd>Physio Co Sdn Bhd</dd></div><button type="button" data-copy="Physio Co Sdn Bhd" aria-label="Copy account name">Copy</button></div>
@@ -88,15 +92,16 @@ footer { text-align: center; padding-top: .5rem; }
     </dl>
   </section>
   <section class="card" aria-labelledby="phone-title">
-    <h2 id="phone-title">Pay to phone number</h2>
+    <h2 id="phone-title">Pay to my phone</h2>
     <div class="chips"><span class="chip">DuitNow</span><span class="chip">Touch &#39;n Go eWallet</span><span class="chip">GrabPay</span></div>
     <dl class="rows">
       <div class="row"><div><dt>Phone number</dt><dd class="number">012-345 6789</dd></div><button type="button" data-copy="0123456789" aria-label="Copy phone number">Copy</button></div>
     </dl>
   </section>
   <footer>
-    <a class="button primary" href="https://wa.me/60123456789">Send payment screenshot on WhatsApp</a>
+    <a class="button primary" href="https://wa.me/60123456789?text=Hi%21%20Here%27s%20my%20payment%20%F0%9F%98%8A">Paid? Send me the screenshot</a>
   </footer>
+  <p class="muted thanks">Thank you, and take care! 🙏</p>
 </main>
 <script>
 document.addEventListener("click", function (event) {

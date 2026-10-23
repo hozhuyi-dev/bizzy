@@ -6,7 +6,8 @@ import { LOCALE } from "~/core/constants/app.constant";
 const dateFormat = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short", year: "numeric" });
 const dayFormat = new Intl.DateTimeFormat(LOCALE, { weekday: "short", day: "numeric", month: "short" });
 const timeFormat = new Intl.DateTimeFormat(LOCALE, { hour: "numeric", minute: "2-digit" });
-const monthFormat = new Intl.DateTimeFormat(LOCALE, { month: "short", year: "numeric" });
+const spanFormat = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short" });
+const monthFormat =new Intl.DateTimeFormat(LOCALE, { month: "short", year: "numeric" });
 
 /** "5 Oct 2026" from an instant or a YYYY-MM-DD date. */
 export function formatDate(value: string): string {
@@ -24,6 +25,16 @@ export function formatHours(hours: number): string {
   return `${hours.toLocaleString(LOCALE, { maximumFractionDigits: 2 })} h`;
 }
 
+/**
+ * "5–19 Oct", "28 Sept – 19 Oct" or "5 Oct" from two YYYY-MM-DD days; the
+ * years only when they differ ("28 Dec 2025 – 3 Jan 2026").
+ */
+export function formatSpan(from: string, to: string): string {
+  const start = parseDay(from);
+  const end = parseDay(to);
+  return (start.getFullYear() === end.getFullYear() ? spanFormat : dateFormat).formatRange(start, end);
+}
+
 /** "Oct 2026" from a "2026-10" month key. */
 export function formatMonth(month: string): string {
   const [year = 0, mon = 1] = month.split("-").map(Number);
@@ -31,14 +42,6 @@ export function formatMonth(month: string): string {
 }
 
 /** YYYY-MM-DD dates are calendar days, not instants: read them as local. */
-const MONTH_CODES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
-/** "05OCT" from an instant or a YYYY-MM-DD date: a day as a bank transfer's reference takes it. */
-export function referenceDay(value: string): string {
-  const date = parseDay(value);
-  return `${String(date.getDate()).padStart(2, "0")}${MONTH_CODES[date.getMonth()]}`;
-}
-
 function parseDay(value: string): Date {
   const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (day) return new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]));

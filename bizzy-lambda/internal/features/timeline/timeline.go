@@ -70,9 +70,6 @@ type Package struct {
 // Document is a document covering more than one session or package.
 type Document struct {
 	documents.Summary
-	// Covers is how many sessions and packages bought on their own it is
-	// for.
-	Covers int `json:"covers"`
 }
 
 // DocumentRef is a document an entry is on.
@@ -251,7 +248,11 @@ func (b *builder) history(clientID string, r listing.Request, at cursor, from, t
 	}
 
 	// Documents covering more than one thing, where the newest of them is.
-	if want(KindDocument) {
+	if want(KindDocument) && len(b.noted) > 0 {
+		owing, err := documents.OwingOf(tx)
+		if err != nil {
+			return listing.Page[Entry]{}, err
+		}
 		for _, id := range b.noted {
 			d, err := documents.Documents.Get(tx, id)
 			if err != nil {
@@ -261,11 +262,11 @@ func (b *builder) history(clientID string, r listing.Request, at cursor, from, t
 			if err != nil {
 				return listing.Page[Entry]{}, err
 			}
-			s := documents.SummaryOf(d)
+			s := documents.SummaryOf(d, owing)
 			if covers < 2 || !inSpan(newest) || !words.In(s.Number, s.RecipientName) {
 				continue
 			}
-			out.Items = append(out.Items, Entry{Kind: KindDocument, At: newest, Document: &Document{Summary: s, Covers: covers}})
+			out.Items = append(out.Items, Entry{Kind: KindDocument, At: newest, Document: &Document{Summary: s}})
 		}
 	}
 
@@ -359,7 +360,8 @@ func refs(tx *txn.Tx, srcs ...documents.Source) ([]DocumentRef, error) {
 			if err != nil {
 				return nil, err
 			}
-			s := documents.SummaryOf(d)
+			// Only its total is read: nothing asks from here.
+			s := documents.SummaryOf(d, nil)
 			out = append(out, DocumentRef{ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, TotalCents: s.TotalCents, Others: max(covers-1, 0)})
 		}
 	}

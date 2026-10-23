@@ -33,9 +33,11 @@ type Settings struct {
 	// on the to-do list; FollowUpAheadDays the same for a follow-up.
 	ConfirmAheadDays  int `json:"confirmAheadDays"`
 	FollowUpAheadDays int `json:"followUpAheadDays"`
-	// PaymentMessage and DocumentMessage are the messages the app sends:
-	// asking to pay, and links to issued documents. The app fills in the
-	// {placeholders}.
+	// PaymentMessage and DocumentMessage are the user's wording of the
+	// WhatsApp messages the app sends: asking to pay, and issued documents
+	// for the client's records. Blank is the app's own wording: the app
+	// fills in the {placeholders}, so it keeps the defaults
+	// (whatsapp.constant.ts).
 	PaymentMessage  string `json:"paymentMessage"`
 	DocumentMessage string `json:"documentMessage"`
 }
@@ -46,11 +48,6 @@ const (
 	DefaultFollowUpAheadDays = 7
 	// MaxAheadDays bounds both: the to-do list reads that far ahead.
 	MaxAheadDays = 30
-
-	DefaultPaymentMessage = "Hi {firstName}, the payment for {item} is {amount}.\n\n" +
-		"Pay by DuitNow QR, bank transfer, TnG or GrabPay here:\n{payLink}\n\n" +
-		"Or transfer to:\n{bank}\nReference: {ref}\n\nThank you!"
-	DefaultDocumentMessage = "Hi {firstName}, here's your {title} from {business}:\n\n{documents}\n\nThank you!"
 )
 
 const settingsID = "BUSINESS"
@@ -102,12 +99,6 @@ func Gaps(s Settings) []string {
 func (s Settings) WithDefaults() Settings {
 	if s.ServiceName == "" {
 		s.ServiceName = DefaultServiceName
-	}
-	if s.PaymentMessage == "" {
-		s.PaymentMessage = DefaultPaymentMessage
-	}
-	if s.DocumentMessage == "" {
-		s.DocumentMessage = DefaultDocumentMessage
 	}
 	if s.ConfirmAheadDays == 0 {
 		s.ConfirmAheadDays = DefaultConfirmAheadDays

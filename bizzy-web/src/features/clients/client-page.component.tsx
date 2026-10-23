@@ -279,7 +279,12 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
         { id: "overview", title: "Overview", content: <ClientOverview client={client} />, bare: true },
         { id: "timeline", title: "Timeline", content: <ClientTimeline client={client} />, bare: true },
         ...(documents ? [documents] : []),
-        { id: "packages", title: "Packages", content: <ClientPackages client={client} /> },
+        {
+          id: "packages",
+          title: "Packages",
+          actions: [{ type: "button", label: "Add package", icon: PackagePlusIcon, onClick: () => setAddingPackage(true) }],
+          content: <ClientPackages client={client} />,
+        },
         ...details,
       ]
     : details;
@@ -299,7 +304,6 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
   const more: Array<Action> = client
     ? [
         ...(owed > 0 ? [{ type: "button", label: "Record payment", icon: WalletIcon, onClick: () => setPaying(true) } satisfies Action] : []),
-        { type: "button", label: "Add package", icon: PackagePlusIcon, onClick: () => setAddingPackage(true) },
         { type: "button", label: "Add follow-up", icon: BellPlusIcon, onClick: () => setFollowUp({ mode: "new", clientId: client.id }) },
         ...(whatsapp.canMessage(phone)
           ? [{ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) } satisfies Action]

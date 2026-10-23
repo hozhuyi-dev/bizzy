@@ -1,7 +1,7 @@
 import { LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 import { DOCUMENT_STATUS } from "./documents.constant";
-import { documentLabel, documentRoute, shareUrl } from "./documents.util";
+import { coversText, documentLabel, documentRoute, shareUrl } from "./documents.util";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { DocumentStatus, DocumentSummary, DocumentsSearch } from "./documents.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
@@ -81,7 +81,11 @@ export const createDocumentColumns = (search: DocumentsSearch | undefined) =>
       header: "For",
       sortFn: "alphanumeric",
       meta: { width: "grow" },
-      cell: ({ getValue }) => <CellText title={getValue()}>{getValue()}</CellText>,
+      cell: ({ row, getValue }) => (
+        <CellText title={getValue()} sub={coversText(row.original.covers)}>
+          {getValue()}
+        </CellText>
+      ),
     }),
     helper.accessor("status", {
       header: "Status",
@@ -117,7 +121,7 @@ export function DocumentCard({ doc, search }: { doc: DocumentSummary; search?: D
       }
       value={formatCents(doc.totalCents)}
       meta={doc.recipientName}
-      detail={dateText(doc)}
+      detail={`${coversText(doc.covers)} · ${dateText(doc)}`}
       actions={documentActions(doc)}
       open={documentLink(doc, search)}
     />
