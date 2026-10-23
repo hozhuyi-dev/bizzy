@@ -27,6 +27,7 @@
     "cn": "^0.4.0",
     "jsqr": "1.4.0",
     "lucide-react": "^1.55.0",
+    "pdfjs-dist": "6.4.299",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "recharts": "3.8.0",

@@ -30,13 +30,17 @@ export function documentRoute(type: DocumentType) {
   return type === "invoice" ? ("/invoices/$id" as const) : ("/receipts/$id" as const);
 }
 
-/** "RCP260042-00": the number and its revision, from -00. A draft has no number yet. */
-/** A PDF from the API, as the browser opens or saves it. */
-export function pdfBlob(file: DocumentFile): Blob {
-  const bytes = Uint8Array.from(atob(file.data), (char) => char.charCodeAt(0));
-  return new Blob([bytes], { type: "application/pdf" });
+/** A PDF from the API (DocumentFile.data, base64), as its bytes. */
+export function pdfBytes(data: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
 }
 
+/** A PDF from the API, as the browser opens or saves it. */
+export function pdfBlob(file: DocumentFile): Blob {
+  return new Blob([pdfBytes(file.data)], { type: "application/pdf" });
+}
+
+/** "RCP260042-00": the number and its revision, from -00. A draft has no number yet. */
 export function documentLabel(number: string | undefined, revision: number | undefined): string {
   if (!number) return "Draft";
   return `${number}-${String(revision ?? 0).padStart(2, "0")}`;

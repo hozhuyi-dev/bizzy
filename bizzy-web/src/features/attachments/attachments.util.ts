@@ -20,6 +20,11 @@ export function formatBytes(bytes: number): string {
 
 /** The size it would be shrunk to: the longer side at most IMAGE_MAX_SIDE. */
 export function shrunkSize(width: number, height: number): { width: number; height: number } {
-  const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(width, height));
-  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+  return fitWithin(width, height, IMAGE_MAX_SIDE);
+}
+
+/** The size with the longer side at most maxSide, keeping the shape; never larger. */
+export function fitWithin(width: number, height: number, maxSide: number): { width: number; height: number } {
+  const scale = Math.min(1, maxSide / Math.max(width, height));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }

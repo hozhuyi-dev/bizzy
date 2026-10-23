@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentTypeOf, formatBytes, isPreviewable, shrunkSize } from "./attachments.util";
+import { contentTypeOf, fitWithin, formatBytes, isPreviewable, shrunkSize } from "./attachments.util";
 
 describe("contentTypeOf", () => {
   it("uses the browser's type, or the extension when it left it blank", () => {
@@ -14,6 +14,15 @@ describe("shrunkSize", () => {
     expect(shrunkSize(4032, 3024)).toEqual({ width: 2000, height: 1500 });
     expect(shrunkSize(3024, 4032)).toEqual({ width: 1500, height: 2000 });
     expect(shrunkSize(800, 600)).toEqual({ width: 800, height: 600 });
+  });
+});
+
+describe("fitWithin", () => {
+  it("brings the longer side down to the most, keeping the shape and at least a pixel", () => {
+    expect(fitWithin(4032, 3024, 256)).toEqual({ width: 256, height: 192 });
+    expect(fitWithin(595, 842, 256)).toEqual({ width: 181, height: 256 });
+    expect(fitWithin(120, 80, 256)).toEqual({ width: 120, height: 80 });
+    expect(fitWithin(10_000, 10, 256)).toEqual({ width: 256, height: 1 });
   });
 });
 

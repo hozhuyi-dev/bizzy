@@ -10,7 +10,7 @@ import (
 // exists is held by the owner's feature (sessions, expenses).
 var Invariants = []txn.Invariant{
 	{
-		ID: "files-are-what-was-checked", Why: "An attachment is a photo or PDF of a size kept, at the key its owner and id give",
+		ID: "files-are-what-was-checked", Why: "An attachment is a photo or PDF of a size kept, at the key its owner and id give, with its thumbnail beside it",
 		On: Attachments.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {
 			a, ok, err := Attachments.Find(tx, id)
@@ -22,6 +22,9 @@ var Invariants = []txn.Invariant{
 			}
 			if a.Key != KeyOf(a.OwnerKind, a.OwnerID, a.ID, a.ContentType) {
 				return []string{fmt.Sprintf("attachment %s of %s is at %s", id, describe(a), a.Key)}, nil
+			}
+			if a.ThumbnailKey != "" && a.ThumbnailKey != ThumbnailKeyOf(a.OwnerKind, a.OwnerID, a.ID) {
+				return []string{fmt.Sprintf("attachment %s of %s has its thumbnail at %s", id, describe(a), a.ThumbnailKey)}, nil
 			}
 			return nil, nil
 		},

@@ -214,7 +214,9 @@ A file attached to a session or an expense; the file itself is in S3.
 | name | `string` |
 | contentType | `string` |
 | sizeBytes | `int64` |
+| originalBytes | `int64` |
 | key | `string` |
+| thumbnailKey | `string` |
 | uploadedAt | `time.Time` |
 
 | Index | For it |
@@ -224,7 +226,7 @@ A file attached to a session or an expense; the file itself is in S3.
 
 Checked on every change to one:
 
-- **files-are-what-was-checked**: An attachment is a photo or PDF of a size kept, at the key its owner and id give
+- **files-are-what-was-checked**: An attachment is a photo or PDF of a size kept, at the key its owner and id give, with its thumbnail beside it
 - **records-are-a-sessions**: Notes and files are a session's, and go with it
 - **receipts-are-an-expenses**: A receipt's file is an expense's, and goes with it
 

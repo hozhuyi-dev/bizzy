@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { AttachmentsService } from "./attachments.service";
+import type { UploadOptions } from "./attachments.service";
 import type { AttachmentOwner } from "./attachments.types";
 import { SessionKeys } from "~/core/constants/query-keys.constant";
 import { keeping } from "~/core/lambda/lambda.client";
@@ -15,7 +16,8 @@ const keepOwner = ({ ownerKind, ownerId }: AttachmentOwner) =>
 export const AttachmentsMutation = {
   useUpload: (owner: AttachmentOwner) =>
     useMutation({
-      mutationFn: (file: File) => keeping(keepOwner(owner), () => AttachmentsService.upload(owner, file)),
+      mutationFn: ({ file, ...options }: UploadOptions & { file: File }) =>
+        keeping(keepOwner(owner), () => AttachmentsService.upload(owner, file, options)),
     }),
 
   useRemove: (owner: AttachmentOwner) =>

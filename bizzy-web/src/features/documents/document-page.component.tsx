@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   BanIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   EyeIcon,
   FileCheckIcon,
   LinkIcon,
@@ -187,12 +188,14 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
         {...header}
         title={documentLabel(doc.number, doc.revision)}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
-        // An issued receipt is mostly sent and viewed; revising is rare, so
-        // nothing claims the always-visible slot and the title keeps the room
-        // on a phone, and the rest waits behind ⋯ on a wide screen too.
-        moreActions={[whatsapp, viewPdf]}
+        // An issued receipt is mostly sent, viewed and kept; revising is rare,
+        // so nothing claims the always-visible slot and the title keeps the
+        // room on a phone, and the rest waits behind ⋯ on a wide screen too.
+        // The PDF is on the page already: a new tab is for the browser's
+        // viewer (to print, or zoom), so it waits behind ⋯.
+        moreActions={[whatsapp, { ...downloadPdf, label: "Download PDF" }]}
         menuActions={[
-          downloadPdf,
+          { ...viewPdf, label: "Open in new tab", icon: ExternalLinkIcon },
           ...links,
           {
             type: "button",

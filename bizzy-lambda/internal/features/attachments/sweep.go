@@ -18,7 +18,9 @@ func Sweep(ctx context.Context, run *txn.Runner, blobs blobstore.Store, cutoff t
 		all, err := Attachments.All(tx)
 		keys := make(map[string]bool, len(all))
 		for _, a := range all {
-			keys[a.Key] = true
+			for _, key := range a.Keys() {
+				keys[key] = true
+			}
 		}
 		return keys, err
 	})
