@@ -10,7 +10,7 @@ function synth() {
   const stack = new CiStack(app, "ci", {
     env,
     projectName: "bizzy",
-    repository: "owner/bizzy",
+    repository: "owner@1/bizzy@2",
     environments: ["staging", "production"],
   });
   return Template.fromStack(stack);
@@ -57,7 +57,7 @@ describe("ci", () => {
             Condition: {
               StringEquals: {
                 "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-                "token.actions.githubusercontent.com:sub": `repo:owner/bizzy:environment:${environment}`,
+                "token.actions.githubusercontent.com:sub": `repo:owner@1/bizzy@2:environment:${environment}`,
               },
             },
           }),
