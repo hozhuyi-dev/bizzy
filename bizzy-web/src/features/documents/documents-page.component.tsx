@@ -3,7 +3,7 @@ import { useTable } from "@tanstack/react-table";
 import { cn } from "cn";
 import { DocumentCard, createDocumentColumns, documentLink } from "./documents.columns";
 import { DocumentsQuery } from "./documents.query";
-import { canTick, useDocumentBulkActions } from "./documents.hook";
+import { canTick, documentBulkActionsUntil, useDocumentBulkActions } from "./documents.hook";
 import { documentFacets, documentPresets, documentsUrl, singleClientOf } from "./documents.util";
 import type { ReactNode } from "react";
 import type { RowSelectionState } from "@tanstack/react-table";
@@ -21,16 +21,20 @@ import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
+const UNTIL_ONE_CLIENT = documentBulkActionsUntil("Pick one client in the filter to tick their documents.");
+
 interface DocumentsPageProps {
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
 }
 
 /**
- * Invoices and receipts, latest first, searched on the server a page at a
- * time: by number, who it is for, type, client, status, what is owed and
- * days. Narrowed to one client, they can be ticked to ask to pay, send or
- * put together, as on the client's page: each of those is for one client.
+ * Invoices and receipts by date, latest first (a draft by its latest
+ * session), searched on the server a page at a time: by number, who it is
+ * for, type, client, status, what is owed and days. Narrowed to one
+ * client, they can be ticked to ask to pay, send or put together, as on
+ * the client's page: each of those is for one client, so until then the
+ * actions say so.
  * Documents are made from a session or a package, so there is no "new"
  * button here.
  */
@@ -54,8 +58,8 @@ export function DocumentsPage({ filter, onFilterChange }: DocumentsPageProps) {
     columns,
     data,
     getRowId: (doc) => doc.id,
-    // Read a page at a time, latest first: sorting a page would only sort
-    // what is loaded.
+    // Read a page at a time, by date: sorting a page would only sort what
+    // is loaded.
     enableSorting: false,
     enableRowSelection: (row) => ticking && canTick(row.original),
     state: { rowSelection: selection },
@@ -82,15 +86,14 @@ export function DocumentsPage({ filter, onFilterChange }: DocumentsPageProps) {
       {ticking ? (
         <TickingHeader client={client} chosen={chosen} toolbar={toolbar} onDone={() => setSelection({})} />
       ) : (
-        <PageHeader title="Documents" toolbar={toolbar} />
+        <PageHeader title="Documents" moreActions={UNTIL_ONE_CLIENT} toolbar={toolbar} />
       )}
-      <p className="text-sm text-muted-foreground">
-        {ticking
-          ? chosen.length > 0
-            ? `${chosen.length} of ${client.name}'s ticked.`
-            : `Tick ${client.name}'s invoices to ask to pay for, issued ones to send, or drafts to put on one document.`
-          : "Narrow to one client to ask to pay, send or put documents together."}
-      </p>
+      {/* Kept while ticking, so the first tick doesn't move the list; what each action is for is said on it. */}
+      {ticking && (
+        <p className="text-sm text-muted-foreground">
+          {chosen.length > 0 ? `${chosen.length} of ${client.name}'s ticked.` : `None of ${client.name}'s ticked.`}
+        </p>
+      )}
       <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
         <DataTable
           table={table}

@@ -3,6 +3,7 @@ import { cn } from "cn";
 import { ChevronDownIcon, MoreHorizontalIcon } from "lucide-react";
 import type { Action, ActionSize, ActionStyle, FoldWidth, MenuItemAction } from "./action-bar.types";
 import { Button } from "~/components/ui/button";
+import { HintTooltip } from "~/components/shared/feedback/hint-tooltip/hint-tooltip.component";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -100,10 +101,24 @@ interface ActionButtonProps {
   className?: string | undefined;
 }
 
-/** One action as a button. */
-export function ActionButton({ action, size = "default", defaultStyle = "secondary", className }: ActionButtonProps) {
+/** One action as a button; one its verdict says no to says why in a tooltip. */
+export function ActionButton(props: ActionButtonProps) {
+  const { action } = props;
+  const why = action.can?.ok === false ? action.can.why : undefined;
+  // A menu that can't open is only its button.
+  const button = why && action.type === "menu" ? <PlainButton {...props} /> : <ActionButtonOnly {...props} />;
+  return <HintTooltip hint={why}>{button}</HintTooltip>;
+}
+
+/** A disabled menu's button: nothing to open, but its tooltip still says why. */
+function PlainButton(props: ActionButtonProps) {
+  return <ActionButtonOnly {...props} action={{ ...props.action, type: "button", onClick: () => undefined }} />;
+}
+
+function ActionButtonOnly({ action, size = "default", defaultStyle = "secondary", className, ...rest }: ActionButtonProps) {
   const { label, icon: Icon, style = defaultStyle, iconOnlyOnPhone, iconAfter } = action;
   const disabled = isDisabled(action);
+  const why = action.can?.ok === false;
   const content = (
     <>
       {Icon && !iconAfter && <Icon />}
@@ -112,14 +127,18 @@ export function ActionButton({ action, size = "default", defaultStyle = "seconda
     </>
   );
   const common = {
+    // A tooltip's trigger props, when one says why.
+    ...rest,
     variant: VARIANTS[style],
     size,
     disabled,
-    title: action.can?.why,
+    // Hovered and focused still, so its tooltip says why; dimmed as a disabled one.
+    focusableWhenDisabled: why,
     "aria-label": iconOnlyOnPhone && Icon ? label : undefined,
     className: cn(
       style === "destructive" && "text-destructive hover:text-destructive",
       action.type === "toggle" && "aria-pressed:bg-muted aria-pressed:text-foreground",
+      why && "data-disabled:cursor-not-allowed data-disabled:opacity-50",
       className,
     ),
   };

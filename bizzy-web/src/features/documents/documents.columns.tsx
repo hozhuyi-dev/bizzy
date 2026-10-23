@@ -35,6 +35,11 @@ function dateText(doc: DocumentSummary): string {
   return doc.date ? formatDate(doc.date) : "Dated when issued";
 }
 
+/** What the Date column says of a draft: the day it is listed by (its latest session or package), as it has none of its own yet. */
+function draftDateText(doc: DocumentSummary): string {
+  return doc.covers.to ? `For ${formatDate(doc.covers.to)}` : "Dated when issued";
+}
+
 /**
  * Copy link, to send an issued document from the list; the rest (WhatsApp,
  * PDF, reset the link) is on its page. A draft's link shows nothing yet.
@@ -69,6 +74,23 @@ export function DocumentTypeIcon({ type }: { type: DocumentType }) {
 }
 
 const helper = createDataTableColumnHelper<DocumentSummary>();
+
+/**
+ * Its date, by which the lists come, latest first (see documentPlace): a
+ * draft, dated when issued, by its latest session or package, so it sits
+ * with what it is for.
+ */
+export const documentDateColumn = helper.accessor("filedAt", {
+  id: "date",
+  header: "Date",
+  meta: { ordered: "desc", search: (doc: DocumentSummary) => (doc.date ? formatDate(doc.date) : draftDateText(doc)) },
+  cell: ({ row }) =>
+    row.original.date ? (
+      formatDate(row.original.date)
+    ) : (
+      <span className="text-muted-foreground">{draftDateText(row.original)}</span>
+    ),
+});
 
 /** A tick on each document something can be done with (see canTick), and one ticking them all. */
 export const documentTickColumn = helper.display({
@@ -142,14 +164,7 @@ export const createDocumentColumns = (
       meta: { search: (doc: DocumentSummary) => documentLabel(doc.number, doc.revision) },
       cell: ({ row }) => <span className="font-medium">{documentLabel(row.original.number, row.original.revision)}</span>,
     }),
-    helper.accessor((doc) => doc.date ?? "", {
-      id: "date",
-      header: "Date",
-      sortFn: "basic",
-      meta: { search: (doc: DocumentSummary) => (doc.date ? formatDate(doc.date) : undefined) },
-      cell: ({ row }) =>
-        row.original.date ? formatDate(row.original.date) : <span className="text-muted-foreground">{dateText(row.original)}</span>,
-    }),
+    documentDateColumn,
     helper.accessor((doc) => clientNameOf(doc, clientsById), {
       id: "client",
       header: "Client",

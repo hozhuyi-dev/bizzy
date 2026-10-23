@@ -3,9 +3,11 @@ package documents_test
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/platform/listing"
+	"bizzy-lambda/internal/testutil/testapp"
 )
 
 // One list of every type, narrowed by type, client, status and what is
@@ -48,5 +50,41 @@ func TestSearchAcrossTypes(t *testing.T) {
 	}
 	if _, refused, _ := a.Call("documents.search", map[string]any{"types": []string{"quote"}}); refused == nil {
 		t.Error("an unknown type is searched for")
+	}
+}
+
+// A draft is filed by the latest session on it, not when it was made, so
+// it sits with its sessions; moving the session moves it.
+func TestDraftsFiledBySessions(t *testing.T) {
+	a, jane, ss := setup(t)
+	invoices := func() []string {
+		t.Helper()
+		var page listing.Page[documents.Summary]
+		if err := a.Must("documents.search", map[string]any{"types": []string{"invoice"}}, &page); err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, d := range page.Items {
+			ids = append(ids, d.ID)
+			if day := d.FiledAt.Format(time.DateOnly); day != d.Covers.To {
+				t.Errorf("%s filed on %s, want its session's day %s", d.ID, day, d.Covers.To)
+			}
+		}
+		return ids
+	}
+	if got, want := invoices(), []string{ss[2].Invoice.ID, ss[1].Invoice.ID, ss[0].Invoice.ID}; !slices.Equal(got, want) {
+		t.Errorf("invoices = %v, want the latest session's first %v", got, want)
+	}
+
+	later := testapp.Epoch.Add(10 * 24 * time.Hour)
+	in := map[string]any{"id": ss[0].ID, "time": map[string]any{"start": later, "end": later.Add(time.Hour)}}
+	if err := a.Must("sessions.update", in, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := invoices(); len(got) == 0 || got[0] != ss[0].Invoice.ID {
+		t.Errorf("invoices = %v, want the moved session's first", got)
+	}
+	if mine := listed(t, a, jane); len(mine) == 0 || mine[0].ID != ss[0].Invoice.ID {
+		t.Errorf("jane's documents start with %v, want the moved session's invoice", mine)
 	}
 }

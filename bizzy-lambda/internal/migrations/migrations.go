@@ -24,11 +24,7 @@ import "bizzy-lambda/internal/platform/migrate"
 
 // All are the migrations; the Nth takes the table from version N-1 to N.
 // Version 0 is the shape before any.
-var All = []migrate.Migration{
-	// A draft without a date is filed by when it was made, so a list of
-	// every type finds it; the rewrite after the run files them.
-	{Name: "file undated drafts by when they were made"},
-}
+var All = []migrate.Migration{}
 
 // Version is the schema this code reads and writes: how many migrations
 // there are.

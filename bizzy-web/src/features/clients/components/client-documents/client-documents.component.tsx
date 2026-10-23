@@ -20,8 +20,8 @@ const COLUMNS = createClientDocumentColumns();
 const FACETS = [DOCUMENT_TYPE_FACET, DOCUMENT_STATUS_FACET];
 
 /**
- * The client's documents section: every invoice and receipt, latest first
- * as the documents list, narrowed by type and status. The user ticks invoices to ask
+ * The client's documents section: every invoice and receipt, by date as
+ * the documents list (a draft by its latest session), narrowed by type and status. The user ticks invoices to ask
  * to pay for in one WhatsApp message (what drafts list, issued ones as a
  * whole with their links), issued ones to send for the client's records,
  * or drafts of one type to put on one document: the same as the documents
@@ -42,6 +42,8 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
     columns: COLUMNS,
     data,
     getRowId: (doc) => doc.id,
+    // In the documents list's order, the API's: by date, latest first.
+    enableSorting: false,
     enableRowSelection: (row) => canTick(row.original),
     state: { rowSelection: selection },
     onRowSelectionChange: setSelection,
@@ -53,10 +55,8 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
   return {
     id: "documents",
     title: "Documents",
-    description:
-      chosen.length > 0
-        ? `${chosen.length} ticked. Ask to pay for invoices, send issued ones, or put drafts of one kind on one document.`
-        : "Tick invoices to ask to pay for, issued ones to send, or drafts to put on one document.",
+    // What each action is for is said on it while it can't be taken.
+    description: all.length > 0 ? (chosen.length > 0 ? `${chosen.length} ticked.` : "None ticked.") : undefined,
     more: all.length > 0 ? actions : undefined,
     bare: true,
     content: (

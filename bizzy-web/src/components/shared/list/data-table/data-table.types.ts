@@ -19,4 +19,9 @@ export interface DataTableColumnMeta {
   width?: "grow" | "fit";
   /** Shown only from this screen width up: a column that can go when room is short. */
   from?: "lg" | "xl";
+  /**
+   * The order a list comes in by this column (the API's, a page at a
+   * time), which its header shows but can't change.
+   */
+  ordered?: "asc" | "desc";
 }

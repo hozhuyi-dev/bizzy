@@ -25,9 +25,9 @@ export function documentsLink(filter: ListFilter) {
   return { to: "/documents", label: "Documents", search: documentsUrl.toSearch(filter) } as const;
 }
 
-/** Where a document sits in its list: by its date, or a draft without one by when it was made (as the API files it). */
-export function documentPlace(doc: Pick<DocumentSummary, "id" | "date" | "createdAt">): Place {
-  return { at: Date.parse(doc.date ?? doc.createdAt), id: doc.id };
+/** Where a document sits in its list, as the API files it. */
+export function documentPlace(doc: Pick<DocumentSummary, "id" | "filedAt">): Place {
+  return { at: Date.parse(doc.filedAt), id: doc.id };
 }
 
 /** The route of one document's page. */

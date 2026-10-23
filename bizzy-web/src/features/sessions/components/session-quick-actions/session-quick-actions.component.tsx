@@ -10,6 +10,7 @@ import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.com
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { InlineField } from "~/components/shared/actions/inline-action/inline-action.component";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
+import { HintTooltip } from "~/components/shared/feedback/hint-tooltip/hint-tooltip.component";
 import { Button } from "~/components/ui/button";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -42,9 +43,18 @@ export function SessionQuickActions({ session, onCancel, onPayOther, from }: Ses
         <Button size="sm" disabled={confirm.pending} onClick={() => void confirm.confirm(session.id).catch(toastRefusal)}>
           <CheckIcon /> Confirm
         </Button>
-        <Button size="sm" variant="outline" disabled={!can.cancel.ok} title={can.cancel.why} onClick={() => onCancel(session)}>
-          <XIcon /> Cancel session
-        </Button>
+        <HintTooltip hint={can.cancel.why}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!can.cancel.ok}
+            focusableWhenDisabled
+            className="data-disabled:cursor-not-allowed data-disabled:opacity-50"
+            onClick={() => onCancel(session)}
+          >
+            <XIcon /> Cancel session
+          </Button>
+        </HintTooltip>
       </>
     );
   }

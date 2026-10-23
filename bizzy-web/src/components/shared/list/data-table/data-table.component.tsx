@@ -89,11 +89,12 @@ export function DataTable<TData extends RowData>({
               <TableRow key={group.id} className="hover:bg-transparent">
                 {group.headers.map((header) => {
                   const { column } = header;
-                  const sorted = column.getIsSorted();
+                  const ordered = column.columnDef.meta?.ordered;
+                  const sorted = column.getIsSorted() || (ordered ?? false);
                   return (
                     <TableHead
                       key={header.id}
-                      aria-sort={ariaSort(column.getCanSort(), sorted)}
+                      aria-sort={ariaSort(column.getCanSort() || ordered !== undefined, sorted)}
                       className={cn(HEAD, columnClass(column.columnDef.meta))}
                     >
                       {header.isPlaceholder ? null : column.getCanSort() ? (
@@ -105,6 +106,11 @@ export function DataTable<TData extends RowData>({
                           <table.FlexRender header={header} />
                           <SortArrow direction={sorted || column.getNextSortingOrder()} active={sorted !== false} />
                         </button>
+                      ) : ordered ? (
+                        <span className="inline-flex items-center gap-1">
+                          <table.FlexRender header={header} />
+                          <SortArrow direction={ordered} active />
+                        </span>
                       ) : (
                         <table.FlexRender header={header} />
                       )}

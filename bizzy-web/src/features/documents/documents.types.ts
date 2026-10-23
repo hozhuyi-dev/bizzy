@@ -77,8 +77,8 @@ export interface DocumentSummary {
   clientId: string;
   /** YYYY-MM-DD; a draft has none until set, and takes the day it is issued. */
   date?: string;
-  /** Where a draft without a date is in its list. */
-  createdAt: string;
+  /** Where it is in its lists: its date, a draft's latest service date, else when it was made. */
+  filedAt: string;
   totalCents: number;
   /** Who the current content (issued, or the new draft) is for. */
   recipientName: string;

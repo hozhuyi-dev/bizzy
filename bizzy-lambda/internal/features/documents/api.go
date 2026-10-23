@@ -23,8 +23,8 @@ type Summary struct {
 	Revision *int   `json:"revision,omitempty"`
 	ClientID string `json:"clientId"`
 	Date     string `json:"date,omitempty"`
-	// CreatedAt places a draft without a date in its lists (see filedAt).
-	CreatedAt  time.Time `json:"createdAt"`
+	// FiledAt is where it is in its lists (see filedAt).
+	FiledAt    time.Time `json:"filedAt"`
 	TotalCents int64     `json:"totalCents"`
 	// RecipientName is who the current content is for.
 	RecipientName string `json:"recipientName"`
@@ -96,7 +96,7 @@ type Can struct {
 func SummaryOf(d *Document, owing Owing) Summary {
 	s := Summary{
 		ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, ClientID: d.ClientID,
-		CreatedAt: d.CreatedAt, Revising: d.Status == StatusIssued && d.Draft != nil, ShareToken: d.ShareToken,
+		FiledAt: d.filedAt(), Revising: d.Status == StatusIssued && d.Draft != nil, ShareToken: d.ShareToken,
 	}
 	// The document's own steps, which never fail to say.
 	s.Can.Send, _ = apperr.VerdictOf(CanSend(d))
@@ -215,9 +215,10 @@ func SharedViewOf(d *Document, pdf File) SharedView {
 }
 
 // searchRequest finds documents by words in their number, who they are
-// for or the client's name, and by days (a draft without a date is on no
-// day), types, clients and status, and invoices with something still owed
-// on them (Unpaid); an empty filter takes every value.
+// for or the client's name, and by days (where it is filed: a draft
+// without a date by its latest service date), types, clients and status,
+// and invoices with something still owed on them (Unpaid); an empty filter
+// takes every value.
 type searchRequest struct {
 	listing.Request
 	Types     []Type   `json:"types"`
@@ -359,8 +360,7 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 		})
 	}))
 	// documents.listByClient lists a client's documents of every type,
-	// latest first, as documents.search does (a draft without a date by
-	// when it was made).
+	// latest first, as documents.search does (see filedAt).
 	r.Query("documents.listByClient", router.Typed(func(ctx context.Context, in clientRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) ([]Summary, error) {
 			all, err := Documents.OfClient(tx, in.ClientID)

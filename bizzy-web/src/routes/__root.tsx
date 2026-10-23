@@ -1,6 +1,7 @@
 import { Outlet, createRootRoute, useMatches } from "@tanstack/react-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "~/components/ui/sonner";
+import { TooltipProvider } from "~/components/ui/tooltip";
 import { AuthQuery } from "~/features/auth/auth.query";
 import { AuthScreen } from "~/features/auth/components/auth-screen/auth-screen.component";
 import { NavBar } from "~/features/nav-bar/components/nav-bar/nav-bar.component";
@@ -19,7 +20,8 @@ function RootComponent() {
   const isPublic = useMatches({ select: (matches) => matches.some((match) => match.staticData.public) });
   return (
     <QueryClientProvider client={queryClient}>
-      {isPublic ? <Outlet /> : <AuthGate />}
+      {/* One provider, so moving from one tooltip to the next shows it at once. */}
+      <TooltipProvider>{isPublic ? <Outlet /> : <AuthGate />}</TooltipProvider>
       <Toaster position="top-center" />
     </QueryClientProvider>
   );

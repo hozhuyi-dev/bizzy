@@ -97,7 +97,7 @@ An invoice or receipt: its issued content, and the draft being edited.
 
 | Index | For it |
 |---|---|
-| LSI1 time | its date, or for a draft without one, when it was made |
+| LSI1 time | its date, or for a draft without one, its latest service date, else when it was made |
 | LSI2 client | its client, by date |
 | LSI4 tag | its type (invoice, receipt), by date: the monthly lists |
 
