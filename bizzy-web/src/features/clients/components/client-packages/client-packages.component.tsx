@@ -5,10 +5,12 @@ import { coveringDocuments, documentRoute, refLabel } from "~/features/documents
 import { DataList, DataListItem, DataRow  } from "~/components/shared/list/data-list/data-list.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 /** The client's packages, newest first: what each cost, what is left, and its documents. */
 export function ClientPackages({ client }: { client: ClientView }) {
@@ -20,7 +22,11 @@ export function ClientPackages({ client }: { client: ClientView }) {
     .filter((pkg) => pkg.clientId === client.id)
     .sort((a, b) => b.purchasedAt.localeCompare(a.purchasedAt));
   if (own.length === 0) {
-    return <p className="text-sm text-muted-foreground">No packages. Write 10x85 after their name in the calendar, or use Add package.</p>;
+    return (
+      <EmptyState quips={QUIPS.packages}>
+        No packages. Write 10x85 after their name in the calendar, or use Add package.
+      </EmptyState>
+    );
   }
   return (
     <DataList label="Packages">

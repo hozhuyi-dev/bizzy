@@ -6,7 +6,8 @@ import { BeeMark } from "~/components/shared/layout/logo/logo.component";
 /**
  * Small line drawings for the app's quiet states, drawn like the bee mark
  * (lines only, in currentColor) but never in its honey: the colour stays
- * the logo's, and these take the text colour around them (muted). A quip
+ * the logo's, and these take the text colour around them (muted, or an
+ * error's red, see ErrorState). A quip
  * that names something drawn shows it (see ART_WORDS); any other gets one
  * picked from its pool as it shows, so they stay fresh.
  */
@@ -191,15 +192,70 @@ function BeeArtLoop({ className }: ArtProps) {
   );
 }
 
+/** A cell split top to bottom: something broke. */
+function BeeArtCracked({ className }: ArtProps) {
+  return (
+    <Art className={className}>
+      <path d="M16 5L25.5 10.5V21.5L16 27L6.5 21.5V10.5Z" />
+      <path d="M16 5L14 11L18 15.5L14.5 21L16 27" />
+    </Art>
+  );
+}
+
+/** A jar knocked over, its honey out. */
+function BeeArtSpilled({ className }: ArtProps) {
+  return (
+    <Art className={className}>
+      <path d="M22 12C20 10.5 18 10 15 10H9a3 3 0 0 0-3 3V19a3 3 0 0 0 3 3H15C18 22 20 21.5 22 20" />
+      <path d="M22 12V20" />
+      <path d="M23.5 20.5v1.5" />
+      <path d="M19 25.5C21 24 26.5 23.8 28.5 25.5C26.5 27 21 27 19 25.5Z" />
+    </Art>
+  );
+}
+
+/** A bee that flew into something, seeing stars. */
+function BeeArtDizzy({ className }: ArtProps) {
+  return (
+    <Art className={className}>
+      <path d="M14 14.2C11 11 12.8 7.6 15.3 8.8C17.2 9.8 16.6 12.6 15 14.1" />
+      <ellipse cx="14" cy="20" rx="8" ry="6" />
+      <path d="M17 14.4Q18.4 20 17 25.6" />
+      <path d="M20 15.8Q21 20 20 24.2" />
+      <path d="M22 20h2" />
+      <path d="M8.6 17.6l1.6 1.6M10.2 17.6l-1.6 1.6" />
+      <path d="M8.4 15.4Q7.6 12.8 5.4 12" />
+      <path d="M24 4.5v4M22 6.5h4" />
+      <path d="M27.5 10.2v2.6M26.2 11.5h2.6" />
+    </Art>
+  );
+}
+
+/** A bee out of reach: its trail broken off, wondering where the hive went. */
+function BeeArtAdrift({ className }: ArtProps) {
+  return (
+    <Art className={className}>
+      <path d="M3 28Q6 24 9.5 23" {...DOTTED} />
+      <path d="M11.5 21.5l2 2" />
+      <Bee x={18} y={19} />
+      <path d="M21.5 7a2.5 2.5 0 1 1 3.2 2.4c-.7.3-1.2.9-1.2 1.6v.4" />
+      <path d="M23.5 14h0" />
+    </Art>
+  );
+}
+
 /**
  * Which drawings each state picks from: `busy` while something loads,
  * `empty` for a list or part with nothing in it, `lost` for something
- * that isn't there.
+ * that isn't there, `broken` for something that failed, `offline` for a
+ * read with no connection.
  */
 const BEE_ART = {
   busy: [BeeArtBee, BeeArtHoneycomb, BeeArtHive, BeeArtFlower, BeeArtJar, BeeArtTrio, BeeArtDrop, BeeArtLoop],
   empty: [BeeArtSleeping, BeeArtHive, BeeArtFlower, BeeArtHoneycomb, BeeArtJar, BeeArtDrop],
   lost: [BeeArtSearch, BeeArtSleeping, BeeArtLoop, BeeArtHive, BeeArtBee],
+  broken: [BeeArtCracked, BeeArtSpilled, BeeArtDizzy],
+  offline: [BeeArtAdrift],
 } as const satisfies Record<string, ReadonlyArray<Drawing>>;
 
 /**

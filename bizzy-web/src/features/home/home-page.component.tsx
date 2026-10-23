@@ -23,6 +23,8 @@ import { allOf } from "~/core/utils/query.util";
 import { clientOf } from "~/features/clients/clients.util";
 import { dayRange } from "~/core/utils/date.util";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { QUIPS } from "~/core/constants/quips.constant";
 
 /**
  * The user's day: today's sessions, then everything that needs them
@@ -97,7 +99,7 @@ function Today() {
   const data = sessions.data;
   if (!data || !clients.data) return <Waiting on={allOf(sessions, clients)} />;
   const today = [...data].sort((a, b) => a.start.localeCompare(b.start));
-  if (today.length === 0) return <p className="text-sm text-muted-foreground">No sessions today.</p>;
+  if (today.length === 0) return <EmptyState quips={QUIPS.sessionsToday}>No sessions today.</EmptyState>;
   return (
     <ul className="flex flex-col divide-y">
       {today.map((session) => {

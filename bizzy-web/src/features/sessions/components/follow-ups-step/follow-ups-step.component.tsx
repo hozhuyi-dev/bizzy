@@ -4,7 +4,9 @@ import type { SessionView } from "../../sessions.types";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { formatDue, isOverdue } from "~/features/follow-ups/follow-ups.util";
+import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
+import { QUIPS } from "~/core/constants/quips.constant";
 import { DataList, DataListItem } from "~/components/shared/list/data-list/data-list.component";
 
 /**
@@ -58,9 +60,9 @@ function FollowUpsStep({ followUps, onEdit }: FollowUpsStepProps) {
   if (!followUps) return <LoadingState />;
   if (followUps.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <EmptyState quips={QUIPS.followUps}>
         Anything to get back to the client about, like results to check. It goes in your calendar as a reminder.
-      </p>
+      </EmptyState>
     );
   }
   return (

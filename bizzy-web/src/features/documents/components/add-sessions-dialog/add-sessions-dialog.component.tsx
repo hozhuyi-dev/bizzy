@@ -10,6 +10,8 @@ import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/co
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { EmptyStateFrame } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { BeeArt } from "~/components/shared/feedback/bee-art/bee-art.component";
 import { pageItems } from "~/core/list/filter.util";
 import { formatSessionTime } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
@@ -61,7 +63,7 @@ function AddSessions({ doc, onClose }: Omit<AddSessionsDialogProps, "open">) {
       ) : found.isPending ? (
         <LoadingState />
       ) : others.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No other session of theirs is on a draft invoice.</p>
+        <EmptyStateFrame art={<BeeArt pool="empty" />} title="No other session of theirs is on a draft invoice." />
       ) : (
         <ul aria-label="Sessions on other drafts" className="flex flex-col gap-2 text-sm">
           {others.map((session) => {

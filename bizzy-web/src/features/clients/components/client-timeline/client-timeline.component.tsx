@@ -41,7 +41,7 @@ export function ClientTimeline({ client }: { client: ClientView }) {
   const onEditFollowUp = (f: FollowUpView) => setFollowUp({ mode: "edit", followUp: f });
 
   let body;
-  // Both in the card the timeline fills, so it lands without a jump.
+  // All in the card the timeline fills, so it lands without a jump.
   if (pages.isPending || (pages.error && past.length === 0)) {
     body = (
       <Card>
@@ -51,10 +51,16 @@ export function ClientTimeline({ client }: { client: ClientView }) {
       </Card>
     );
   } else if (upcoming.length === 0 && past.length === 0 && !pages.hasNextPage) {
-    body = isNarrowed(filter) ? (
-      <EmptyState quips={QUIPS.search}>Nothing in {client.name}'s timeline matches.</EmptyState>
-    ) : (
-      <EmptyState quips={QUIPS.timeline}>Sessions with {client.name} show up here, with your notes.</EmptyState>
+    body = (
+      <Card>
+        <CardContent>
+          {isNarrowed(filter) ? (
+            <EmptyState quips={QUIPS.search}>Nothing in {client.name}'s timeline matches.</EmptyState>
+          ) : (
+            <EmptyState quips={QUIPS.timeline}>Sessions with {client.name} show up here, with your notes.</EmptyState>
+          )}
+        </CardContent>
+      </Card>
     );
   } else {
     body = (

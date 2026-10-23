@@ -11,6 +11,8 @@ import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/di
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
+import { EmptyStateFrame } from "~/components/shared/feedback/empty-state/empty-state.component";
+import { BeeArt } from "~/components/shared/feedback/bee-art/bee-art.component";
 import { allOf } from "~/core/utils/query.util";
 
 interface RecordPaymentDialogProps {
@@ -59,7 +61,7 @@ function RecordPayment({ client, onClose }: Omit<RecordPaymentDialogProps, "open
       ) : reads.isPending ? (
         <LoadingState />
       ) : payables.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{client.name} owes nothing.</p>
+        <EmptyStateFrame art={<BeeArt pool="empty" />} title={`${client.name} owes nothing.`} />
       ) : (
         <PaymentPanel payables={payables} onPaid={onClose} />
       )}

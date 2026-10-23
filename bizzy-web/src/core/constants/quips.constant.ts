@@ -20,6 +20,13 @@ export const QUIPS = {
     "The to-do list has left the building.",
     "Time for a honey break.",
   ],
+  // Nothing booked today.
+  sessionsToday: [
+    "A day off for the bees.",
+    "No flowers on the route today.",
+    "The hive's quiet today.",
+    "An empty diary. Enjoy it.",
+  ],
   // Under the toast for a to-do done right there: never for money, or
   // for cancelling and deleting.
   todoDone: [

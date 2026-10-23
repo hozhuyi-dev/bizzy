@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { CircleAlertIcon, CopyIcon, RotateCwIcon, WifiOffIcon } from "lucide-react";
+import { CopyIcon, RotateCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { FallbackSize } from "~/components/shared/feedback/fallback-state/fallback-state.component";
+import { BeeArt } from "~/components/shared/feedback/bee-art/bee-art.component";
 import { FallbackState } from "~/components/shared/feedback/fallback-state/fallback-state.component";
 import { NotFoundPage } from "~/components/shared/feedback/not-found-page/not-found-page.component";
 import { Button } from "~/components/ui/button";
@@ -23,8 +24,9 @@ interface ErrorStateProps {
 }
 
 /**
- * In place of what didn't load, shaped like the not-found page: what
- * happened, then what to do next. Try again first; if it keeps happening,
+ * In place of what didn't load, shaped like the not-found page: a bee
+ * drawing in red (a cracked cell, a spilled jar, a dizzy bee; one adrift
+ * when offline), what happened, then what to do next. Try again first; if it keeps happening,
  * the details to copy and send to the developer. An item that isn't there
  * (deleted, or a link gone stale) is said like the not-found page, with
  * the way back to its list.
@@ -43,7 +45,7 @@ export function ErrorState({ error, retry, size = "section", title, back }: Erro
       role="alert"
       size={size}
       tone="error"
-      art={offline ? <WifiOffIcon /> : <CircleAlertIcon />}
+      art={<BeeArt key={offline ? "offline" : "broken"} pool={offline ? "offline" : "broken"} />}
       title={offline ? "You're offline" : (title ?? (size === "page" ? "This page didn't load" : "This didn't load"))}
       actions={
         <>
