@@ -1,13 +1,22 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronUpIcon } from "lucide-react";
 import type { ClientView } from "../../clients.types";
-import type { FollowUpTarget, FollowUpView } from "~/features/follow-ups/follow-ups.types";
+import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { TimelineEntry } from "~/features/timeline/timeline.types";
+import type { TimelineHandlers } from "~/features/timeline/components/timeline-entry/timeline-entry.component";
+import type { PackageView } from "~/features/packages/packages.types";
+import type { Payable } from "~/features/payments/payments.types";
+import type { SessionView } from "~/features/sessions/sessions.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { TimelineQuery } from "~/features/timeline/timeline.query";
 import { TIMELINE_FACETS, entryKey } from "~/features/timeline/timeline.util";
 import { TimelineEntryItem } from "~/features/timeline/components/timeline-entry/timeline-entry.component";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { PackageForm } from "~/features/packages/components/package-form/package-form.component";
+import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
+import { CancelSessionDialog } from "~/features/sessions/components/cancel-session-dialog/cancel-session-dialog.component";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
@@ -33,12 +42,23 @@ export function ClientTimeline({ client }: { client: ClientView }) {
   const [filter, setFilter] = useState<ListFilter>(NO_FILTER);
   const pages = TimelineQuery.useSearch(client.id, filter);
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
+  const [editingPackage, setEditingPackage] = useState<PackageView | null>(null);
+  const [cancelling, setCancelling] = useState<SessionView | null>(null);
+  const [paying, setPaying] = useState<Array<Payable> | null>(null);
   const [allUpcoming, setAllUpcoming] = useState(false);
+  const handlers = useMemo<TimelineHandlers>(
+    () => ({
+      onEditFollowUp: (f) => setFollowUp({ mode: "edit", followUp: f }),
+      onEditPackage: setEditingPackage,
+      onCancelSession: setCancelling,
+      onPayOther: setPaying,
+    }),
+    [],
+  );
 
   const upcoming = pages.data?.pages[0]?.upcoming ?? [];
   const past = pageItems(pages.data);
   const hidden = allUpcoming ? 0 : Math.max(upcoming.length - UPCOMING_SHOWN, 0);
-  const onEditFollowUp = (f: FollowUpView) => setFollowUp({ mode: "edit", followUp: f });
 
   let body;
   // All in the card the timeline fills, so it lands without a jump.
@@ -73,13 +93,13 @@ export function ClientTimeline({ client }: { client: ClientView }) {
           )}
           <Timeline label={`${client.name}'s timeline`}>
             {upcoming.slice(hidden).map((entry) => (
-              <TimelineEntryItem key={entryKey(entry)} entry={entry} upcoming onEditFollowUp={onEditFollowUp} />
+              <TimelineEntryItem key={entryKey(entry)} entry={entry} upcoming handlers={handlers} />
             ))}
             {upcoming.length > 0 && <TimelineNow />}
             {byMonth(past).map(([month, entries]) => (
               <TimelineGroup key={month} label={formatMonth(month)}>
                 {entries.map((entry) => (
-                  <TimelineEntryItem key={entryKey(entry)} entry={entry} onEditFollowUp={onEditFollowUp} />
+                  <TimelineEntryItem key={entryKey(entry)} entry={entry} handlers={handlers} />
                 ))}
               </TimelineGroup>
             ))}
@@ -95,6 +115,21 @@ export function ClientTimeline({ client }: { client: ClientView }) {
       {body}
       <LoadMore pages={pages} found={past.length > 0} />
       <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
+      <CancelSessionDialog session={cancelling} clientName={client.name} onClose={() => setCancelling(null)} />
+      <SheetDialog open={paying !== null} onClose={() => setPaying(null)}>
+        <DialogHeader>
+          <DialogTitle>Payment</DialogTitle>
+        </DialogHeader>
+        {paying && <PaymentPanel payables={paying} onPaid={() => setPaying(null)} />}
+      </SheetDialog>
+      <SheetDialog open={editingPackage !== null} onClose={() => setEditingPackage(null)}>
+        <DialogHeader>
+          <DialogTitle>Edit package</DialogTitle>
+        </DialogHeader>
+        {editingPackage && (
+          <PackageForm key={editingPackage.id} pkg={editingPackage} onDone={() => setEditingPackage(null)} />
+        )}
+      </SheetDialog>
     </div>
   );
 }

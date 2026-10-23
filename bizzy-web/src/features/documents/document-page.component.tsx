@@ -21,8 +21,8 @@ import { DocumentPdfView } from "./components/document-pdf-view/document-pdf-vie
 import { DocumentStatusBadge, documentLink } from "./documents.columns";
 import { DocumentsMutation } from "./documents.mutation";
 import { DocumentsQuery } from "./documents.query";
-import { documentLabel, documentPlace, documentsUrl, shareUrl } from "./documents.util";
-import { DOCUMENT_LISTS } from "./documents.list";
+import { documentLabel, documentPlace, documentsLink, documentsUrl, shareUrl } from "./documents.util";
+import { DOCUMENTS_LIST } from "./documents.list";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { useDocumentPdf } from "./documents.hook";
 import type { PdfSource } from "./documents.hook";
@@ -59,12 +59,6 @@ import { clientOf } from "~/features/clients/clients.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 
-/** The breadcrumb, which already says what kind of document this is: its list, with the filter it was left at. */
-function parentOf(type: DocumentType, filter: ListFilter) {
-  const spec = DOCUMENT_TYPES[type];
-  return { to: spec.path, label: spec.plural, search: documentsUrl.toSearch(filter) } as const;
-}
-
 interface DocumentPageProps {
   id: string;
   type: DocumentType;
@@ -77,18 +71,19 @@ export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageP
   const detail = DocumentsQuery.useDetail(id);
   // Its client's name is in the header: it opens with it.
   const clients = ClientsQuery.useList();
-  const parent = parentOf(type, filter);
+  // The breadcrumb: its list, with the filter it was left at.
+  const parent = documentsLink(filter);
   const header = {
     parent,
     pager: (
       <ListPager
-        list={DOCUMENT_LISTS[type]}
+        list={DOCUMENTS_LIST}
         filter={filter}
         current={{ id, place: detail.data && documentPlace(detail.data), gone: isApiError(detail.error, "not_found") }}
         itemLink={(next) => documentLink({ id: next, type }, documentsUrl.toSearch(filter))}
         panel={{
           onApply: onFilterChange,
-          listLink: (next) => ({ to: DOCUMENT_TYPES[type].path, search: documentsUrl.toSearch(next) }),
+          listLink: documentsLink,
         }}
       />
     ),
@@ -124,7 +119,7 @@ export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageP
 
 /** The header's way back and pager, the same while the document loads. */
 interface DocumentHeader {
-  parent: ReturnType<typeof parentOf>;
+  parent: ReturnType<typeof documentsLink>;
   pager: ReactNode;
 }
 

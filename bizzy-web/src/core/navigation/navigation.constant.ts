@@ -2,32 +2,16 @@ import type { Module } from "./navigation.types";
 
 export const MODULES: ReadonlyArray<Module> = [
   { label: "Home", pages: [{ to: "/", label: "Home" }] },
-  {
-    label: "Sessions",
-    pages: [{ to: "/sessions", label: "All sessions" }],
-  },
-  {
-    label: "Follow-ups",
-    pages: [
-      { to: "/follow-ups", label: "Upcoming" },
-      { to: "/follow-ups/done", label: "Done" },
-    ],
-  },
+  { label: "Sessions", pages: [{ to: "/sessions", label: "Sessions" }] },
+  { label: "Follow-ups", pages: [{ to: "/follow-ups", label: "Follow-ups" }] },
   {
     label: "Clients",
     pages: [
-      { to: "/clients", label: "All clients" },
-      { to: "/clients/reconnect", label: "Reconnect" },
+      { to: "/clients", label: "Clients" },
       { to: "/packages", label: "Packages" },
     ],
   },
-  {
-    label: "Documents",
-    pages: [
-      { to: "/invoices", label: "Invoices" },
-      { to: "/receipts", label: "Receipts" },
-    ],
-  },
+  { label: "Documents", pages: [{ to: "/documents", label: "Documents", under: ["/invoices", "/receipts"] }] },
   {
     label: "Expenses",
     pages: [

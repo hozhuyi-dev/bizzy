@@ -1,28 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ClientsPage } from "~/features/clients/clients-page.component";
-import { LAPSE_FACET, LAPSE_MONTHS } from "~/features/clients/clients.constant";
-import { useClientsNavigate } from "~/features/clients/clients.hook";
-import { oneOf, textParam } from "~/core/utils/url-param.util";
-import { sortParam } from "~/core/list/filter.util";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { LAPSE_MONTHS } from "~/features/clients/clients.constant";
+import { oneOf } from "~/core/utils/url-param.util";
 
-export interface ReconnectSearch {
-  q?: string | undefined;
-  lapse?: "6" | "12" | undefined;
-  sort?: string | undefined;
-}
-
+/** Reconnect is the clients list's preset now; an old link lands there, with its lapse. */
 export const Route = createFileRoute("/clients/reconnect")({
-  validateSearch: (search: Record<string, unknown>): ReconnectSearch => ({
-    q: textParam(search.q),
+  beforeLoad: ({ search }) => {
     // Numbers in the URL parse as numbers.
-    lapse: oneOf(String(search.lapse), ["6", "12"] as const),
-    sort: sortParam(search.sort),
-  }),
-  component: ReconnectRoute,
+    const lapse = oneOf(String((search as Record<string, unknown>).lapse), LAPSE_MONTHS) ?? LAPSE_MONTHS[0];
+    throw redirect({ to: "/clients", search: { lapse: [lapse], sort: "-lifetimeCents" }, replace: true });
+  },
 });
-
-function ReconnectRoute() {
-  const { q, lapse, sort } = Route.useSearch();
-  const filter = { text: q ?? "", when: undefined, chips: { [LAPSE_FACET]: [lapse ?? LAPSE_MONTHS[0]] }, sort };
-  return <ClientsPage view="reconnect" filter={filter} onFilterChange={useClientsNavigate("reconnect", filter)} />;
-}

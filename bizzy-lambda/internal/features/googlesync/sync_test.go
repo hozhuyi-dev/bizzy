@@ -193,7 +193,7 @@ func TestEveryEventIsBizzys(t *testing.T) {
 	party := a.Calendar.UserAddAllDay("Birthday", "2026-10-16")
 	sync(t, a)
 	var page listing.Page[followups.View]
-	if err := a.Must("followUps.search", map[string]any{"view": "upcoming"}, &page); err != nil {
+	if err := a.Must("followUps.search", map[string]any{"statuses": []string{"open"}}, &page); err != nil {
 		t.Fatal(err)
 	}
 	listed := page.Items

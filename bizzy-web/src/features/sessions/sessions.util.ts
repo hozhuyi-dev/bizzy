@@ -4,9 +4,12 @@ import { CANCELLED_BADGE, REASON_BADGES } from "./session-stage.util";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { SearchSessionsRequest, SessionLocation, SessionReason, SessionSearch, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { Facet, ListFilter } from "~/core/list/filter.types";
+import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
+import type { Paperwork } from "~/features/documents/documents.util";
 import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
+import { paperworkFacet } from "~/features/documents/documents.util";
+import { PAYMENT_FACET } from "~/features/payments/payments.util";
 import { filterUrl, listRequest } from "~/core/list/filter.util";
 import { monthKey } from "~/core/utils/date.util";
 import { oneOf, textParam } from "~/core/utils/url-param.util";
@@ -37,6 +40,19 @@ export function sessionFacets(clients: ReadonlyArray<ClientView>): Array<Facet> 
       ],
     },
     { key: "place", label: "Place", options: Object.entries(SESSION_PLACES).map(([value, label]) => ({ value, label })) },
+    paperworkFacet("invoice"),
+    paperworkFacet("receipt"),
+    PAYMENT_FACET,
+  ];
+}
+
+/** The ways the sessions list is usually looked at: this month first, as it opens; then what is left to do, at any time. */
+export function sessionPresets(now = new Date()): Array<FilterPreset> {
+  return [
+    { label: "This month", when: monthKey(now), chips: {} },
+    { label: "To confirm", when: undefined, chips: { stage: ["confirm"] } },
+    { label: "To record", when: undefined, chips: { stage: ["record"] } },
+    { label: "Unpaid", when: undefined, chips: { stage: ["collect"] } },
   ];
 }
 
@@ -48,6 +64,9 @@ export function searchSessionsRequest(filter: ListFilter): SearchSessionsRequest
     locations: [...(filter.chips.place ?? [])] as Array<SessionLocation>,
     todo: [...(filter.chips.stage ?? [])].filter((stage) => stage !== CANCELLED_STAGE) as Array<SessionReason>,
     cancelled: (filter.chips.stage ?? []).includes(CANCELLED_STAGE),
+    invoices: [...(filter.chips.invoice ?? [])] as Array<Paperwork>,
+    receipts: [...(filter.chips.receipt ?? [])] as Array<Paperwork>,
+    payments: [...(filter.chips.payment ?? [])],
   };
 }
 

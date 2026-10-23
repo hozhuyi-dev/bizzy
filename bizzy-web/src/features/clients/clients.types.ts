@@ -1,4 +1,4 @@
-import type { LapseMonths, StandingFacet } from "./clients.constant";
+import type { ClientFacetKey } from "./clients.constant";
 import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactSummaryValue } from "~/features/contacts/contacts.types";
 import type { FilterSearch } from "~/core/list/filter.types";
@@ -103,15 +103,8 @@ export interface ClientNext {
   at: string;
 }
 
-/** Everyone, or the lapsed clients worth getting back in touch with. */
-export type ClientsFilter = "all" | "reconnect";
-
-/**
- * All clients' or Reconnect's filter, as a client's page keeps it to step
- * through: the words and All clients' chips, or the lapse that makes it
- * Reconnect.
- */
-export type ClientsListSearch = FilterSearch<StandingFacet> & { lapse?: LapseMonths | undefined };
+/** The clients list's filter, as its URL and a client's page (to step through it) keep it. */
+export type ClientsListSearch = FilterSearch<ClientFacetKey>;
 
 /** A contact chosen for the client, with whatever details are known. */
 export interface ChosenContact extends ContactSummaryValue {

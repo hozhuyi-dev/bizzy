@@ -1,6 +1,5 @@
-import { createLink } from "@tanstack/react-router";
 import { cn } from "cn";
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface CellTextProps {
   /** The line that matters: a name, a date, an amount. */
@@ -31,23 +30,3 @@ export function CellText({ children, sub, title, className }: CellTextProps) {
 export function CellEmpty() {
   return <span className="text-muted-foreground/60">—</span>;
 }
-
-/**
- * The row's name, where the whole row already opens its page: plain text to
- * the eye, but still a link, so the keyboard and screen readers have a way
- * in (a table row can't be one).
- */
-function PlainAnchor({ className, ...props }: ComponentProps<"a">) {
-  return (
-    <a
-      className={cn(
-        "rounded-sm font-medium text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-/** The router's Link with the row-name look; takes the same props. */
-export const CellLink = createLink(PlainAnchor);

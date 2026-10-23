@@ -77,6 +77,8 @@ export interface DocumentSummary {
   clientId: string;
   /** YYYY-MM-DD; a draft has none until set, and takes the day it is issued. */
   date?: string;
+  /** Where a draft without a date is in its list. */
+  createdAt: string;
   totalCents: number;
   /** Who the current content (issued, or the new draft) is for. */
   recipientName: string;
@@ -154,9 +156,11 @@ export type DocumentsSearch = FilterSearch<(typeof DOCUMENT_FACETS)[number]>;
 
 /** documents.search's request: an empty filter takes every value. */
 export interface SearchDocumentsRequest extends ListRequest {
-  type: DocumentType;
+  types: Array<DocumentType>;
   clientIds: Array<string>;
   statuses: Array<DocumentStatus>;
+  /** Invoices with something still owed on them. */
+  unpaid: boolean;
 }
 
 /** One issued version, kept forever; mirrors documents.Revision. */
@@ -238,6 +242,4 @@ export interface DocumentTypeSpec {
   recipientLabel: string;
   /** Label for its total. */
   totalLabel: string;
-  /** Its list, under Documents. */
-  path: "/invoices" | "/receipts";
 }

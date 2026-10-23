@@ -114,9 +114,9 @@ type Document struct {
 // Documents are filed by client, and by type and date for monthly lists.
 var Documents = txn.Kind[Document]{
 	Name: "DOC", Gone: "This document was deleted.",
-	Doc: txn.Doc{What: "An invoice or receipt: its issued content, and the draft being edited.", Client: "its client, by date", Time: "its date (a draft has none until issued)", Tag: "its type (invoice, receipt), by date: the monthly lists"},
+	Doc: txn.Doc{What: "An invoice or receipt: its issued content, and the draft being edited.", Client: "its client, by date", Time: "its date, or for a draft without one, when it was made", Tag: "its type (invoice, receipt), by date: the monthly lists"},
 	Meta: func(d *Document) txn.Meta {
-		return txn.Meta{ID: d.ID, Client: d.ClientID, Time: d.date(), Tag: string(d.Type)}
+		return txn.Meta{ID: d.ID, Client: d.ClientID, Time: d.filedAt(), Tag: string(d.Type)}
 	},
 }
 
@@ -211,6 +211,16 @@ func (d *Document) date() time.Time {
 	}
 	day, _ := time.Parse(time.DateOnly, c.Date)
 	return day
+}
+
+// filedAt is where the document is in time, for its lists: its date, or
+// for a draft without one (it takes the day it is issued), when it was
+// made, so a list of every type still finds it.
+func (d *Document) filedAt() time.Time {
+	if day := d.date(); !day.IsZero() {
+		return day
+	}
+	return d.CreatedAt
 }
 
 // Total adds up the lines.

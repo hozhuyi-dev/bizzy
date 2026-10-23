@@ -1,4 +1,4 @@
-import type { FilterSearch, ListFilter, ListRequest, Page, When } from "./filter.types";
+import type { FilterPreset, FilterSearch, ListFilter, ListRequest, Page, When } from "./filter.types";
 import { LOCALE } from "~/core/constants/app.constant";
 import { addMonths, formatDate, formatMonth, monthKey, toISODate } from "~/core/utils/date.util";
 import { textParam } from "~/core/utils/url-param.util";
@@ -150,11 +150,11 @@ export function pageItems<T>(data: { pages: ReadonlyArray<Page<T>> } | undefined
   return data?.pages.flatMap((page) => page.items) ?? [];
 }
 
-/** A list of values from the URL: one, or several. */
+/** A list of values from the URL: one, or several; a number in it parses as one, and is taken as written. */
 function listParam(value: unknown): Array<string> | undefined {
-  const values = (Array.isArray(value) ? value : [value]).filter(
-    (v): v is string => typeof v === "string" && v !== "",
-  );
+  const values = (Array.isArray(value) ? value : [value])
+    .map((v) => (typeof v === "number" ? String(v) : v))
+    .filter((v): v is string => typeof v === "string" && v !== "");
   return values.length > 0 ? values : undefined;
 }
 
@@ -169,16 +169,26 @@ export function filterSearch<TKey extends string>(search: Record<string, unknown
   return out as FilterSearch<TKey>;
 }
 
-/** The filter a URL keeps; without days in it, the page's default days. */
+/** A facet's chips by default, when the URL names none: "status" open. */
+export type DefaultChips<TKey extends string> = Partial<Record<TKey, ReadonlyArray<string>>>;
+
+/** In the URL, a facet with chips by default and none chosen: every value. */
+const ALL = "all";
+
+/** The filter a URL keeps; without days in it, the page's default days, and the same for each facet's chips. */
 export function toFilter<TKey extends string>(
   search: FilterSearch<TKey>,
   facets: ReadonlyArray<TKey>,
   defaultWhen?: When,
+  defaultChips: DefaultChips<TKey> = {},
 ): ListFilter {
   const chips: Record<string, ReadonlyArray<string>> = {};
   for (const key of facets) {
     const values = (search as Partial<Record<TKey, Array<string>>>)[key];
-    if (values) chips[key] = values;
+    const fallback = defaultChips[key];
+    if (fallback && values?.length === 1 && values[0] === ALL) chips[key] = [];
+    else if (values) chips[key] = values;
+    else if (fallback) chips[key] = fallback;
   }
   const when = search.when === "all" ? undefined : (search.when ?? defaultWhen);
   return { text: search.q ?? "", when, chips, sort: search.sort };
@@ -189,6 +199,7 @@ export function toSearch<TKey extends string>(
   filter: ListFilter,
   facets: ReadonlyArray<TKey>,
   defaultWhen?: When,
+  defaultChips: DefaultChips<TKey> = {},
 ): FilterSearch<TKey> {
   const out: Record<string, unknown> = {
     q: filter.text.trim() || undefined,
@@ -196,22 +207,52 @@ export function toSearch<TKey extends string>(
     sort: filter.sort,
   };
   for (const key of facets) {
-    const values = filter.chips[key];
-    out[key] = values && values.length > 0 ? [...values] : undefined;
+    const values = filter.chips[key] ?? [];
+    const fallback = defaultChips[key];
+    if (fallback && sameValues(values, fallback)) out[key] = undefined;
+    else if (fallback && values.length === 0) out[key] = [ALL];
+    else out[key] = values.length > 0 ? [...values] : undefined;
   }
   return out as FilterSearch<TKey>;
 }
 
+function sameValues(a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean {
+  return a.length === b.length && a.every((value) => b.includes(value));
+}
+
 /**
- * A list's filter both ways between it and the URL, with the days the list
- * shows unless the URL says otherwise. The list's route and its items'
+ * The preset the filter is: the same days and chips (the words and the
+ * sort aside); undefined for one of her own (Custom).
+ */
+export function presetOf(filter: ListFilter, presets: ReadonlyArray<FilterPreset>): FilterPreset | undefined {
+  return presets.find(
+    (preset) =>
+      preset.when === filter.when &&
+      [...new Set([...Object.keys(preset.chips), ...Object.keys(filter.chips)])].every((key) =>
+        sameValues(preset.chips[key] ?? [], filter.chips[key] ?? []),
+      ),
+  );
+}
+
+/** The filter a preset makes, with the words kept; its sort, if it has one, else the list's own. */
+export function applyPreset(filter: ListFilter, preset: FilterPreset): ListFilter {
+  return { text: filter.text, when: preset.when, chips: preset.chips, sort: preset.sort };
+}
+
+/**
+ * A list's filter both ways between it and the URL, with the days (and
+ * chips) the list shows unless the URL says otherwise. The list's route and its items'
  * routes share it, so an item's page steps through the list it came from.
  */
-export function filterUrl<TKey extends string>(facets: ReadonlyArray<TKey>, defaultWhen?: () => When) {
+export function filterUrl<TKey extends string>(
+  facets: ReadonlyArray<TKey>,
+  defaultWhen?: () => When,
+  defaultChips?: DefaultChips<TKey>,
+) {
   return {
     validate: (search: Record<string, unknown>): FilterSearch<TKey> => filterSearch(search, facets),
-    toFilter: (search: FilterSearch<TKey>): ListFilter => toFilter(search, facets, defaultWhen?.()),
-    toSearch: (filter: ListFilter): FilterSearch<TKey> => toSearch(filter, facets, defaultWhen?.()),
+    toFilter: (search: FilterSearch<TKey>): ListFilter => toFilter(search, facets, defaultWhen?.(), defaultChips),
+    toSearch: (filter: ListFilter): FilterSearch<TKey> => toSearch(filter, facets, defaultWhen?.(), defaultChips),
   };
 }
 

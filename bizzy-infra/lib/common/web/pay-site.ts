@@ -53,13 +53,13 @@ export class PaySite extends Construct {
       lifecycleRules: [{ id: "abort-incomplete-uploads", abortIncompleteMultipartUploadAfter: Duration.days(1) }],
     });
 
-    // The page shows the business's bank details: kept out of search engines
-    // and other sites' frames.
+    // The page shows the business's bank details: kept out of other sites'
+    // frames. Search engines are kept off by the page itself (its robots.txt
+    // and robots meta tag), not an X-Robots-Tag header: that would ride on
+    // every file, the preview image too, and link previews (WhatsApp's,
+    // Facebook's) must be free to fetch it.
     const headers = new ResponseHeadersPolicy(this, "Headers", {
       comment: `${projectName}-${environment}-pay headers`,
-      customHeadersBehavior: {
-        customHeaders: [{ header: "X-Robots-Tag", value: "noindex, nofollow", override: true }],
-      },
       securityHeadersBehavior: {
         contentTypeOptions: { override: true },
         frameOptions: { frameOption: HeadersFrameOption.DENY, override: true },

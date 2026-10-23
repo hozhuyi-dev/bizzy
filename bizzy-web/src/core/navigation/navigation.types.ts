@@ -4,6 +4,8 @@ import type { LinkProps } from "@tanstack/react-router";
 export interface Submodule {
   to: NonNullable<LinkProps["to"]>;
   label: string;
+  /** Other paths whose pages are under it: an invoice's page is under Documents. */
+  under?: ReadonlyArray<string> | undefined;
 }
 
 /**

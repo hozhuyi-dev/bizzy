@@ -84,6 +84,17 @@ func Count(tx *txn.Tx, kind OwnerKind, ownerID string) (int, error) {
 	return len(all), err
 }
 
+// Counts is how many files each owner of a kind has, by owner id, read at
+// once: for a list of owners, where Count would read once per owner.
+func Counts(tx *txn.Tx, kind OwnerKind) (map[string]int, error) {
+	all, err := Attachments.WithRefPrefix(tx, ownerRef(kind, ""))
+	counts := map[string]int{}
+	for _, a := range all {
+		counts[a.OwnerID]++
+	}
+	return counts, err
+}
+
 // KeyPrefix is where every attachment key starts in the bucket; the API's
 // access is scoped to it (see bizzy-infra's FileBucket).
 const KeyPrefix = "attachments/"

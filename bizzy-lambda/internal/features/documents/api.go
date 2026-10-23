@@ -1,7 +1,6 @@
 package documents
 
 import (
-	"cmp"
 	"context"
 	"slices"
 	"time"
@@ -17,14 +16,16 @@ import (
 
 // Summary is a document as a list shows it, without what it prints.
 type Summary struct {
-	ID         string `json:"id"`
-	Type       Type   `json:"type"`
-	Status     Status `json:"status"`
-	Number     string `json:"number,omitempty"`
-	Revision   *int   `json:"revision,omitempty"`
-	ClientID   string `json:"clientId"`
-	Date       string `json:"date,omitempty"`
-	TotalCents int64  `json:"totalCents"`
+	ID       string `json:"id"`
+	Type     Type   `json:"type"`
+	Status   Status `json:"status"`
+	Number   string `json:"number,omitempty"`
+	Revision *int   `json:"revision,omitempty"`
+	ClientID string `json:"clientId"`
+	Date     string `json:"date,omitempty"`
+	// CreatedAt places a draft without a date in its lists (see filedAt).
+	CreatedAt  time.Time `json:"createdAt"`
+	TotalCents int64     `json:"totalCents"`
 	// RecipientName is who the current content is for.
 	RecipientName string `json:"recipientName"`
 	// Revising says an issued document has its next revision drafted.
@@ -95,7 +96,7 @@ type Can struct {
 func SummaryOf(d *Document, owing Owing) Summary {
 	s := Summary{
 		ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, ClientID: d.ClientID,
-		Revising: d.Status == StatusIssued && d.Draft != nil, ShareToken: d.ShareToken,
+		CreatedAt: d.CreatedAt, Revising: d.Status == StatusIssued && d.Draft != nil, ShareToken: d.ShareToken,
 	}
 	// The document's own steps, which never fail to say.
 	s.Can.Send, _ = apperr.VerdictOf(CanSend(d))
@@ -213,14 +214,37 @@ func SharedViewOf(d *Document, pdf File) SharedView {
 	return SharedView{Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, Content: *d.Content, CancelledAt: d.CancelledAt, PDF: pdf}
 }
 
-// searchRequest finds documents of a type by words in their number, who
-// they are for or the client's name, and by days (a draft without a date
-// is on no day), clients and status; an empty filter takes every value.
+// searchRequest finds documents by words in their number, who they are
+// for or the client's name, and by days (a draft without a date is on no
+// day), types, clients and status, and invoices with something still owed
+// on them (Unpaid); an empty filter takes every value.
 type searchRequest struct {
 	listing.Request
-	Type      Type     `json:"type"`
+	Types     []Type   `json:"types"`
 	ClientIDs []string `json:"clientIds"`
 	Statuses  []Status `json:"statuses"`
+	Unpaid    bool     `json:"unpaid"`
+}
+
+// list is where a search reads, latest first: a client's documents for
+// one client, a type's for one type, else every one.
+func (in searchRequest) list(from, to time.Time) txn.List {
+	l := txn.List{From: from, To: to, Latest: true}
+	switch {
+	case len(in.ClientIDs) == 1:
+		l.Client = in.ClientIDs[0]
+	case len(in.Types) == 1:
+		l.Tag = string(in.Types[0])
+	}
+	return l
+}
+
+// takes says whether a document is one the search is for, its words aside.
+func (in searchRequest) takes(d *Document, owing Owing) bool {
+	if !listing.OneOf(in.Types, d.Type) || !listing.OneOf(in.ClientIDs, d.ClientID) || !listing.OneOf(in.Statuses, d.Status) {
+		return false
+	}
+	return !in.Unpaid || d.Status != StatusCancelled && len(owing.owedOn(d)) > 0
 }
 
 type clientRequest struct {
@@ -302,11 +326,13 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 		})
 	}
 
-	// documents.search finds documents of a type, latest first, a page at
-	// a time.
+	// documents.search finds invoices and receipts, latest first, a page
+	// at a time.
 	r.Query("documents.search", router.Typed(func(ctx context.Context, in searchRequest) (any, error) {
-		if _, ok := Types[in.Type]; !ok {
-			return nil, apperr.Invalid("Unknown document type %q.", in.Type)
+		for _, t := range in.Types {
+			if _, ok := Types[t]; !ok {
+				return nil, apperr.Invalid("Unknown document type %q.", t)
+			}
 		}
 		return txn.Read(ctx, run, func(tx *txn.Tx) (listing.Page[Summary], error) {
 			// Document dates are days, filed as UTC.
@@ -314,17 +340,13 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 			if err != nil {
 				return listing.Page[Summary]{}, err
 			}
-			l := txn.List{Tag: string(in.Type), From: from, To: to, Latest: true}
-			if len(in.ClientIDs) == 1 {
-				l = txn.List{Client: in.ClientIDs[0], From: from, To: to, Latest: true}
-			}
 			words := in.Words()
 			owing, err := OwingOf(tx)
 			if err != nil {
 				return listing.Page[Summary]{}, err
 			}
-			return listing.Read(tx, Documents, l, in.Request, func(d *Document) (Summary, bool, error) {
-				if d.Type != in.Type || !listing.OneOf(in.ClientIDs, d.ClientID) || !listing.OneOf(in.Statuses, d.Status) {
+			return listing.Read(tx, Documents, in.list(from, to), in.Request, func(d *Document) (Summary, bool, error) {
+				if !in.takes(d, owing) {
 					return Summary{}, false, nil
 				}
 				s := SummaryOf(d, owing)
@@ -337,24 +359,16 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 		})
 	}))
 	// documents.listByClient lists a client's documents of every type,
-	// newest first, the drafts not issued yet last.
+	// latest first, as documents.search does (a draft without a date by
+	// when it was made).
 	r.Query("documents.listByClient", router.Typed(func(ctx context.Context, in clientRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) ([]Summary, error) {
 			all, err := Documents.OfClient(tx, in.ClientID)
 			if err != nil {
 				return nil, err
 			}
-			out, err := summaries(tx, all)
-			draft := func(s Summary) int {
-				if s.Number == "" {
-					return 1
-				}
-				return 0
-			}
-			slices.SortStableFunc(out, func(a, b Summary) int {
-				return cmp.Or(cmp.Compare(draft(a), draft(b)), cmp.Compare(b.Date, a.Date))
-			})
-			return out, err
+			slices.Reverse(all)
+			return summaries(tx, all)
 		})
 	}))
 	r.Query("documents.get", router.Typed(func(ctx context.Context, in idRequest) (any, error) {

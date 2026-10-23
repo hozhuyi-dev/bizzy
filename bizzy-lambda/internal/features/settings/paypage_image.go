@@ -22,10 +22,13 @@ import (
 	"rsc.io/qr"
 )
 
+// The page's colours: the app's honey for the bar, and a deep honey
+// brown for the label, as the honey is too light to read on white.
 var (
 	ink    = color.RGBA{0x1c, 0x19, 0x17, 0xff}
-	muted  = color.RGBA{0x78, 0x71, 0x6c, 0xff}
-	accent = color.RGBA{0xc2, 0x41, 0x0c, 0xff}
+	muted  = color.RGBA{0x73, 0x6b, 0x66, 0xff}
+	honey  = color.RGBA{0xda, 0x8a, 0x11, 0xff}
+	accent = color.RGBA{0x5d, 0x39, 0x17, 0xff}
 	paper  = color.RGBA{0xff, 0xff, 0xff, 0xff}
 	warm   = color.RGBA{0xfa, 0xf7, 0xf2, 0xff}
 )
@@ -103,7 +106,7 @@ func (p PayPage) PreviewPNG() ([]byte, error) {
 	const w, h, pad = 1200, 630, 72
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	draw.Draw(img, img.Bounds(), image.NewUniform(warm), image.Point{}, draw.Src)
-	draw.Draw(img, image.Rect(0, 0, w, 14), image.NewUniform(accent), image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, 0, w, 14), image.NewUniform(honey), image.Point{}, draw.Src)
 
 	textRight := w - pad
 	if p.QR != "" {

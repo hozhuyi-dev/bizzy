@@ -43,12 +43,19 @@ export interface CreateFollowUpRequest extends FollowUpFields {
   sessionId?: string;
 }
 
-/** Which follow-ups to list; mirrors followups.List. */
-export type FollowUpList = "upcoming" | "done";
+/** How a follow-up stands; mirrors followups.Status. */
+export type FollowUpStatus = "open" | "overdue" | "done";
 
-/** followUps.search's request: an empty filter takes every value. */
+/** Where a follow-up came from; mirrors followups.Origin. */
+export type FollowUpOrigin = "session" | "own";
+
+/**
+ * followUps.search's request: an empty filter takes every value. Open
+ * alone (or with overdue) lists soonest first; anything else latest first.
+ */
 export interface SearchFollowUpsRequest extends ListRequest {
-  view: FollowUpList;
+  statuses: Array<FollowUpStatus>;
+  origins: Array<FollowUpOrigin>;
   clientIds: Array<string>;
 }
 

@@ -1,3 +1,4 @@
+import type { Paperwork } from "~/features/documents/documents.util";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { DocumentRef, DocumentSource } from "~/features/documents/documents.types";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
@@ -107,6 +108,10 @@ export interface SearchSessionsRequest extends ListRequest {
   todo: Array<SessionReason>;
   /** The cancelled ones too, at the stages asked for. */
   cancelled: boolean;
+  invoices: Array<Paperwork>;
+  receipts: Array<Paperwork>;
+  /** Methods it was paid by, or "credits" (PAID_BY_CREDITS). */
+  payments: Array<string>;
 }
 
 /** A session with its notes, and what its update can't change, for its page; mirrors sessions.FullView. */

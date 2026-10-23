@@ -49,7 +49,7 @@ func TestResetLeavesNoKeptReads(t *testing.T) {
 	}{
 		{"clients.list", nil}, {"todo.list", nil}, {"sessions.search", map[string]any{"text": ""}},
 		{"packages.list", map[string]any{"all": true}}, {"activity.list", nil}, {"app.status", nil},
-		{"documents.search", map[string]any{"type": "invoice"}}, {"followUps.search", map[string]any{"view": followups.ListUpcoming}},
+		{"documents.search", map[string]any{"types": []string{"invoice"}}}, {"followUps.search", map[string]any{"statuses": []followups.Status{followups.StatusOpen}}},
 	}
 	// agree checks a and b read what a Lambda that kept nothing reads.
 	agree := func(when string) map[string]string {

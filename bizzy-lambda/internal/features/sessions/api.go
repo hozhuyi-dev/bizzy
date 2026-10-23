@@ -43,8 +43,8 @@ type View struct {
 	// package bought in it. Asking to pay and sending its documents go by
 	// them.
 	Sources []documents.Source `json:"sources"`
-	Record    RecordView      `json:"record"`
-	Todo      []Reason        `json:"todo"`
+	Record  RecordView         `json:"record"`
+	Todo    []Reason           `json:"todo"`
 	// CancelledAt is when it was called off, and CancelReason why.
 	CancelledAt  *time.Time `json:"cancelledAt,omitempty"`
 	CancelReason string     `json:"cancelReason,omitempty"`
@@ -245,14 +245,56 @@ type listRequest struct {
 }
 
 // searchRequest finds sessions by words in the client's name, the summary
-// or the notes, and by days, clients, place and stage: what is left to do,
-// or Cancelled; an empty filter takes every value.
+// or the notes, and by days, clients, place and stage (what is left to do,
+// or Cancelled), how far its invoice and receipt have got, and how it was
+// paid; an empty filter takes every value.
 type searchRequest struct {
 	listing.Request
-	ClientIDs []string   `json:"clientIds"`
-	Locations []Location `json:"locations"`
-	Todo      []Reason   `json:"todo"`
-	Cancelled bool       `json:"cancelled"`
+	ClientIDs []string    `json:"clientIds"`
+	Locations []Location  `json:"locations"`
+	Todo      []Reason    `json:"todo"`
+	Cancelled bool        `json:"cancelled"`
+	Invoices  []Paperwork `json:"invoices"`
+	Receipts  []Paperwork `json:"receipts"`
+	// Payments are methods it was paid by, or PaidByCredits.
+	Payments []string `json:"payments"`
+}
+
+// Paperwork is how far a session's invoice or receipt has got.
+type Paperwork string
+
+const (
+	PaperworkNone   Paperwork = "none"
+	PaperworkDraft  Paperwork = "draft"
+	PaperworkIssued Paperwork = "issued"
+)
+
+// PaidByCredits is a payment filter's value for a session a package's
+// credits pay for, in part or whole.
+const PaidByCredits = "credits"
+
+// papersOf reports whether a session's invoice, receipt and payment are as
+// asked for.
+func (in searchRequest) papersOf(v View) bool {
+	invoice, receipt := PaperworkNone, PaperworkNone
+	if v.Invoice != nil {
+		invoice = PaperworkDraft
+		if v.Invoice.Number != "" {
+			invoice = PaperworkIssued
+		}
+	}
+	var paid []string
+	if len(v.Credits) > 0 {
+		paid = append(paid, PaidByCredits)
+	}
+	if v.Paid != nil {
+		receipt = PaperworkDraft
+		if v.Paid.Issued {
+			receipt = PaperworkIssued
+		}
+		paid = append(paid, string(v.Paid.Method))
+	}
+	return listing.OneOf(in.Invoices, invoice) && listing.OneOf(in.Receipts, receipt) && listing.AnyOf(in.Payments, paid)
 }
 
 // stageOf reports whether a session is at one of the stages asked for.
@@ -342,7 +384,7 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 					return Hit{}, false, err
 				}
 				v, err := ViewOf(tx, s)
-				return Hit{View: v, Excerpt: excerpt}, err == nil && in.stageOf(v), err
+				return Hit{View: v, Excerpt: excerpt}, err == nil && in.stageOf(v) && in.papersOf(v), err
 			})
 		})
 	}))

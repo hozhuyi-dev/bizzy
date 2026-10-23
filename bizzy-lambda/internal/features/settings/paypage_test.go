@@ -89,7 +89,12 @@ func TestPayPageHTML(t *testing.T) {
 	}
 	html := string(page)
 	for _, want := range []string{
+		`<meta property="og:url" content="https://pay.example/">`,
+		`<meta property="og:site_name" content="Physio &lt;Co&gt; &amp; &#34;Sons&#34;">`,
 		`<meta property="og:image" content="https://pay.example/preview.png?v=`,
+		`<meta property="og:image:alt" content="Payment details for Physio &lt;Co&gt; &amp; &#34;Sons&#34;: DuitNow QR, Bank transfer (Maybank), DuitNow / TnG / GrabPay to phone">`,
+		`<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg `, // A wallet; not the app's bee.
+		`id="save-qr" href="qr.png?v=`,
 		`<meta name="robots" content="noindex, nofollow">`,
 		`Physio &lt;Co&gt; &amp; &#34;Sons&#34;`,
 		`data-copy="514012345678"`, // The account number as a bank app takes it.
@@ -198,6 +203,13 @@ func TestPublish(t *testing.T) {
 	}
 	if got := store.Blobs[PayPageKey].ContentType; got != "text/html; charset=utf-8" {
 		t.Errorf("the page is served as %q", got)
+	}
+	// Link previews may fetch the page; nothing else may.
+	robots := string(store.Blobs[PayRobotsKey].Body)
+	for _, want := range []string{"User-agent: facebookexternalhit\n", "User-agent: WhatsApp\n", "Allow: /\n", "\nUser-agent: *\nDisallow: /\n"} {
+		if !strings.Contains(robots, want) {
+			t.Errorf("robots.txt has no %q:\n%s", want, robots)
+		}
 	}
 
 	without := paying

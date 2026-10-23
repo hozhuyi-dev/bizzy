@@ -1,11 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { cn } from "cn";
 import { DocumentCard, createDocumentColumns, documentLink } from "./documents.columns";
-import { DOCUMENT_TYPES } from "./documents.constant";
 import { DocumentsQuery } from "./documents.query";
-import { documentFacets, documentsUrl } from "./documents.util";
-import type { DocumentType } from "./documents.types";
+import { canTick, useDocumentBulkActions } from "./documents.hook";
+import { documentFacets, documentPresets, documentsUrl, singleClientOf } from "./documents.util";
+import type { ReactNode } from "react";
+import type { RowSelectionState } from "@tanstack/react-table";
+import type { DocumentSummary } from "./documents.types";
+import type { ClientView } from "~/features/clients/clients.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
@@ -19,26 +22,32 @@ import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 interface DocumentsPageProps {
-  type: DocumentType;
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
 }
 
 /**
- * One type of document, latest first, searched on the server a page at a
- * time: by number, who it is for, client, status and days. Invoices and
- * receipts are made from a session or a package, so there is no "new"
+ * Invoices and receipts, latest first, searched on the server a page at a
+ * time: by number, who it is for, type, client, status, what is owed and
+ * days. Narrowed to one client, they can be ticked to ask to pay, send or
+ * put together, as on the client's page: each of those is for one client.
+ * Documents are made from a session or a package, so there is no "new"
  * button here.
  */
-export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPageProps) {
-  const spec = DOCUMENT_TYPES[type];
+export function DocumentsPage({ filter, onFilterChange }: DocumentsPageProps) {
   const clients = ClientsQuery.useList();
+  const clientsById = ClientsQuery.useById();
   const facets = useMemo(() => documentFacets(clients.data ?? []), [clients.data]);
-  const documents = DocumentsQuery.useSearch(type, filter);
+  const presets = useMemo(() => documentPresets(), []);
+  const documents = DocumentsQuery.useSearch(filter);
   const data = useMemo(() => pageItems(documents.data), [documents.data]);
   // Each document's page steps through this list.
   const search = useMemo(() => documentsUrl.toSearch(filter), [filter]);
-  const columns = useMemo(() => createDocumentColumns(search), [search]);
+  const clientId = singleClientOf(filter);
+  const client = clients.data?.find((c) => c.id === clientId);
+  const ticking = client !== undefined;
+  const columns = useMemo(() => createDocumentColumns(search, clientsById, ticking), [search, clientsById, ticking]);
+  const [selection, setSelection] = useState<RowSelectionState>({});
 
   const table = useTable({
     features: dataTableFeatures,
@@ -48,45 +57,92 @@ export function DocumentsPage({ type, filter, onFilterChange }: DocumentsPagePro
     // Read a page at a time, latest first: sorting a page would only sort
     // what is loaded.
     enableSorting: false,
+    enableRowSelection: (row) => ticking && canTick(row.original),
+    state: { rowSelection: selection },
+    onRowSelectionChange: setSelection,
   });
+  const chosen = ticking ? data.filter((doc) => selection[doc.id]) : [];
+  const toolbar = (
+    <FilterBar
+      label="Search documents"
+      value={filter}
+      onChange={(next) => {
+        // Ticks are one client's, and what is ticked out of sight would be sent unseen.
+        setSelection({});
+        onFilterChange(next);
+      }}
+      facets={facets}
+      presets={presets}
+      dates
+    />
+  );
 
   return (
     <>
-      <PageHeader
-        title={spec.plural}
-        toolbar={
-          <FilterBar
-            label={`Search ${spec.plural.toLowerCase()}`}
-            value={filter}
-            onChange={onFilterChange}
-            facets={facets}
-            dates
-          />
-        }
-      />
+      {ticking ? (
+        <TickingHeader client={client} chosen={chosen} toolbar={toolbar} onDone={() => setSelection({})} />
+      ) : (
+        <PageHeader title="Documents" toolbar={toolbar} />
+      )}
+      <p className="text-sm text-muted-foreground">
+        {ticking
+          ? chosen.length > 0
+            ? `${chosen.length} of ${client.name}'s ticked.`
+            : `Tick ${client.name}'s invoices to ask to pay for, issued ones to send, or drafts to put on one document.`
+          : "Narrow to one client to ask to pay, send or put documents together."}
+      </p>
       <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
-            <DataTable
-              table={table}
-              source={allOf(documents, clients)}
-              rowLink={(doc) => documentLink(doc, search)}
-              empty={
-                isNarrowed(filter) || documents.hasNextPage ? (
-                  <EmptyState quips={QUIPS.search}>
-                    No {spec.plural.toLowerCase()} found{documents.hasNextPage ? " yet" : ""}.
-                  </EmptyState>
-                ) : (
-                  // Keyed by the days: each empty stretch gets its own line.
-                  <EmptyState key={filter.when} quips={type === "invoice" ? QUIPS.invoices : QUIPS.receipts}>
-                    No {spec.plural.toLowerCase()}
-                    {filter.when ? ` in ${formatWhen(filter.when)}` : " yet"}. Make one from{" "}
-                    {type === "invoice" ? "a session" : "a paid session"} or a package.
-                  </EmptyState>
-                )
+        <DataTable
+          table={table}
+          source={allOf(documents, clients)}
+          rowLink={(doc) => documentLink(doc, search)}
+          empty={
+            isNarrowed(filter) || documents.hasNextPage ? (
+              <EmptyState quips={QUIPS.search}>No documents found{documents.hasNextPage ? " yet" : ""}.</EmptyState>
+            ) : (
+              // Keyed by the days: each empty stretch gets its own line.
+              <EmptyState key={filter.when} quips={QUIPS.invoices}>
+                No invoices or receipts{filter.when ? ` in ${formatWhen(filter.when)}` : " yet"}. They're drafted
+                with each session and package.
+              </EmptyState>
+            )
+          }
+          renderCard={(row) => (
+            <DocumentCard
+              doc={row.original}
+              clientsById={clientsById}
+              search={search}
+              tick={
+                ticking
+                  ? {
+                      selectable: row.getCanSelect(),
+                      selected: row.getIsSelected(),
+                      onSelectedChange: (on) => row.toggleSelected(on),
+                    }
+                  : undefined
               }
-              renderCard={(row) => <DocumentCard doc={row.original} search={search} />}
             />
-            <LoadMore pages={documents} found={data.length > 0} />
+          )}
+        />
+        <LoadMore pages={documents} found={data.length > 0} />
       </div>
     </>
   );
+}
+
+interface TickingHeaderProps {
+  client: ClientView;
+  chosen: ReadonlyArray<DocumentSummary>;
+  toolbar: ReactNode;
+  onDone: () => void;
+}
+
+/**
+ * The header while the list is one client's, with what can be done to the
+ * ticked: its own component, so what the actions read (the settings the
+ * WhatsApp messages are written from) is read only once there are any.
+ */
+function TickingHeader({ client, chosen, toolbar, onDone }: TickingHeaderProps) {
+  const actions = useDocumentBulkActions(chosen, { name: client.name, phone: client.contact?.phone }, onDone);
+  return <PageHeader title="Documents" moreActions={actions} toolbar={toolbar} />;
 }

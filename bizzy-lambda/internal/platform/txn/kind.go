@@ -186,6 +186,12 @@ func (k Kind[T]) WithRef(tx *Tx, ref string) ([]*T, error) {
 	return k.query(tx, table.Query{PK: k.Name, Index: table.ByRef, Equals: ref})
 }
 
+// WithRefPrefix lists the items whose ref starts with prefix, by ref: in
+// one read, what WithRef would take one each for (every expense's files).
+func (k Kind[T]) WithRefPrefix(tx *Tx, prefix string) ([]*T, error) {
+	return k.query(tx, table.Query{PK: k.Name, Index: table.ByRef, Prefix: prefix})
+}
+
 // List is one of a kind's lists in time order, for reading a page at a
 // time (Each): all its items, a client's, those with a tag, or the open
 // ones, between two times (a zero one leaves that end open).

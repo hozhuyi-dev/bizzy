@@ -1,10 +1,11 @@
 import { EXPENSE_FACETS } from "./expenses.constant";
 import type { CatalogueView, CategoryTotal, ExpenseView, SearchExpensesRequest } from "./expenses.types";
 import type { Suggestion } from "~/components/shared/form/autocomplete-input/autocomplete-input.component";
-import type { Facet, ListFilter } from "~/core/list/filter.types";
+import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import type { Place } from "~/core/list/pager.types";
 import { filterUrl, listRequest } from "~/core/list/filter.util";
 import { formatCents } from "~/core/utils/money.util";
+import { monthKey } from "~/core/utils/date.util";
 
 /** The expenses list's filter in its URL: this year, the tax year, unless it says otherwise. */
 export const expensesUrl = filterUrl(EXPENSE_FACETS, () => String(new Date().getFullYear()));
@@ -24,15 +25,46 @@ export function totalsByCategory(byCategory: Readonly<Record<string, number>>, c
     .sort((a, b) => b.cents - a.cents);
 }
 
-/** What the expenses list can be narrowed by (EXPENSE_FACETS): the categories, archived ones too. */
+/**
+ * What the expenses list can be narrowed by (EXPENSE_FACETS): the
+ * categories and shops, archived ones too, and whether the receipt is kept.
+ */
 export function expenseFacets(catalogue: CatalogueView | undefined): Array<Facet> {
   const categories = catalogue?.categories ?? [];
-  return [{ key: "category", label: "Category", options: categories.map(({ id, name }) => ({ value: id, label: name })) }];
+  const vendors = catalogue?.vendors ?? [];
+  return [
+    { key: "category", label: "Category", options: categories.map(({ id, name }) => ({ value: id, label: name })) },
+    { key: "vendor", label: "Shop", options: vendors.map(({ name }) => ({ value: name, label: name })) },
+    {
+      key: "receipt",
+      label: "Receipt",
+      single: true,
+      options: [
+        { value: "kept", label: "Receipt kept" },
+        { value: "missing", label: "No receipt", keywords: ["missing"] },
+      ],
+    },
+  ];
+}
+
+/** The ways the expenses list is usually looked at: the tax year first, as it opens. */
+export function expensePresets(now = new Date()): Array<FilterPreset> {
+  const year = String(now.getFullYear());
+  return [
+    { label: "This year", when: year, chips: {} },
+    { label: "This month", when: monthKey(now), chips: {} },
+    { label: "No receipt this year", when: year, chips: { receipt: ["missing"] } },
+  ];
 }
 
 /** The search the filter asks the API for. */
 export function searchExpensesRequest(filter: ListFilter): SearchExpensesRequest {
-  return { ...listRequest(filter), categoryIds: [...(filter.chips.category ?? [])] };
+  return {
+    ...listRequest(filter),
+    categoryIds: [...(filter.chips.category ?? [])],
+    vendors: [...(filter.chips.vendor ?? [])],
+    receipts: [...(filter.chips.receipt ?? [])] as SearchExpensesRequest["receipts"],
+  };
 }
 
 /** "Kinesio tape, Gel +2": what a receipt was for, at a glance. */

@@ -3,7 +3,7 @@ import { linesCategories, linesSummary } from "./expenses.util";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { CatalogueView, ExpenseView, ExpensesSearch } from "./expenses.types";
 import { Badge } from "~/components/ui/badge";
-import { CellEmpty, CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { CellEmpty, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { formatDate } from "~/core/utils/date.util";
@@ -21,10 +21,6 @@ function ExpenseReceipt({ expense }: { expense: ExpenseView }) {
       {files === 1 ? "Receipt" : `${files} files`}
     </span>
   );
-}
-
-function ExpenseLink({ expense, search }: { expense: ExpenseView; search: ExpensesSearch | undefined }) {
-  return <CellLink {...expenseLink(expense.id, search)}>{formatDate(expense.date)}</CellLink>;
 }
 
 /** The expense's page, with the list it steps through. */
@@ -71,7 +67,7 @@ export function createExpenseColumns(catalogue: CatalogueView | undefined, searc
       header: "Date",
       sortFn: "basic",
       meta: { search: (expense: ExpenseView) => formatDate(expense.date) },
-      cell: ({ row }) => <ExpenseLink expense={row.original} search={search} />,
+      cell: ({ row }) => <span className="font-medium">{formatDate(row.original.date)}</span>,
     }),
     helper.accessor((expense) => expense.vendor ?? "", {
       id: "vendor",

@@ -388,12 +388,13 @@ describe("payment page", () => {
     data.resourceCountIs("AWS::CloudFront::OriginAccessControl", 1);
   });
 
-  test("asks not to be indexed", () => {
+  test("leaves noindex to the page, so link previews can fetch its image", () => {
     paySite("staging").data.hasResourceProperties("AWS::CloudFront::ResponseHeadersPolicy", {
       ResponseHeadersPolicyConfig: Match.objectLike({
-        CustomHeadersConfig: {
-          Items: [{ Header: "X-Robots-Tag", Value: "noindex, nofollow", Override: true }],
-        },
+        CustomHeadersConfig: Match.absent(),
+        SecurityHeadersConfig: Match.objectLike({
+          FrameOptions: { FrameOption: "DENY", Override: true },
+        }),
       }),
     });
   });

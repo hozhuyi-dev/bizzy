@@ -15,7 +15,7 @@ import type { ClientView } from "~/features/clients/clients.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { Badge } from "~/components/ui/badge";
-import { CellEmpty, CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { CellEmpty, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
@@ -159,7 +159,7 @@ export function sessionActions(session: SessionView, handlers: SessionHandlers):
   return actions;
 }
 
-/** The phone layout of a row: who and where it stands, when and where, the summary; then Confirm and Open. */
+/** The phone layout of a row: who and where it stands, when and where, the summary; then Confirm. */
 export function SessionCard({ session, handlers }: { session: SessionHit; handlers: SessionHandlers }) {
   return (
     <DataCard
@@ -187,14 +187,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
       meta: {
         search: (session: SessionView) => [formatSessionTime(session.start), SESSION_PLACES[session.location]],
       },
-      // The way into the session by keyboard; the whole row opens it too.
-      cell: ({ row }) => (
-        <CellText sub={lengthAndPlace(row.original)}>
-          <CellLink {...sessionLink(row.original.id, handlers.search)} className="font-normal">
-            {formatSessionTime(row.original.start)}
-          </CellLink>
-        </CellText>
-      ),
+      cell: ({ row }) => <CellText sub={lengthAndPlace(row.original)}>{formatSessionTime(row.original.start)}</CellText>,
     }),
     helper.display({
       id: "client",

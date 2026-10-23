@@ -107,7 +107,7 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
           }
           // A draft never issued is deleted, so its page is gone too.
           toast.success("Draft discarded");
-          void navigate({ to: DOCUMENT_TYPES[doc.type].path, ignoreBlocker: true });
+          void navigate({ to: "/documents", ignoreBlocker: true });
         },
         onError: toastRefusal,
       }),

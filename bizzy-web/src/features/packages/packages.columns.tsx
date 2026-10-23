@@ -1,4 +1,4 @@
-import { BanknoteIcon, PackageCheckIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { BanknoteIcon, PackageCheckIcon, Trash2Icon } from "lucide-react";
 import { clientName, paymentText } from "./packages.util";
 import type { PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
@@ -87,9 +87,9 @@ function PackageDocuments({ pkg }: { pkg: PackageView }) {
 
 /**
  * What can be done to a package: pay what it owes or see its payment;
- * behind ⋯, WhatsApp the client (ask to pay, send its documents), edit it
- * (as a click on its row does, kept there for the keyboard), keep one bought in a session as its own (so the
- * session no longer buys it), or delete it: each as its `can` says.
+ * behind ⋯, WhatsApp the client (ask to pay, send its documents), keep one
+ * bought in a session as its own (so the session no longer buys it), or
+ * delete it: each as its `can` says. A click on its row edits it.
  */
 export function packageActions(pkg: PackageView, handlers: PackageHandlers): RowActionSet {
   const set = { actions: [] as Array<Action>, more: [] as Array<Action> };
@@ -99,7 +99,6 @@ export function packageActions(pkg: PackageView, handlers: PackageHandlers): Row
     set.actions.push({ type: "button", label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
   }
   set.more.push(handlers.whatsapp(pkg));
-  set.more.push({ type: "button", label: "Edit", icon: PencilIcon, onClick: () => handlers.onEdit(pkg) });
   if (pkg.can.makeStandalone.ok) {
     set.more.push({ type: "button", label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
   }

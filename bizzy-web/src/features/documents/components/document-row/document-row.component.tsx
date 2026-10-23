@@ -1,15 +1,10 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowRightIcon, FileTextIcon, ReceiptIcon, StampIcon } from "lucide-react";
-import { toast } from "sonner";
+import { FileTextIcon, ReceiptIcon } from "lucide-react";
 import { DocumentStatusBadge } from "../../documents.columns";
-import { DocumentsMutation } from "../../documents.mutation";
-import { documentLabel, documentRoute, refLabel } from "../../documents.util";
+import { documentRoute, refLabel } from "../../documents.util";
+import { IssueButton } from "../issue-button/issue-button.component";
 import type { ReactNode } from "react";
 import type { DocumentLink } from "../../documents.types";
 import { DataRow } from "~/components/shared/list/data-list/data-list.component";
-import { TextLink } from "~/components/shared/link/text-link/text-link.component";
-import { Button } from "~/components/ui/button";
-import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
 interface DocumentRowProps {
   doc: DocumentLink;
@@ -22,11 +17,9 @@ interface DocumentRowProps {
 /**
  * A document covering something on its page (a session's invoice), laid out
  * like every to-do row (DataRow): its number and whether it is issued, then
- * Issue while it is a draft, and Open, which a click anywhere on the row
- * does too.
+ * Issue while it is a draft. A click anywhere on the row opens it.
  */
 export function DocumentRow({ doc, meta, detail }: DocumentRowProps) {
-  const issue = DocumentsMutation.useIssue();
   const { type, ref, issued } = doc;
   const page = { to: documentRoute(type), params: { id: ref.id } };
   const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
@@ -36,7 +29,7 @@ export function DocumentRow({ doc, meta, detail }: DocumentRowProps) {
       title={
         <>
           <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <TextLink {...page}>{refLabel(type, ref, issued)}</TextLink>
+          <span className="font-medium">{refLabel(type, ref, issued)}</span>
           <DocumentStatusBadge status={issued ? "issued" : "draft"} />
         </>
       }
@@ -44,36 +37,7 @@ export function DocumentRow({ doc, meta, detail }: DocumentRowProps) {
       detail={detail}
       detailTitle={detail}
       open={page}
-      actions={
-        <>
-          {!issued && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={issue.isPending}
-              onClick={() =>
-                issue.mutate(ref.id, {
-                  onSuccess: (view) => {
-                    if (view?.number) toast.success(`Issued ${documentLabel(view.number, view.revision)}`);
-                  },
-                  onError: toastRefusal,
-                })
-              }
-            >
-              <StampIcon /> Issue
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`Open ${refLabel(type, ref, issued)}`}
-            render={<Link {...page} />}
-            nativeButton={false}
-          >
-            <span className="hidden sm:inline">Open</span> <ArrowRightIcon />
-          </Button>
-        </>
-      }
+      actions={!issued && <IssueButton id={ref.id} />}
     />
   );
 }

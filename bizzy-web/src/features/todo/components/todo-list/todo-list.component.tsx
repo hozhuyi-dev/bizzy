@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { toast } from "sonner";
-import { ArrowRightIcon, BanknoteIcon, CalendarX2Icon, CheckIcon, ChevronDownIcon, NotebookPenIcon, PencilLineIcon, SparklesIcon, XIcon } from "lucide-react";
+import { CalendarX2Icon, SparklesIcon } from "lucide-react";
 import { TODO_FILTERS, TODO_GROUPS } from "../../todo.constant";
 import { byTodoOrder, groupOf, matchesFilter, progressOf, todoKey } from "../../todo.util";
 import type { TodoFilter, TodoView } from "../../todo.types";
@@ -17,32 +15,18 @@ import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialo
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { packagePayables } from "~/features/packages/packages.util";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
-import { PaymentsMutation } from "~/features/payments/payments.mutation";
-import { PAYMENT_METHODS } from "~/features/payments/payments.constant";
-import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.component";
 import { CancelSessionDialog } from "~/features/sessions/components/cancel-session-dialog/cancel-session-dialog.component";
-import { owedText, sessionPayables } from "~/features/sessions/session-payment.util";
-import { SessionsMutation } from "~/features/sessions/sessions.mutation";
-import { useConfirmBooking } from "~/features/sessions/session-booking.hook";
+import { SessionQuickActions } from "~/features/sessions/components/session-quick-actions/session-quick-actions.component";
+import { owedText } from "~/features/sessions/session-payment.util";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
-import { InlineField } from "~/components/shared/actions/inline-action/inline-action.component";
 import { DataList, DataListItem, DataRow  } from "~/components/shared/list/data-list/data-list.component";
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { formatDate, formatHours, formatSessionTime, todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -245,14 +229,13 @@ interface SessionTodoProps {
 }
 
 function SessionTodo({ session, onCancel, onPayOther }: SessionTodoProps) {
-  const [writing, setWriting] = useState(false);
   const collecting = session.todo.includes("collect");
 
   return (
     <DataRow
       title={
         <>
-          <TextLink to="/sessions/$id" params={{ id: session.id }} search={{ from: "home" }}>
+          <TextLink to="/clients/$id" params={{ id: session.clientId }}>
             {session.clientName}
           </TextLink>
           {session.todo.map((reason) => (
@@ -271,156 +254,8 @@ function SessionTodo({ session, onCancel, onPayOther }: SessionTodoProps) {
       detail={session.record.summary}
       detailTitle={session.record.summary}
       open={{ to: "/sessions/$id", params: { id: session.id }, search: { from: "home" } }}
-      actions={
-        writing ? (
-          <SummaryField session={session} onDone={() => setWriting(false)} />
-        ) : (
-          <>
-            <QuickActions session={session} onCancel={onCancel} onWrite={() => setWriting(true)} onPayOther={onPayOther} />
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label="Open session"
-              render={<Link to="/sessions/$id" params={{ id: session.id }} search={{ from: "home" }} />}
-              nativeButton={false}
-            >
-              <span className="hidden sm:inline">Open</span> <ArrowRightIcon />
-            </Button>
-          </>
-        )
-      }
+      actions={<SessionQuickActions session={session} onCancel={onCancel} onPayOther={onPayOther} from="home" />}
     />
-  );
-}
-
-interface QuickActionsProps {
-  session: SessionView;
-  onCancel: (session: SessionView) => void;
-  onWrite: () => void;
-  onPayOther: (payables: Array<Payable>) => void;
-}
-
-/** The fix for each reason it is on the list, as far as its `can` allows. */
-function QuickActions({ session, onCancel, onWrite, onPayOther }: QuickActionsProps) {
-  const confirm = useConfirmBooking();
-  const { todo, can } = session;
-
-  if (todo.includes("confirm")) {
-    return (
-      <>
-        <Button size="sm" disabled={confirm.pending} onClick={() => void confirm.confirm(session.id).catch(toastRefusal)}>
-          <CheckIcon /> Confirm
-        </Button>
-        <Button size="sm" variant="outline" disabled={!can.cancel.ok} title={can.cancel.why} onClick={() => onCancel(session)}>
-          <XIcon /> Cancel session
-        </Button>
-      </>
-    );
-  }
-  const payables = sessionPayables(session).filter((p) => !p.paid);
-  return (
-    <>
-      {todo.includes("record") && can.record.ok && (
-        <Button size="sm" variant="outline" onClick={onWrite}>
-          <PencilLineIcon /> Add summary
-        </Button>
-      )}
-      {todo.includes("collect") && can.pay.ok && payables.length > 0 && (
-        <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />
-      )}
-    </>
-  );
-}
-
-/**
- * The one line that clears "Record", written in place of the row's
- * buttons. Long notes are on the session's page; the summary alone leaves
- * them as they are.
- */
-function SummaryField({ session, onDone }: { session: SessionView; onDone: () => void }) {
-  const save = SessionsMutation.useSaveSummary();
-
-  return (
-    <InlineField
-      label="Summary"
-      placeholder="One line on the session"
-      maxLength={300}
-      pending={save.isPending}
-      onCancel={onDone}
-      onSave={(summary) =>
-        save.mutate(
-          { id: session.id, summary },
-          {
-            onSuccess: () => {
-              toastWithQuip("Summary saved", QUIPS.todoDone);
-              onDone();
-            },
-            onError: toastRefusal,
-          },
-        )
-      }
-      extra={
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label="Write full notes"
-          title="Write full notes"
-          render={<Link to="/sessions/$id" params={{ id: session.id }} search={{ from: "home" }} hash="record" />}
-          nativeButton={false}
-        >
-          <NotebookPenIcon />
-        </Button>
-      }
-    />
-  );
-}
-
-/**
- * Mark paid today in one tap by method: everything owed at once, with an
- * Undo in the toast. Another day opens the payment form.
- */
-function PaidMenu({ payables, onOther }: { payables: ReadonlyArray<Payable>; onOther: () => void }) {
-  const pay = PaymentsMutation.useSet();
-  const total = payables.reduce((sum, p) => sum + p.dueCents, 0);
-  const label = payables.map((p) => p.label).join(" and ");
-  const items = payables.map((p) => p.item);
-
-  const payWith = (method: (typeof PAYMENT_METHODS)[number]) =>
-    pay.mutate(
-      { items, payment: { method: method.value, paidOn: todayISO() } },
-      {
-        onSuccess: () =>
-          toast.success(`${formatCents(total)} paid by ${method.label}`, {
-            action: {
-              label: "Undo",
-              onClick: () =>
-                pay.mutate({ items, payment: null }, { onSuccess: () => toast.success("Payment undone"), onError: toastRefusal }),
-            },
-          }),
-        onError: toastRefusal,
-      },
-    );
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button size="sm" variant="outline" disabled={pay.isPending} />}>
-        <BanknoteIcon /> Paid <ChevronDownIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>
-            {label} · {formatCents(total)} today, by
-          </DropdownMenuLabel>
-          {PAYMENT_METHODS.map((method) => (
-            <DropdownMenuItem key={method.value} onClick={() => payWith(method)}>
-              {method.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onOther}>Another day…</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -448,14 +283,7 @@ function PackageTodo({ pkg, onPayOther }: { pkg: PackageView; onPayOther: (payab
       detail={pkg.note}
       detailTitle={pkg.note}
       open={{ to: "/packages" }}
-      actions={
-        <>
-          {payables.length > 0 && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}
-          <Button variant="ghost" size="sm" aria-label="Open packages" render={<Link to="/packages" />} nativeButton={false}>
-            <span className="hidden sm:inline">Packages</span> <ArrowRightIcon />
-          </Button>
-        </>
-      }
+      actions={payables.length > 0 && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}
     />
   );
 }

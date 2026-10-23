@@ -1,7 +1,7 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { DocumentsService } from "./documents.service";
 import { searchDocumentsRequest } from "./documents.util";
-import type { DocumentStatus, DocumentType } from "./documents.types";
+import type { DocumentStatus } from "./documents.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { DocumentKeys } from "~/core/constants/query-keys.constant";
 import { usePages } from "~/core/list/pages.hook";
@@ -16,9 +16,9 @@ export const DocumentsQuery = {
   detail,
   byClient,
 
-  /** The documents of a type a filter finds, latest first, a page at a time. */
-  useSearch: (type: DocumentType, filter: ListFilter) => {
-    const request = searchDocumentsRequest(type, filter);
+  /** The documents a filter finds, latest first, a page at a time. */
+  useSearch: (filter: ListFilter) => {
+    const request = searchDocumentsRequest(filter);
     return usePages(DocumentKeys.search(request), (after) => DocumentsService.search({ ...request, after }));
   },
 

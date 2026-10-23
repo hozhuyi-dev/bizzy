@@ -26,7 +26,7 @@ import { ClientTimeline } from "./components/client-timeline/client-timeline.com
 import { DeleteClientDialog } from "./components/delete-client-dialog/delete-client-dialog.component";
 import { RecordPaymentDialog } from "./components/record-payment-dialog/record-payment-dialog.component";
 import { CLIENTS_LIST } from "./clients.list";
-import { clientsListLink, clientsListSearch, contactProblem } from "./clients.util";
+import { clientsListLink, clientsUrl, contactProblem } from "./clients.util";
 import type { ReactNode } from "react";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { ClientFormValues } from "./clients.form";
@@ -111,7 +111,7 @@ export function ClientPage(props: ClientPageProps) {
         list={CLIENTS_LIST}
         filter={filter}
         current={{ id }}
-        itemLink={(next) => clientLink(next, clientsListSearch(filter))}
+        itemLink={(next) => clientLink(next, clientsUrl.toSearch(filter))}
         panel={{ onApply: onFilterChange, listLink: clientsListLink }}
       />
     ),

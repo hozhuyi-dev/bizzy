@@ -1,16 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
-import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
 import type { CatalogueView, ExpenseItem } from "./expenses.types";
-import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
 import { CellEmpty } from "~/components/shared/list/data-table/data-table-cell.component";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { SearchInput } from "~/components/shared/list/search-input/search-input.component";
@@ -44,14 +41,6 @@ export function ExpenseItemsPage() {
     const names = new Map((catalogue.data?.categories ?? []).map((c) => [c.id, c.name]));
     return (item: ExpenseItem) => names.get(item.categoryId) ?? "—";
   }, [catalogue.data]);
-  // A click on the row opens it to edit; Edit is its one action, for the keyboard.
-  const itemActions = useCallback(
-    (item: ExpenseItem): Array<Action> => [
-      { type: "button", label: "Edit", icon: PencilIcon, onClick: () => setEditing(item) },
-    ],
-    [],
-  );
-
   const columns = useMemo(
     () =>
       helper.columns([
@@ -78,16 +67,8 @@ export function ExpenseItemsPage() {
             return cents === undefined ? <CellEmpty /> : formatCents(cents);
           },
         }),
-        helper.display({
-          id: "actions",
-          header: () => <span className="sr-only">Actions</span>,
-          meta: { width: "fit" },
-          cell: ({ row }) => (
-            <RowActions actions={itemActions(row.original)} />
-          ),
-        }),
       ]),
-    [categoryName, itemActions],
+    [categoryName],
   );
 
   const table = useTable({
@@ -117,7 +98,6 @@ export function ExpenseItemsPage() {
               }
               value={row.original.lastAmountCents === undefined ? undefined : formatCents(row.original.lastAmountCents)}
               meta={categoryName(row.original)}
-              actions={itemActions(row.original)}
               onOpen={() => setEditing(row.original)}
             />
           )}

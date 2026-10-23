@@ -2,6 +2,7 @@ import { cn } from "cn";
 import type { ReactNode } from "react";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { ActionBar } from "~/components/shared/actions/action-bar/action-bar.component";
+import { SECTION_UNDERLINE } from "~/components/shared/layout/page-sections/page-sections.constant";
 import { Card, CardContent } from "~/components/ui/card";
 import { useActiveSection, useCenteredCurrent } from "~/core/scroll-spy/scroll-spy.hook";
 
@@ -103,9 +104,10 @@ function Contents({
             onJump(section.id);
           }}
           className={cn(
-            "grid shrink-0 grid-cols-[minmax(0,1fr)] rounded-md px-2.5 py-1 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+            // Phones: the row's full height, so the underline lands on its border.
+            "group relative grid shrink-0 grid-cols-[minmax(0,1fr)] content-center self-stretch rounded-md px-2.5 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset",
             "md:-ml-px md:rounded-none md:border-l-2 md:border-transparent md:py-1.5 md:pl-3",
-            "aria-[current]:bg-muted aria-[current]:font-medium aria-[current]:text-foreground md:aria-[current]:border-foreground md:aria-[current]:bg-transparent",
+            "aria-[current]:font-medium aria-[current]:text-foreground md:aria-[current]:border-foreground",
           )}
         >
           {/* Sized for the bold label, so marking it current never changes its
@@ -115,6 +117,7 @@ function Contents({
             {section.title}
           </span>
           <span className="col-start-1 row-start-1 truncate">{section.title}</span>
+          <span aria-hidden="true" className={SECTION_UNDERLINE} />
         </a>
       ))}
     </nav>

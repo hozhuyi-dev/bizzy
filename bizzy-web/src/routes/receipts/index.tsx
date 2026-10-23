@@ -1,25 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import type { DocumentsSearch } from "~/features/documents/documents.types";
-import { DocumentsPage } from "~/features/documents/documents-page.component";
-import { documentsUrl } from "~/features/documents/documents.util";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+/** Receipts are a type in the documents list now; an old link lands there, with what it asked for. */
 export const Route = createFileRoute("/receipts/")({
-  validateSearch: (search: Record<string, unknown>): DocumentsSearch => documentsUrl.validate(search),
-  component: ReceiptsRoute,
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: "/documents", search: { ...search, type: ["receipt"] }, replace: true });
+  },
 });
-
-function ReceiptsRoute() {
-  const navigate = Route.useNavigate();
-  // This month unless the URL says otherwise.
-  const filter = documentsUrl.toFilter(Route.useSearch());
-
-  return (
-    <DocumentsPage
-      type="receipt"
-      filter={filter}
-      onFilterChange={(next) =>
-        void navigate({ search: documentsUrl.toSearch(next), replace: next.text !== filter.text })
-      }
-    />
-  );
-}

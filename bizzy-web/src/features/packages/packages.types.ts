@@ -62,6 +62,3 @@ export interface PackageFields {
   /** Move what was received for it to a new price, on a receipt not issued yet. */
   updatePayment?: boolean;
 }
-
-/** Open packages (credits left, or still owed), or every one. */
-export type PackagesFilter = "open" | "all";

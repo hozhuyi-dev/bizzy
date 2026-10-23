@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { cn } from "cn";
-import { newSessionAction, sessionFacets, sessionsUrl  } from "./sessions.util";
+import { newSessionAction, sessionFacets, sessionPresets, sessionsUrl } from "./sessions.util";
 import { NewSessionDialog } from "./components/booking-dialog/booking-dialog.component";
 import { SessionsTable } from "./components/sessions-table/sessions-table.component";
 import { SessionsQuery } from "./sessions.query";
@@ -22,11 +22,13 @@ interface SessionsPageProps {
 /**
  * Every session, latest first, searched and narrowed on the server a page
  * at a time: by words in a client's name, the summary or the notes, by
- * client, stage, place and days. What needs fixing is on Home.
+ * client, stage, place, how far its invoice and receipt have got, how it
+ * was paid, and days. What needs fixing is on Home.
  */
 export function SessionsPage({ filter, onFilterChange }: SessionsPageProps) {
   const clients = ClientsQuery.useList();
   const facets = useMemo(() => sessionFacets(clients.data ?? []), [clients.data]);
+  const presets = useMemo(() => sessionPresets(), []);
   const sessions = SessionsQuery.useSearch(filter);
   const rows = useMemo(() => pageItems(sessions.data), [sessions.data]);
   // Each session's page steps through this list.
@@ -37,9 +39,18 @@ export function SessionsPage({ filter, onFilterChange }: SessionsPageProps) {
     <>
       <NewSessionDialog open={adding} onClose={() => setAdding(false)} />
       <PageHeader
-        title="All sessions"
+        title="Sessions"
         actions={[newSessionAction(() => setAdding(true))]}
-        toolbar={<FilterBar label="Search sessions" value={filter} onChange={onFilterChange} facets={facets} dates />}
+        toolbar={
+          <FilterBar
+            label="Search sessions"
+            value={filter}
+            onChange={onFilterChange}
+            facets={facets}
+            presets={presets}
+            dates
+          />
+        }
       />
 
       <div className={cn("transition-opacity", sessions.isPlaceholderData && "opacity-60")}>

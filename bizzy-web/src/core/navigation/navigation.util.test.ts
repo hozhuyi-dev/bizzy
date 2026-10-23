@@ -6,10 +6,11 @@ describe("modules", () => {
     ["/", "Home", "/"],
     ["/sessions", "Sessions", "/sessions"],
     ["/sessions/abc123", "Sessions", "/sessions"],
-    ["/clients/reconnect", "Clients", "/clients/reconnect"],
     ["/clients/jane", "Clients", "/clients"],
     ["/packages", "Clients", "/packages"],
-    ["/receipts/doc1/", "Documents", "/receipts"],
+    ["/receipts/doc1/", "Documents", "/documents"],
+    ["/documents", "Documents", "/documents"],
+    ["/expenses/items", "Expenses", "/expenses/items"],
     ["/settings", "Settings", "/settings"],
   ])("%s is under %s, page %s", (path, label, page) => {
     const module = moduleOf(path);

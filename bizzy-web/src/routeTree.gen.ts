@@ -19,6 +19,7 @@ import { Route as ClientsIdRouteImport } from './routes/clients/$id'
 import { Route as ClientsNewRouteImport } from './routes/clients/new'
 import { Route as ClientsReconnectRouteImport } from './routes/clients/reconnect'
 import { Route as DTokenRouteImport } from './routes/d/$token'
+import { Route as DocumentsIndexRouteImport } from './routes/documents/index'
 import { Route as ExpensesIndexRouteImport } from './routes/expenses/index'
 import { Route as ExpensesIdRouteImport } from './routes/expenses/$id'
 import { Route as ExpensesCategoriesRouteImport } from './routes/expenses/categories'
@@ -82,6 +83,11 @@ const ClientsReconnectRoute = ClientsReconnectRouteImport.update({
 const DTokenRoute = DTokenRouteImport.update({
   id: '/d/$token',
   path: '/d/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocumentsIndexRoute = DocumentsIndexRouteImport.update({
+  id: '/documents/',
+  path: '/documents/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExpensesIndexRoute = ExpensesIndexRouteImport.update({
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
   '/clients/': typeof ClientsIndexRoute
+  '/documents/': typeof DocumentsIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/follow-ups/': typeof FollowUpsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
@@ -201,6 +208,7 @@ export interface FileRoutesByTo {
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
   '/clients': typeof ClientsIndexRoute
+  '/documents': typeof DocumentsIndexRoute
   '/expenses': typeof ExpensesIndexRoute
   '/follow-ups': typeof FollowUpsIndexRoute
   '/invoices': typeof InvoicesIndexRoute
@@ -228,6 +236,7 @@ export interface FileRoutesById {
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
   '/clients/': typeof ClientsIndexRoute
+  '/documents/': typeof DocumentsIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/follow-ups/': typeof FollowUpsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
@@ -256,6 +265,7 @@ export interface FileRouteTypes {
     | '/receipts/$id'
     | '/sessions/$id'
     | '/clients/'
+    | '/documents/'
     | '/expenses/'
     | '/follow-ups/'
     | '/invoices/'
@@ -282,6 +292,7 @@ export interface FileRouteTypes {
     | '/receipts/$id'
     | '/sessions/$id'
     | '/clients'
+    | '/documents'
     | '/expenses'
     | '/follow-ups'
     | '/invoices'
@@ -308,6 +319,7 @@ export interface FileRouteTypes {
     | '/receipts/$id'
     | '/sessions/$id'
     | '/clients/'
+    | '/documents/'
     | '/expenses/'
     | '/follow-ups/'
     | '/invoices/'
@@ -335,6 +347,7 @@ export interface RootRouteChildren {
   ReceiptsIdRoute: typeof ReceiptsIdRoute
   SessionsIdRoute: typeof SessionsIdRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
+  DocumentsIndexRoute: typeof DocumentsIndexRoute
   ExpensesIndexRoute: typeof ExpensesIndexRoute
   FollowUpsIndexRoute: typeof FollowUpsIndexRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
@@ -412,6 +425,13 @@ declare module '@tanstack/react-router' {
       path: '/d/$token'
       fullPath: '/d/$token'
       preLoaderRoute: typeof DTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/documents/': {
+      id: '/documents/'
+      path: '/documents'
+      fullPath: '/documents/'
+      preLoaderRoute: typeof DocumentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/expenses/': {
@@ -535,6 +555,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReceiptsIdRoute: ReceiptsIdRoute,
   SessionsIdRoute: SessionsIdRoute,
   ClientsIndexRoute: ClientsIndexRoute,
+  DocumentsIndexRoute: DocumentsIndexRoute,
   ExpensesIndexRoute: ExpensesIndexRoute,
   FollowUpsIndexRoute: FollowUpsIndexRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,

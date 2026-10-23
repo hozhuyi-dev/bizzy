@@ -11,18 +11,23 @@ import type {
 } from "./documents.types";
 import type { Paid } from "~/features/payments/payments.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { Facet, ListFilter } from "~/core/list/filter.types";
+import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
 import { filterUrl, listRequest } from "~/core/list/filter.util";
 import { formatSpan, monthKey } from "~/core/utils/date.util";
 
-/** The invoices and receipts lists' filter in their URLs: this month unless it says otherwise. */
+/** The documents list's filter in its URL: this month unless it says otherwise. */
 export const documentsUrl = filterUrl(DOCUMENT_FACETS, () => monthKey(new Date()));
 
-/** Where a document sits in its list: by its date; a draft without one, last. */
-export function documentPlace(doc: DocumentSummary): Place {
-  return { at: doc.date ? Date.parse(doc.date) : -Infinity, id: doc.id };
+/** The documents list, with a filter: where a document's page goes back to. */
+export function documentsLink(filter: ListFilter) {
+  return { to: "/documents", label: "Documents", search: documentsUrl.toSearch(filter) } as const;
+}
+
+/** Where a document sits in its list: by its date, or a draft without one by when it was made (as the API files it). */
+export function documentPlace(doc: Pick<DocumentSummary, "id" | "date" | "createdAt">): Place {
+  return { at: Date.parse(doc.date ?? doc.createdAt), id: doc.id };
 }
 
 /** The route of one document's page. */
@@ -63,6 +68,29 @@ interface Covered {
   paid?: Paid | undefined;
 }
 
+/** How far an item's invoice or receipt has got: none yet, a draft, or issued. Mirrors sessions.Paperwork. */
+export type Paperwork = "none" | "draft" | "issued";
+
+/** How far an item's invoice, and its receipt, have got. */
+export function paperworkOf(item: Covered): Record<DocumentType, Paperwork> {
+  const { invoice, paid } = item;
+  return {
+    invoice: invoice ? (invoice.number ? "issued" : "draft") : "none",
+    receipt: paid ? (paid.issued ? "issued" : "draft") : "none",
+  };
+}
+
+/** A list's chip for how far its items' invoices (or receipts) have got: "Invoice: issued". */
+export function paperworkFacet(type: DocumentType): Facet {
+  const { title } = DOCUMENT_TYPES[type];
+  const options: Array<{ value: Paperwork; label: string }> = [
+    { value: "none", label: `No ${title.toLowerCase()}` },
+    { value: "draft", label: `${title} not issued` },
+    { value: "issued", label: `${title} issued` },
+  ];
+  return { key: type, label: title, options };
+}
+
 /** The invoice and the receipt covering an item, those it has. */
 export function coveringDocuments(item: Covered | undefined): Array<DocumentLink> {
   const links: Array<DocumentLink> = [];
@@ -100,24 +128,56 @@ export function shareUrl(token: string): string {
   return `${window.location.origin}/d/${token}`;
 }
 
-/** What the invoices and receipts lists can be narrowed by (DOCUMENT_FACETS). */
+export const DOCUMENT_TYPE_FACET: Facet = {
+  key: "type",
+  label: "Type",
+  options: Object.entries(DOCUMENT_TYPES).map(([value, spec]) => ({ value, label: spec.plural })),
+};
+
+export const DOCUMENT_STATUS_FACET: Facet = {
+  key: "status",
+  label: "Status",
+  options: Object.entries(DOCUMENT_STATUS).map(([value, status]) => ({ value, label: status.label })),
+};
+
+/** What the documents list can be narrowed by (DOCUMENT_FACETS). */
 export function documentFacets(clients: ReadonlyArray<ClientView>): Array<Facet> {
   return [
+    DOCUMENT_TYPE_FACET,
     clientFacet(clients),
+    DOCUMENT_STATUS_FACET,
     {
-      key: "status",
-      label: "Status",
-      options: Object.entries(DOCUMENT_STATUS).map(([value, status]) => ({ value, label: status.label })),
+      key: "payment",
+      label: "Payment",
+      single: true,
+      options: [{ value: "unpaid", label: "Unpaid", keywords: ["owed", "owes"] }],
     },
   ];
 }
 
+/** The ways the documents list is usually looked at; this month first, as it opens. */
+export function documentPresets(now = new Date()): Array<FilterPreset> {
+  return [
+    { label: "This month", when: monthKey(now), chips: {} },
+    { label: "Unpaid invoices", when: undefined, chips: { type: ["invoice"], payment: ["unpaid"] } },
+    { label: "Drafts", when: undefined, chips: { status: ["draft"] } },
+    { label: "Receipts this year", when: String(now.getFullYear()), chips: { type: ["receipt"] } },
+  ];
+}
+
+/** The one client a filter narrows to, if it is one: what is ticked is then theirs alone. */
+export function singleClientOf(filter: ListFilter): string | undefined {
+  const clients = filter.chips.client ?? [];
+  return clients.length === 1 ? clients[0] : undefined;
+}
+
 /** The search the filter asks the API for. */
-export function searchDocumentsRequest(type: DocumentType, filter: ListFilter): SearchDocumentsRequest {
+export function searchDocumentsRequest(filter: ListFilter): SearchDocumentsRequest {
   return {
     ...listRequest(filter),
-    type,
+    types: [...(filter.chips.type ?? [])] as Array<DocumentType>,
     clientIds: [...(filter.chips.client ?? [])],
     statuses: [...(filter.chips.status ?? [])] as Array<DocumentStatus>,
+    unpaid: filter.chips.payment?.includes("unpaid") ?? false,
   };
 }

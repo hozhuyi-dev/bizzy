@@ -1,27 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import type { FilterSearch } from "~/core/list/filter.types";
-import { FollowUpsPage } from "~/features/follow-ups/follow-ups-page.component";
-import { FOLLOW_UP_FACETS } from "~/features/follow-ups/follow-ups.constant";
-import { filterSearch, toFilter, toSearch } from "~/core/list/filter.util";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export type DoneFollowUpsSearch = FilterSearch<(typeof FOLLOW_UP_FACETS)[number]>;
-
+/** Done follow-ups are the list's Done preset now; an old link lands there. */
 export const Route = createFileRoute("/follow-ups/done")({
-  validateSearch: (search: Record<string, unknown>): DoneFollowUpsSearch => filterSearch(search, FOLLOW_UP_FACETS),
-  component: DoneRoute,
+  beforeLoad: () => {
+    throw redirect({ to: "/follow-ups", search: { status: ["done"] }, replace: true });
+  },
 });
-
-function DoneRoute() {
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
-  const filter = toFilter(search, FOLLOW_UP_FACETS);
-  return (
-    <FollowUpsPage
-      view="done"
-      filter={filter}
-      onFilterChange={(next) =>
-        void navigate({ search: toSearch(next, FOLLOW_UP_FACETS), replace: next.text !== filter.text })
-      }
-    />
-  );
-}

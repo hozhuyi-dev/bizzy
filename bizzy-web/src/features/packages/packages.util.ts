@@ -1,10 +1,13 @@
-import type { PackageView, PackagesFilter } from "./packages.types";
+import { PACKAGE_FACETS } from "./packages.constant";
+import type { PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
-import type { Facet, ListFilter } from "~/core/list/filter.types";
+import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import type { Payable } from "~/features/payments/payments.types";
 import { clientFacet } from "~/features/clients/clients.util";
+import { paperworkFacet, paperworkOf } from "~/features/documents/documents.util";
 import { methodShortLabel } from "~/features/payments/payments.util";
-import { formatDate, formatHours } from "~/core/utils/date.util";
+import { filterUrl, whenDays } from "~/core/list/filter.util";
+import { formatDate, formatHours, toISODate } from "~/core/utils/date.util";
 
 export function clientName(pkg: PackageView, clientsById: ReadonlyMap<string, ClientView>): string {
   return clientsById.get(pkg.clientId)?.name ?? "Unknown client";
@@ -25,16 +28,59 @@ export function packagePayables(pkg: PackageView): Array<Payable> {
   return pkg.owedCents > 0 ? [{ item, label, dueCents: pkg.owedCents }] : [];
 }
 
-/** What the packages list can be narrowed by (PACKAGE_FACETS). */
+/** The packages list's filter in its URL: the open ones, unless it says otherwise. */
+export const packagesUrl = filterUrl(PACKAGE_FACETS, undefined, { status: ["open"] });
+
+/** How a package stands, as the Status chip narrows by it; one can be more than one. */
+type PackageStatus = "open" | "unpaid" | "used";
+
+function statusesOf(pkg: PackageView): Array<PackageStatus> {
+  const out: Array<PackageStatus> = [];
+  // Still in use, or owed: as the API lists the open ones.
+  if (pkg.creditsLeft > 0 || pkg.owedCents > 0) out.push("open");
+  if (pkg.owedCents > 0) out.push("unpaid");
+  if (pkg.creditsLeft <= 0) out.push("used");
+  return out;
+}
+
+/** What the packages list can be narrowed by (PACKAGE_FACETS), besides the days bought. */
 export function packageFacets(clients: ReadonlyArray<ClientView>): Array<Facet> {
   return [
-    // Still in use, or owed: the API says which.
-    { key: "status", label: "Status", single: true, options: [{ value: "open", label: "Open" }] },
+    {
+      key: "status",
+      label: "Status",
+      options: [
+        { value: "open", label: "Open", keywords: ["credits"] },
+        { value: "unpaid", label: "Unpaid", keywords: ["owed"] },
+        { value: "used", label: "Used up" },
+      ],
+    },
     clientFacet(clients),
+    paperworkFacet("invoice"),
+    paperworkFacet("receipt"),
   ];
 }
 
-/** Which packages to load: the open ones while the Open chip is on. */
-export function packagesView(filter: ListFilter): PackagesFilter {
-  return filter.chips.status?.includes("open") ? "open" : "all";
+/** The ways the packages list is usually looked at; Open first, as it opens. */
+export const PACKAGE_PRESETS: ReadonlyArray<FilterPreset> = [
+  { label: "Open", when: undefined, chips: { status: ["open"] } },
+  { label: "Unpaid", when: undefined, chips: { status: ["unpaid"] } },
+  { label: "All", when: undefined, chips: { status: [] } },
+];
+
+/** Whether a package is one the filter's days and chips keep; the words are searched by the table. */
+export function matchesPackage(pkg: PackageView, filter: ListFilter): boolean {
+  const { status = [], client = [], invoice = [], receipt = [] } = filter.chips;
+  const papers = paperworkOf(pkg);
+  if (filter.when) {
+    const { from, to } = whenDays(filter.when);
+    const day = toISODate(new Date(pkg.purchasedAt));
+    if (day < from || day > to) return false;
+  }
+  return (
+    (status.length === 0 || statusesOf(pkg).some((s) => status.includes(s))) &&
+    (client.length === 0 || client.includes(pkg.clientId)) &&
+    (invoice.length === 0 || invoice.includes(papers.invoice)) &&
+    (receipt.length === 0 || receipt.includes(papers.receipt))
+  );
 }

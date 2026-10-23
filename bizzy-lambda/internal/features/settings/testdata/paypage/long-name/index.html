@@ -7,28 +7,36 @@
 <title>Pay Pusat Fisioterapi Dan Pemulihan Sukan Kuala Lumpur Sdn Bhd</title>
 <meta name="description" content="Pay by DuitNow QR, bank transfer or DuitNow / TnG / GrabPay to phone.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://pay.example/">
+<meta property="og:site_name" content="Pusat Fisioterapi Dan Pemulihan Sukan Kuala Lumpur Sdn Bhd">
 <meta property="og:title" content="Pay Pusat Fisioterapi Dan Pemulihan Sukan Kuala Lumpur Sdn Bhd">
 <meta property="og:description" content="Pay by DuitNow QR, bank transfer or DuitNow / TnG / GrabPay to phone.">
 <meta property="og:image" content="https://pay.example/preview.png?v=0d4aa3f7d16e">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Payment details for Pusat Fisioterapi Dan Pemulihan Sukan Kuala Lumpur Sdn Bhd: DuitNow QR, Bank transfer (Maybank), DuitNow / TnG / GrabPay to phone">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f5f5f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c0a09" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23da8a11' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cstyle%3E@media (prefers-color-scheme: dark) %7B svg %7B stroke: %23f1ba4b %7D %7D%3C/style%3E%3Cpath d='M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1'/%3E%3Cpath d='M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4'/%3E%3C/svg%3E">
 <style>
 :root {
-  --bg: #f5f5f4; --card: #ffffff; --text: #1c1917; --muted: #78716c; --line: #e7e5e4;
-  --accent: #c2410c; --accent-soft: #fff1e6; --button: #1c1917; --button-text: #ffffff; --done: #15803d;
+  --bg: #f5f5f4; --card: #ffffff; --text: #1c1917; --muted: #736b66; --line: #e7e5e4;
+  --brand: #da8a11; --brand-text: #1c1917; --accent: #5d3917; --accent-soft: #fef0d4;
+  --done: #15803d; --failed: #b91c1c;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0c0a09; --card: #1c1917; --text: #fafaf9; --muted: #a8a29e; --line: #292524;
-    --accent: #fb923c; --accent-soft: #2a1a0e; --button: #fafaf9; --button-text: #1c1917; --done: #4ade80;
+    --brand: #f1ba4b; --brand-text: #1c1917; --accent: #f1ba4b; --accent-soft: #3c2a0e;
+    --done: #4ade80; --failed: #f87171;
   }
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
-  margin: 0; background: var(--bg); color: var(--text);
+  margin: 0; background: var(--bg); color: var(--text); border-top: 6px solid var(--brand);
   font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 main { max-width: 30rem; margin: 0 auto; padding: 2rem 1rem 3rem; display: grid; gap: 1rem; }
@@ -55,8 +63,9 @@ dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
   display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1rem;
   border-radius: .75rem; border: 1px solid var(--line); background: var(--card); color: var(--text); flex: none;
 }
-.button.primary { background: var(--button); color: var(--button-text); border-color: var(--button); width: 100%; }
+.button.primary { background: var(--brand); color: var(--brand-text); border-color: var(--brand); width: 100%; }
 button.done { color: var(--done); border-color: var(--done); }
+button.failed { color: var(--failed); border-color: var(--failed); }
 footer { text-align: center; padding-top: .5rem; }
 .thanks { text-align: center; }
 </style>
@@ -78,7 +87,7 @@ footer { text-align: center; padding-top: .5rem; }
       <li>Press and hold the QR to save it to your photos.</li>
       <li>In your bank or e-wallet app, tap Scan, then choose the photo.</li>
     </ol>
-    <a class="button" href="qr.png?v=0d4aa3f7d16e" download="duitnow-qr.png">Save QR</a>
+    <a class="button" id="save-qr" href="qr.png?v=0d4aa3f7d16e" download="duitnow-qr.png">Save QR</a>
   </section>
   <section class="card" aria-labelledby="bank-title">
     <div>
@@ -104,29 +113,64 @@ footer { text-align: center; padding-top: .5rem; }
   <p class="muted thanks">Thank you, and take care! 🙏</p>
 </main>
 <script>
-document.addEventListener("click", function (event) {
-  var button = event.target.closest("[data-copy]");
-  if (!button) return;
-  var text = button.getAttribute("data-copy");
-  function done() {
-    button.textContent = "Copied";
-    button.classList.add("done");
-    setTimeout(function () { button.textContent = "Copy"; button.classList.remove("done"); }, 1500);
-  }
-  function fallback() {
+(function () {
+  function copyInTap(text) {
     var area = document.createElement("textarea");
     area.value = text;
-    area.setAttribute("readonly", "");
-    area.style.position = "fixed";
-    area.style.opacity = "0";
+    area.contentEditable = "true";
+    area.style.cssText = "position:fixed;top:0;left:-9999px;font-size:16px";
     document.body.appendChild(area);
-    area.select();
-    try { if (document.execCommand("copy")) done(); } catch (e) {}
+    var focused = document.activeElement, ok = false;
+    try {
+      area.focus();
+      area.select();
+      area.setSelectionRange(0, text.length);
+      ok = document.execCommand("copy");
+    } catch (e) {}
+    area.blur();
     document.body.removeChild(area);
+    if (focused && focused.focus) focused.focus();
+    return ok;
   }
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
-  else fallback();
-});
+  function show(button, label, state, ms) {
+    clearTimeout(button.timer);
+    button.textContent = label;
+    button.className = state;
+    button.timer = setTimeout(function () { button.textContent = "Copy"; button.className = ""; }, ms);
+  }
+  function copied(button) { show(button, "Copied", "done", 1500); }
+  function failed(button) {
+    show(button, "Couldn't copy", "failed", 2000);
+    var value = button.parentNode.querySelector("dd"), range = document.createRange(), selection = window.getSelection();
+    range.selectNodeContents(value);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  var qr = document.getElementById("save-qr"), qrFile = null;
+  if (qr && navigator.share && navigator.canShare && window.fetch && window.File && matchMedia("(pointer: coarse)").matches) {
+    fetch(qr.href).then(function (response) { return response.blob(); }).then(function (blob) {
+      var file = new File([blob], qr.getAttribute("download"), { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) qrFile = file;
+    }).catch(function () {});
+  }
+
+  document.addEventListener("click", function (event) {
+    if (qrFile && event.target.closest("#save-qr")) {
+      event.preventDefault();
+      navigator.share({ files: [qrFile] }).catch(function (e) {
+        if (e.name !== "AbortError") { qrFile = null; qr.click(); }
+      });
+      return;
+    }
+    var button = event.target.closest("[data-copy]");
+    if (!button) return;
+    var text = button.getAttribute("data-copy");
+    if (copyInTap(text)) return copied(button);
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return failed(button);
+    window.focus();
+    navigator.clipboard.writeText(text).then(function () { copied(button); }, function () { failed(button); });
+  });
+})();
 </script>
 </body>
 </html>

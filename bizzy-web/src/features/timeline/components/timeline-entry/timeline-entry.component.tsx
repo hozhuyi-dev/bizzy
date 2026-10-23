@@ -1,14 +1,19 @@
-import { BellIcon, CalendarIcon, CheckIcon, FileTextIcon, PackageIcon, PencilIcon, ReceiptIcon } from "lucide-react";
+import { BellIcon, CalendarIcon, CheckIcon, FileTextIcon, PackageIcon, ReceiptIcon } from "lucide-react";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import type { TimelineDocument, TimelineDocumentRef, TimelineEntry, TimelinePackage, TimelineSession } from "../../timeline.types";
-import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { PackageView } from "~/features/packages/packages.types";
+import type { Payable } from "~/features/payments/payments.types";
+import type { SessionView } from "~/features/sessions/sessions.types";
 import { lengthAndPlace, recordText, stageBadges } from "~/features/sessions/session-stage.util";
 import { DocumentStatusBadge } from "~/features/documents/documents.columns";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { coversText, documentRoute, refLabel } from "~/features/documents/documents.util";
-import { useMarkDone } from "~/features/follow-ups/follow-ups.hook";
+import { IssueButton } from "~/features/documents/components/issue-button/issue-button.component";
+import { FollowUpDoneButton } from "~/features/follow-ups/components/follow-up-done-button/follow-up-done-button.component";
 import { formatDue, isOverdue } from "~/features/follow-ups/follow-ups.util";
-import { TextLink } from "~/components/shared/link/text-link/text-link.component";
+import { packagePayables } from "~/features/packages/packages.util";
+import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.component";
+import { SessionQuickActions } from "~/features/sessions/components/session-quick-actions/session-quick-actions.component";
 import { TimelineChip, TimelineItem, TimelineLink } from "~/components/shared/list/timeline/timeline.component";
 import { Badge } from "~/components/ui/badge";
 import { formatDate, formatHours, formatSessionTime } from "~/core/utils/date.util";
@@ -19,31 +24,50 @@ import { formatCents } from "~/core/utils/money.util";
  * a session with what came of it as chips, a follow-up, a package bought on
  * its own, a document covering several things. For a client's timeline,
  * and any list of what a document or package covers.
+ *
+ * Each opens with a click on it (its page, or its edit dialog), and has
+ * buttons only for what is left to do on it, the same ones its to-do row
+ * has: Confirm, Add summary or Paid on a session, Done on a follow-up,
+ * Paid on a package, Issue on a draft. Settled, it has none.
  */
+
+/** The dialogs a timeline's entries open, which the timeline keeps. */
+export interface TimelineHandlers {
+  onEditFollowUp: (followUp: FollowUpView) => void;
+  onEditPackage: (pkg: PackageView) => void;
+  onCancelSession: (session: SessionView) => void;
+  /** Paid another day: the payment form. */
+  onPayOther: (payables: Array<Payable>) => void;
+}
 
 export interface TimelineEntryProps {
   entry: TimelineEntry;
   /** Coming, not happened yet. */
   upcoming?: boolean | undefined;
-  /** Opens a follow-up to edit. */
-  onEditFollowUp: (followUp: FollowUpView) => void;
+  handlers: TimelineHandlers;
 }
 
-export function TimelineEntryItem({ entry, upcoming, onEditFollowUp }: TimelineEntryProps) {
+export function TimelineEntryItem({ entry, upcoming, handlers }: TimelineEntryProps) {
   switch (entry.kind) {
     case "session":
-      return <SessionItem session={entry.session} upcoming={upcoming} />;
+      return <SessionItem session={entry.session} upcoming={upcoming} handlers={handlers} />;
     case "followUp":
-      return <FollowUpItem followUp={entry.followUp} upcoming={upcoming} onEdit={onEditFollowUp} />;
+      return <FollowUpItem followUp={entry.followUp} upcoming={upcoming} onEdit={handlers.onEditFollowUp} />;
     case "document":
       return <DocumentItem doc={entry.document} />;
     case "package":
-      return <PackageItem pkg={entry.package} />;
+      return <PackageItem pkg={entry.package} handlers={handlers} />;
   }
 }
 
+interface SessionItemProps {
+  session: TimelineSession;
+  upcoming?: boolean | undefined;
+  handlers: TimelineHandlers;
+}
+
 /** A session: when, and how it stands; what was written; how long and where; what came of it. */
-export function SessionItem({ session, upcoming }: { session: TimelineSession; upcoming?: boolean | undefined }) {
+export function SessionItem({ session, upcoming, handlers }: SessionItemProps) {
   const page = { to: "/sessions/$id", params: { id: session.id } } as const;
   const badges = stageBadges(session);
   const summary = session.excerpt ?? session.record.summary;
@@ -57,7 +81,7 @@ export function SessionItem({ session, upcoming }: { session: TimelineSession; u
       icon={CalendarIcon}
       tone={badges[0]?.tone}
       upcoming={upcoming}
-      when={<TextLink {...page}>{formatSessionTime(session.start)}</TextLink>}
+      when={formatSessionTime(session.start)}
       badges={badges.map((badge) => (
         <Badge key={badge.label} variant={badge.tone}>
           {badge.label}
@@ -85,6 +109,7 @@ export function SessionItem({ session, upcoming }: { session: TimelineSession; u
           </>
         )
       }
+      buttons={<SessionQuickActions session={session} onCancel={handlers.onCancelSession} onPayOther={handlers.onPayOther} />}
       open={page}
     />
   );
@@ -98,15 +123,8 @@ interface FollowUpItemProps {
 
 /** A follow-up: when due, what about; waiting, it can be marked done here. */
 export function FollowUpItem({ followUp, upcoming, onEdit }: FollowUpItemProps) {
-  const { mark, isPending } = useMarkDone();
   const done = Boolean(followUp.doneAt);
   const overdue = isOverdue(followUp);
-  const actions: Array<Action> = done
-    ? []
-    : [
-        { type: "button", label: "Done", icon: CheckIcon, disabled: isPending, onClick: () => mark(followUp) },
-        { type: "button", label: "Edit", icon: PencilIcon, style: "quiet", iconOnlyOnPhone: true, onClick: () => onEdit(followUp) },
-      ];
   return (
     <TimelineItem
       icon={BellIcon}
@@ -125,14 +143,15 @@ export function FollowUpItem({ followUp, upcoming, onEdit }: FollowUpItemProps) 
           </TimelineLink>
         )
       }
-      actions={actions}
+      buttons={!done && <FollowUpDoneButton followUp={followUp} />}
       onOpen={() => onEdit(followUp)}
     />
   );
 }
 
 /** A package bought on its own: its hours and price, what is left, its documents. */
-export function PackageItem({ pkg }: { pkg: TimelinePackage }) {
+export function PackageItem({ pkg, handlers }: { pkg: TimelinePackage; handlers: TimelineHandlers }) {
+  const payables = pkg.can.pay.ok ? packagePayables(pkg).filter((p) => !p.paid) : [];
   return (
     <TimelineItem
       icon={PackageIcon}
@@ -142,6 +161,8 @@ export function PackageItem({ pkg }: { pkg: TimelinePackage }) {
       title={`${formatHours(pkg.hours)} package for ${formatCents(pkg.priceCents)}`}
       meta={[`${formatHours(pkg.creditsLeft)} left`, pkg.note].filter(Boolean).join(" · ")}
       links={pkg.documents.length > 0 && <DocumentLinks docs={pkg.documents} />}
+      buttons={payables.length > 0 && <PaidMenu payables={payables} onOther={() => handlers.onPayOther(payables)} />}
+      onOpen={() => handlers.onEditPackage(pkg)}
     />
   );
 }
@@ -155,8 +176,9 @@ export function DocumentItem({ doc }: { doc: TimelineDocument }) {
       tone={doc.status === "draft" ? "neutral" : "info"}
       when={doc.date ? formatDate(doc.date) : "Dated when issued"}
       badges={<DocumentStatusBadge status={doc.status} revising={doc.revising} />}
-      title={<TextLink {...page}>{refLabel(doc.type, doc, doc.status !== "draft")}</TextLink>}
+      title={<span className="font-medium">{refLabel(doc.type, doc, doc.status !== "draft")}</span>}
       meta={`${DOCUMENT_TYPES[doc.type].title} · ${coversText(doc.covers)} · ${formatCents(doc.totalCents)}`}
+      buttons={doc.status === "draft" && <IssueButton id={doc.id} />}
       open={page}
     />
   );

@@ -3,8 +3,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
-import { clientsListLink, matchesChips, toClientRow, withLapse } from "./clients.util";
-import type { ClientFields, ClientRow, ClientView, ClientsFilter } from "./clients.types";
+import { clientsListLink, matchesChips, toClientRow } from "./clients.util";
+import type { ClientFields, ClientRow, ClientView } from "./clients.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
@@ -48,18 +48,10 @@ export function useSaveClient(
   return { submit, isSaving: save.isPending, error: save.error };
 }
 
-/**
- * Goes where a view's filter is: Reconnect keeps a lapse (taking its chip
- * off goes back to the shortest), All clients its chips. Typing replaces
- * the entry.
- */
-export function useClientsNavigate(view: ClientsFilter, filter: ListFilter): (next: ListFilter) => void {
+/** Goes where a clients filter is; typing replaces the entry. */
+export function useClientsNavigate(filter: ListFilter): (next: ListFilter) => void {
   const navigate = useNavigate();
-  return (next) =>
-    void navigate({
-      ...clientsListLink(view === "reconnect" ? withLapse(next) : next),
-      replace: next.text !== filter.text,
-    });
+  return (next) => void navigate({ ...clientsListLink(next), replace: next.text !== filter.text });
 }
 
 /**

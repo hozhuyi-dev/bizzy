@@ -152,3 +152,36 @@ func TestRemovingAFileDeletesItsThumbnailToo(t *testing.T) {
 		t.Errorf("%d files still stored: %v", n, a.Blobs.Blobs)
 	}
 }
+
+// A list counts every owner's files in one read, as each owner's own count
+// would say; an expense without one has none.
+func TestCountsAreEachOwnersFiles(t *testing.T) {
+	a := testapp.New()
+	one, two, none := expense(t, a), expense(t, a), expense(t, a)
+	upload(t, a, one, false, nil)
+	upload(t, a, two, false, nil)
+	upload(t, a, two, false, nil)
+
+	var page struct {
+		Items []struct {
+			ID    string `json:"id"`
+			Files int    `json:"files"`
+		} `json:"items"`
+	}
+	if err := a.Must("expenses.search", map[string]any{}, &page); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{one: 1, two: 2, none: 0}
+	for _, e := range page.Items {
+		if e.Files != want[e.ID] {
+			t.Errorf("expense %s: %d files, want %d", e.ID, e.Files, want[e.ID])
+		}
+	}
+	var missing struct{ Items []struct{ ID string } }
+	if err := a.Must("expenses.search", map[string]any{"receipts": []string{"missing"}}, &missing); err != nil {
+		t.Fatal(err)
+	}
+	if len(missing.Items) != 1 || missing.Items[0].ID != none {
+		t.Errorf("without a receipt = %+v, want only %s", missing.Items, none)
+	}
+}

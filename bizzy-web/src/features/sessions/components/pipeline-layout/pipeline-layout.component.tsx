@@ -3,6 +3,7 @@ import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CircleIcon, CircleMin
 import type { ReactNode } from "react";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { ActionBar } from "~/components/shared/actions/action-bar/action-bar.component";
+import { SECTION_UNDERLINE } from "~/components/shared/layout/page-sections/page-sections.constant";
 import { Card, CardContent } from "~/components/ui/card";
 import { useActiveSection, useCenteredCurrent } from "~/core/scroll-spy/scroll-spy.hook";
 
@@ -38,6 +39,9 @@ const ICONS: Record<StepState, typeof CircleIcon> = {
   none: CircleMinusIcon,
 };
 
+/** A stretch of the wider rail, centred on the icons (whose middle is 0.5rem in); each says when it shows. */
+const RAIL = "absolute left-2 hidden -translate-x-1/2 border-l";
+
 const STATE_LABELS: Record<StepState, string> = {
   done: "Done",
   current: "To do now",
@@ -55,7 +59,9 @@ const STATE_LABELS: Record<StepState, string> = {
  * the forms below saying the same.
  *
  * Kept apart from PageSections (whose contents list is plain links) so the
- * two can grow on their own; they share only the scroll measuring.
+ * two can grow on their own; they share only the scroll measuring and the
+ * look of the mark on the step being read (an underline on a phone, the
+ * rail thickening beside it wider).
  */
 export function PipelineLayout({ steps }: PipelineLayoutProps) {
   const [active, jumpTo] = useActiveSection(steps.map((step) => step.id));
@@ -130,26 +136,32 @@ function Rail({ steps, active, onJump }: RailProps) {
               onJump(step.id);
             }}
             className={cn(
-              "group relative flex min-w-18 flex-1 flex-col items-center gap-1 pt-2 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
-              "aria-[current]:text-foreground md:aria-[current]:bg-muted",
-              "md:min-w-0 md:flex-none md:flex-row md:items-start md:gap-2.5 md:rounded-md md:p-2 md:text-sm",
+              "group relative flex min-w-18 flex-1 flex-col items-center gap-1 pt-2 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset",
+              "aria-[current]:text-foreground",
+              "md:min-w-0 md:flex-none md:flex-row md:items-start md:gap-2.5 md:py-2 md:pr-2 md:text-sm",
             )}
           >
+            {/* Phones: across to the next dot, short of both. */}
             {line !== undefined && (
-              <>
-                {/* Phones: across to the next dot, short of both. */}
-                <span
-                  aria-hidden="true"
-                  className={cn("absolute top-4 left-[calc(50%+0.75rem)] w-[calc(100%-1.5rem)] border-t md:hidden", line)}
-                />
-                {/* Wider: down to the next step's icon. */}
-                <span
-                  aria-hidden="true"
-                  className={cn("absolute top-7 -bottom-3 left-4 hidden border-l md:block", line)}
-                />
-              </>
+              <span
+                aria-hidden="true"
+                className={cn("absolute top-4 left-[calc(50%+0.75rem)] w-[calc(100%-1.5rem)] border-t md:hidden", line)}
+              />
             )}
-            <span className="relative md:mt-0.5">
+            {/* Wider: the rail, as PageSections's, the icons on it. It runs
+                the column's full height: the first step brings the line from
+                the top, each its own on to the next icon (overlapping the next
+                step, so a dashed one stays one line), the last its own to the
+                bottom. Centred on the icons' middle (left-2, top-4.5). */}
+            {i === 0 && <span aria-hidden="true" className={cn(RAIL, "top-0 h-4.5 md:block")} />}
+            <span aria-hidden="true" className={cn(RAIL, "top-4.5 md:block", next ? "-bottom-4.5" : "bottom-0", line)} />
+            {/* The step being read: its stretch of rail, thick, as PageSections's current link. */}
+            <span
+              aria-hidden="true"
+              className={cn(RAIL, "inset-y-0 border-l-2 border-foreground md:group-aria-[current]:block")}
+            />
+            {/* Wider: on the rail, the background hiding the line behind it. */}
+            <span className="relative md:mt-0.5 md:rounded-full md:bg-background">
               <StepIcon state={step.state} />
               {count !== undefined && (
                 <span
@@ -181,10 +193,7 @@ function Rail({ steps, active, onJump }: RailProps) {
               {step.meta && <span className="hidden text-xs leading-snug text-muted-foreground md:block">{step.meta}</span>}
             </span>
             {/* Phones: under the step being read. */}
-            <span
-              aria-hidden="true"
-              className="absolute bottom-0 hidden h-0.5 w-8 rounded-full bg-foreground group-aria-[current]:block md:group-aria-[current]:hidden"
-            />
+            <span aria-hidden="true" className={SECTION_UNDERLINE} />
           </a>
         );
       })}

@@ -17,7 +17,7 @@ import { ApiError, invoke } from "~/core/lambda/lambda.client";
 export const DocumentsService = {
   /** A page of the documents of a type found, latest first, drafts without a date last. */
   search: (request: SearchDocumentsRequest) => invoke<Page<DocumentSummary>>("documents.search", request),
-  /** Every document for a client, of any type, newest first, the drafts last. */
+  /** Every document for a client, of any type, latest first (a draft without a date by when it was made). */
   listByClient: (clientId: string) =>
     invoke<Array<DocumentSummary>>("documents.listByClient", { clientId }),
   /** The document with every revision issued. */

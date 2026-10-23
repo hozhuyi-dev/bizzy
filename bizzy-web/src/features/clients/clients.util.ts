@@ -1,12 +1,11 @@
 import { last12Months, monthsSinceLastSession, totals } from "./client-activity.util";
-import { LAPSE_FACET, LAPSE_MONTHS, STANDING_FACETS } from "./clients.constant";
-import type { LapseMonths, StandingFacet } from "./clients.constant";
-import type { ChosenContact, ClientNext, ClientRow, ClientView, ClientsFilter, ClientsListSearch } from "./clients.types";
+import { CLIENT_FACET_KEYS, LAPSE_MONTHS, MISSING_DETAILS } from "./clients.constant";
+import type { ClientFacetKey, MissingDetail } from "./clients.constant";
+import type { ChosenContact, ClientNext, ClientRow, ClientView } from "./clients.types";
 import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactDetails, ContactView } from "~/features/contacts/contacts.types";
-import type { Facet, ListFilter } from "~/core/list/filter.types";
+import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import { filterUrl } from "~/core/list/filter.util";
-import { oneOf } from "~/core/utils/url-param.util";
 
 /** The client an item is for, when it has one and it still exists. */
 export function clientOf(clientsById: ReadonlyMap<string, ClientView>, clientId: string | undefined): ClientView | undefined {
@@ -54,17 +53,13 @@ export function clientFacet(clients: ReadonlyArray<ClientView>): Facet {
   };
 }
 
-/** Reconnect's chip: clients lapsed for so many months. */
-export function lapseFacet(): Facet {
-  return {
-    key: LAPSE_FACET,
+const CLIENT_FACET_BY_KEY: Record<ClientFacetKey, Facet> = {
+  lapse: {
+    key: "lapse",
     label: "Lapsed for",
     single: true,
-    options: LAPSE_MONTHS.map((months) => ({ value: months, label: `Over ${months} months` })),
-  };
-}
-
-const STANDING_OPTIONS: Record<StandingFacet, Facet> = {
+    options: LAPSE_MONTHS.map((months) => ({ value: months, label: `Over ${months} months`, keywords: ["reconnect"] })),
+  },
   booked: {
     key: "booked",
     label: "Booked",
@@ -77,36 +72,59 @@ const STANDING_OPTIONS: Record<StandingFacet, Facet> = {
   owes: { key: "owes", label: "Owes", single: true, options: [{ value: "yes", label: "Owes money", keywords: ["unpaid"] }] },
   credits: { key: "credits", label: "Credits", single: true, options: [{ value: "yes", label: "Has credits", keywords: ["package"] }] },
   followUp: { key: "followUp", label: "Follow-up", single: true, options: [{ value: "yes", label: "Open follow-up" }] },
+  homeVisits: { key: "homeVisits", label: "Visits", single: true, options: [{ value: "yes", label: "Home visits" }] },
+  missing: {
+    key: "missing",
+    label: "Missing",
+    options: Object.entries(MISSING_DETAILS).map(([value, label]) => ({ value, label })),
+  },
   archived: { key: "archived", label: "Archived", single: true, options: [{ value: "yes", label: "Archived" }] },
 };
 
-/** What All clients is narrowed by besides words, made once: its options never change. */
-export const CLIENT_FACETS: ReadonlyArray<Facet> = STANDING_FACETS.map((key) => STANDING_OPTIONS[key]);
+/** What the clients list is narrowed by besides words, made once: its options never change. */
+export const CLIENT_FACETS: ReadonlyArray<Facet> = CLIENT_FACET_KEYS.map((key) => CLIENT_FACET_BY_KEY[key]);
 
-/** What Reconnect is narrowed by besides words. */
-export const RECONNECT_FACETS: ReadonlyArray<Facet> = [lapseFacet()];
+/**
+ * The ways the clients list is usually looked at. Reconnect is those not
+ * seen in over 3 months with nothing booked or waiting, most valuable
+ * first; its chip can be added to any other.
+ */
+export const CLIENT_PRESETS: ReadonlyArray<FilterPreset> = [
+  { label: "Active", when: undefined, chips: {} },
+  { label: "Reconnect", when: undefined, chips: { lapse: [LAPSE_MONTHS[0]] }, sort: "-lifetimeCents" },
+  { label: "Owes money", when: undefined, chips: { owes: ["yes"] } },
+  { label: "Has credits", when: undefined, chips: { credits: ["yes"] } },
+  { label: "Missing details", when: undefined, chips: { missing: ["phone", "idNo"] } },
+  { label: "Archived", when: undefined, chips: { archived: ["yes"] } },
+];
 
-/** A clients list's facets: its own view's. */
-export function facetsOf(view: ClientsFilter): ReadonlyArray<Facet> {
-  return view === "reconnect" ? RECONNECT_FACETS : CLIENT_FACETS;
+/** The details a client is missing. */
+export function missingDetails(client: ClientView): Array<MissingDetail> {
+  const out: Array<MissingDetail> = [];
+  if (!client.contact?.phone) out.push("phone");
+  if (!client.idNo) out.push("idNo");
+  if (contactProblem(client)) out.push("contact");
+  return out;
 }
 
-/** The lapse a filter's chip asks for, if any: the list is Reconnect then. */
-export function lapseOf(filter: ListFilter): LapseMonths | undefined {
-  const lapse = filter.chips[LAPSE_FACET]?.[0];
-  return LAPSE_MONTHS.find((months) => months === lapse);
+/** Lapsed: no session in a while, nothing booked and nothing waiting; worth getting back in touch with. */
+export function isLapsed(row: ClientRow): boolean {
+  return (row.activity?.lapsedMonths ?? 0) > 0;
 }
 
 /** Whether a client is where a filter's chips say: lapsed that long, booked, owing, and so on. */
 export function matchesChips(row: ClientRow, chips: ListFilter["chips"]): boolean {
-  const lapse = LAPSE_MONTHS.find((months) => months === chips[LAPSE_FACET]?.[0]);
+  const chip = (key: ClientFacetKey) => chips[key]?.[0];
+  const lapse = LAPSE_MONTHS.find((months) => months === chip("lapse"));
   if (lapse && (row.activity?.lapsedMonths ?? 0) < Number(lapse)) return false;
-  const chip = (key: StandingFacet) => chips[key]?.[0];
   const booked = chip("booked");
   if (booked && Boolean(row.activity?.nextBookedAt) !== (booked === "yes")) return false;
   if (chip("owes") && row.owedCents <= 0) return false;
   if (chip("credits") && row.creditsLeftMinutes <= 0) return false;
   if (chip("followUp") && !row.activity?.openFollowUps) return false;
+  if (chip("homeVisits") && !row.client.homeVisits) return false;
+  const missing = chips.missing ?? [];
+  if (missing.length > 0 && !missingDetails(row.client).some((detail) => missing.includes(detail))) return false;
   // Archived clients are put away: only their chip shows them.
   return Boolean(row.client.archivedAt) === Boolean(chip("archived"));
 }
@@ -122,42 +140,11 @@ export function pickableClients(clients: ReadonlyArray<ClientView>, keepId?: str
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
-/** All clients' filter both ways with its URL. */
-export const clientsUrl = filterUrl(STANDING_FACETS);
+/** The clients list's filter both ways with its URL; a client's page keeps it too, to step through. */
+export const clientsUrl = filterUrl(CLIENT_FACET_KEYS);
 
-/** The list a client's page steps through, from its URL: All clients' words and chips, or Reconnect's lapse. */
-export function validateClientsListSearch(search: Record<string, unknown>): ClientsListSearch {
-  // Numbers in the URL parse as numbers.
-  return { ...clientsUrl.validate(search), lapse: oneOf(String(search.lapse), LAPSE_MONTHS) };
-}
-
-/** A clients list's filter as a client's page keeps it. */
-export function clientsListSearch(filter: ListFilter): ClientsListSearch {
-  return { ...clientsUrl.toSearch(filter), lapse: lapseOf(filter) };
-}
-
-/** The filter a client's page keeps: All clients' words and chips, or Reconnect with its lapse. */
-export function clientsListFilter(search: ClientsListSearch): ListFilter {
-  const filter = clientsUrl.toFilter(search);
-  return search.lapse ? { ...filter, chips: { ...filter.chips, [LAPSE_FACET]: [search.lapse] } } : filter;
-}
-
-/** Reconnect's filter keeps a lapse: taking its chip off goes back to the shortest. */
-export function withLapse(filter: ListFilter): ListFilter {
-  return lapseOf(filter) ? filter : { ...filter, chips: { ...filter.chips, [LAPSE_FACET]: [LAPSE_MONTHS[0]] } };
-}
-
-/**
- * Where a clients filter is, and its name: Reconnect with a lapse (so the
- * nav shows it), All clients with its chips without.
- */
+/** Where a clients filter is, and its name. */
 export function clientsListLink(filter: ListFilter) {
-  const lapse = lapseOf(filter);
-  const q = filter.text.trim() || undefined;
-  if (lapse) {
-    const search = { q, lapse: lapse === LAPSE_MONTHS[0] ? undefined : lapse, sort: filter.sort };
-    return { to: "/clients/reconnect", label: "Reconnect", search } as const;
-  }
   return { to: "/clients", label: "Clients", search: clientsUrl.toSearch(filter) } as const;
 }
 

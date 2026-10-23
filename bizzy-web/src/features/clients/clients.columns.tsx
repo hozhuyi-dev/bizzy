@@ -1,12 +1,12 @@
 import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
-import { contactProblem, extraAliases } from "./clients.util";
+import { contactProblem, extraAliases, isLapsed } from "./clients.util";
 import type { LinkOptions } from "@tanstack/react-router";
-import type { ClientNext, ClientRow, ClientView, ClientsFilter, ClientsListSearch } from "./clients.types";
+import type { ClientNext, ClientRow, ClientView, ClientsListSearch } from "./clients.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { RowActionSet } from "~/components/shared/actions/row-actions/row-actions.component";
 import { whatsappNumber } from "~/features/whatsapp/whatsapp.util";
 import { Badge } from "~/components/ui/badge";
-import { CellEmpty, CellLink, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
+import { CellEmpty, CellText } from "~/components/shared/list/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
@@ -60,16 +60,22 @@ export function clientLink(id: string, search?: ClientsListSearch): LinkOptions 
   return { to: "/clients/$id", params: { id }, search: search ?? {} };
 }
 
-function ClientLink({ client, search }: { client: ClientView; search: ClientsListSearch | undefined }) {
-  return <CellLink {...clientLink(client.id, search)}>{client.name}</CellLink>;
+/** How the list sorts until she picks a column (or a preset sorts it): A to Z. */
+export const CLIENT_SORTING = [{ id: "name", desc: false }];
+
+/** "Contacted 3 Oct", when she reached out since their last session. */
+function contactedText(row: ClientRow): string | undefined {
+  const { lastContactedAt, lastSessionAt } = row;
+  if (!lastContactedAt || (lastSessionAt && lastContactedAt < lastSessionAt)) return undefined;
+  return `Contacted ${formatDate(lastContactedAt)}`;
 }
 
-/** How a view sorts until she picks a column: lapsed clients are worked through most valuable first. */
-export function clientSorting(view: ClientsFilter) {
-  return view === "reconnect" ? [{ id: "lifetimeCents", desc: true }] : [{ id: "name", desc: false }];
+/** "RM 1,200 · 8 sessions in 12 months": the past year, under what they spent in all. */
+function yearText(row: ClientRow): string {
+  return `${formatCents(row.revenue12Cents)} · ${row.sessions12} ${row.sessions12 === 1 ? "session" : "sessions"} in 12 months`;
 }
 
-interface ClientActions {
+export interface ClientActions {
   /** Opens the client's chat; offered when their phone can take one. */
   onWhatsApp?: (client: ClientView) => void;
   onContacted?: (client: ClientView) => void;
@@ -77,32 +83,33 @@ interface ClientActions {
   onRemind?: (client: ClientView) => void;
 }
 
-/** The client's name links to their page, so editing needs no action here. */
-export function clientActions(client: ClientView, { onWhatsApp, onContacted, onRemind }: ClientActions): RowActionSet {
+/**
+ * WhatsApp; for a client lapsed (see isLapsed), Contacted, and Remind me
+ * behind ⋯, wherever the list has them. A click on the row opens them.
+ */
+export function clientActions(row: ClientRow, { onWhatsApp, onContacted, onRemind }: ClientActions): RowActionSet {
+  const { client } = row;
   const set = { actions: [] as Array<Action>, more: [] as Array<Action> };
   if (onWhatsApp && whatsappNumber(client.contact?.phone)) {
     set.actions.push({ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => onWhatsApp(client) });
   }
+  if (!isLapsed(row)) return set;
   if (onContacted) set.actions.push({ type: "button", label: "Contacted", icon: CheckIcon, onClick: () => onContacted(client) });
   if (onRemind) set.more.push({ type: "button", label: "Remind me", icon: BellIcon, onClick: () => onRemind(client) });
   return set;
 }
 
 interface ClientCardProps extends ClientActions {
-  view: ClientsFilter;
   row: ClientRow;
   search?: ClientsListSearch | undefined;
 }
 
 /** The phone layout of a table row: the same fields and actions. */
-export function ClientCard({ view, row, search, ...handlers }: ClientCardProps) {
+export function ClientCard({ row, search, ...handlers }: ClientCardProps) {
   const { client } = row;
   const problem = contactProblem(client);
   const last = row.lastSessionAt ? `Last session ${formatDate(row.lastSessionAt)}` : "No sessions yet";
-  const meta =
-    view === "reconnect"
-      ? [last, row.lastContactedAt && `contacted ${formatDate(row.lastContactedAt)}`]
-      : [last, row.next && nextText(row.next), creditsText(row)];
+  const meta = [last, contactedText(row)?.toLowerCase(), row.next && nextText(row.next), creditsText(row)];
   return (
     <DataCard
       title={
@@ -112,97 +119,58 @@ export function ClientCard({ view, row, search, ...handlers }: ClientCardProps) 
           <UnrecordedBadge row={row} />
         </>
       }
-      value={
-        view === "reconnect"
-          ? formatCents(row.lifetimeCents)
-          : row.owedCents > 0
-            ? `${formatCents(row.owedCents)} owed`
-            : undefined
-      }
+      value={row.owedCents > 0 ? `${formatCents(row.owedCents)} owed` : formatCents(row.lifetimeCents)}
       meta={meta.filter(Boolean).join(" · ")}
       detail={row.activity?.lastSummary}
-      {...clientActions(client, handlers)}
+      {...clientActions(row, handlers)}
       open={clientLink(client.id, search)}
     />
   );
 }
 
 /**
- * The table's columns for a view; `search` is the list's filter, for each
- * client's page to step through. All clients is where each one stands;
- * Reconnect, who is worth getting back in touch with.
+ * The table's columns, one set whatever the filter: where each client
+ * stands, what they spent, and when she last saw or reached them. `search`
+ * is the list's filter, for each client's page to step through.
  */
-export function createClientColumns(view: ClientsFilter, handlers: ClientActions, search?: ClientsListSearch) {
-  const name = helper.accessor((row) => row.client.name, {
-    id: "name",
-    header: "Name",
-    sortFn: "alphanumeric",
-    meta: {
-      width: "grow",
-      search: ({ client, activity }: ClientRow) => [
-        client.name,
-        ...client.aliases,
-        contactProblem(client),
-        client.contact?.phone,
-        client.contact?.email,
-        activity?.lastSummary,
-      ],
-    },
-    cell: ({ row }) => (
-      <CellText sub={<ClientNote row={row.original} />} title={row.original.activity?.lastSummary}>
-        <span className="flex min-w-0 items-center gap-2">
-          <ClientLink client={row.original.client} search={search} />
-          <UnrecordedBadge row={row.original} />
-        </span>
-      </CellText>
-    ),
-  });
-  const lastSession = helper.accessor("lastSessionAt", {
-    header: "Last session",
-    sortFn: "basic",
-    meta: { search: (row: ClientRow) => row.lastSessionAt && formatDate(row.lastSessionAt) },
-    sortUndefined: "last",
-    cell: ({ row }) =>
-      row.original.lastSessionAt ? (
-        <CellText sub={sinceText(row.original)}>{formatDate(row.original.lastSessionAt)}</CellText>
-      ) : (
-        <CellEmpty />
-      ),
-  });
-  const actions = helper.display({
-    id: "actions",
-    header: () => <span className="sr-only">Actions</span>,
-    meta: { width: "fit" },
-    cell: ({ row }) => <RowActions {...clientActions(row.original.client, handlers)} />,
-  });
-
-  if (view === "reconnect") {
-    return helper.columns([
-      name,
-      lastSession,
-      helper.accessor("lastContactedAt", {
-        header: "Last contacted",
-        sortFn: "basic",
-        meta: { search: (row: ClientRow) => row.lastContactedAt && formatDate(row.lastContactedAt) },
-        sortUndefined: "last",
-        cell: ({ getValue }) => {
-          const at = getValue();
-          return at ? formatDate(at) : <CellEmpty />;
-        },
-      }),
-      helper.accessor("lifetimeCents", {
-        header: "Lifetime",
-        sortFn: "basic",
-        meta: { align: "end", search: (row: ClientRow) => formatCents(row.lifetimeCents) },
-        cell: ({ getValue }) => formatCents(getValue()),
-      }),
-      actions,
-    ]);
-  }
-
+export function createClientColumns(handlers: ClientActions, search?: ClientsListSearch) {
   return helper.columns([
-    name,
-    lastSession,
+    helper.accessor((row) => row.client.name, {
+      id: "name",
+      header: "Name",
+      sortFn: "alphanumeric",
+      meta: {
+        width: "grow",
+        search: ({ client, activity }: ClientRow) => [
+          client.name,
+          ...client.aliases,
+          contactProblem(client),
+          client.contact?.phone,
+          client.contact?.email,
+          activity?.lastSummary,
+        ],
+      },
+      cell: ({ row }) => (
+        <CellText sub={<ClientNote row={row.original} />} title={row.original.activity?.lastSummary}>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium">{row.original.client.name}</span>
+            <UnrecordedBadge row={row.original} />
+          </span>
+        </CellText>
+      ),
+    }),
+    helper.accessor("lastSessionAt", {
+      header: "Last session",
+      sortFn: "basic",
+      meta: { search: (row: ClientRow) => [row.lastSessionAt && formatDate(row.lastSessionAt), contactedText(row)] },
+      sortUndefined: "last",
+      cell: ({ row }) =>
+        row.original.lastSessionAt ? (
+          <CellText sub={contactedText(row.original) ?? sinceText(row.original)}>{formatDate(row.original.lastSessionAt)}</CellText>
+        ) : (
+          <CellEmpty />
+        ),
+    }),
     helper.accessor((row) => row.next?.at, {
       id: "next",
       header: "Next",
@@ -225,22 +193,23 @@ export function createClientColumns(view: ClientsFilter, handlers: ClientActions
       meta: { align: "end", search: (row: ClientRow) => (row.owedCents > 0 ? formatCents(row.owedCents) : undefined) },
       cell: ({ getValue }) => (getValue() > 0 ? formatCents(getValue()) : <CellEmpty />),
     }),
-    helper.accessor("revenue12Cents", {
-      header: "Last 12 months",
-      sortFn: "basic",
-      meta: { align: "end", search: (row: ClientRow) => formatCents(row.revenue12Cents) },
-      cell: ({ row }) => (
-        <CellText sub={`${row.original.sessions12} ${row.original.sessions12 === 1 ? "session" : "sessions"}`}>
-          {formatCents(row.original.revenue12Cents)}
-        </CellText>
-      ),
-    }),
     helper.accessor("creditsLeftMinutes", {
       header: "Credits",
       sortFn: "basic",
       meta: { align: "end", from: "lg", search: (row: ClientRow) => creditsText(row) },
       cell: ({ row }) => creditsText(row.original) ?? <CellEmpty />,
     }),
-    actions,
+    helper.accessor("lifetimeCents", {
+      header: "Spent",
+      sortFn: "basic",
+      meta: { align: "end", search: (row: ClientRow) => formatCents(row.lifetimeCents) },
+      cell: ({ row }) => <CellText sub={yearText(row.original)}>{formatCents(row.original.lifetimeCents)}</CellText>,
+    }),
+    helper.display({
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      meta: { width: "fit" },
+      cell: ({ row }) => <RowActions {...clientActions(row.original, handlers)} />,
+    }),
   ]);
 }

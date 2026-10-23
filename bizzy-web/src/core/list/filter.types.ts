@@ -35,6 +35,21 @@ export interface Facet {
   single?: boolean | undefined;
 }
 
+/**
+ * A filter a list offers by name, ready made ("Overdue", "Unpaid
+ * invoices"): its days, chips and sort. Picking one keeps the words typed;
+ * the bar names the one the filter is, or else says Custom. A list's first
+ * is what it shows with nothing in the URL.
+ */
+export interface FilterPreset {
+  label: string;
+  /** Undefined: all time. */
+  when: When | undefined;
+  chips: Readonly<Record<string, ReadonlyArray<string>>>;
+  /** For a list loaded whole: how it sorts once picked. Not part of telling which preset a filter is. */
+  sort?: string | undefined;
+}
+
 export interface FacetOption {
   value: string;
   label: string;

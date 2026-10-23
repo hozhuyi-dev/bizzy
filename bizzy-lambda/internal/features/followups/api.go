@@ -2,6 +2,7 @@ package followups
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
@@ -65,21 +66,74 @@ func viewsOf(tx *txn.Tx, all []*FollowUp) ([]View, error) {
 	return out, nil
 }
 
-// List is which follow-ups to list.
-type List string
+// Status is where a follow-up stands, as a search narrows by it.
+type Status string
 
 const (
-	ListUpcoming List = "upcoming"
-	ListDone     List = "done"
+	// StatusOpen is not done yet, overdue or not.
+	StatusOpen Status = "open"
+	// StatusOverdue is not done, and due before today.
+	StatusOverdue Status = "overdue"
+	StatusDone    Status = "done"
 )
 
-// searchRequest finds follow-ups not done or done by words in their
-// summary, notes or client's name, and by days due and clients; an empty
-// filter takes every value.
+// Origin is where a follow-up came from: a session, or on its own.
+type Origin string
+
+const (
+	OriginSession Origin = "session"
+	OriginOwn     Origin = "own"
+)
+
+// searchRequest finds follow-ups by words in their summary, notes or
+// client's name, and by days due, clients, how they stand and where they
+// came from; an empty filter takes every value.
 type searchRequest struct {
 	listing.Request
-	View      List     `json:"view"`
+	Statuses  []Status `json:"statuses"`
+	Origins   []Origin `json:"origins"`
 	ClientIDs []string `json:"clientIds"`
+}
+
+// list is where a search reads: those not done, soonest first, when it
+// is for them alone (the to-do index holds only those), stopping at today
+// for the overdue alone; else every one, latest due first, or a client's
+// when it is for one.
+func (in searchRequest) list(from, to, today time.Time) txn.List {
+	open := len(in.Statuses) > 0 && !slices.Contains(in.Statuses, StatusDone)
+	if open {
+		if !slices.Contains(in.Statuses, StatusOpen) && (to.IsZero() || to.After(today)) {
+			to = today.Add(-time.Second)
+		}
+		return txn.List{Open: true, From: from, To: to}
+	}
+	l := txn.List{From: from, To: to, Latest: true}
+	if len(in.ClientIDs) == 1 {
+		l.Client = in.ClientIDs[0]
+	}
+	return l
+}
+
+// takes says whether a follow-up is one the search is for, its words aside.
+func (in searchRequest) takes(fu *FollowUp, today time.Time) bool {
+	origin := OriginOwn
+	if fu.SessionID != "" {
+		origin = OriginSession
+	}
+	return listing.OneOf(in.ClientIDs, fu.ClientID) && listing.OneOf(in.Origins, origin) &&
+		listing.AnyOf(in.Statuses, statuses(fu, today))
+}
+
+// statuses are every Status a follow-up has: open and overdue both, for
+// one overdue.
+func statuses(fu *FollowUp, today time.Time) []Status {
+	switch {
+	case fu.DoneAt != nil:
+		return []Status{StatusDone}
+	case fu.Due.Before(today):
+		return []Status{StatusOpen, StatusOverdue}
+	}
+	return []Status{StatusOpen}
 }
 
 type createRequest struct {
@@ -118,27 +172,24 @@ func Routes(r *router.Router, run *txn.Runner) {
 		})
 	}
 
-	// followUps.search finds those not done, soonest due first, or those
-	// done, latest due first, a page at a time.
+	// followUps.search finds follow-ups a page at a time: those not done
+	// soonest due first, any others latest due first (see list).
 	r.Query("followUps.search", router.Typed(func(ctx context.Context, in searchRequest) (any, error) {
-		if in.View != ListUpcoming && in.View != ListDone {
-			return nil, apperr.Invalid("Unknown list %q.", in.View)
+		for _, s := range in.Statuses {
+			if s != StatusOpen && s != StatusOverdue && s != StatusDone {
+				return nil, apperr.Invalid("Unknown status %q.", s)
+			}
 		}
 		return txn.Read(ctx, run, func(tx *txn.Tx) (listing.Page[View], error) {
 			from, to, err := in.Span(tx.Location())
 			if err != nil {
 				return listing.Page[View]{}, err
 			}
-			l := txn.List{Open: true, From: from, To: to}
-			if in.View == ListDone {
-				l = txn.List{From: from, To: to, Latest: true}
-				if len(in.ClientIDs) == 1 {
-					l.Client = in.ClientIDs[0]
-				}
-			}
+			now := tx.Now().In(tx.Location())
+			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, tx.Location())
 			words := in.Words()
-			return listing.Read(tx, FollowUps, l, in.Request, func(fu *FollowUp) (View, bool, error) {
-				if (fu.DoneAt != nil) != (in.View == ListDone) || !listing.OneOf(in.ClientIDs, fu.ClientID) {
+			return listing.Read(tx, FollowUps, in.list(from, to, today), in.Request, func(fu *FollowUp) (View, bool, error) {
+				if !in.takes(fu, today) {
 					return View{}, false, nil
 				}
 				v, err := ViewOf(tx, fu)

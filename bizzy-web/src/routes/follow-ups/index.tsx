@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { FilterSearch } from "~/core/list/filter.types";
+import type { FOLLOW_UP_FACETS } from "~/features/follow-ups/follow-ups.constant";
 import { FollowUpsPage } from "~/features/follow-ups/follow-ups-page.component";
-import { FOLLOW_UP_FACETS } from "~/features/follow-ups/follow-ups.constant";
-import { filterSearch, toFilter, toSearch } from "~/core/list/filter.util";
+import { followUpsUrl } from "~/features/follow-ups/follow-ups.util";
 import { textParam } from "~/core/utils/url-param.util";
 
 export type FollowUpsSearch = FilterSearch<(typeof FOLLOW_UP_FACETS)[number]> & {
@@ -12,22 +12,21 @@ export type FollowUpsSearch = FilterSearch<(typeof FOLLOW_UP_FACETS)[number]> & 
 
 export const Route = createFileRoute("/follow-ups/")({
   validateSearch: (search: Record<string, unknown>): FollowUpsSearch => ({
-    ...filterSearch(search, FOLLOW_UP_FACETS),
+    ...followUpsUrl.validate(search),
     open: textParam(search.open),
   }),
-  component: UpcomingRoute,
+  component: FollowUpsRoute,
 });
 
-function UpcomingRoute() {
+function FollowUpsRoute() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const filter = toFilter(search, FOLLOW_UP_FACETS);
+  const filter = followUpsUrl.toFilter(search);
   return (
     <FollowUpsPage
-      view="upcoming"
       filter={filter}
       onFilterChange={(next) =>
-        void navigate({ search: { ...toSearch(next, FOLLOW_UP_FACETS), open: search.open }, replace: next.text !== filter.text })
+        void navigate({ search: { ...followUpsUrl.toSearch(next), open: search.open }, replace: next.text !== filter.text })
       }
       open={search.open}
       onOpenChange={(id) => void navigate({ search: (prev) => ({ ...prev, open: id }), replace: id === undefined })}

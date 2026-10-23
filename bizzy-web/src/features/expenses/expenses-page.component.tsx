@@ -4,7 +4,7 @@ import { PlusIcon } from "lucide-react";
 import { cn } from "cn";
 import { ExpenseCard, createExpenseColumns, expenseLink } from "./expenses.columns";
 import { ExpensesQuery } from "./expenses.query";
-import { expenseFacets, expensesUrl } from "./expenses.util";
+import { expenseFacets, expensePresets, expensesUrl } from "./expenses.util";
 import type { ListFilter } from "~/core/list/filter.types";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
@@ -31,6 +31,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
   const expenses = ExpensesQuery.useSearch(filter);
   const catalogue = ExpensesQuery.useCatalogue();
   const facets = useMemo(() => expenseFacets(catalogue.data), [catalogue.data]);
+  const presets = useMemo(() => expensePresets(), []);
   // Each expense's page steps through this list.
   const search = useMemo(() => expensesUrl.toSearch(filter), [filter]);
   const columns = useMemo(() => createExpenseColumns(catalogue.data, search), [catalogue.data, search]);
@@ -54,7 +55,16 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
         actions={[
           { type: "link", label: "New expense", icon: PlusIcon, style: "primary", link: { to: "/expenses/new" } },
         ]}
-        toolbar={<FilterBar label="Search expenses" value={filter} onChange={onFilterChange} facets={facets} dates />}
+        toolbar={
+          <FilterBar
+            label="Search expenses"
+            value={filter}
+            onChange={onFilterChange}
+            facets={facets}
+            presets={presets}
+            dates
+          />
+        }
       />
 
       <div className={cn("flex flex-col gap-2 transition-opacity", expenses.isPlaceholderData && "opacity-60")}>

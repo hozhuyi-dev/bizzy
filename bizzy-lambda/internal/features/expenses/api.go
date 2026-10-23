@@ -28,10 +28,15 @@ type View struct {
 
 func viewOf(tx *txn.Tx, e *Expense) (View, error) {
 	files, err := attachments.Count(tx, attachments.OwnerExpense, e.ID)
+	return viewWith(e, files), err
+}
+
+// viewWith is an expense's view, its files counted already (a list's, at once).
+func viewWith(e *Expense, files int) View {
 	return View{
 		ID: e.ID, Date: e.Date, Vendor: e.Vendor, Lines: e.Lines, Notes: e.Notes,
 		TotalCents: e.TotalCents(), Files: files, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
-	}, err
+	}
 }
 
 // SearchView is a page of expenses found and, on the first page, what all
@@ -57,12 +62,23 @@ type CatalogueView struct {
 }
 
 // searchRequest finds expenses by words in the vendor, the notes or the
-// items, and by days and categories (any of its lines in one); an empty
-// filter takes every value.
+// items, and by days, categories (any of its lines in one), shops (by
+// name, however typed) and whether its receipt is kept; an empty filter
+// takes every value.
 type searchRequest struct {
 	listing.Request
 	CategoryIDs []string `json:"categoryIds"`
+	Vendors     []string `json:"vendors"`
+	// Receipts are ReceiptKept, ReceiptMissing or both.
+	Receipts []string `json:"receipts"`
 }
+
+// Whether an expense's receipt is kept: a file attached to it, for the
+// tax return.
+const (
+	ReceiptKept    = "kept"
+	ReceiptMissing = "missing"
+)
 
 type idRequest struct {
 	ID string `json:"id"`
@@ -103,6 +119,15 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 			}
 			l := txn.List{From: from, To: to, Latest: true}
 			words := in.Words()
+			vendors := make([]string, len(in.Vendors))
+			for i, v := range in.Vendors {
+				vendors[i] = normalizeName(v)
+			}
+			// Every expense's files in one read, not one read a row.
+			files, err := attachments.Counts(tx, attachments.OwnerExpense)
+			if err != nil {
+				return SearchView{}, err
+			}
 			found := func(e *Expense) bool {
 				fields := []string{e.Vendor, e.Notes}
 				inCategory := false
@@ -110,7 +135,12 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 					fields = append(fields, line.Name)
 					inCategory = inCategory || listing.OneOf(in.CategoryIDs, line.CategoryID)
 				}
-				return inCategory && words.In(fields...)
+				receipt := ReceiptMissing
+				if files[e.ID] > 0 {
+					receipt = ReceiptKept
+				}
+				return inCategory && listing.OneOf(vendors, normalizeName(e.Vendor)) && listing.OneOf(in.Receipts, receipt) &&
+					words.In(fields...)
 			}
 			var out SearchView
 			if in.After == "" {
@@ -131,11 +161,7 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 				}
 			}
 			out.Page, err = listing.Read(tx, Expenses, l, in.Request, func(e *Expense) (View, bool, error) {
-				if !found(e) {
-					return View{}, false, nil
-				}
-				v, err := viewOf(tx, e)
-				return v, err == nil, err
+				return viewWith(e, files[e.ID]), found(e), nil
 			})
 			return out, err
 		})

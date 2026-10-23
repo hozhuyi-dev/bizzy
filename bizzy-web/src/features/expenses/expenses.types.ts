@@ -45,6 +45,10 @@ export interface ExpensesPage extends Page<ExpenseView> {
 /** expenses.search's request: an empty filter takes every value. */
 export interface SearchExpensesRequest extends ListRequest {
   categoryIds: Array<string>;
+  /** Shops by name, however typed. */
+  vendors: Array<string>;
+  /** Whether its receipt is kept: a file attached to it. */
+  receipts: Array<"kept" | "missing">;
 }
 
 /** One thing she buys, from the list lines are picked from. */

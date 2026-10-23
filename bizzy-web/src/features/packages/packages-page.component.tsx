@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { DeletePackageDialog } from "./components/delete-package-dialog/delete-package-dialog.component";
 import { PackageForm } from "./components/package-form/package-form.component";
 import { PackageCard, createPackageColumns } from "./packages.columns";
-import { clientName, packageFacets, packagePayables, packagesView } from "./packages.util";
+import { PACKAGE_PRESETS, clientName, matchesPackage, packageFacets, packagePayables } from "./packages.util";
 import { PackagesMutation } from "./packages.mutation";
 import { PackagesQuery } from "./packages.query";
 import type { PackageHandlers } from "./packages.columns";
@@ -29,8 +29,8 @@ import { formatDate, formatHours } from "~/core/utils/date.util";
 import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
-/** How packages sort until a column is picked: by client. */
-const BY_CLIENT = [{ id: "client", desc: false }];
+/** How packages sort until a column is picked: latest bought first, as every dated list. */
+const LATEST_FIRST = [{ id: "purchasedAt", desc: true }];
 
 type Editing = { mode: "new"; clientId?: string | undefined } | { mode: "edit"; pkg: PackageView } | null;
 
@@ -38,7 +38,7 @@ type Editing = { mode: "new"; clientId?: string | undefined } | { mode: "edit"; 
 const NO_PACKAGES: Array<PackageView> = [];
 
 interface PackagesPageProps {
-  /** Words, and chips: Open (by default) and clients. */
+  /** Words, days bought, and chips: Open (by default), clients, and how far their documents have got. */
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
   /** Opens a new package for this client. */
@@ -50,22 +50,25 @@ interface PackagesPageProps {
 /**
  * Prepaid packages with the credits each has left, and whether each is
  * paid. Every package is loaded already (sessions show their credits), so
- * the search and chips filter here, in the browser.
+ * the search, days and chips filter here, in the browser.
  */
 export function PackagesPage({ filter, onFilterChange, newFor, settle }: PackagesPageProps) {
   const [editing, setEditing] = useState<Editing>(newFor || settle ? { mode: "new", clientId: newFor } : null);
   const settled = useSettleReturn(settle);
   const [deleting, setDeleting] = useState<PackageView | null>(null);
   const [payingId, setPayingId] = useState<string>();
-  const packages = PackagesQuery.useList(packagesView(filter) === "all");
+  // Every package, as sessions and clients read them: one cached read, filtered here.
+  const packages = PackagesQuery.useList(true);
   const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const facets = useMemo(() => packageFacets(clients.data ?? []), [clients.data]);
+  // Routes make a new filter each render: its days and chips, as text, say when it changed.
+  const narrowing = JSON.stringify([filter.when, filter.chips]);
   const rows = useMemo(() => {
-    const chosen = filter.chips.client ?? [];
     const all = packages.data ?? NO_PACKAGES;
-    return chosen.length > 0 ? all.filter((pkg) => chosen.includes(pkg.clientId)) : all;
-  }, [packages.data, filter.chips.client]);
+    const [when, chips] = JSON.parse(narrowing) as [string | undefined, ListFilter["chips"]];
+    return all.filter((pkg) => matchesPackage(pkg, { text: "", when, chips }));
+  }, [packages.data, narrowing]);
   const makeStandalone = PackagesMutation.useMakeStandalone();
   const whatsappMenu = useWhatsAppMenu();
   // Read from the list, so the dialog shows the payment once it is saved.
@@ -102,7 +105,7 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
     columns,
     data: rows,
     getRowId: (pkg) => pkg.id,
-    ...sortingFromFilter(filter, onFilterChange, BY_CLIENT, columns),
+    ...sortingFromFilter(filter, onFilterChange, LATEST_FIRST, columns),
   });
 
   return (
@@ -118,7 +121,16 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
             onClick: () => setEditing({ mode: "new" }),
           },
         ]}
-        toolbar={<FilterBar label="Search packages" value={filter} onChange={onFilterChange} facets={facets} />}
+        toolbar={
+          <FilterBar
+            label="Search packages"
+            value={filter}
+            onChange={onFilterChange}
+            facets={facets}
+            presets={PACKAGE_PRESETS}
+            dates
+          />
+        }
       />
 
       <DataTable

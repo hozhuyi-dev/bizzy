@@ -11,19 +11,17 @@ export const DOCUMENT_TYPES: Record<DocumentType, DocumentTypeSpec> = {
     plural: "Invoices",
     recipientLabel: "Bill to",
     totalLabel: "Total",
-    path: "/invoices",
   },
   receipt: {
     title: "Receipt",
     plural: "Receipts",
     recipientLabel: "Received from",
     totalLabel: "Total received",
-    path: "/receipts",
   },
 };
 
-/** What the invoices and receipts lists can be narrowed by, as their URLs name them. */
-export const DOCUMENT_FACETS = ["client", "status"] as const;
+/** What the documents list can be narrowed by, as its URL names them. */
+export const DOCUMENT_FACETS = ["type", "client", "status", "payment"] as const;
 
 export const DOCUMENT_STATUS: Record<DocumentStatus, { label: string; variant: "waiting" | "done" | "neutral" }> = {
   draft: { label: "Draft", variant: "waiting" },

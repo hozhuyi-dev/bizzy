@@ -5,7 +5,7 @@ import type { LinkOptions } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { ActionBar } from "~/components/shared/actions/action-bar/action-bar.component";
-import { useOpenRow } from "~/core/list/open-row.hook";
+import { ROW_FOCUS, useOpenRow } from "~/core/list/open-row.hook";
 import { ROW_ACTIONS } from "~/components/shared/actions/row-actions/row-actions.constant";
 
 /** How an item stands, as its marker shows it: the status tones of badges. */
@@ -69,7 +69,7 @@ interface TimelineItemProps {
   tone?: TimelineTone | undefined;
   /** Coming, not happened yet: a hollow marker on a dashed rail. */
   upcoming?: boolean | undefined;
-  /** When, leading: "Tue 12 Oct · 10:00", a link to its page if it has one. */
+  /** When, leading: "Tue 12 Oct · 10:00". */
   when: ReactNode;
   /** Beside when: its badges. */
   badges?: ReactNode;
@@ -79,9 +79,14 @@ interface TimelineItemProps {
   meta?: ReactNode;
   /** What it is tied to, as chips along the bottom (TimelineLink, TimelineChip). */
   links?: ReactNode;
-  /** What to do with it now, beside it: Done on a follow-up waiting. */
+  /** What to do with it now, beside it: View PDF on a revision. */
   actions?: ReadonlyArray<Action> | undefined;
-  /** Its page: a click anywhere on it opens it. Keep a link for it in `when` or `title`. */
+  /**
+   * Or its buttons as built, the ones its row has wherever it is listed
+   * (Done on a follow-up waiting, Confirm on a session booked).
+   */
+  buttons?: ReactNode;
+  /** Its page: a click anywhere on it, or Enter on it, opens it; no link in it need go there too. */
   open?: LinkOptions | undefined;
   /** For one without a page: what a click on it does instead (open it to edit). */
   onOpen?: (() => void) | undefined;
@@ -102,6 +107,7 @@ export function TimelineItem({
   meta,
   links,
   actions,
+  buttons,
   open,
   onOpen,
 }: TimelineItemProps) {
@@ -115,11 +121,12 @@ export function TimelineItem({
         "before:absolute before:top-0 before:bottom-0 before:left-3.75 before:border-l-2",
         upcoming ? "before:border-dashed before:border-border" : "before:border-border",
         tappable && [
-          "z-0 cursor-pointer",
+          "z-0 cursor-pointer rounded-md",
+          ROW_FOCUS,
           "after:absolute after:inset-0 after:-z-10 after:rounded-md after:transition-colors hover:after:bg-muted/30",
         ],
       )}
-      onClick={tappable ? (event) => openRow(event, open, onOpen) : undefined}
+      {...(tappable ? openRow(open, onOpen) : {})}
     >
       <span
         aria-hidden="true"
@@ -141,7 +148,7 @@ export function TimelineItem({
           {links && <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">{links}</div>}
         </div>
         {/* On a phone under it, full width and big enough for a thumb, as on a to-do row. */}
-        <ActionBar actions={actions} size="sm" className={ROW_ACTIONS} />
+        {buttons ? <div className={ROW_ACTIONS}>{buttons}</div> : <ActionBar actions={actions} size="sm" className={ROW_ACTIONS} />}
       </div>
     </li>
   );

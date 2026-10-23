@@ -1,3 +1,4 @@
+import { ChevronRightIcon } from "lucide-react";
 import { cn } from "cn";
 import type { ReactNode } from "react";
 import type { LinkOptions } from "@tanstack/react-router";
@@ -55,9 +56,9 @@ interface DataRowProps {
   detailTitle?: string | undefined;
   /** Its buttons, or what they are swapped for (see inline-action). */
   actions?: ReactNode;
-  /** Its page: a click anywhere on the row opens it. Keep a button for it in `actions`. */
+  /** Its page: a click anywhere on the row, or Enter on it, opens it; no button or link in it need go there too. */
   open?: LinkOptions | undefined;
-  /** For one without a page: what a click anywhere on it does instead (open it to edit). Keep a button for it too. */
+  /** For one without a page: what opening it does instead (open it to edit). */
   onOpen?: (() => void) | undefined;
 }
 
@@ -71,9 +72,10 @@ interface DataRowProps {
  * summary, or a list that mixes rows with and without one, never shifts.
  *
  * With an `open` (or `onOpen`), a click anywhere on it opens it, like a
- * table row, except on its own links, buttons and fields. Inside a
- * DataListItem it reaches out over the item's padding, so the whole item
- * answers the click and lights up on hover.
+ * table row, except on its own links, buttons and fields; so does Enter
+ * once it has the keyboard. Inside a DataListItem it reaches out over the
+ * item's padding, so the whole item answers the click and lights up on
+ * hover. On a phone, with no hover to tell, a chevron at its side says so.
  */
 export function DataRow({ title, meta, detail, detailTitle, actions, open, onOpen }: DataRowProps) {
   const openRow = useOpenRow();
@@ -82,16 +84,19 @@ export function DataRow({ title, meta, detail, detailTitle, actions, open, onOpe
   return (
     <div
       className={cn("flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4", tappable && TAPPABLE)}
-      onClick={tappable ? (event) => openRow(event, open, onOpen) : undefined}
+      {...(tappable ? openRow(open, onOpen) : {})}
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex h-6 min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap [&>a]:min-w-0 [&>a]:truncate [&>span]:min-w-0 [&>span]:truncate">
-          {title}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex h-6 min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap [&>a]:min-w-0 [&>a]:truncate [&>span]:min-w-0 [&>span]:truncate">
+            {title}
+          </div>
+          <div className="h-5 truncate text-sm text-muted-foreground">{meta}</div>
+          <div title={detailTitle} className="h-4 truncate text-xs text-muted-foreground">
+            {detail}
+          </div>
         </div>
-        <div className="h-5 truncate text-sm text-muted-foreground">{meta}</div>
-        <div title={detailTitle} className="h-4 truncate text-xs text-muted-foreground">
-          {detail}
-        </div>
+        {tappable && <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60 sm:hidden" />}
       </div>
       {actions && <div className={ROW_ACTIONS}>{actions}</div>}
     </div>
@@ -102,5 +107,7 @@ export function DataRow({ title, meta, detail, detailTitle, actions, open, onOpe
 // py), behind the row's content (z-0 keeps it above the item's background).
 const TAPPABLE = [
   "relative z-0 cursor-pointer",
+  // The keyboard's ring goes round the band, not the text.
+  "outline-none focus-visible:before:outline-2 focus-visible:before:-outline-offset-2 focus-visible:before:outline-ring",
   "before:absolute before:-inset-x-(--card-spacing) before:-inset-y-3 before:-z-10 before:transition-colors hover:before:bg-muted/30",
 ].join(" ");

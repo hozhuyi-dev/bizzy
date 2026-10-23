@@ -1,7 +1,7 @@
 import type { SessionLocation } from "./sessions.types";
 
 /** What the sessions list can be narrowed by, as its URL names them. */
-export const SESSION_FACETS = ["client", "stage", "place"] as const;
+export const SESSION_FACETS = ["client", "stage", "place", "invoice", "receipt", "payment"] as const;
 
 /** The Stage chip's value for cancelled sessions, beside the to-do reasons. */
 export const CANCELLED_STAGE = "cancelled";

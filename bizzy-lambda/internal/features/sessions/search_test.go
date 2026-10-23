@@ -74,3 +74,34 @@ func TestSearchFindsSessionsByTheirNotes(t *testing.T) {
 		t.Errorf("pages = %v, %v (next %q)", hitIDs(first), hitIDs(second), second.Next)
 	}
 }
+
+// By how far each one's invoice and receipt have got, and how it was paid:
+// what is still to be issued, what came in by cash.
+func TestSearchByPaperworkAndPayment(t *testing.T) {
+	a, jane, bob := setup(t)
+	unpaid := create(t, a, book(jane, -21*24, -21*24+1, nil))
+	cash := create(t, a, book(bob, -14*24, -14*24+1, fee(8000)))
+	in := map[string]any{"items": []map[string]any{{"kind": "session", "id": cash.ID}}, "payment": map[string]any{"method": "cash"}}
+	if err := a.Must("payments.set", in, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Must("documents.issue", map[string]any{"id": cash.Invoice.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		in   map[string]any
+		want []string
+	}{
+		{map[string]any{"invoices": []string{"draft"}}, []string{unpaid.ID}},
+		{map[string]any{"invoices": []string{"issued"}}, []string{cash.ID}},
+		{map[string]any{"receipts": []string{"none", "draft"}}, []string{cash.ID, unpaid.ID}},
+		{map[string]any{"receipts": []string{"issued"}}, nil},
+		{map[string]any{"payments": []string{"cash"}}, []string{cash.ID}},
+		{map[string]any{"payments": []string{sessions.PaidByCredits, "tng"}}, nil},
+	} {
+		if got := hitIDs(search(t, a, c.in)); !slices.Equal(got, c.want) {
+			t.Errorf("%v = %v, want %v", c.in, got, c.want)
+		}
+	}
+}

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { ClientsListSearch } from "~/features/clients/clients.types";
 import { ClientPage } from "~/features/clients/client-page.component";
-import { clientsListFilter, clientsListSearch, validateClientsListSearch } from "~/features/clients/clients.util";
+import { clientsUrl } from "~/features/clients/clients.util";
 import { textParam } from "~/core/utils/url-param.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ActivityQuery } from "~/features/activity/activity.query";
@@ -17,7 +17,7 @@ export interface ClientSearch extends ClientsListSearch {
 export const Route = createFileRoute("/clients/$id")({
   // The clients list it steps through, too.
   validateSearch: (search: Record<string, unknown>): ClientSearch => ({
-    ...validateClientsListSearch(search),
+    ...clientsUrl.validate(search),
     settle: textParam(search.settle),
   }),
   // Its timeline, read a page at a time with its own filter, shows its own loading.
@@ -41,10 +41,10 @@ function ClientRoute() {
       mode="edit"
       id={id}
       settle={search.settle}
-      filter={clientsListFilter(search)}
+      filter={clientsUrl.toFilter(search)}
       // A new list to step through replaces the entry: Back still returns to the list.
       onFilterChange={(next) =>
-        void navigate({ search: (prev) => ({ ...prev, ...clientsListSearch(next) }), replace: true })
+        void navigate({ search: (prev) => ({ ...prev, ...clientsUrl.toSearch(next) }), replace: true })
       }
     />
   );

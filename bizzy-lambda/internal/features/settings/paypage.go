@@ -156,8 +156,18 @@ const (
 // PayKeys are every file the payment page may have.
 var PayKeys = []string{PayPageKey, PayQRKey, PayPreviewKey, PayRobotsKey}
 
-// payRobots keeps crawlers off the page; its tags say so too.
-const payRobots = "User-agent: *\nDisallow: /\n"
+// payRobots keeps crawlers off the page, but for the link previews of
+// WhatsApp, Facebook, Messenger and Telegram: they heed it too, and would
+// show a bare link. The page's tags still ask not to be indexed.
+const payRobots = `User-agent: facebookexternalhit
+User-agent: Facebot
+User-agent: WhatsApp
+User-agent: TelegramBot
+Allow: /
+
+User-agent: *
+Disallow: /
+`
 
 // PayPage is what the payment page shows.
 type PayPage struct {
@@ -233,6 +243,19 @@ func (p PayPage) title() string {
 	return "Pay " + p.Business
 }
 
+// previewAlt says what the preview shows: "Payment details for Physio
+// Co: DuitNow QR, Bank transfer (Maybank)".
+func (p PayPage) previewAlt() string {
+	alt := "Payment details"
+	if p.Business != "" {
+		alt += " for " + p.Business
+	}
+	if ways := p.ways(); len(ways) > 0 {
+		alt += ": " + strings.Join(ways, ", ")
+	}
+	return alt
+}
+
 // summary is the ways to pay, as the preview's description says them.
 func (p PayPage) summary() string {
 	var ways []string
@@ -275,6 +298,7 @@ func (p PayPage) HTML(siteURL string) ([]byte, error) {
 		"Page":          p,
 		"Title":         p.title(),
 		"Summary":       p.summary(),
+		"PreviewAlt":    p.previewAlt(),
 		"Version":       p.version(),
 		"SiteURL":       siteURL,
 		"AccountDigits": digitsOf(p.Bank),

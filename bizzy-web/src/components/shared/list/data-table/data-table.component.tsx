@@ -8,7 +8,7 @@ import type { ReactTable, Row, RowData } from "@tanstack/react-table";
 import type { DataTableFeatures } from "./data-table.config";
 import type { DataTableColumnMeta } from "./data-table.types";
 import type { Loadable } from "~/core/utils/query.util";
-import { useOpenRow } from "~/core/list/open-row.hook";
+import { ROW_FOCUS, useOpenRow } from "~/core/list/open-row.hook";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
@@ -32,7 +32,7 @@ interface DataTableProps<TData extends RowData> {
   source?: Loadable | undefined;
   /** Words to find rows by, across every column; see core/list/text-search. */
   query?: string | undefined;
-  /** The row's page: a click anywhere on the row opens it (its card has its own `open`). */
+  /** The row's page: a click anywhere on the row, or Enter on it, opens it (its card has its own `open`). */
   rowLink?: ((row: TData) => LinkOptions) | undefined;
   /** For a row without a page: what a click anywhere on it does instead, e.g. open it to edit. */
   onRowOpen?: ((row: TData) => void) | undefined;
@@ -146,12 +146,8 @@ export function DataTable<TData extends RowData>({
               <TableRow
                 key={row.id}
                 data-state={row.getIsSelected() ? "selected" : undefined}
-                className={cn("h-(--row-height) hover:bg-muted/30", (rowLink || onRowOpen) && "cursor-pointer")}
-                onClick={
-                  rowLink || onRowOpen
-                    ? (event) => openRow(event, rowLink?.(row.original), () => onRowOpen?.(row.original))
-                    : undefined
-                }
+                className={cn("h-(--row-height) hover:bg-muted/30", (rowLink || onRowOpen) && cn("cursor-pointer", ROW_FOCUS))}
+                {...(rowLink || onRowOpen ? openRow(rowLink?.(row.original), () => onRowOpen?.(row.original)) : {})}
               >
                 {row.getAllCells().map((cell) => (
                   <TableCell key={cell.id} className={cn(CELL, columnClass(cell.column.columnDef.meta))}>

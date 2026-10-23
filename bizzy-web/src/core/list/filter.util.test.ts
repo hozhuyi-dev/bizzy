@@ -1,9 +1,11 @@
 import {
   PAGE_SIZE,
+  applyPreset,
   filterSearch,
   formatWhen,
   listRequest,
   parseWhen,
+  presetOf,
   stepWhen,
   toFilter,
   toSearch,
@@ -81,9 +83,11 @@ describe("the URL", () => {
   });
 
   test("reads back what it wrote, and nothing it doesn't know", () => {
-    const search = filterSearch({ q: "knee", when: "all", client: "c1", todo: ["collect", 3], other: "x" }, facets);
+    const search = filterSearch({ q: "knee", when: "all", client: "c1", todo: ["collect", null], other: "x" }, facets);
     expect(search).toEqual({ q: "knee", when: "all", client: ["c1"], todo: ["collect"] });
     expect(toFilter(search, facets, "2026-10")).toEqual({ text: "knee", when: undefined, chips: { client: ["c1"], todo: ["collect"] } });
+    // A number in the URL parses as one: a chip as written (?lapse=6).
+    expect(filterSearch({ client: 6 }, facets).client).toEqual(["6"]);
     expect(toFilter(filterSearch({}, facets), facets, "2026-10")).toEqual({ text: "", when: "2026-10", chips: {} });
   });
 
@@ -95,5 +99,45 @@ describe("the URL", () => {
       limit: PAGE_SIZE,
     });
     expect(listRequest({ text: "", when: undefined, chips: {} })).toEqual({ text: "", limit: PAGE_SIZE });
+  });
+});
+
+describe("default chips", () => {
+  const facets = ["status", "client"] as const;
+  const defaults = { status: ["open"] };
+
+  test("stand in when the URL names none, and say all when she takes them off", () => {
+    expect(toFilter({}, facets, undefined, defaults).chips).toEqual({ status: ["open"] });
+    expect(toFilter({ status: ["all"] }, facets, undefined, defaults).chips).toEqual({ status: [] });
+    expect(toFilter({ status: ["done"] }, facets, undefined, defaults).chips).toEqual({ status: ["done"] });
+  });
+
+  test("are left out of the URL", () => {
+    const filter = { text: "", when: undefined, chips: { status: ["open"], client: [] } };
+    expect(toSearch(filter, facets, undefined, defaults)).toMatchObject({ status: undefined, client: undefined });
+    expect(toSearch({ ...filter, chips: { status: [] } }, facets, undefined, defaults).status).toEqual(["all"]);
+  });
+});
+
+describe("presets", () => {
+  const presets = [
+    { label: "Open", when: undefined, chips: { status: ["open"] } },
+    { label: "Overdue", when: undefined, chips: { status: ["overdue"] } },
+    { label: "This month", when: "2026-10", chips: {}, sort: "-date" },
+  ];
+
+  test("name the filter by its days and chips, the words and sort aside", () => {
+    expect(presetOf({ text: "knee", when: undefined, chips: { status: ["open"], client: [] } }, presets)?.label).toBe("Open");
+    expect(presetOf({ text: "", when: "2026-10", chips: {}, sort: "name" }, presets)?.label).toBe("This month");
+    expect(presetOf({ text: "", when: undefined, chips: { status: ["open"], client: ["c1"] } }, presets)).toBeUndefined();
+  });
+
+  test("keep the words, and set their sort", () => {
+    expect(applyPreset({ text: "knee", when: "2026", chips: { client: ["c1"] } }, presets[2]!)).toEqual({
+      text: "knee",
+      when: "2026-10",
+      chips: {},
+      sort: "-date",
+    });
   });
 });

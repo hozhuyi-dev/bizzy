@@ -46,3 +46,34 @@ func TestVendorsAreSuggestedLastUsedFirst(t *testing.T) {
 		t.Errorf("%s isn't archived", v.Name)
 	}
 }
+
+// By shop, however its name was typed, and by whether a receipt is kept;
+// the totals count only what is found.
+func TestSearchByShopAndReceipt(t *testing.T) {
+	a := testapp.New()
+	for _, vendor := range []string{"Shopee", "  shopee ", "Guardian"} {
+		in := map[string]any{"date": "2026-10-01", "vendor": vendor, "lines": []map[string]any{
+			{"name": "Kinesio tape", "categoryId": "purchases", "amountCents": 2500},
+		}}
+		if err := a.Must("expenses.create", in, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	search := func(in map[string]any) expenses.SearchView {
+		t.Helper()
+		var out expenses.SearchView
+		if err := a.Must("expenses.search", in, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if got := search(map[string]any{"vendors": []string{"SHOPEE"}}); len(got.Items) != 2 || got.Totals.Count != 2 || got.Totals.SpentCents != 5000 {
+		t.Errorf("Shopee's = %d items, totals %+v", len(got.Items), got.Totals)
+	}
+	if got := search(map[string]any{"receipts": []string{expenses.ReceiptMissing}}); len(got.Items) != 3 {
+		t.Errorf("missing a receipt = %d, want every one", len(got.Items))
+	}
+	if got := search(map[string]any{"receipts": []string{expenses.ReceiptKept}}); len(got.Items) != 0 || got.Totals.Count != 0 {
+		t.Errorf("with a receipt = %d, totals %+v", len(got.Items), got.Totals)
+	}
+}
