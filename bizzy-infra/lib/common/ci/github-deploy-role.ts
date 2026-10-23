@@ -11,7 +11,11 @@ import type { Environment } from "../../../utils/environment.util";
 export interface GitHubDeployRoleProps {
   projectName: string;
   environment: Environment;
-  /** "owner/repo" whose deploy workflow assumes the role. */
+  /**
+   * The repository whose deploy workflow assumes the role, as GitHub's token
+   * names it: "owner@<owner id>/repo@<repo id>". The ids pin this very
+   * repository: one deleted and made again under the same name has new ones.
+   */
   repository: string;
   /** The account's GitHub Actions OIDC provider. */
   provider: IOpenIdConnectProvider;
@@ -22,7 +26,7 @@ export interface GitHubDeployRoleProps {
  *
  * Only a job running in that environment's GitHub environment gets it: both
  * deploy jobs set `environment:`, so GitHub's token says
- * `repo:<owner>/<repo>:environment:<env>`, not the branch. Which branches
+ * `repo:<repository>:environment:<env>`, not the branch. Which branches
  * may deploy is the GitHub environment's rule.
  *
  * Its own permissions are only what the workflow calls outside CloudFormation,

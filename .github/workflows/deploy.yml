@@ -105,9 +105,11 @@ jobs:
       # keeps the old ones until collected: delete those no stack in the
       # account uses. Ones under a day old stay, for a deploy of another
       # environment still on its way. Cleanup only, so it never fails a deploy.
+      # --app reads the assembly the deploy just wrote: running bin/ again
+      # would need every variable the deploy step had.
       - name: Delete unused Lambda builds
         continue-on-error: true
-        run: pnpm -F bizzy-infra exec cdk gc "aws://${AWS_ACCOUNT_ID}/${AWS_REGION}" --unstable=gc --type=s3 --confirm=false
+        run: pnpm -F bizzy-infra exec cdk gc "aws://${AWS_ACCOUNT_ID}/${AWS_REGION}" --app cdk.out --unstable=gc --type=s3 --confirm=false
         env:
           AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ vars.AWS_REGION }}

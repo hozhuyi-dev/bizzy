@@ -7,7 +7,7 @@ import type { Environment } from "../utils/environment.util";
 
 interface CiStackProps extends cdk.StackProps {
   projectName: string;
-  /** "owner/repo" whose deploy workflow assumes the roles. */
+  /** "owner@<owner id>/repo@<repo id>"; see GitHubDeployRole. */
   repository: string;
   /** The environments GitHub Actions deploys. */
   environments: ReadonlyArray<Environment>;

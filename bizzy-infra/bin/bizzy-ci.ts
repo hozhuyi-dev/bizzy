@@ -14,7 +14,8 @@ const stack = new CiStack(app, `${projectName}-ci`, {
     region: process.env.CDK_DEFAULT_REGION,
   },
   projectName: projectName,
-  repository: "hozhuyi-dev/bizzy",
+  // As GitHub's token names it (CloudTrail shows it on a refused attempt).
+  repository: "hozhuyi-dev@126836727/bizzy@1413334467",
   environments: ["staging", "production"],
 });
 
