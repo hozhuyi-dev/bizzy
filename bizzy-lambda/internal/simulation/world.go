@@ -70,7 +70,7 @@ func newWorld(t *rapid.T) *World {
 	for _, c := range seedClients {
 		fields := map[string]any{"homeVisits": c.visits}
 		if c.cents > 0 {
-			fields["feeRates"] = []map[string]any{{"cents": c.cents}}
+			fields["fee"] = map[string]any{"cents": c.cents}
 		}
 		if _, err := w.Client(c.name, fields); err != nil {
 			t.Fatalf("seed %s: %v", c.name, err)

@@ -69,7 +69,7 @@ func TestResetLeavesNoKeptReads(t *testing.T) {
 	}
 
 	call(a.App, "sync.run", nil)
-	jane, err := a.Client("Jane Smith", map[string]any{"feeRates": []map[string]any{{"cents": 9000}}})
+	jane, err := a.Client("Jane Smith", map[string]any{"fee": map[string]any{"cents": 9000}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestResetLeavesNoKeptReads(t *testing.T) {
 
 	// The other Lambda adds the client back: the edits go in, and both see it.
 	call(b, "clients.create", map[string]any{
-		"name": "Jane Smith", "contact": map[string]any{"resourceName": a.Contact("Jane Smith")}, "feeRates": []map[string]any{{"cents": 9000}},
+		"name": "Jane Smith", "contact": map[string]any{"resourceName": a.Contact("Jane Smith")}, "fee": map[string]any{"cents": 9000},
 	})
 	again := agree("after adding the client back")
 	if again["sessions.search"] == after["sessions.search"] || strings.Contains(again["todo.list"], `"conflict"`) {

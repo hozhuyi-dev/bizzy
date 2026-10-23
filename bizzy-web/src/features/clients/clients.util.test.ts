@@ -8,7 +8,6 @@ const client: ClientView = {
   id: "c",
   name: "Jane",
   aliases: [],
-  feeRates: [],
   homeVisits: false,
   can: { archive: yes, unarchive: { ok: false }, delete: yes },
 };

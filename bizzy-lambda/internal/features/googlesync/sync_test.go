@@ -23,7 +23,7 @@ func setup(t *testing.T, names ...string) (*testapp.App, []string) {
 	a := testapp.New()
 	var ids []string
 	for _, name := range names {
-		id, err := a.Client(name, map[string]any{"feeRates": []map[string]any{{"cents": 9000}}})
+		id, err := a.Client(name, map[string]any{"fee": map[string]any{"cents": 9000}})
 		if err != nil {
 			t.Fatal(err)
 		}

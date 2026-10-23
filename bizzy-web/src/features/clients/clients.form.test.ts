@@ -1,48 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { feeStartError, feesChanged, toClientFields, toClientValues, toFeeRates } from "./clients.form";
+import { toClientFields, toClientValues } from "./clients.form";
 import type { ClientView } from "./clients.types";
 
-const client = (feeRates: ClientView["feeRates"] = []): ClientView => ({
+const client = (feeCents?: number): ClientView => ({
   id: "c1",
   name: "Jane",
   can: { archive: { ok: true }, unarchive: { ok: false }, delete: { ok: true } },
   aliases: [],
-  feeRates,
+  ...(feeCents === undefined ? {} : { feeCents }),
   homeVisits: false,
-});
-
-describe("toFeeRates", () => {
-  it("starts the first fee from the start, whatever date it had", () => {
-    expect(
-      toFeeRates([
-        { from: "2026-01-01", amount: "90" },
-        { from: "2026-10-01", amount: "100.50" },
-      ]),
-    ).toEqual([{ cents: 9000 }, { from: "2026-10-01", cents: 10050 }]);
-  });
-});
-
-describe("feesChanged", () => {
-  it("ignores the order the rows are in", () => {
-    const saved = client([{ cents: 9000 }, { from: "2026-10-01", cents: 10000 }]);
-    expect(feesChanged(saved, [{ from: "2026-10-01", cents: 10000 }, { cents: 9000 }])).toBe(false);
-    expect(feesChanged(saved, [{ cents: 9000 }])).toBe(true);
-    expect(feesChanged(client(), [])).toBe(false);
-  });
-});
-
-describe("feeStartError", () => {
-  const fees = [
-    { from: "", amount: "90" },
-    { from: "2026-10-01", amount: "100" },
-    { from: "2026-10-01", amount: "110" },
-  ];
-  it("needs a day of its own after the first row", () => {
-    expect(feeStartError(fees, 0, "")).toBeUndefined();
-    expect(feeStartError(fees, 1, "")).toBe("Choose the day it starts");
-    expect(feeStartError(fees, 2, "2026-10-01")).toBe("Another fee starts that day");
-    expect(feeStartError(fees, 2, "2026-11-01")).toBeUndefined();
-  });
 });
 
 describe("toClientFields", () => {
@@ -52,5 +18,18 @@ describe("toClientFields", () => {
     expect(toClientFields(values, saved, undefined)).toEqual({});
     expect(toClientFields({ ...values, idNo: " A1234567 " }, saved, undefined)).toEqual({ idNo: "A1234567" });
     expect(toClientFields({ ...values, idNo: "" }, saved, undefined)).toEqual({ idNo: "" });
+  });
+
+  it("sends the fee only when it changed, and an empty one to clear it", () => {
+    const saved = client(9000);
+    const values = toClientValues(saved, undefined);
+    expect(values.fee).toBe("90");
+    expect(toClientFields(values, saved, undefined)).toEqual({});
+    expect(toClientFields({ ...values, fee: "95.50" }, saved, undefined)).toEqual({ fee: { cents: 9550 } });
+    expect(toClientFields({ ...values, fee: "" }, saved, undefined)).toEqual({ fee: {} });
+  });
+
+  it("sends no fee for a new client without one", () => {
+    expect(toClientFields(toClientValues(undefined, "Jane"), undefined, undefined)).not.toHaveProperty("fee");
   });
 });

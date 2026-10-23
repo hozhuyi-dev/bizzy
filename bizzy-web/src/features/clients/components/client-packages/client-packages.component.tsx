@@ -17,7 +17,7 @@ export function ClientPackages({ client }: { client: ClientView }) {
     .filter((pkg) => pkg.clientId === client.id)
     .sort((a, b) => b.purchasedAt.localeCompare(a.purchasedAt));
   if (own.length === 0) {
-    return <p className="text-sm text-muted-foreground">No packages. Write 10x85 after their name in the calendar.</p>;
+    return <p className="text-sm text-muted-foreground">No packages. Write 10x85 after their name in the calendar, or use Add package.</p>;
   }
   return (
     <DataList label="Packages">

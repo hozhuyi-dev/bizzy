@@ -2,7 +2,6 @@ package clients
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"bizzy-lambda/internal/calendar"
@@ -12,16 +11,22 @@ import (
 
 // Fields are what the app sets on a client; nil leaves a field as it is.
 type Fields struct {
-	Name       *string    `json:"name,omitempty"`
-	Aliases    *[]string  `json:"aliases,omitempty"`
-	FeeRates   *[]FeeRate `json:"feeRates,omitempty"`
-	HomeVisits *bool      `json:"homeVisits,omitempty"`
+	Name    *string   `json:"name,omitempty"`
+	Aliases *[]string `json:"aliases,omitempty"`
+	// Fee is their usual hourly fee; one with no cents clears it.
+	Fee        *Fee  `json:"fee,omitempty"`
+	HomeVisits *bool `json:"homeVisits,omitempty"`
 	// IDNo is their IC or passport number (see IDNo); "" clears it.
 	IDNo *string `json:"idNo,omitempty"`
 	// Contact links the client to a Google contact, read from Google by
 	// the route (see Routes); Unlink drops the link, to undo a wrong one.
 	Contact *Contact `json:"-"`
 	Unlink  bool     `json:"-"`
+}
+
+// Fee is a usual hourly fee as set: Cents nil for none.
+type Fee struct {
+	Cents *int64 `json:"cents,omitempty"`
 }
 
 // Create adds a client, linked to a Google contact.
@@ -163,13 +168,11 @@ func apply(tx *txn.Tx, c *Client, f Fields) error {
 			}
 		}
 	}
-	if f.FeeRates != nil {
-		rates := slices.Clone(*f.FeeRates)
-		slices.SortStableFunc(rates, func(a, b FeeRate) int { return strings.Compare(a.From, b.From) })
-		if err := checkFeeRates(rates); err != nil {
-			return err
+	if f.Fee != nil {
+		if f.Fee.Cents != nil && *f.Fee.Cents < 0 {
+			return apperr.Invalid("A fee can't be negative.")
 		}
-		c.FeeRates = rates
+		c.FeeCents = f.Fee.Cents
 	}
 	if f.HomeVisits != nil {
 		c.HomeVisits = *f.HomeVisits

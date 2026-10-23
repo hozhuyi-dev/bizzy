@@ -116,7 +116,7 @@ export function remedyStep(remedy: Remedy, conflict?: ConflictView): RemedyStep 
 
 /** The request once the user has filled in what the step asks for. */
 export function withAnswer(step: CallStep, cents: number | undefined): Record<string, unknown> {
-  if (step.ask === "fee" && cents !== undefined) return { ...step.request, feeRates: [{ cents }] };
+  if (step.ask === "fee" && cents !== undefined) return { ...step.request, fee: { cents } };
   return step.request;
 }
 

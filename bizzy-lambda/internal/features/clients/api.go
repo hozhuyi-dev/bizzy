@@ -11,18 +11,17 @@ import (
 
 // View is a client as the app shows it.
 type View struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Aliases    []string  `json:"aliases"`
-	FeeRates   []FeeRate `json:"feeRates"`
-	HomeVisits bool      `json:"homeVisits"`
-	IDNo       string    `json:"idNo,omitempty"`
-	Contact    *Contact  `json:"contact,omitempty"`
-	// FeeTodayCents is the hourly fee a session without one would be
-	// charged today; nil when no fee is set.
-	FeeTodayCents *int64     `json:"feeTodayCents,omitempty"`
-	ArchivedAt    *time.Time `json:"archivedAt,omitempty"`
-	Can           Can        `json:"can"`
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Aliases []string `json:"aliases"`
+	// FeeCents is the usual hourly fee a new session is charged; nil when
+	// none is set.
+	FeeCents   *int64     `json:"feeCents,omitempty"`
+	HomeVisits bool       `json:"homeVisits"`
+	IDNo       string     `json:"idNo,omitempty"`
+	Contact    *Contact   `json:"contact,omitempty"`
+	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
+	Can        Can        `json:"can"`
 }
 
 // Can is what each action on a client would say now.
@@ -36,16 +35,11 @@ type Can struct {
 // can have (see Delete).
 func ViewOf(tx *txn.Tx, c *Client, owners ...Owner) (View, error) {
 	v := View{
-		ID: c.ID, Name: c.Name, Aliases: c.Aliases, FeeRates: c.FeeRates, HomeVisits: c.HomeVisits, IDNo: c.IDNo,
-		Contact:       c.Contact,
-		FeeTodayCents: c.FeeOn(tx.Now().In(tx.Location()).Format(time.DateOnly)),
-		ArchivedAt:    c.ArchivedAt,
+		ID: c.ID, Name: c.Name, Aliases: c.Aliases, FeeCents: c.FeeCents, HomeVisits: c.HomeVisits, IDNo: c.IDNo,
+		Contact: c.Contact, ArchivedAt: c.ArchivedAt,
 	}
 	if v.Aliases == nil {
 		v.Aliases = []string{}
-	}
-	if v.FeeRates == nil {
-		v.FeeRates = []FeeRate{}
 	}
 	for _, x := range []struct {
 		verdict *apperr.Verdict

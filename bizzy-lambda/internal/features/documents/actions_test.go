@@ -15,7 +15,7 @@ import (
 func setup(t *testing.T) (*testapp.App, string, []sessions.View) {
 	t.Helper()
 	a := testapp.New()
-	jane, err := a.Client("Jane Smith", map[string]any{"feeRates": []map[string]any{{"cents": 9000}}})
+	jane, err := a.Client("Jane Smith", map[string]any{"fee": map[string]any{"cents": 9000}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,12 +9,12 @@ import {
   CalendarPlusIcon,
   CircleAlertIcon,
   MessageCircleIcon,
-  PlusIcon,
+  PackagePlusIcon,
   Trash2Icon,
   WalletIcon,
 } from "lucide-react";
 import { clientLink } from "./clients.columns";
-import { feeStartError, toClientFields, toClientValues } from "./clients.form";
+import { toClientFields, toClientValues } from "./clients.form";
 import { useSaveClient } from "./clients.hook";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
@@ -39,6 +39,7 @@ import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { PackageForm } from "~/features/packages/components/package-form/package-form.component";
 import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
 import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
@@ -46,9 +47,10 @@ import { PageHeader } from "~/components/shared/layout/page-header/page-header.c
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
 import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
-import { Button } from "~/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "~/components/ui/field";
-import { formatDate, todayISO } from "~/core/utils/date.util";
+import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Field, FieldError, FieldGroup } from "~/components/ui/field";
+import { formatDate } from "~/core/utils/date.util";
 import { fieldErrors, moneyError, requiredError } from "~/core/utils/form.util";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { NO_FILTER } from "~/core/list/filter.util";
@@ -172,6 +174,7 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
   const [booking, setBooking] = useState(false);
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
   const [paying, setPaying] = useState(false);
+  const [addingPackage, setAddingPackage] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const archive = ClientsMutation.useArchive();
   const unarchive = ClientsMutation.useUnarchive();
@@ -218,79 +221,18 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
             )}
           </form.AppField>
 
-          <form.Field name="fees" mode="array">
-            {(feesField) => (
-              <Field>
-                <FieldLabel>Hourly fee</FieldLabel>
-                {feesField.state.value.map((_, i) => (
-                  <div key={i} className="grid grid-cols-[7rem_minmax(0,1fr)_auto] items-start gap-2">
-                    <form.AppField
-                      name={`fees[${i}].amount`}
-                      validators={{ onChange: ({ value }) => moneyError(value, { required: "What do they pay an hour?" }) }}
-                    >
-                      {(field) => (
-                        <field.TextField
-                          label="Amount"
-                          labelClassName="sr-only"
-                          form={FORM_ID}
-                          inputMode="decimal"
-                          placeholder="95"
-                        />
-                      )}
-                    </form.AppField>
-                    {i === 0 ? (
-                      <span className="flex h-8 items-center text-sm text-muted-foreground">
-                        {feesField.state.value.length > 1 ? "Until the next one" : "For every session"}
-                      </span>
-                    ) : (
-                      <form.AppField
-                        name={`fees[${i}].from`}
-                        validators={{
-                          onChangeListenTo: ["fees"],
-                          onChange: ({ value }) => feeStartError(form.getFieldValue("fees"), i, value),
-                        }}
-                      >
-                        {(field) => (
-                          <field.TextField
-                            label="Starts on"
-                            labelClassName="sr-only"
-                            prefix="from"
-                            type="date"
-                            form={FORM_ID}
-                            inputClassName="max-w-44"
-                          />
-                        )}
-                      </form.AppField>
-                    )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Remove fee"
-                      onClick={() => feesField.removeValue(i)}
-                    >
-                      <Trash2Icon />
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-fit"
-                  onClick={() =>
-                    feesField.pushValue({ from: feesField.state.value.length > 0 ? todayISO() : "", amount: "" })
-                  }
-                >
-                  <PlusIcon /> {feesField.state.value.length > 0 ? "New fee from a date" : "Set a fee"}
-                </Button>
-                <FieldDescription>
-                  Charged when a calendar entry has no amount and no package credit. A new fee from a date leaves the
-                  sessions before it as they were.
-                </FieldDescription>
-              </Field>
+          <form.AppField name="fee" validators={{ onChange: ({ value }) => moneyError(value) }}>
+            {(field) => (
+              <field.TextField
+                label="Hourly fee"
+                form={FORM_ID}
+                inputMode="decimal"
+                placeholder="95"
+                inputClassName="max-w-44"
+                description="Charged when a session is booked with no amount and no package credit. A new fee leaves sessions booked already as they were."
+              />
             )}
-          </form.Field>
+          </form.AppField>
 
           <form.AppField name="homeVisits">
             {(field) => <field.CheckboxField label="Usually a home visit" description="(V) or (H) in a calendar title still wins." />}
@@ -357,6 +299,7 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
   const more: Array<Action> = client
     ? [
         ...(owed > 0 ? [{ type: "button", label: "Record payment", icon: WalletIcon, onClick: () => setPaying(true) } satisfies Action] : []),
+        { type: "button", label: "Add package", icon: PackagePlusIcon, onClick: () => setAddingPackage(true) },
         { type: "button", label: "Add follow-up", icon: BellPlusIcon, onClick: () => setFollowUp({ mode: "new", clientId: client.id }) },
         ...(whatsapp.canMessage(phone)
           ? [{ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) } satisfies Action]
@@ -416,6 +359,13 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
           <NewSessionDialog open={booking} clientId={client.id} onClose={() => setBooking(false)} />
           <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
           <RecordPaymentDialog client={client} open={paying} onClose={() => setPaying(false)} />
+          <SheetDialog open={addingPackage} onClose={() => setAddingPackage(false)}>
+            <DialogHeader>
+              <DialogTitle>Add package</DialogTitle>
+              <DialogDescription>For {client.name}</DialogDescription>
+            </DialogHeader>
+            {addingPackage && <PackageForm clientId={client.id} onDone={() => setAddingPackage(false)} />}
+          </SheetDialog>
           <DeleteClientDialog
             client={client}
             open={deleting}

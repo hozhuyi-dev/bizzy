@@ -34,14 +34,12 @@ var Invariants = []txn.Invariant{
 		},
 	},
 	{
-		ID: "fees-in-order", Why: "A client's fees run in order: the first from the start, each later one from a day of its own",
+		ID: "fees-not-negative", Why: "A client's usual fee is never negative",
 		On: Clients.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {
 			c, ok, err := Clients.Find(tx, id)
-			if ok {
-				if bad := checkFeeRates(c.FeeRates); bad != nil {
-					return []string{fmt.Sprintf("client %s: %v", id, bad)}, err
-				}
+			if ok && c.FeeCents != nil && *c.FeeCents < 0 {
+				return []string{fmt.Sprintf("client %s has a negative fee", id)}, err
 			}
 			return nil, err
 		},

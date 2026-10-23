@@ -25,8 +25,8 @@ import (
 //  2. otherwise its client's packages bought by its start (one bought in
 //     the session itself included) pay with the credits they have left,
 //     oldest first, an hour a credit, a half hour at a time;
-//  3. what they leave is charged at the client's usual hourly fee on its
-//     day;
+//  3. what they leave is charged at the client's usual hourly fee, as it
+//     is when the session is priced;
 //  4. without one, that is refused: enter a fee.
 //
 // A fee is the session's line on an invoice (see documents); a session
@@ -66,7 +66,7 @@ func price(tx *txn.Tx, s *Session, fee *int64) error {
 	if err != nil {
 		return err
 	}
-	if rate := client.FeeOn(day(tx, s.Start)); rate != nil {
+	if rate := client.FeeCents; rate != nil {
 		return charge(tx, s, Hourly(*rate, left), false, left)
 	}
 	if err := documents.Uncharge(tx, s.Source()); err != nil {
@@ -182,7 +182,7 @@ func Preview(tx *txn.Tx, clientID string, span Span, sessionID string, buysPacka
 		return c, err
 	}
 	c.Kind = CoverNone
-	if rate := client.FeeOn(day(tx, s.Start)); rate != nil {
+	if rate := client.FeeCents; rate != nil {
 		fee := Hourly(*rate, c.FeeMinutes)
 		c.Kind, c.FeeCents = CoverDefault, &fee
 	}

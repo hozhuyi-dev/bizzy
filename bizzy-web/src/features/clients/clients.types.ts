@@ -13,16 +13,18 @@ export interface ClientView {
   name: string;
   /** Other names the user's calendar titles call the client by. */
   aliases: Array<string>;
-  /** The client's fees over time, oldest first; see FeeRate. */
-  feeRates: Array<FeeRate>;
+  /**
+   * The usual hourly fee, charged for what package credits leave of a session
+   * with no fee typed when it is booked; unset when none is set. A session's
+   * invoice line keeps what it was charged.
+   */
+  feeCents?: number;
   /** Sessions are home visits unless their title says (H). */
   homeVisits: boolean;
   /** IC (MyKad, as 900101-14-5678) or passport number, printed under their name on documents. */
   idNo?: string;
   /** The linked Google contact, where the client's details live. */
   contact?: ClientContact;
-  /** The hourly fee a session without one would be charged today; unset when no fee is set. */
-  feeTodayCents?: number;
   /** When the user put them away: kept with all that is theirs, out of lists and pickers, not booked until unarchived. */
   archivedAt?: string;
   can: ClientCan;
@@ -34,17 +36,6 @@ export interface ClientCan {
   unarchive: Verdict;
   /** Only one added by mistake, with nothing of theirs: the others are archived. */
   delete: Verdict;
-}
-
-/**
- * One hourly fee and the day it starts. What package credits leave of a
- * session with no fee typed is charged at the last rate starting on or
- * before its day; a new rate leaves the sessions before it alone.
- */
-export interface FeeRate {
-  /** The first day it applies (YYYY-MM-DD). The first rate has none: it covers everything before the next. */
-  from?: string;
-  cents: number;
 }
 
 /**
@@ -74,7 +65,8 @@ export interface ClientContact {
 export interface ClientFields {
   name?: string;
   aliases?: Array<string>;
-  feeRates?: Array<FeeRate>;
+  /** The usual hourly fee; `{}` clears it. */
+  fee?: { cents?: number };
   homeVisits?: boolean;
   /** `""` clears it. */
   idNo?: string;

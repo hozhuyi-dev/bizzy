@@ -61,7 +61,7 @@ func TestWaitingEditsGoInWithTheirClient(t *testing.T) {
 	}
 
 	calls.Store(0)
-	if _, err := a.Client("Zed Ong", map[string]any{"feeRates": []map[string]any{{"cents": 9000}}}); err != nil {
+	if _, err := a.Client("Zed Ong", map[string]any{"fee": map[string]any{"cents": 9000}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := waiting(t, a); len(got) != 0 {

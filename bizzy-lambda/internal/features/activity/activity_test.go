@@ -25,7 +25,7 @@ func of(t *testing.T, a *testapp.App, clientID string) activity.View {
 
 func TestWhereAClientStands(t *testing.T) {
 	a := testapp.New()
-	jane, err := a.Client("Jane Smith", map[string]any{"feeRates": []map[string]any{{"cents": 9000}}})
+	jane, err := a.Client("Jane Smith", map[string]any{"fee": map[string]any{"cents": 9000}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestWhereAClientStands(t *testing.T) {
 
 func TestLapsedUntilReachedOut(t *testing.T) {
 	a := testapp.New()
-	jane, err := a.Client("Jane Smith", map[string]any{"feeRates": []map[string]any{{"cents": 9000}}})
+	jane, err := a.Client("Jane Smith", map[string]any{"fee": map[string]any{"cents": 9000}})
 	if err != nil {
 		t.Fatal(err)
 	}

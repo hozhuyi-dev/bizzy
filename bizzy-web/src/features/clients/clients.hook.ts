@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { feesChanged } from "./clients.form";
 import { ClientsMutation } from "./clients.mutation";
 import { ClientsQuery } from "./clients.query";
 import { clientsListLink, matchesChips, toClientRow, withLapse } from "./clients.util";
@@ -12,9 +11,9 @@ import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 /**
- * Saves a client: a new one, or what changed on `client`. New fees reach
- * the sessions not invoiced or paid yet; those already invoiced or paid
- * keep the fee they were charged. A new calendar name can let an edit
+ * Saves a client: a new one, or what changed on `client`. A new fee is
+ * charged on sessions booked from then; those booked already keep the fee
+ * they were charged. A new calendar name can let an edit
  * waiting in the calendar apply. Resolves to the saved client, or undefined
  * when refused. `onSaved` gets what the toast says; `quiet` leaves the
  * toast to it, to say with more.
@@ -31,12 +30,12 @@ export function useSaveClient(
   const submit = async (fields: ClientFields) => {
     try {
       const saved = client ? await update.mutateAsync({ id: client.id, fields }) : await create.mutateAsync(fields);
-      const repriced = client && fields.feeRates && feesChanged(client, fields.feeRates);
+      const newFee = client && fields.fee;
       const done = client ? `${saved.name} updated` : `${saved.name} added`;
-      // New fees are money, and the toast says what they reach: no quip then.
+      // A new fee is money, and the toast says what it reaches: no quip then.
       if (quiet) {
         // The caller says it, with more.
-      } else if (repriced) toast.success(`${done} · new fees apply to sessions not invoiced or paid yet`);
+      } else if (newFee) toast.success(`${done} · sessions booked already keep their fee`);
       else toastWithQuip(done, QUIPS.saved);
       onSaved(saved, done);
       return saved;

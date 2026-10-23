@@ -4,7 +4,7 @@ import type { ClientFields } from "./clients.types";
 
 // What each changes is read again as the API says (refreshChanged).
 export const ClientsMutation = {
-  /** A new fee reprices sessions; a new calendar name can let a waiting edit apply. */
+  /** A new calendar name can let a waiting edit apply. */
   useCreate: () => useMutation({ mutationFn: (fields: ClientFields) => ClientsService.create(fields) }),
 
   /** A patch: only what is set changes. */

@@ -23,14 +23,14 @@ Schema version (migrations in `internal/migrations`): 0
 
 ### CLIENT
 
-A client: name, calendar names, usual hourly fees and place, IC or passport number, a copy of their Google contact, and whether archived.
+A client: name, calendar names, usual hourly fee and place, IC or passport number, a copy of their Google contact, and whether archived.
 
 | Field | Type |
 |---|---|
 | id | `string` |
 | name | `string` |
 | aliases | `[]string` |
-| feeRates | `[]clients.FeeRate` |
+| feeCents | `*int64` |
 | homeVisits | `bool` |
 | idNo | `string` |
 | contact | `*clients.Contact` |
@@ -40,7 +40,7 @@ Checked on every change to one:
 
 - **clients-have-a-name**: Every client has a name to show and to match titles by
 - **names-name-one-client**: A name in a calendar title means one client, never two
-- **fees-in-order**: A client's fees run in order: the first from the start, each later one from a day of its own
+- **fees-not-negative**: A client's usual fee is never negative
 - **documents-are-a-clients**: Every document is for one of the clients, who isn't deleted while it is
 - **clients-keep-their-packages**: A client with packages isn't deleted
 - **clients-keep-their-sessions**: A client with sessions isn't deleted

@@ -7,7 +7,7 @@ import type { RowSelectionState } from "@tanstack/react-table";
 import type { ClientView } from "../../clients.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
-import type { DocumentSummary } from "~/features/documents/documents.types";
+import type { DocumentSummary, DocumentType } from "~/features/documents/documents.types";
 import { DocumentsMutation } from "~/features/documents/documents.mutation";
 import { DocumentsQuery } from "~/features/documents/documents.query";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
@@ -20,22 +20,26 @@ import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
+import { Button } from "~/components/ui/button";
 
 const COLUMNS = createClientDocumentColumns();
 
 /**
  * The client's documents section: every invoice and receipt, newest first,
- * drafts last. She ticks issued ones to send in one WhatsApp message (or
- * copy it), or drafts of one type to put on one document; the section's
- * actions do either. A new client has none.
+ * drafts last, narrowed to one type by its chips. The user ticks issued
+ * ones to send in one WhatsApp message (or copy it), or drafts of one type
+ * to put on one document; the section's actions do either. A new client
+ * has none.
  */
 export function useClientDocumentsSection(client: ClientView | undefined): PageSection | undefined {
   const docs = DocumentsQuery.useByClient(client?.id ?? "");
+  const [type, setType] = useState<DocumentType>();
   const [selection, setSelection] = useState<RowSelectionState>({});
   const { send, copy, busy } = useSendDocuments();
   const combine = DocumentsMutation.useCombine();
 
-  const data = useMemo(() => docs.data ?? [], [docs.data]);
+  const all = useMemo(() => docs.data ?? [], [docs.data]);
+  const data = useMemo(() => (type ? all.filter((doc) => doc.type === type) : all), [all, type]);
   const table = useTable({
     features: dataTableFeatures,
     columns: COLUMNS,
@@ -94,28 +98,72 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
       chosen.length > 0
         ? `${chosen.length} ticked. Send issued ones; put drafts of one kind on one document.`
         : "Tick issued ones to send, or drafts to put on one document.",
-    more: data.length > 0 ? actions : undefined,
+    more: all.length > 0 ? actions : undefined,
     bare: true,
     content: docs.isPending ? (
       <LoadingState />
     ) : docs.error ? (
       <ErrorMessage>{docs.error.message}</ErrorMessage>
     ) : (
-      <DataTable
-        table={table}
-        rowLink={(doc) => documentLink(doc)}
-        empty={<EmptyState quips={QUIPS.timeline}>No invoices or receipts yet. They're drafted with each session.</EmptyState>}
-        renderCard={(row) => (
-          <ClientDocumentCard
-            doc={row.original}
-            selectable={row.getCanSelect()}
-            selected={row.getIsSelected()}
-            onSelectedChange={(on) => row.toggleSelected(on)}
+      <div className="flex flex-col gap-3">
+        {all.length > 0 && (
+          <TypeChips
+            docs={all}
+            type={type}
+            onChange={(next) => {
+              // What is ticked out of sight would be sent unseen.
+              setSelection({});
+              setType(next);
+            }}
           />
         )}
-      />
+        <DataTable
+          table={table}
+          rowLink={(doc) => documentLink(doc)}
+          empty={<EmptyState quips={QUIPS.timeline}>No invoices or receipts yet. They're drafted with each session.</EmptyState>}
+          renderCard={(row) => (
+            <ClientDocumentCard
+              doc={row.original}
+              selectable={row.getCanSelect()}
+              selected={row.getIsSelected()}
+              onSelectedChange={(on) => row.toggleSelected(on)}
+            />
+          )}
+        />
+      </div>
     ),
   };
+}
+
+const TYPES = Object.keys(DOCUMENT_TYPES) as Array<DocumentType>;
+
+interface TypeChipsProps {
+  docs: ReadonlyArray<DocumentSummary>;
+  type: DocumentType | undefined;
+  onChange: (type: DocumentType | undefined) => void;
+}
+
+/** All, or one type, each with its count; a type the client has none of isn't offered. */
+function TypeChips({ docs, type, onChange }: TypeChipsProps) {
+  const count = (t: DocumentType) => docs.filter((doc) => doc.type === t).length;
+  return (
+    <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
+      <Button size="xs" variant={type ? "outline" : "default"} aria-pressed={!type} onClick={() => onChange(undefined)}>
+        All {docs.length}
+      </Button>
+      {TYPES.filter((t) => count(t) > 0).map((t) => (
+        <Button
+          key={t}
+          size="xs"
+          variant={type === t ? "default" : "outline"}
+          aria-pressed={type === t}
+          onClick={() => onChange(type === t ? undefined : t)}
+        >
+          {DOCUMENT_TYPES[t].plural} {count(t)}
+        </Button>
+      ))}
+    </div>
+  );
 }
 
 /** The type ticked drafts can be put together as: two or more, each whose lines can move, of one type. */

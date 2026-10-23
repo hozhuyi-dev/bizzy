@@ -15,7 +15,7 @@ func setup(t *testing.T) (a *testapp.App, jane, bob string) {
 	t.Helper()
 	a = testapp.New()
 	var err error
-	if jane, err = a.Client("Jane Smith", map[string]any{"feeRates": []map[string]any{{"cents": 9000}}}); err != nil {
+	if jane, err = a.Client("Jane Smith", map[string]any{"fee": map[string]any{"cents": 9000}}); err != nil {
 		t.Fatal(err)
 	}
 	if bob, err = a.Client("Bob Lee", nil); err != nil {

@@ -33,7 +33,7 @@ var clientActions = []Action{
 		name := rapid.SampledFrom(names).Draw(t, "name")
 		in := map[string]any{"name": name, "contact": map[string]any{"resourceName": w.Contact(name)}}
 		if rapid.Bool().Draw(t, "usual fee?") {
-			in["feeRates"] = rapid.SampledFrom(feeRates).Draw(t, "fees")
+			in["fee"] = rapid.SampledFrom(fees).Draw(t, "fee")
 		}
 		w.call(t, "clients.create", in)
 	}},
@@ -46,7 +46,7 @@ var clientActions = []Action{
 		case 1:
 			in["aliases"] = []string{rapid.SampledFrom(names).Draw(t, "alias")}
 		case 2:
-			in["feeRates"] = rapid.SampledFrom(feeRates).Draw(t, "fees")
+			in["fee"] = rapid.SampledFrom(fees).Draw(t, "fee")
 		case 3:
 			in["homeVisits"] = !c.HomeVisits
 		case 4:
@@ -104,8 +104,8 @@ var clientActions = []Action{
 // duitNowQR is a static DuitNow QR as a bank app gives one (made up).
 const duitNowQR = "00020101021126490014A000000615000101068900530210000012345605030005204809953034585802MY5909PHYSIO CO6012KUALA LUMPUR6304319E"
 
-var feeRates = [][]map[string]any{
-	{}, {{"cents": 9000}}, {{"cents": 9000}, {"from": "2026-10-14", "cents": 9500}}, {{"from": "2026-10-14", "cents": 1}},
+var fees = []map[string]any{
+	{}, {"cents": 9000}, {"cents": 9500}, {"cents": 1}, {"cents": -1},
 }
 
 var sessionActions = []Action{

@@ -20,11 +20,12 @@ type Client struct {
 	// Aliases are other names the user's calendar titles call the client
 	// by, e.g. "jane s".
 	Aliases []string `json:"aliases,omitempty"`
-	// FeeRates are the client's hourly fees over time, oldest first,
-	// charging for what package credits leave of a session with no fee
-	// typed (see FeeOn). A new fee from a date leaves the sessions before
-	// it alone.
-	FeeRates []FeeRate `json:"feeRates,omitempty"`
+	// FeeCents is the client's usual hourly fee, charging for what
+	// package credits leave of a session with no fee typed, when it is
+	// priced (see sessions). The session's invoice line keeps what it was
+	// charged, so a new fee leaves sessions priced before it alone. Nil
+	// when none is set.
+	FeeCents *int64 `json:"feeCents,omitempty"`
 	// HomeVisits makes the client's sessions home visits unless a title
 	// says (H).
 	HomeVisits bool `json:"homeVisits,omitempty"`
@@ -46,30 +47,9 @@ func (c Client) Archived() bool { return c.ArchivedAt != nil }
 
 var Clients = txn.Kind[Client]{
 	Name: "CLIENT", Gone: "This client was deleted.",
-	Doc:   txn.Doc{What: "A client: name, calendar names, usual hourly fees and place, IC or passport number, a copy of their Google contact, and whether archived."},
+	Doc:   txn.Doc{What: "A client: name, calendar names, usual hourly fee and place, IC or passport number, a copy of their Google contact, and whether archived."},
 	Meta:  func(c *Client) txn.Meta { return txn.Meta{ID: c.ID} },
 	Whole: true,
-}
-
-// FeeRate is one hourly fee and the day it starts.
-type FeeRate struct {
-	// From is the first local day (YYYY-MM-DD) it applies; empty for the
-	// first rate, which also covers every session before the next one.
-	From  string `json:"from,omitempty"`
-	Cents int64  `json:"cents"`
-}
-
-// FeeOn is the hourly fee for a session on a local day (YYYY-MM-DD): the
-// last rate starting on or before it. Nil when no fee is set.
-func (c Client) FeeOn(day string) *int64 {
-	var fee *int64
-	for _, r := range c.FeeRates {
-		if r.From > day {
-			break
-		}
-		fee = &r.Cents
-	}
-	return fee
 }
 
 // Contact is the linked Google contact with a read-only copy of the
@@ -186,27 +166,4 @@ func IDNo(typed string) (string, error) {
 		return "", apperr.Invalid("%q is too long for an IC or passport number.", typed)
 	}
 	return id, nil
-}
-
-// checkFeeRates is the refusal for fee rates out of order: the first
-// applies from the start, every later one from a day of its own.
-func checkFeeRates(rates []FeeRate) error {
-	for i, r := range rates {
-		switch {
-		case r.Cents < 0:
-			return apperr.Invalid("A fee can't be negative.")
-		case i == 0 && r.From != "":
-			return apperr.Invalid("The first fee applies from the start, so it has no date.")
-		case i == 0:
-		case r.From == "":
-			return apperr.Invalid("Only the first fee applies from the start; give the others a date.")
-		case r.From <= rates[i-1].From:
-			return apperr.Invalid("Each fee starts on a day of its own, after the one before.")
-		default:
-			if _, err := time.Parse(time.DateOnly, r.From); err != nil {
-				return apperr.Invalid("%q is not a date.", r.From)
-			}
-		}
-	}
-	return nil
 }
