@@ -7,21 +7,28 @@ on:
       - production
   workflow_dispatch:
     inputs:
+      # Development deploys from a laptop (`pnpm dev:deploy`). Each GitHub
+      # environment only deploys from its own branch, so production runs
+      # only on `production`.
       env_name:
         description: "Environment to deploy to"
         required: true
-        default: "development"
+        default: "staging"
         type: choice
         options:
-          - development
           - staging
           - production
 
 # Never cancel a deploy halfway: an interrupted CloudFormation update has to
-# roll back before the next one can start.
+# roll back before the next one can start. Grouped by environment, so a push
+# and a manual run of the same one queue.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.inputs.env_name || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event.inputs.env_name || (github.ref_name == 'production' && 'production') || 'staging' }}
   cancel-in-progress: false
+
+# Every value is a GitHub environment variable but GOOGLE_CLIENT_SECRET, the
+# only secret: the client id ships in the web bundle anyway, and an account
+# id or role ARN grants nothing on its own.
 
 permissions:
   contents: read
@@ -59,8 +66,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       # This checkout's migrations on a copy of the table, before anything is
       # deployed: a migration that would fail stops the deploy here, while
@@ -70,21 +77,21 @@ jobs:
         env:
           ENVIRONMENT: ${{ vars.ENVIRONMENT }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
 
       - name: Deploy stacks
         run: pnpm -F bizzy-infra cdk:deploy:ci
         env:
           ENVIRONMENT: ${{ vars.ENVIRONMENT }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          CALLBACK_URLS: ${{ secrets.CALLBACK_URLS }}
-          LOGOUT_URLS: ${{ secrets.LOGOUT_URLS }}
-          ALLOWED_EMAIL: ${{ secrets.ALLOWED_EMAIL }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          CALLBACK_URLS: ${{ vars.CALLBACK_URLS }}
+          LOGOUT_URLS: ${{ vars.LOGOUT_URLS }}
+          ALLOWED_EMAIL: ${{ vars.ALLOWED_EMAIL }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          SYNC_TIME_ZONE: ${{ secrets.SYNC_TIME_ZONE }}
+          SYNC_TIME_ZONE: ${{ vars.SYNC_TIME_ZONE }}
 
       # The updated functions refuse the table until it is at their schema.
       - name: Migrate
@@ -92,7 +99,7 @@ jobs:
         env:
           ENVIRONMENT: ${{ vars.ENVIRONMENT }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
 
       # Every deploy uploads new Lambda builds to the CDK assets bucket, which
       # keeps the old ones until collected: delete those no stack in the
@@ -102,13 +109,11 @@ jobs:
         continue-on-error: true
         run: pnpm -F bizzy-infra exec cdk gc "aws://${AWS_ACCOUNT_ID}/${AWS_REGION}" --unstable=gc --type=s3 --confirm=false
         env:
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
 
   web:
     needs: infra
-    # Development has no hosting; its app runs on localhost.
-    if: github.event.inputs.env_name != 'development'
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.env_name || (github.ref_name == 'production' && 'production') || 'staging' }}
 
@@ -131,8 +136,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       # Same script as local development, so CI can't drift from it.
       - name: Write web env from stack outputs
@@ -140,7 +145,7 @@ jobs:
         env:
           ENVIRONMENT: ${{ vars.ENVIRONMENT }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
 
       - name: Build
         run: pnpm -F bizzy-web build:${{ vars.ENVIRONMENT }}
