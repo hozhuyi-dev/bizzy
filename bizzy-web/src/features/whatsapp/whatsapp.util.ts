@@ -24,6 +24,7 @@ export function whatsappLink(phone: string | undefined, text: string | undefined
       // Skips the "continue to chat" page wa.me shows on a computer.
       return `https://web.whatsapp.com/send?phone=${digits}${message}`;
     case "desktop":
+    case "ios":
       return `whatsapp://send?phone=${digits}${message}`;
     case "app":
       return text ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : `https://wa.me/${digits}`;

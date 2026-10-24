@@ -1,11 +1,11 @@
 import type { DocumentSummary } from "~/features/documents/documents.types";
 
 /**
- * Where a WhatsApp link opens: the app on her phone (a touch screen); on a
- * computer, WhatsApp Web in the browser or the desktop app, as chosen in
- * Settings for that computer.
+ * Where a WhatsApp link opens: the app on her phone (a touch screen), straight
+ * from this tab on an iPhone or iPad; on a computer, WhatsApp Web in the
+ * browser or the desktop app, as chosen in Settings for that computer.
  */
-export type WhatsAppOn = "app" | "web" | "desktop";
+export type WhatsAppOn = "app" | "ios" | "web" | "desktop";
 
 /** Who a message goes to: the client's name, and the phone WhatsApp opens. */
 export interface WhatsAppRecipient {

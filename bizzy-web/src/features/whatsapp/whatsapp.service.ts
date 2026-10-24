@@ -8,10 +8,17 @@ import type { WhatsAppOn } from "./whatsapp.types";
 let current: ComputerWhatsApp | null = null;
 const listeners = new Set<() => void>();
 
+/** An iPhone or iPad; iPadOS reports itself as a Mac, but one with a touch screen. */
+function isIOS(): boolean {
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 1);
+}
+
 export const WhatsAppService = {
   /** Where a link opens on this device: the app on a phone, else her choice for this computer. */
   device(): WhatsAppOn {
-    return window.matchMedia("(pointer: coarse)").matches ? "app" : WhatsAppService.getComputerApp();
+    if (!window.matchMedia("(pointer: coarse)").matches) return WhatsAppService.getComputerApp();
+    return isIOS() ? "ios" : "app";
   },
 
   /** A link to the chat that opens where this device opens WhatsApp. */
@@ -20,9 +27,13 @@ export const WhatsAppService = {
   },
 
   /**
-   * Opens a WhatsApp link. The desktop app's link hands off to the app and
-   * leaves the page where it is. Anything else opens in a new tab, or in this
-   * one if the browser blocks the tab.
+   * Opens a WhatsApp link. The app's own link (the desktop app, or the app on
+   * an iPhone) hands off to the app and leaves the page where it is. Anything
+   * else opens in a new tab, or in this one if the browser blocks the tab.
+   *
+   * An iPhone gets the app's own link rather than wa.me: Chrome there doesn't
+   * hand wa.me to the app, so it loads wa.me's page in the new tab, which
+   * then opens the app and is left behind.
    *
    * WhatsApp Web gets a new tab every send; one tab can't be reused. It sends
    * Cross-Origin-Opener-Policy, which cuts its tab off from the app: the

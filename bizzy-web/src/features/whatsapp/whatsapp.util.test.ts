@@ -20,6 +20,10 @@ describe("whatsappLink", () => {
     );
   });
 
+  test("opens the app straight from the page on an iPhone", () => {
+    expect(whatsappLink("012-345 6789", "Hi & bye", "ios")).toBe("whatsapp://send?phone=60123456789&text=Hi%20%26%20bye");
+  });
+
   test("opens the desktop app when chosen", () => {
     expect(whatsappLink("012-345 6789", "Hi & bye", "desktop")).toBe(
       "whatsapp://send?phone=60123456789&text=Hi%20%26%20bye",
