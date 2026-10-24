@@ -13,8 +13,6 @@ export interface GoogleConnectionView {
 /** What google.setCalendar takes; mirrors googleconnect's setCalendarRequest. */
 export interface SetCalendarRequest {
   id: string;
-  /** The calendar's name, typed out: choosing it writes every session there. */
-  confirm: string;
 }
 
 export interface GoogleCalendar {

@@ -16,7 +16,6 @@ import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { Button } from "~/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
-import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { formatDate } from "~/core/utils/date.util";
 import { queryMatch } from "~/core/utils/query.util";
@@ -122,15 +121,7 @@ function Connected({ connection }: { connection: GoogleConnectionView }) {
   );
 }
 
-/** Typed names match as the API matches them: ignoring case and spaces at the ends. */
-function sameName(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-/**
- * Choosing a calendar writes every session and follow-up into it and reads
- * every event in it as bizzy's, so she types its name to be sure.
- */
+/** Choosing a calendar writes every session and follow-up into it and reads every event in it as bizzy's. */
 function ChooseCalendarDialog({
   choice,
   current,
@@ -142,15 +133,10 @@ function ChooseCalendarDialog({
 }) {
   const setCalendar = GoogleMutation.useSetCalendar();
   const sync = useSyncCalendar();
-  const [typed, setTyped] = useState("");
-  const close = () => {
-    setTyped("");
-    onClose();
-  };
   const name = choice?.name ?? "";
 
   return (
-    <SheetAlertDialog open={choice !== null} onClose={close}>
+    <SheetAlertDialog open={choice !== null} onClose={onClose}>
       <AlertDialogHeader>
         <AlertDialogTitle>Sync bizzy with {name}?</AlertDialogTitle>
         <AlertDialogDescription>
@@ -162,27 +148,18 @@ function ChooseCalendarDialog({
             : "Older events come in a month at a time after the first sync."}
         </AlertDialogDescription>
       </AlertDialogHeader>
-      <Field>
-        <FieldLabel htmlFor="confirm-calendar">Type {name} to confirm</FieldLabel>
-        <Input
-          id="confirm-calendar"
-          autoComplete="off"
-          value={typed}
-          onChange={(event) => setTyped(event.target.value)}
-        />
-      </Field>
       <AlertDialogFooter>
         <AlertDialogCancel>Cancel</AlertDialogCancel>
         <Button
-          disabled={!choice || !sameName(typed, name) || setCalendar.isPending}
+          disabled={!choice || setCalendar.isPending}
           onClick={() =>
             choice &&
             setCalendar.mutate(
-              { id: choice.id, confirm: typed },
+              { id: choice.id },
               {
                 onSuccess: (updated) => {
                   toast.success(`Syncing ${updated.calendarName}…`);
-                  close();
+                  onClose();
                   sync().catch(toastRefusal);
                 },
                 onError: toastRefusal,
