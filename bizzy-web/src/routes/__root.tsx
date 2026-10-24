@@ -46,7 +46,7 @@ function AuthGate() {
 
   return (
     <PageHeaderSlotsProvider>
-      <div className="min-h-dvh">
+      <div className="min-h-svh">
         <StayCurrent />
         <NavBar />
         <NavigationProgress />

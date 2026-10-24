@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isWide, readingLine, scrollToSection } from "./scroll-spy.util";
+import { readingLine, scrollToSection, wideQuery } from "./scroll-spy.util";
 
 // How long the page must be still before a jump counts as landed.
 const SETTLE_MS = 150;
 
-/** An element's height, kept current as its content changes. */
+/**
+ * An element's height, kept current as its content changes: put the ref on
+ * it. The element comes back too, for what else watches it.
+ */
 export function useHeight<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
+  const [element, setElement] = useState<T | null>(null);
   const [height, setHeight] = useState(0);
   useEffect(() => {
-    const element = ref.current;
     if (!element) return undefined;
     // Rounded down: a fractional height (high-density phones) would otherwise
     // leave a sliver between the banner and what sticks below it, and content
@@ -17,8 +19,8 @@ export function useHeight<T extends HTMLElement>() {
     const observer = new ResizeObserver(() => setHeight(Math.floor(element.getBoundingClientRect().height)));
     observer.observe(element);
     return () => observer.disconnect();
-  });
-  return [ref, height] as const;
+  }, [element]);
+  return [setElement, height, element] as const;
 }
 
 /**
@@ -59,9 +61,13 @@ export function useActiveSection(sectionIds: ReadonlyArray<string>) {
 
   useEffect(() => {
     const list = ids.split(" ");
-    // A handful of sections: measuring on every scroll event is cheap.
+    const wide = wideQuery();
+    let frame = 0;
+    // A handful of sections, measured at most once a frame however many
+    // scroll events come in it (a phone sends them fast while the page glides).
     const read = () => {
-      const offset = readingLine(document.getElementById(list[0] ?? ""), isWide());
+      frame = 0;
+      const offset = readingLine(document.getElementById(list[0] ?? ""), wide.matches);
       const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
       let current = list[0];
       for (const id of list) {
@@ -70,15 +76,19 @@ export function useActiveSection(sectionIds: ReadonlyArray<string>) {
       }
       setActive(atBottom ? list.at(-1) : current);
     };
-    const onScroll = () => (jumping.current ? holdUntilStill() : read());
+    const schedule = () => {
+      frame ||= requestAnimationFrame(read);
+    };
+    const onScroll = () => (jumping.current ? holdUntilStill() : schedule());
     update.current = read;
     read();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", read);
+    window.addEventListener("resize", schedule);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", read);
+      window.removeEventListener("resize", schedule);
       window.clearTimeout(settle.current);
+      cancelAnimationFrame(frame);
     };
   }, [ids, holdUntilStill]);
 

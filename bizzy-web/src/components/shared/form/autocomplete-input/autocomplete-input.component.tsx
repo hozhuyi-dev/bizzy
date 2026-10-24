@@ -1,4 +1,5 @@
 import { Autocomplete } from "@base-ui/react/autocomplete";
+import { cn } from "cn";
 import type { ComponentProps } from "react";
 import { Input } from "~/components/ui/input";
 
@@ -41,7 +42,7 @@ export function AutocompleteInput({ value, onValueChange, suggestions, className
       limit={SUGGESTED}
       openOnInputClick
     >
-      <Autocomplete.Input autoComplete="off" render={<Input className={className} />} {...input} />
+      <Autocomplete.Input autoComplete="off" render={<Input className={cn("h-(--control-height)", className)} />} {...input} />
       <Autocomplete.Portal>
         <Autocomplete.Positioner className="isolate z-50 outline-none" sideOffset={4} align="start">
           <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-(--anchor-width) max-w-(--available-width) min-w-48 origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 data-empty:hidden">

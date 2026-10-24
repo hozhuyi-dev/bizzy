@@ -60,7 +60,7 @@ function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omi
         <Field>
           <FieldLabel>The package bought in it</FieldLabel>
           <Select items={PACKAGE_CHOICES} value={pkg} onValueChange={(value) => value && setPkg(value)}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full data-[size=default]:h-(--control-height)">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

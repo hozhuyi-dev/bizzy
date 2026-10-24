@@ -31,10 +31,10 @@ export function readingLine(section: Element | null, wide: boolean): number {
   return headersHeight() + gap + (wide || !section ? 0 : cssLength("--contents-height", section));
 }
 
-/** Whether the screen is md (Tailwind's) or wider, where contents sit in a column. */
-export function isWide(): boolean {
+/** The screen being md (Tailwind's) or wider, where contents sit in a column: keep it, and read `matches`. */
+export function wideQuery(): MediaQueryList {
   const md = getComputedStyle(document.documentElement).getPropertyValue("--breakpoint-md").trim() || "48rem";
-  return window.matchMedia(`(min-width: ${md})`).matches;
+  return window.matchMedia(`(min-width: ${md})`);
 }
 
 /** Publishes the page banners' height as --banners-height, for --sticky-top. */

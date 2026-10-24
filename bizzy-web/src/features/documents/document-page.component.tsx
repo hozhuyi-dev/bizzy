@@ -389,7 +389,7 @@ function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean
           package it covered is free for a new {title}.
         </AlertDialogDescription>
       </AlertDialogHeader>
-      <Input placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <Input className="h-(--control-height)" placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
       <AlertDialogFooter>
         <AlertDialogCancel>Keep it</AlertDialogCancel>
         <Button

@@ -88,7 +88,7 @@ function Matches({ query, onQueryChange, matches, onPick, onCreate }: MatchesPro
         <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           aria-label="Search your contacts"
-          className="pl-8"
+          className="h-(--control-height) pl-8"
           placeholder="Search your contacts"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}

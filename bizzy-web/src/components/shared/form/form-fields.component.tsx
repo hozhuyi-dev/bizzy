@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import { useId } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useFieldContext, useFormContext } from "./form-context.hook";
@@ -20,6 +21,9 @@ import { fieldErrors } from "~/core/utils/form.util";
  * and its error. An error shows once the field has been left or a submit
  * tried, never while it is first being typed.
  */
+
+/** A box's height: one for every kind, a thumb's on a phone (--control-height). */
+const CONTROL = "h-(--control-height) data-[size=default]:h-(--control-height)";
 
 interface FieldFrameProps {
   label: ReactNode;
@@ -107,7 +111,7 @@ export function TextField({
           onBlur={field.handleBlur}
           onChange={(event) => field.handleChange(event.target.value)}
           aria-invalid={errors.length > 0 || undefined}
-          className={inputClassName}
+          className={cn(CONTROL, inputClassName)}
           {...input}
         />
       </Affixed>
@@ -204,7 +208,7 @@ export function NumberField({
           onBlur={field.handleBlur}
           onChange={(event) => field.handleChange(event.target.valueAsNumber)}
           aria-invalid={errors.length > 0 || undefined}
-          className={inputClassName}
+          className={cn(CONTROL, inputClassName)}
           {...input}
         />
       </Affixed>
@@ -258,7 +262,7 @@ export function SelectField({
           if (!open) field.handleBlur();
         }}
       >
-        <SelectTrigger id={id} className="w-full" aria-label={ariaLabel} aria-invalid={errors.length > 0 || undefined}>
+        <SelectTrigger id={id} className={cn(CONTROL, "w-full")} aria-label={ariaLabel} aria-invalid={errors.length > 0 || undefined}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>

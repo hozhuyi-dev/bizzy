@@ -32,7 +32,7 @@ export function SharedDocumentPage({ token }: { token: string }) {
 
   // As wide as the app; the page scrolls, its header stays.
   return (
-    <main className="mx-auto flex min-h-dvh max-w-(--content-width) flex-col gap-3 px-(--page-gutter) pb-(--page-bottom) sm:gap-4">
+    <main className="mx-auto flex min-h-svh max-w-(--content-width) flex-col gap-3 px-(--page-gutter) pb-(--page-bottom) sm:gap-4">
       {queryMatch(shared, {
         pending: () => <SharedDocumentLoading />,
         error: (error) => <SharedDocumentError error={error} retry={() => shared.refetch()} />,

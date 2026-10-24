@@ -179,7 +179,8 @@ function ModuleLink({ module, active, pathname }: { module: Module; active: bool
         {module.pages.map((page) => (
           <DropdownMenuItem
             key={page.to}
-            render={<Link to={page.to} />}
+            // Exact, so the router doesn't mark Expenses current on Items too: pageOf decides.
+            render={<Link to={page.to} activeOptions={{ exact: true }} />}
             aria-current={page === current ? "page" : undefined}
             className={page === current ? "bg-muted font-medium" : undefined}
           >

@@ -134,17 +134,17 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
           )}
         </form.AppField>
 
-        <div className="flex flex-wrap items-start gap-4">
+        <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,4fr)_4.5rem] items-start gap-3 sm:grid-cols-[10rem_8rem_5rem] sm:gap-4">
           <form.AppField name="date" validators={{ onChange: ({ value }) => requiredError(value, "Pick a day") }}>
-            {(field) => <field.TextField label="Day" type="date" className="w-auto" />}
+            {(field) => <field.TextField label="Day" type="date" />}
           </form.AppField>
 
           <form.AppField name="time" validators={{ onChange: ({ value }) => requiredError(value, "Pick a time") }}>
-            {(field) => <field.TextField label="Start" type="time" step={300} className="w-auto" />}
+            {(field) => <field.TextField label="Start" type="time" step={300} />}
           </form.AppField>
 
           <form.AppField name="minutes" validators={{ onChange: ({ value }) => wholeNumberError(value, 5, 720) }}>
-            {(field) => <field.TextField label="Minutes" inputMode="numeric" className="w-24" />}
+            {(field) => <field.TextField label="Minutes" inputMode="numeric" />}
           </form.AppField>
         </div>
         <form.Subscribe selector={(state) => [state.values.date, state.values.time, state.values.minutes] as const}>
