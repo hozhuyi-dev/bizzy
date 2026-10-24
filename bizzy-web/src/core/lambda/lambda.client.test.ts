@@ -97,3 +97,60 @@ describe("invoke", () => {
     });
   });
 });
+
+describe("what others changed", () => {
+  let heard: Array<ReadonlyArray<string>> = [];
+
+  beforeAll(async () => {
+    onChanged(() => undefined);
+    // The first call with versions only notes them: nothing is shown yet.
+    reply({ data: null, versions: { FIRST: "1" } });
+    await invoke("app.versions");
+  });
+
+  beforeEach(() => {
+    heard = [];
+    onChanged((changed) => heard.push(changed));
+  });
+
+  test("reads again a kind whose version moved on since the last call", async () => {
+    reply({ data: null, versions: { NOTE: "1730000000000000001" } });
+    await invoke("app.versions");
+    heard = [];
+    reply({ data: null, versions: { NOTE: "1730000000000000002" } });
+    await invoke("app.versions");
+    reply({ data: null, versions: { NOTE: "1730000000000000002" } });
+    await invoke("app.versions");
+
+    expect(heard).toEqual([["NOTE"]]);
+  });
+
+  test("reads again what a call that read before another brought", async () => {
+    reply({ data: null, versions: { PAGE: "5" } });
+    await invoke("app.versions");
+    heard = [];
+    reply({ data: null, versions: { PAGE: "4" } });
+    await invoke("sessions.page");
+    reply({ data: null, versions: { PAGE: "5" } });
+    await invoke("app.versions");
+
+    expect(heard).toEqual([["PAGE"]]);
+  });
+
+  test("reads again a kind first written since", async () => {
+    reply({ data: null, versions: { FIRST: "1", NEW: "2" } });
+    await invoke("app.versions");
+
+    expect(heard).toEqual([["NEW"]]);
+  });
+
+  test("says a kind the call changed once", async () => {
+    reply({ data: null, versions: { MINE: "8" } });
+    await invoke("app.versions");
+    heard = [];
+    reply({ data: null, changed: ["MINE"], versions: { MINE: "9", OTHER: "3" } });
+    await invoke("notes.save");
+
+    expect(heard).toEqual([["MINE", "OTHER"]]);
+  });
+});

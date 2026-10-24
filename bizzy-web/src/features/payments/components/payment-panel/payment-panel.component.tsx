@@ -6,6 +6,7 @@ import type { Payable, PaymentMethod } from "../../payments.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { DialogFooter } from "~/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "~/components/ui/field";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { fieldErrors, requiredError } from "~/core/utils/form.util";
@@ -18,15 +19,19 @@ const keyOf = (p: Payable) => `${p.item.kind}:${p.item.id}:${p.paid ? "paid" : "
  * What was received for each item, and a form for what is still owed.
  * Clients pay in full: each item is paid all it owes. A payment is a draft
  * receipt until it is issued; after that, it stays as issued. One recorded
- * by mistake is undone, and recorded again.
+ * by mistake is undone, and recorded again. In a dialog (`onCancel`), Mark
+ * paid is in its footer, beside Cancel.
  */
 export function PaymentPanel({
   payables,
   onPaid,
+  onCancel,
 }: {
   payables: ReadonlyArray<Payable>;
   /** After recording what was owed. */
   onPaid?: () => void;
+  /** In a dialog: closes it, from Cancel in its footer. */
+  onCancel?: () => void;
 }) {
   const paid = payables.filter((p) => p.paid);
   const owed = payables.filter((p) => !p.paid && p.dueCents > 0);
@@ -36,7 +41,9 @@ export function PaymentPanel({
       {paid.map((p) => (
         <PaymentSummary key={keyOf(p)} payable={p} showLabel={payables.length > 1} />
       ))}
-      {owed.length > 0 && <PaymentForm key={owed.map(keyOf).join()} payables={owed} onDone={onPaid} />}
+      {owed.length > 0 && (
+        <PaymentForm key={owed.map(keyOf).join()} payables={owed} onDone={onPaid} onCancel={onCancel} />
+      )}
     </div>
   );
 }
@@ -76,6 +83,7 @@ function PaymentSummary({ payable, showLabel }: { payable: Payable; showLabel: b
 interface PaymentFormProps {
   payables: ReadonlyArray<Payable>;
   onDone?: (() => void) | undefined;
+  onCancel?: (() => void) | undefined;
 }
 
 interface PaymentValues {
@@ -86,7 +94,7 @@ interface PaymentValues {
   paidOn: string;
 }
 
-function PaymentForm({ payables, onDone }: PaymentFormProps) {
+function PaymentForm({ payables, onDone, onCancel }: PaymentFormProps) {
   const setPayment = PaymentsMutation.useSet();
   const [first] = payables;
   const single = payables.length === 1;
@@ -183,11 +191,22 @@ function PaymentForm({ payables, onDone }: PaymentFormProps) {
         )}
       </form.AppField>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <form.AppForm>
-          <form.SubmitButton label="Mark paid" />
-        </form.AppForm>
-      </div>
+      {onCancel ? (
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <form.AppForm>
+            <form.SubmitButton label="Mark paid" />
+          </form.AppForm>
+        </DialogFooter>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <form.AppForm>
+            <form.SubmitButton label="Mark paid" />
+          </form.AppForm>
+        </div>
+      )}
     </form>
   );
 }

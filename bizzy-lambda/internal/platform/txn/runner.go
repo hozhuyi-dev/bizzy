@@ -188,6 +188,40 @@ func Read[T any](ctx context.Context, r *Runner, read func(tx *Tx) (T, error)) (
 	}
 }
 
+// batch is how many items RunBatched changes in one commit, inside
+// table.MaxWrites.
+const batch = 90
+
+// RunBatched runs change on each of ids, a batch of them to a commit: for
+// a change to more items than one commit takes (table.MaxWrites). change
+// changes only the item named, and says whether it did; RunBatched
+// returns how many it changed. Each batch is its own commit, so a failure
+// leaves the batches before it written: only for a change each item stands
+// alone in, which running it again finishes.
+func RunBatched(ctx context.Context, r *Runner, ids []string, change func(tx *Tx, id string) (bool, error)) (int, error) {
+	n := 0
+	for chunk := range slices.Chunk(ids, batch) {
+		changed, err := Run(ctx, r, func(tx *Tx) (int, error) {
+			changed := 0
+			for _, id := range chunk {
+				ok, err := change(tx, id)
+				if err != nil {
+					return 0, err
+				}
+				if ok {
+					changed++
+				}
+			}
+			return changed, nil
+		})
+		n += changed
+		if err != nil {
+			return n, err
+		}
+	}
+	return n, nil
+}
+
 // errBusy is what the app shows when other commits kept going first.
 var errBusy = apperr.Conflict("Something else changed at the same moment. Try again.")
 
@@ -204,6 +238,7 @@ func (r *Runner) settle(tx *Tx, err error) error {
 	if verr != nil {
 		return errors.Join(err, verr)
 	}
+	seen(tx.ctx, now)
 	for pk := range tx.fetched {
 		if now[pk] != tx.versions[pk] {
 			return table.ErrConflict
@@ -228,6 +263,7 @@ func (r *Runner) commit(tx *Tx, writes []table.Write) error {
 	if err != nil {
 		return err
 	}
+	seen(tx.ctx, moved)
 	r.cache().keep(tx.versions, tx.fetched, writes, moved)
 	return nil
 }
@@ -238,6 +274,7 @@ func (r *Runner) begin(ctx context.Context) (*Tx, error) {
 	if err != nil {
 		return nil, err
 	}
+	seen(ctx, versions)
 	c := r.cache()
 	c.prune(versions)
 	tx := &Tx{
@@ -250,6 +287,14 @@ func (r *Runner) begin(ctx context.Context) (*Tx, error) {
 		return nil, err
 	}
 	return tx, nil
+}
+
+// seen tells the request's scope, if any, the versions a run read or moved
+// on to (see Scope.Versions).
+func seen(ctx context.Context, versions table.Versions) {
+	if s := ScopeOf(ctx); s != nil {
+		s.saw(versions)
+	}
 }
 
 // check runs every invariant on every changed item it is on.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/calendar"
+	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/conflicts"
 	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/googlesync"
@@ -402,5 +403,33 @@ func TestAWaitingEditWaitsForTheNewCalendarsSync(t *testing.T) {
 	sync(t, a)
 	if got := allSessions(t, a); len(got) != 1 || len(waiting(t, a)) != 0 {
 		t.Errorf("%d sessions, waiting %+v; want the session, and the old calendar's edit forgotten", len(got), waiting(t, a))
+	}
+}
+
+// Every linked contact gone at once (another Google account connected) is
+// more clients changed than one commit takes: the sync copies them a
+// batch at a time, and goes on to the calendar.
+func TestSyncMarksEveryContactMissing(t *testing.T) {
+	var names []string
+	for i := range 150 {
+		names = append(names, "Client "+string(rune('A'+i/26))+string(rune('a'+i%26)))
+	}
+	a, _ := setup(t, names...)
+	a.Contacts.People = nil
+	a.Calendar.UserAdd(names[0], at(2), at(3))
+	sync(t, a)
+
+	all, err := txn.Read(t.Context(), a.Runner, clients.Clients.All)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range all {
+		if !c.Contact.Missing {
+			t.Fatalf("%s's contact isn't marked missing", c.Name)
+		}
+	}
+	ss, err := txn.Read(t.Context(), a.Runner, sessions.Sessions.All)
+	if err != nil || len(ss) != 1 {
+		t.Errorf("the sync read %d sessions in from the calendar (%v), want 1", len(ss), err)
 	}
 }

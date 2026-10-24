@@ -184,6 +184,14 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* The page's title in a phone's nav bar: a size down, to leave room for a line under it. */
+@utility type-bar-title {
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+  font-weight: var(--font-weight-semibold);
+}
+
 @utility type-section-title {
   font-family: var(--font-heading);
   font-size: var(--text-base);
@@ -215,13 +223,28 @@
   /* The least a button is on a phone, to tap with a thumb. */
   --touch-target: 2.5rem;
   --banners-height: 0px;
+  /* What the phone's dock (PageDock) takes off the bottom, set while it shows. */
+  --dock-height: 0px;
   --sticky-top: calc(var(--nav-height) + var(--page-header-height) + var(--banners-height));
 
   /* The page's layers, bottom to top. */
   --z-sticky: 10;
   --z-header: 20;
   --z-nav: 30;
+  --z-dock: 30;
   --z-popover: 40;
+}
+
+/*
+ * A phone (below md; useCompactLayout is its JS twin): the page's title moves
+ * into the nav bar, which grows a line for it, and the page header goes. Its
+ * actions sit in the dock at the bottom.
+ */
+@media (width < 48rem) {
+  :root {
+    --nav-height: 3.5rem;
+    --page-header-height: 0px;
+  }
 }
 
 /*
@@ -279,11 +302,13 @@
    so jumping to it brings its heading to the top like the others. */
 @utility fill-last-section {
   & > :last-child {
-    min-height: calc(100dvh - var(--sticky-top) - var(--contents-height) - var(--section-gap) - var(--page-bottom));
+    min-height: calc(
+      100dvh - var(--sticky-top) - var(--contents-height) - var(--section-gap) - var(--page-bottom) - var(--dock-height)
+    );
   }
   @variant md {
     & > :last-child {
-      min-height: calc(100dvh - var(--sticky-top) - var(--section-gap) - var(--page-bottom));
+      min-height: calc(100dvh - var(--sticky-top) - var(--section-gap) - var(--page-bottom) - var(--dock-height));
     }
   }
 }

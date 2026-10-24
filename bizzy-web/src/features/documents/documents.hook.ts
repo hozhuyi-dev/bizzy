@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { FileTextIcon, HandCoinsIcon, MergeIcon, MessageCircleIcon } from "lucide-react";
+import { MergeIcon } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentPdfService } from "./document-pdf.service";
 import { DOCUMENT_TYPES } from "./documents.constant";
@@ -43,7 +43,7 @@ export function useDocumentPdf({ errorMessage }: { errorMessage?: string } = {})
 }
 
 /** Who the ticked documents are for: one client, as every action on them is one chat or one document. */
-interface DocumentsFor {
+export interface DocumentsFor {
   name: string;
   phone?: string | undefined;
 }
@@ -82,29 +82,6 @@ export function useDocumentBulkActions(chosen: ReadonlyArray<DocumentSummary>, t
       askToPay: { request: { ids: chosen.map((doc) => doc.id) }, can: allOf(chosen, (doc) => doc.can.askToPay) },
       sendRecords: { docs: chosen, can: allOf(chosen, (doc) => doc.can.send) },
     }),
-  ];
-}
-
-/**
- * The same actions while the list isn't one client's, each saying why
- * not (`why`), so the user finds them there. Reads nothing, as the
- * WhatsApp messages' settings are needed only once one can be sent.
- */
-export function documentBulkActionsUntil(why: string): Array<Action> {
-  const can: Verdict = { ok: false, why };
-  const noop = () => undefined;
-  return [
-    { type: "button", label: "Put together", icon: MergeIcon, can, onClick: noop },
-    {
-      type: "menu",
-      label: "WhatsApp",
-      icon: MessageCircleIcon,
-      can,
-      actions: [
-        { type: "button", label: "Ask to pay", icon: HandCoinsIcon, can, onClick: noop },
-        { type: "button", label: "Send for records", icon: FileTextIcon, can, onClick: noop },
-      ],
-    },
   ];
 }
 

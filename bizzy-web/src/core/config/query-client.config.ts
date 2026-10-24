@@ -3,16 +3,24 @@ import { ApiError, onChanged } from "~/core/lambda/lambda.client";
 import { holdingChanges } from "~/core/utils/query.util";
 
 /**
- * The app's one query cache. Every call says what it changed, and only
- * what shows that is read again (see refreshChanged), so what is cached
- * stays true: it counts as fresh for minutes, and isn't read again on
- * mount or focus. What changes outside the app (the calendar) comes in by
- * syncing, which says what it changed too.
+ * How long what is cached counts as fresh: what the clock changes (a
+ * session past its start) is read again after it, on showing it again or
+ * coming back to the app (see useStayCurrent).
+ */
+export const FRESH_MS = 5 * 60_000;
+
+/**
+ * The app's one query cache. Every call says what it changed, and each
+ * kind's version, so what it or another device changed is read again (see
+ * refreshChanged and invoke); what is cached stays true, and isn't read
+ * again on focus. Coming back to the app asks what changed meanwhile (or
+ * syncs, when the calendar may have changed): one call, see
+ * useStayCurrent.
  */
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60_000,
+      staleTime: FRESH_MS,
       refetchOnWindowFocus: false,
       // A read is tried again only when it may work a moment later: what
       // the API answered (gone, invalid) shows at once.
@@ -29,4 +37,4 @@ export function mayPassLater(error: unknown): boolean {
 /** What calls change, read again now, or once a held run of calls ends (see holdingChanges). */
 export const changes = holdingChanges(queryClient);
 
-onChanged((changed, keep) => changes.changed(changed, keep));
+onChanged((changed, keep, action) => changes.changed(changed, keep, action));

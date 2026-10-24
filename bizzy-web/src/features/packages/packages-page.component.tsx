@@ -173,7 +173,7 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
             </DialogDescription>
           )}
         </DialogHeader>
-        {paying && <PaymentPanel payables={packagePayables(paying)} />}
+        {paying && <PaymentPanel payables={packagePayables(paying)} onCancel={() => setPayingId(undefined)} />}
       </SheetDialog>
 
       <DeletePackageDialog

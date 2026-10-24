@@ -63,7 +63,7 @@ function RecordPayment({ client, onClose }: Omit<RecordPaymentDialogProps, "open
       ) : payables.length === 0 ? (
         <EmptyStateFrame art={<BeeArt pool="empty" />} title={`${client.name} owes nothing.`} />
       ) : (
-        <PaymentPanel payables={payables} onPaid={onClose} />
+        <PaymentPanel payables={payables} onPaid={onClose} onCancel={onClose} />
       )}
     </>
   );

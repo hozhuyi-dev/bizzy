@@ -44,6 +44,13 @@ export function setBannersHeight(height: number | undefined) {
   else root.setProperty("--banners-height", `${height}px`);
 }
 
+/** Publishes the phone's dock height (with the air around it) as --dock-height, for the room under the page. */
+export function setDockHeight(height: number | undefined) {
+  const root = document.documentElement.style;
+  if (!height) root.removeProperty("--dock-height");
+  else root.setProperty("--dock-height", `${height}px`);
+}
+
 /** Scrolls a section's heading to just under the sticky bars. */
 export function scrollToSection(id: string) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

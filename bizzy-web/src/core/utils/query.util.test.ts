@@ -46,13 +46,23 @@ describe("holdingChanges", () => {
   test("reads what a run of calls changed once it ends", async () => {
     const { queryClient, stale } = cacheOf(TodoKeys.list(), ExpenseKeys.detail("1"), AppKeys.status());
     const changes = holdingChanges(queryClient);
-    const release = changes.hold();
-    changes.changed(["SYNC"]);
-    changes.changed(["EXPENSE"]);
+    const release = changes.hold("sync.backfill");
+    changes.changed(["SYNC"], [], "sync.backfill");
+    changes.changed(["EXPENSE"], [], "sync.backfill");
     expect(stale()).toEqual([]);
     release();
     await Promise.resolve();
     expect(stale()).toEqual([ExpenseKeys.detail("1"), AppKeys.status()]);
+  });
+
+  test("reads what other calls change meanwhile at once", async () => {
+    const { queryClient, stale } = cacheOf(TodoKeys.list(), AppKeys.status());
+    const changes = holdingChanges(queryClient);
+    changes.hold("sync.backfill");
+    changes.changed(["SYNC"], [], "sync.backfill");
+    changes.changed(["FOLLOWUP"], [], "followUps.create");
+    await Promise.resolve();
+    expect(stale()).toEqual([TodoKeys.list()]);
   });
 });
 

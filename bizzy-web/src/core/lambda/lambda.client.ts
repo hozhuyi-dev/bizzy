@@ -85,14 +85,15 @@ function unreachable(cause: unknown, action: string): ApiError {
 type QueryKey = ReadonlyArray<unknown>;
 
 /**
- * Told the kinds of item each call changed (see onChanged), and the
- * queries kept as they are meanwhile (see keeping).
+ * Told the kinds of item each call changed, or found changed by others
+ * (see onChanged), the queries kept as they are meanwhile (see keeping),
+ * and the call's action.
  */
-export type ChangeListener = (changed: ReadonlyArray<string>, keep: ReadonlyArray<QueryKey>) => void;
+export type ChangeListener = (changed: ReadonlyArray<string>, keep: ReadonlyArray<QueryKey>, action: string) => void;
 
 let listener: ChangeListener = () => undefined;
 
-/** Hears what every call changed, to read again only what shows it; one listener at a time. */
+/** Hears what every call changed or found changed, to read again only what shows it; one listener at a time. */
 export function onChanged(next: ChangeListener): void {
   listener = next;
 }
@@ -117,10 +118,36 @@ export async function keeping<T>(queryKey: QueryKey | undefined, call: () => Pro
   }
 }
 
+/** Each kind's latest version a call has said, to tell what others changed (see moved). */
+const seen = new Map<string, bigint>();
+
+/**
+ * The kinds whose version a call says isn't the one last seen: moved on,
+ * so another device (or the job) changed them since and what shows them
+ * is out of date; or behind, so the call itself read them before a later
+ * call did, and what it brought may be. Nothing on the first call, before
+ * anything is shown. A kind the call doesn't mention is one it didn't see
+ * (wiped), not a change.
+ */
+function moved(versions: Record<string, string> | undefined): Array<string> {
+  if (!versions) return [];
+  const first = seen.size === 0;
+  const kinds: Array<string> = [];
+  for (const [kind, text] of Object.entries(versions)) {
+    const version = BigInt(text);
+    const last = seen.get(kind);
+    if (last === version) continue;
+    if (!first) kinds.push(kind);
+    if (last === undefined || version > last) seen.set(kind, version);
+  }
+  return kinds;
+}
+
 function unwrap<T>(text: string, trace: ErrorTrace): T {
   const body = JSON.parse(text) as ApiResponse<T>;
   // Before any error: a call refused halfway may have changed something.
-  if (body.changed?.length) listener(body.changed, [...kept.values()].map(({ key }) => key));
+  const changed = [...new Set([...(body.changed ?? []), ...moved(body.versions)])];
+  if (changed.length) listener(changed, [...kept.values()].map(({ key }) => key), trace.action ?? "");
   if (body.error) {
     throw new ApiError(body.error.code, body.error.message, body.error.remedies, trace);
   }

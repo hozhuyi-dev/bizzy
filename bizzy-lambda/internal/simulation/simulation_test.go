@@ -26,26 +26,29 @@ func TestMain(m *testing.M) {
 // TestSimulation runs random sequences of actions from every actor and
 // checks the world after each one (see checks.go).
 func TestSimulation(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		w := newWorld(t)
-		actions := map[string]func(*rapid.T){
-			"": func(t *rapid.T) { check(t, w) },
-		}
-		for _, a := range Catalogue() {
-			actions[a.Name] = func(t *rapid.T) {
-				appOnly := a.Actor == ActorUser && !a.Syncs
-				var before map[string]bool
-				if appOnly {
-					before = conflictIDs(t, w)
-				}
-				a.Run(t, w)
-				if appOnly {
-					noNewConflicts(t, a.Name, before, conflictIDs(t, w))
-				}
+	rapid.Check(t, func(t *rapid.T) { simulate(t, newWorld(t)) })
+}
+
+// simulate runs random actions from every actor on a world, checking it
+// after each one.
+func simulate(t *rapid.T, w *World) {
+	actions := map[string]func(*rapid.T){
+		"": func(t *rapid.T) { check(t, w) },
+	}
+	for _, a := range Catalogue() {
+		actions[a.Name] = func(t *rapid.T) {
+			appOnly := a.Actor == ActorUser && !a.Syncs
+			var before map[string]bool
+			if appOnly {
+				before = conflictIDs(t, w)
+			}
+			a.Run(t, w)
+			if appOnly {
+				noNewConflicts(t, a.Name, before, conflictIDs(t, w))
 			}
 		}
-		t.Repeat(actions)
-	})
+	}
+	t.Repeat(actions)
 }
 
 // TestCatalogueCoversEveryMutation fails when a mutation is added to the

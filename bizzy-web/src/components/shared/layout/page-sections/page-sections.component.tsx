@@ -1,6 +1,8 @@
 import { cn } from "cn";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import { SelectionSlotContext } from "~/components/shared/list/selection-bar/selection-bar.hook";
 import { ActionBar } from "~/components/shared/actions/action-bar/action-bar.component";
 import { SECTION_UNDERLINE } from "~/components/shared/layout/page-sections/page-sections.constant";
 import { Card, CardContent } from "~/components/ui/card";
@@ -131,6 +133,8 @@ function Contents({
  */
 function SectionBlock({ section }: { section: PageSection }) {
   const { id, title, description, actions, more, content, bare } = section;
+  // Beside the heading, what is ticked in the section takes the actions' place (SelectionBar).
+  const [selectionSlot, setSelectionSlot] = useState<HTMLElement | null>(null);
   return (
     <section
       id={id}
@@ -138,21 +142,30 @@ function SectionBlock({ section }: { section: PageSection }) {
       className="scroll-below-headers flex flex-col gap-3"
     >
       <div className="flex flex-col gap-0.5">
-        <div className="flex h-6 items-center justify-between gap-2">
+        <div className="group/section flex h-6 items-center justify-between gap-2">
           <h2 id={`${id}-title`} className="truncate type-section-title">
             {title}
           </h2>
-          <ActionBar actions={actions} more={more} size="sm" foldBelow="lg" />
+          <div ref={setSelectionSlot} className="flex min-w-0 items-center empty:hidden" />
+          <ActionBar
+            actions={actions}
+            more={more}
+            size="sm"
+            foldBelow="lg"
+            className="group-has-data-selecting/section:hidden"
+          />
         </div>
         {description && <p className="max-w-prose text-sm text-muted-foreground">{description}</p>}
       </div>
-      {bare ? (
-        content
-      ) : (
-        <Card>
-          <CardContent className="flex flex-col gap-4">{content}</CardContent>
-        </Card>
-      )}
+      <SelectionSlotContext value={selectionSlot}>
+        {bare ? (
+          content
+        ) : (
+          <Card>
+            <CardContent className="flex flex-col gap-4">{content}</CardContent>
+          </Card>
+        )}
+      </SelectionSlotContext>
     </section>
   );
 }

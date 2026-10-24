@@ -124,6 +124,21 @@ const BILLING = [
 ] as const;
 
 /**
+ * What shows what the time makes of an item, not only what is stored: a
+ * session past its start, a follow-up due, a package expiring, the to-do
+ * list. Read again now and then while the app is open (see
+ * useStayCurrent), as no call says the clock moved.
+ */
+export const CLOCK_KEYS = [
+  TodoKeys.all,
+  SessionKeys.all,
+  FollowUpKeys.all,
+  PackageKeys.all,
+  TimelineKeys.all,
+  ActivityKeys.all,
+] as const;
+
+/**
  * The queries that show each kind of item the API stores (its partition,
  * as a response's `changed` names it), read again when a call changes one.
  * A kind not here reads everything again.

@@ -24,6 +24,10 @@ const SHEET = [
   // The footer runs to the sheet's square bottom edge, and keeps clear of
   // the phone's home bar itself, as it is pinned there.
   "max-sm:[&_[data-slot$=dialog-footer]]:rounded-b-none",
+  // On a phone its buttons share one row, each as wide as the next and a
+  // thumb's height, as a DataCard's: Cancel first, the main one at the edge.
+  "max-sm:[&_[data-slot$=dialog-footer]]:flex-row",
+  "max-sm:[&_[data-slot$=dialog-footer]>*]:h-(--touch-target) max-sm:[&_[data-slot$=dialog-footer]>*]:min-w-0 max-sm:[&_[data-slot$=dialog-footer]>*]:flex-1",
   "max-sm:has-[[data-slot$=dialog-footer]]:pb-4 max-sm:[&_[data-slot$=dialog-footer]]:pb-[max(1rem,env(safe-area-inset-bottom))]",
 ].join(" ");
 

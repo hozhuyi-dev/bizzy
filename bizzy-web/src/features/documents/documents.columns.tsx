@@ -6,8 +6,9 @@ import type { LinkOptions } from "@tanstack/react-router";
 import type { DocumentStatus, DocumentSummary, DocumentType, DocumentsSearch } from "./documents.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ClientView } from "~/features/clients/clients.types";
+import type { Tick } from "~/components/shared/list/tick-slot/tick-slot.component";
 import { Badge } from "~/components/ui/badge";
-import { Checkbox } from "~/components/ui/checkbox";
+import { TickSlot } from "~/components/shared/list/tick-slot/tick-slot.component";
 import { CellText } from "~/components/shared/list/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
@@ -92,24 +93,31 @@ export const documentDateColumn = helper.accessor("filedAt", {
     ),
 });
 
-/** A tick on each document something can be done with (see canTick), and one ticking them all. */
-export const documentTickColumn = helper.display({
+/** What a document's slot ticks with: its row's selection, which the list's rules allow (see canTick). */
+export function documentTick(
+  doc: DocumentSummary,
+  row: { tickable: boolean; ticked: boolean; onTickedChange: (ticked: boolean) => void },
+  ticking: boolean,
+): Tick {
+  return { ...row, ticking, label: `Tick ${documentName(doc)}` };
+}
+
+/**
+ * Each document's round slot, first: its type's icon, and its tick (see
+ * TickSlot). Always there, so ticking moves no column.
+ */
+export const documentSlotColumn = helper.display({
   id: "select",
-  header: ({ table }) => (
-    <Checkbox
-      aria-label="Tick every document"
-      checked={table.getIsAllRowsSelected()}
-      indeterminate={table.getIsSomeRowsSelected()}
-      onCheckedChange={(checked) => table.toggleAllRowsSelected(checked)}
-    />
-  ),
+  header: () => <span className="sr-only">Tick</span>,
   meta: { width: "fit" },
-  cell: ({ row }) => (
-    <Checkbox
-      aria-label={`Tick ${documentName(row.original)}`}
-      disabled={!row.getCanSelect()}
-      checked={row.getIsSelected()}
-      onCheckedChange={(checked) => row.toggleSelected(checked)}
+  cell: ({ row, table }) => (
+    <TickSlot
+      icon={<DocumentTypeIcon type={row.original.type} />}
+      tick={documentTick(
+        row.original,
+        { tickable: row.getCanSelect(), ticked: row.getIsSelected(), onTickedChange: (on) => row.toggleSelected(on) },
+        table.getIsSomeRowsSelected() || table.getIsAllRowsSelected(),
+      )}
     />
   ),
 });
@@ -137,25 +145,16 @@ function DocumentClient({ doc, clientsById }: { doc: DocumentSummary; clientsByI
 
 /**
  * The table's columns; `search` is the list's filter, for each document's
- * page to step through. With `ticking`, a tick column first.
+ * page to step through. Each starts with its slot, its icon and tick.
  */
-export const createDocumentColumns = (
-  search: DocumentsSearch | undefined,
-  clientsById: ReadonlyMap<string, ClientView>,
-  ticking = false,
-) =>
+export const createDocumentColumns = (search: DocumentsSearch | undefined, clientsById: ReadonlyMap<string, ClientView>) =>
   helper.columns([
-    ...(ticking ? [documentTickColumn] : []),
+    documentSlotColumn,
     helper.accessor("type", {
       header: "Type",
       sortFn: "alphanumeric",
       meta: { search: (doc: DocumentSummary) => DOCUMENT_TYPES[doc.type].title },
-      cell: ({ getValue }) => (
-        <span className="flex items-center gap-2">
-          <DocumentTypeIcon type={getValue()} />
-          {DOCUMENT_TYPES[getValue()].title}
-        </span>
-      ),
+      cell: ({ getValue }) => DOCUMENT_TYPES[getValue()].title,
     }),
     helper.accessor((doc) => doc.number ?? "", {
       id: "number",
@@ -204,33 +203,25 @@ export const createDocumentColumns = (
     }),
   ]);
 
-/** A card's tick, as a card has no checkbox: a toggle among its buttons. */
-export interface CardTick {
-  selectable: boolean;
-  selected: boolean;
-  onSelectedChange: (selected: boolean) => void;
-}
-
-/** The toggle a card ticks with, when it can be ticked. */
-export function tickAction(tick: CardTick | undefined): Array<Action> {
-  if (!tick?.selectable) return [];
-  return [{ type: "toggle", label: tick.selected ? "Ticked" : "Tick", pressed: tick.selected, onPressedChange: tick.onSelectedChange }];
-}
-
 interface DocumentCardProps {
   doc: DocumentSummary;
   clientsById: ReadonlyMap<string, ClientView>;
   search?: DocumentsSearch | undefined;
-  tick?: CardTick | undefined;
+  tick: Tick;
 }
 
-/** The phone layout of a table row: the client under its number, as the table's Client column. */
+/**
+ * The phone layout of a table row: the client under its number, as the
+ * table's Client column. Its slot ticks it; Copy link waits behind ⋯, so
+ * every card is one height.
+ */
 export function DocumentCard({ doc, clientsById, search, tick }: DocumentCardProps) {
   return (
     <DataCard
+      leading={<TickSlot icon={<DocumentTypeIcon type={doc.type} />} tick={tick} />}
+      selected={tick.ticked}
       title={
         <>
-          <DocumentTypeIcon type={doc.type} />
           <span className="font-medium">{documentName(doc)}</span>
           <DocumentStatusBadge status={doc.status} revising={doc.revising} />
         </>
@@ -243,7 +234,7 @@ export function DocumentCard({ doc, clientsById, search, tick }: DocumentCardPro
         </>
       }
       detail={`${coversText(doc.covers)} · ${dateText(doc)}`}
-      actions={[...tickAction(tick), ...documentActions(doc)]}
+      more={documentActions(doc)}
       open={documentLink(doc, search)}
     />
   );

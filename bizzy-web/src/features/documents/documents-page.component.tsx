@@ -1,27 +1,25 @@
 import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { cn } from "cn";
-import { DocumentCard, createDocumentColumns, documentLink } from "./documents.columns";
+import { DocumentCard, createDocumentColumns, documentLink, documentTick } from "./documents.columns";
 import { DocumentsQuery } from "./documents.query";
-import { canTick, documentBulkActionsUntil, useDocumentBulkActions } from "./documents.hook";
-import { documentFacets, documentPresets, documentsUrl, singleClientOf } from "./documents.util";
-import type { ReactNode } from "react";
+import { canTick } from "./documents.hook";
+import { documentFacets, documentPresets, documentsUrl } from "./documents.util";
+import { TickedBar } from "./components/ticked-bar/ticked-bar.component";
 import type { RowSelectionState } from "@tanstack/react-table";
 import type { DocumentSummary } from "./documents.types";
-import type { ClientView } from "~/features/clients/clients.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
+import { SelectionHint } from "~/components/shared/list/selection-bar/selection-bar.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
 import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-
-const UNTIL_ONE_CLIENT = documentBulkActionsUntil("Pick one client in the filter to tick their documents.");
 
 interface DocumentsPageProps {
   filter: ListFilter;
@@ -31,10 +29,11 @@ interface DocumentsPageProps {
 /**
  * Invoices and receipts by date, latest first (a draft by its latest
  * session), searched on the server a page at a time: by number, who it is
- * for, type, client, status, what is owed and days. Narrowed to one
- * client, they can be ticked to ask to pay, send or put together, as on
- * the client's page: each of those is for one client, so until then the
- * actions say so.
+ * for, type, client, status, what is owed and days. Each can be ticked by
+ * its slot to ask to pay, send or put together, as on the client's page.
+ * Each of those is for one client, so the first tick fixes the client: only
+ * theirs can be ticked after it, and the selection bar says whose they are.
+ * Changing the filter clears the ticks, so nothing out of sight is sent.
  * Documents are made from a session or a package, so there is no "new"
  * button here.
  */
@@ -47,11 +46,12 @@ export function DocumentsPage({ filter, onFilterChange }: DocumentsPageProps) {
   const data = useMemo(() => pageItems(documents.data), [documents.data]);
   // Each document's page steps through this list.
   const search = useMemo(() => documentsUrl.toSearch(filter), [filter]);
-  const clientId = singleClientOf(filter);
-  const client = clients.data?.find((c) => c.id === clientId);
-  const ticking = client !== undefined;
-  const columns = useMemo(() => createDocumentColumns(search, clientsById, ticking), [search, clientsById, ticking]);
+  const columns = useMemo(() => createDocumentColumns(search, clientsById), [search, clientsById]);
   const [selection, setSelection] = useState<RowSelectionState>({});
+  const ticked = (doc: DocumentSummary) => selection[doc.id] === true;
+  // Whose the ticked are: the first tick's client.
+  const clientId = data.find(ticked)?.clientId;
+  const tickable = (doc: DocumentSummary) => canTick(doc) && (clientId === undefined || doc.clientId === clientId);
 
   const table = useTable({
     features: dataTableFeatures,
@@ -61,17 +61,19 @@ export function DocumentsPage({ filter, onFilterChange }: DocumentsPageProps) {
     // Read a page at a time, by date: sorting a page would only sort what
     // is loaded.
     enableSorting: false,
-    enableRowSelection: (row) => ticking && canTick(row.original),
+    enableRowSelection: (row) => tickable(row.original),
     state: { rowSelection: selection },
     onRowSelectionChange: setSelection,
   });
-  const chosen = ticking ? data.filter((doc) => selection[doc.id]) : [];
+  const chosen = data.filter(ticked);
+  const ticking = chosen.length > 0;
+  const client = clientId === undefined ? undefined : clientsById.get(clientId);
   const toolbar = (
     <FilterBar
       label="Search documents"
       value={filter}
       onChange={(next) => {
-        // Ticks are one client's, and what is ticked out of sight would be sent unseen.
+        // What is ticked out of sight would be sent unseen.
         setSelection({});
         onFilterChange(next);
       }}
@@ -83,17 +85,7 @@ export function DocumentsPage({ filter, onFilterChange }: DocumentsPageProps) {
 
   return (
     <>
-      {ticking ? (
-        <TickingHeader client={client} chosen={chosen} toolbar={toolbar} onDone={() => setSelection({})} />
-      ) : (
-        <PageHeader title="Documents" moreActions={UNTIL_ONE_CLIENT} toolbar={toolbar} />
-      )}
-      {/* Kept while ticking, so the first tick doesn't move the list; what each action is for is said on it. */}
-      {ticking && (
-        <p className="text-sm text-muted-foreground">
-          {chosen.length > 0 ? `${chosen.length} of ${client.name}'s ticked.` : `None of ${client.name}'s ticked.`}
-        </p>
-      )}
+      <PageHeader title="Documents" toolbar={toolbar} />
       <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
         <DataTable
           table={table}
@@ -115,37 +107,25 @@ export function DocumentsPage({ filter, onFilterChange }: DocumentsPageProps) {
               doc={row.original}
               clientsById={clientsById}
               search={search}
-              tick={
-                ticking
-                  ? {
-                      selectable: row.getCanSelect(),
-                      selected: row.getIsSelected(),
-                      onSelectedChange: (on) => row.toggleSelected(on),
-                    }
-                  : undefined
-              }
+              tick={documentTick(
+                row.original,
+                { tickable: row.getCanSelect(), ticked: row.getIsSelected(), onTickedChange: (on) => row.toggleSelected(on) },
+                ticking,
+              )}
             />
           )}
         />
         <LoadMore pages={documents} found={data.length > 0} />
       </div>
+      {!ticking && data.some(canTick) && <SelectionHint>Tick documents for more actions</SelectionHint>}
+      {ticking && (
+        <TickedBar
+          chosen={chosen}
+          to={{ name: client?.name ?? chosen[0]?.recipientName ?? "", phone: client?.contact?.phone }}
+          all={data.filter(tickable)}
+          onTick={(picked) => setSelection(Object.fromEntries(picked.map((doc) => [doc.id, true])))}
+        />
+      )}
     </>
   );
-}
-
-interface TickingHeaderProps {
-  client: ClientView;
-  chosen: ReadonlyArray<DocumentSummary>;
-  toolbar: ReactNode;
-  onDone: () => void;
-}
-
-/**
- * The header while the list is one client's, with what can be done to the
- * ticked: its own component, so what the actions read (the settings the
- * WhatsApp messages are written from) is read only once there are any.
- */
-function TickingHeader({ client, chosen, toolbar, onDone }: TickingHeaderProps) {
-  const actions = useDocumentBulkActions(chosen, { name: client.name, phone: client.contact?.phone }, onDone);
-  return <PageHeader title="Documents" moreActions={actions} toolbar={toolbar} />;
 }

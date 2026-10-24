@@ -4,36 +4,43 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"strconv"
 	"sync"
+
+	"bizzy-lambda/internal/platform/table"
 )
 
 // Scope is one request: the kinds its commits changed, which the app is
-// told so it reads again only what they show (see router.Response), and
-// work left for the request's end, done once however many commits asked
-// for it (writing the calendar: see googlesync).
+// told so it reads again only what they show (see router.Response), the
+// partitions' versions as the request last saw them, which tell the app
+// what others changed, and work left for the request's end, done once
+// however many commits asked for it (writing the calendar: see
+// googlesync).
 type Scope struct {
-	mu      sync.Mutex
-	changed map[string]bool
-	values  map[any]any
-	ends    []func(ctx context.Context)
-	counts  map[string]int
+	mu       sync.Mutex
+	changed  map[string]bool
+	versions table.Versions
+	values   map[any]any
+	ends     []func(ctx context.Context)
+	counts   map[string]int
 }
 
 type scopeKey struct{}
 
 // WithScope starts a request's scope; End finishes it.
 func WithScope(ctx context.Context) (context.Context, *Scope) {
-	s := &Scope{changed: map[string]bool{}, values: map[any]any{}, counts: map[string]int{}}
+	s := &Scope{changed: map[string]bool{}, versions: table.Versions{}, values: map[any]any{}, counts: map[string]int{}}
 	return context.WithValue(ctx, scopeKey{}, s), s
 }
 
 // Scoped starts a request's scope, and returns the function that ends it
-// and says what the request changed and counted: router.Router's Scope.
-func Scoped(ctx context.Context) (context.Context, func(ctx context.Context) ([]string, map[string]int)) {
+// and says what the request changed, the versions it saw and what it
+// counted: router.Router's Scope.
+func Scoped(ctx context.Context) (context.Context, func(ctx context.Context) ([]string, map[string]string, map[string]int)) {
 	ctx, s := WithScope(ctx)
-	return ctx, func(ctx context.Context) ([]string, map[string]int) {
+	return ctx, func(ctx context.Context) ([]string, map[string]string, map[string]int) {
 		s.End(ctx)
-		return s.Changed(), s.Counts()
+		return s.Changed(), s.Versions(), s.Counts()
 	}
 }
 
@@ -118,6 +125,32 @@ func (s *Scope) Changed() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Sorted(maps.Keys(s.changed))
+}
+
+// Versions are the partitions' versions as the request last saw them, its
+// own commits' included, in decimal: a JavaScript number can't hold one.
+// Nil when the request read none.
+func (s *Scope) Versions() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.versions) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(s.versions))
+	for pk, v := range s.versions {
+		out[pk] = strconv.FormatInt(v, 10)
+	}
+	return out
+}
+
+// saw notes versions read from the table, or moved on to by a commit: the
+// latest of each partition counts, since a request's runs may overlap.
+func (s *Scope) saw(versions table.Versions) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for pk, v := range versions {
+		s.versions[pk] = max(s.versions[pk], v)
+	}
 }
 
 func (s *Scope) note(changes []Change) {

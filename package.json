@@ -15,6 +15,7 @@
     "lambda:migrate": "node scripts/migrate.mjs",
     "lambda:migrate:dry": "node scripts/migrate.mjs --dry-run",
     "data:copy": "node scripts/copy.mjs",
+    "data:replay": "node scripts/replay.mjs",
     "infra:test": "pnpm -F bizzy-infra test",
     "infra:lint": "pnpm -F bizzy-infra lint",
     "infra:typecheck": "pnpm -F bizzy-infra typecheck",

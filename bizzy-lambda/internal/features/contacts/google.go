@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -147,34 +149,131 @@ func (g *Google) Label(ctx context.Context, resourceName string) error {
 	if err != nil {
 		return err
 	}
+	group, err := label(ctx, svc, LabelName, true)
+	if err != nil {
+		return err
+	}
+	_, err = svc.ContactGroups.Members.Modify(group, &people.ModifyContactGroupMembersRequest{
+		ResourceNamesToAdd: []string{resourceName},
+	}).Context(ctx).Do()
+	return googleauth.Wrap("label contact", err)
+}
 
+// label is the resource name of the user's label called name, made the
+// first time when create is set; "" when there is none.
+func label(ctx context.Context, svc *people.Service, name string, create bool) (string, error) {
 	group := ""
-	err = svc.ContactGroups.List().PageSize(1000).Pages(ctx, func(page *people.ListContactGroupsResponse) error {
+	err := svc.ContactGroups.List().PageSize(1000).Pages(ctx, func(page *people.ListContactGroupsResponse) error {
 		for _, cg := range page.ContactGroups {
-			if cg.GroupType == "USER_CONTACT_GROUP" && cg.Name == LabelName {
+			if cg.GroupType == "USER_CONTACT_GROUP" && cg.Name == name {
 				group = cg.ResourceName
 			}
 		}
 		return nil
 	})
-	if err != nil {
-		return googleauth.Wrap("list labels", err)
+	if err != nil || group != "" || !create {
+		return group, googleauth.Wrap("list labels", err)
 	}
+	created, err := svc.ContactGroups.Create(&people.CreateContactGroupRequest{
+		ContactGroup: &people.ContactGroup{Name: name},
+	}).Context(ctx).Do()
+	if err != nil {
+		return "", googleauth.Wrap("create label", err)
+	}
+	return created.ResourceName, nil
+}
 
-	if group == "" {
-		created, err := svc.ContactGroups.Create(&people.CreateContactGroupRequest{
-			ContactGroup: &people.ContactGroup{Name: LabelName},
+// What People API batches take at most.
+const (
+	maxCreates = 200
+	maxDeletes = 500
+	maxMembers = 1000
+)
+
+// clientKey tags a contact CreateLabelled made with what it was made for.
+const clientKey = "bizzy"
+
+// CreateLabelled makes a contact for each of details, keyed by what each
+// is for (a client's id), all under the label called name, made if need
+// be. It returns each one's contact by its key. data:copy makes a test
+// account's contacts with it.
+func (g *Google) CreateLabelled(ctx context.Context, name string, details map[string]Details) (map[string]Person, error) {
+	svc, err := g.service(ctx)
+	if err != nil {
+		return nil, err
+	}
+	group, err := label(ctx, svc, name, true)
+	if err != nil {
+		return nil, err
+	}
+	var all []*people.ContactToCreate
+	for _, key := range slices.Sorted(maps.Keys(details)) {
+		d := details[key]
+		p := &people.Person{
+			Names:      []*people.Name{{GivenName: d.GivenName, FamilyName: d.FamilyName}},
+			ClientData: []*people.ClientData{{Key: clientKey, Value: key}},
+			Memberships: []*people.Membership{{
+				ContactGroupMembership: &people.ContactGroupMembership{ContactGroupResourceName: group},
+			}},
+		}
+		p.EmailAddresses = setEmail(nil, d.Email)
+		p.PhoneNumbers = setPhone(nil, d.Phone)
+		p.Addresses = setAddress(nil, d.Address)
+		all = append(all, &people.ContactToCreate{ContactPerson: p})
+	}
+	made := map[string]Person{}
+	for batch := range slices.Chunk(all, maxCreates) {
+		out, err := svc.People.BatchCreateContacts(&people.BatchCreateContactsRequest{
+			Contacts: batch, ReadMask: personFields + ",clientData",
 		}).Context(ctx).Do()
 		if err != nil {
-			return googleauth.Wrap("create label", err)
+			return made, googleauth.Wrap("create contacts", err)
 		}
-		group = created.ResourceName
+		for _, r := range out.CreatedPeople {
+			if r.Person == nil {
+				continue
+			}
+			for _, cd := range r.Person.ClientData {
+				if cd.Key == clientKey {
+					made[cd.Value] = toPerson(r.Person)
+				}
+			}
+		}
 	}
+	return made, nil
+}
 
-	_, err = svc.ContactGroups.Members.Modify(group, &people.ModifyContactGroupMembersRequest{
-		ResourceNamesToAdd: []string{resourceName},
-	}).Context(ctx).Do()
-	return googleauth.Wrap("label contact", err)
+// DeleteLabelled deletes every contact under the label called name, and
+// returns how many it deleted.
+func (g *Google) DeleteLabelled(ctx context.Context, name string) (int, error) {
+	svc, err := g.service(ctx)
+	if err != nil {
+		return 0, err
+	}
+	group, err := label(ctx, svc, name, false)
+	if err != nil || group == "" {
+		return 0, err
+	}
+	// A label lists at most maxMembers at once; reading it again also
+	// bounds a label slow to show what was deleted.
+	deleted := 0
+	for range 20 {
+		cg, err := svc.ContactGroups.Get(group).MaxMembers(maxMembers).Context(ctx).Do()
+		if err != nil {
+			return deleted, googleauth.Wrap("read label", err)
+		}
+		if len(cg.MemberResourceNames) == 0 {
+			return deleted, nil
+		}
+		for batch := range slices.Chunk(cg.MemberResourceNames, maxDeletes) {
+			_, err := svc.People.BatchDeleteContacts(&people.BatchDeleteContactsRequest{ResourceNames: batch}).Context(ctx).Do()
+			if err != nil {
+				return deleted, googleauth.Wrap("delete contacts", err)
+			}
+			deleted += len(batch)
+		}
+	}
+	return deleted, fmt.Errorf("label %s still has contacts after deleting %d", name, deleted)
 }
 
 func apiErr(op string, err error) error {

@@ -172,13 +172,10 @@ function SessionPipeline({ session, returnTo, settle, filter, pager }: SessionPi
     <>
       <PageHeader
         parent={parent}
-        title={
-          // The day tells a client's sessions apart; it truncates first on a phone.
-          <>
-            {client?.name ?? session.clientName}
-            <span className="font-normal text-muted-foreground"> · {formatDate(session.start)}</span>
-          </>
-        }
+        title={client?.name ?? session.clientName}
+        titleLink={client ? { to: "/clients/$id", params: { id: client.id } } : undefined}
+        // The day tells a client's sessions apart.
+        subtitle={formatDate(session.start)}
         pager={pager}
         moreActions={more}
         menuActions={menu}

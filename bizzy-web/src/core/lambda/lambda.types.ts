@@ -4,6 +4,8 @@ export interface ApiResponse<T> {
   error?: ApiErrorBody;
   /** The kinds of item the call changed (e.g. "SESSION"), refused or not; mirrors router.Response. */
   changed?: Array<string>;
+  /** Each kind's version as the call last saw it, in decimal (too big for a number); none when it read nothing. */
+  versions?: Record<string, string>;
 }
 
 /**
