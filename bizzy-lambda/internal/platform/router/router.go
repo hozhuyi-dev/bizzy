@@ -30,6 +30,10 @@ type Response struct {
 	// Changed are the kinds of item the request changed, whether or not it
 	// then failed: the app reads again only what shows them.
 	Changed []string `json:"changed,omitempty"`
+	// Versions are the partitions' versions as the request last saw them
+	// (in decimal), so the app also reads again what others changed: a
+	// kind whose version isn't the one it last saw.
+	Versions map[string]string `json:"versions,omitempty"`
 }
 
 type ErrorBody struct {
@@ -54,8 +58,9 @@ type Router struct {
 	kinds    map[string]Kind
 	// Scope, when set, wraps every request: it gives the request its
 	// context, and a function that finishes the request, once its handler
-	// returns, and says what it changed and counted (see txn.Scope).
-	Scope func(ctx context.Context) (context.Context, func(ctx context.Context) ([]string, map[string]int))
+	// returns, and says what it changed, the versions it saw and what it
+	// counted (see txn.Scope).
+	Scope func(ctx context.Context) (context.Context, func(ctx context.Context) ([]string, map[string]string, map[string]int))
 	// LogRequests logs a line per request (see logRequest): the Lambda's,
 	// not the tests' thousands.
 	LogRequests bool
@@ -103,7 +108,7 @@ func (r *Router) Handle(ctx context.Context, req Request) (Response, error) {
 	ctx, end := r.Scope(ctx)
 	res := respond(ctx, req.Action, h, req.Payload)
 	var counts map[string]int
-	res.Changed, counts = end(ctx)
+	res.Changed, res.Versions, counts = end(ctx)
 	if r.LogRequests {
 		logRequest(ctx, req.Action, time.Since(start), res, counts)
 	}

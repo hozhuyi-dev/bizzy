@@ -417,3 +417,40 @@ func TestARunnerServesOnlyATableAtItsSchema(t *testing.T) {
 		}
 	}
 }
+
+func TestARequestSaysTheVersionsItLastSaw(t *testing.T) {
+	r, _ := newRunner()
+	add := func(ctx context.Context) {
+		t.Helper()
+		if _, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+			return nil, notes.Add(tx, &note{ID: tx.NewID(), Owner: "jane", At: day})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(ctx context.Context) {
+		t.Helper()
+		if _, err := txn.Read(ctx, r, func(tx *txn.Tx) ([]*note, error) { return notes.All(tx) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, mine := txn.WithScope(context.Background())
+	add(ctx)
+	first := mine.Versions()["NOTE"]
+	if first == "" {
+		t.Fatalf("versions = %v; want the commit's NOTE", mine.Versions())
+	}
+
+	// Another device's commit, then a read here: the read sees it.
+	add(context.Background())
+	ctx, later := txn.WithScope(context.Background())
+	read(ctx)
+	if v := later.Versions()["NOTE"]; v == "" || v == first {
+		t.Errorf("NOTE after another commit = %q; want moved on from %q", v, first)
+	}
+
+	if _, none := txn.WithScope(context.Background()); none.Versions() != nil {
+		t.Errorf("versions of a request that read nothing = %v; want none", none.Versions())
+	}
+}

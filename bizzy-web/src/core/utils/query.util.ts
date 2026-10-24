@@ -81,22 +81,23 @@ export function refreshAll(queryClient: QueryClient, keep: Keys = []): Promise<u
 }
 
 /**
- * Holds what calls change until `released`, then reads it again once: for
- * a run of calls (the backfill) whose pages would otherwise be read again
- * after each.
+ * Holds what one action's calls change until `released`, then reads it
+ * again once: for a run of calls (the backfill) whose pages would
+ * otherwise be read again after each. Every other call's changes are read
+ * again at once meanwhile, so what the user does shows as ever.
  */
 export function holdingChanges(queryClient: QueryClient) {
-  let held: Set<string> | undefined;
+  let held: { action: string; kinds: Set<string> } | undefined;
   return {
-    /** Refreshes now, or later while held. */
-    changed(changed: ReadonlyArray<string>, keep: Keys = []): void {
-      if (held) changed.forEach((kind) => held?.add(kind));
+    /** Refreshes now, or later while `action`'s are held. */
+    changed(changed: ReadonlyArray<string>, keep: Keys = [], action = ""): void {
+      if (held?.action === action) changed.forEach((kind) => held?.kinds.add(kind));
       else void refreshChanged(queryClient, changed, keep);
     },
-    hold(): () => void {
-      held ??= new Set();
+    hold(action: string): () => void {
+      held ??= { action, kinds: new Set() };
       return () => {
-        const kinds = held;
+        const kinds = held?.kinds;
         held = undefined;
         if (kinds?.size) void refreshChanged(queryClient, [...kinds]);
       };

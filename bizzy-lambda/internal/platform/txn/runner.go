@@ -204,6 +204,7 @@ func (r *Runner) settle(tx *Tx, err error) error {
 	if verr != nil {
 		return errors.Join(err, verr)
 	}
+	seen(tx.ctx, now)
 	for pk := range tx.fetched {
 		if now[pk] != tx.versions[pk] {
 			return table.ErrConflict
@@ -228,6 +229,7 @@ func (r *Runner) commit(tx *Tx, writes []table.Write) error {
 	if err != nil {
 		return err
 	}
+	seen(tx.ctx, moved)
 	r.cache().keep(tx.versions, tx.fetched, writes, moved)
 	return nil
 }
@@ -238,6 +240,7 @@ func (r *Runner) begin(ctx context.Context) (*Tx, error) {
 	if err != nil {
 		return nil, err
 	}
+	seen(ctx, versions)
 	c := r.cache()
 	c.prune(versions)
 	tx := &Tx{
@@ -250,6 +253,14 @@ func (r *Runner) begin(ctx context.Context) (*Tx, error) {
 		return nil, err
 	}
 	return tx, nil
+}
+
+// seen tells the request's scope, if any, the versions a run read or moved
+// on to (see Scope.Versions).
+func seen(ctx context.Context, versions table.Versions) {
+	if s := ScopeOf(ctx); s != nil {
+		s.saw(versions)
+	}
 }
 
 // check runs every invariant on every changed item it is on.

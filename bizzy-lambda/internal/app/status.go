@@ -19,9 +19,16 @@ type StatusView struct {
 	Sync   *googlesync.View    `json:"sync"`
 }
 
-// statusRoutes registers app.status. auth is nil in tests, which don't ask
-// Google whether it still accepts the connection.
+// statusRoutes registers app.status and app.versions. auth is nil in
+// tests, which don't ask Google whether it still accepts the connection.
 func statusRoutes(r *router.Router, run *txn.Runner, auth googleconnect.Auth) {
+	// What the app asks on coming back to it: nothing but the versions
+	// every response carries (see router.Response), about one read, so it reads
+	// again only what changed meanwhile, on another device or by the job.
+	r.Query("app.versions", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
+		return txn.Read(ctx, run, func(*txn.Tx) (any, error) { return nil, nil })
+	}))
+
 	r.Query("app.status", router.Typed(func(ctx context.Context, _ struct{}) (any, error) {
 		var conn *googleconnect.Connection
 		v, err := txn.Read(ctx, run, func(tx *txn.Tx) (StatusView, error) {

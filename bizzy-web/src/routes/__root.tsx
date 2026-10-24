@@ -5,7 +5,7 @@ import { TooltipProvider } from "~/components/ui/tooltip";
 import { AuthQuery } from "~/features/auth/auth.query";
 import { AuthScreen } from "~/features/auth/components/auth-screen/auth-screen.component";
 import { NavBar } from "~/features/nav-bar/components/nav-bar/nav-bar.component";
-import { SyncOnLoad } from "~/features/sync/components/sync-on-load/sync-on-load.component";
+import { StayCurrent } from "~/features/sync/components/stay-current/stay-current.component";
 import { queryClient } from "~/core/config/query-client.config";
 import { AppBannerContext } from "~/components/shared/layout/page-header/page-header.hook";
 import { SetupNotice } from "~/features/settings/components/setup-notice/setup-notice.component";
@@ -38,7 +38,7 @@ function AuthGate() {
 
   return (
     <div className="min-h-dvh">
-      <SyncOnLoad />
+      <StayCurrent />
       <NavBar />
       <NavigationProgress />
       <main className="mx-auto max-w-(--content-width) px-(--page-gutter) pb-(--page-bottom)">
