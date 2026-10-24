@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { usePageSlots } from "~/components/shared/layout/page-header/page-header.hook";
 import { useHeight } from "~/core/scroll-spy/scroll-spy.hook";
 import { setDockHeight } from "~/core/scroll-spy/scroll-spy.util";
+import { useFocusInPlace } from "~/core/viewport/focus-in-place.hook";
 import { useKeyboardInset } from "~/core/viewport/keyboard-inset.hook";
 
 // The dock and its tray: frosted panels floating over the page.
@@ -25,6 +26,7 @@ export function PageDock() {
   const { setDock, setTray } = usePageSlots();
   const [frameRef, height, frame] = useHeight<HTMLDivElement>();
   useKeyboardInset(frame);
+  useFocusInPlace(frame);
 
   useEffect(() => {
     setDockHeight(height);

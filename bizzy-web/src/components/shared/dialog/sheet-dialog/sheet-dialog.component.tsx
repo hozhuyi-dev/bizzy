@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertDialog, AlertDialogContent } from "~/components/ui/alert-dialog";
 import { Dialog, DialogContent } from "~/components/ui/dialog";
+import { useFocusInPlace } from "~/core/viewport/focus-in-place.hook";
 import { useKeyboardInset } from "~/core/viewport/keyboard-inset.hook";
 
 /**
@@ -10,10 +11,12 @@ import { useKeyboardInset } from "~/core/viewport/keyboard-inset.hook";
  * keeps its room above the keyboard. Taller than the screen, it scrolls,
  * its footer's buttons kept in view at the bottom; the title scrolls away,
  * leaving the room to the fields. On a phone it rides above the keyboard
- * (useKeyboardInset), so the footer's buttons stay in reach while typing.
+ * (useKeyboardInset), so the footer's buttons stay in reach while typing,
+ * and a box tapped scrolls into view inside it, the page left still
+ * (useFocusInPlace).
  */
 const SHEET = [
-  "max-h-[calc(90dvh-var(--keyboard-inset))] overflow-y-auto sm:max-w-lg",
+  "max-h-[calc(90dvh-var(--keyboard-inset))] overflow-y-auto overscroll-contain sm:max-w-lg",
   "max-sm:top-auto max-sm:bottom-(--keyboard-inset) max-sm:left-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0",
   "max-sm:rounded-b-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
   "max-sm:data-open:slide-in-from-bottom-8 max-sm:data-closed:slide-out-to-bottom-8",
@@ -47,6 +50,7 @@ interface SheetDialogProps {
 export function SheetDialog({ open, onClose, children }: SheetDialogProps) {
   const [sheet, setSheet] = useState<HTMLDivElement | null>(null);
   useKeyboardInset(sheet);
+  useFocusInPlace(sheet);
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent ref={setSheet} className={SHEET}>
@@ -60,6 +64,7 @@ export function SheetDialog({ open, onClose, children }: SheetDialogProps) {
 export function SheetAlertDialog({ open, onClose, children }: SheetDialogProps) {
   const [sheet, setSheet] = useState<HTMLDivElement | null>(null);
   useKeyboardInset(sheet);
+  useFocusInPlace(sheet);
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && onClose()}>
       <AlertDialogContent ref={setSheet} className={ALERT_SHEET}>

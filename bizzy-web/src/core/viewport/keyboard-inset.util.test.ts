@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTypedInto, keyboardInset } from "./keyboard-inset.util";
+import { keyboardInset, opensKeyboard, revealBy } from "./keyboard-inset.util";
 import type { ViewportReading } from "./keyboard-inset.util";
 
 // An iPhone's screen in Chrome, its bars shown, nothing typed into.
@@ -31,7 +31,7 @@ describe("keyboardInset", () => {
   });
 });
 
-describe("isTypedInto", () => {
+describe("opensKeyboard", () => {
   const input = (type: string, { readOnly = false, disabled = false } = {}) => {
     const element = document.createElement("input");
     element.type = type;
@@ -41,16 +41,39 @@ describe("isTypedInto", () => {
   };
 
   it("is true of a box typed into", () => {
-    expect(isTypedInto(input("text"))).toBe(true);
-    expect(isTypedInto(input("search"))).toBe(true);
-    expect(isTypedInto(document.createElement("textarea"))).toBe(true);
+    expect(opensKeyboard(document.createElement("input"))).toBe(true);
+    expect(opensKeyboard(input("search"))).toBe(true);
+    expect(opensKeyboard(input("number"))).toBe(true);
+    expect(opensKeyboard(document.createElement("textarea"))).toBe(true);
+  });
+
+  it("is false of a date or time, which opens a picker", () => {
+    expect(opensKeyboard(input("date"))).toBe(false);
+    expect(opensKeyboard(input("time"))).toBe(false);
   });
 
   it("is false of what is tapped, read only or off", () => {
-    expect(isTypedInto(input("checkbox"))).toBe(false);
-    expect(isTypedInto(input("text", { readOnly: true }))).toBe(false);
-    expect(isTypedInto(input("text", { disabled: true }))).toBe(false);
-    expect(isTypedInto(document.createElement("button"))).toBe(false);
-    expect(isTypedInto(null)).toBe(false);
+    expect(opensKeyboard(input("checkbox"))).toBe(false);
+    expect(opensKeyboard(input("text", { readOnly: true }))).toBe(false);
+    expect(opensKeyboard(input("text", { disabled: true }))).toBe(false);
+    expect(opensKeyboard(document.createElement("button"))).toBe(false);
+    expect(opensKeyboard(null)).toBe(false);
+  });
+});
+
+describe("revealBy", () => {
+  const view = { viewTop: 100, viewBottom: 400 };
+
+  it("is 0 for a box in view", () => {
+    expect(revealBy({ ...view, boxTop: 150, boxBottom: 190 })).toBe(0);
+  });
+
+  it("brings a box under what can be seen up to the middle", () => {
+    // Middle of 100–400 is 250: the box's middle (520) moves up 270.
+    expect(revealBy({ ...view, boxTop: 500, boxBottom: 540 })).toBe(270);
+  });
+
+  it("brings a box above what can be seen down to the middle", () => {
+    expect(revealBy({ ...view, boxTop: 20, boxBottom: 60 })).toBe(-210);
   });
 });

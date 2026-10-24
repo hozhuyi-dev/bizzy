@@ -13,7 +13,7 @@ export interface ViewportReading {
   /** How far the visual viewport is scrolled down the layout one; under 0 while the page bounces. */
   offsetTop: number;
   scale: number;
-  /** Whether what has focus is typed into. */
+  /** Whether what has focus brings up the keyboard. */
   editing: boolean;
 }
 
@@ -30,12 +30,32 @@ export function keyboardInset({ layoutHeight, height, offsetTop, scale, editing 
   return covered >= KEYBOARD_MIN_PX ? Math.round(covered) : 0;
 }
 
-// Inputs that are tapped, not typed into: no keyboard comes up.
-const UNTYPED = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
+// Inputs typed into with the keyboard. A date or time opens the system's
+// picker instead, and the rest are tapped.
+const TYPED = new Set(["", "email", "number", "password", "search", "tel", "text", "url"]);
 
 /** Whether an element brings up the keyboard while it has focus. */
-export function isTypedInto(element: Element | null): boolean {
+export function opensKeyboard(element: Element | null): element is HTMLElement {
   if (element instanceof HTMLTextAreaElement) return !element.readOnly && !element.disabled;
-  if (element instanceof HTMLInputElement) return !element.readOnly && !element.disabled && !UNTYPED.has(element.type);
+  if (element instanceof HTMLInputElement) {
+    return !element.readOnly && !element.disabled && TYPED.has(element.getAttribute("type") ?? "");
+  }
   return element instanceof HTMLElement && element.isContentEditable === true;
+}
+
+/** Where a box is, and the part of its scrolling container that can be seen, in px down the screen. */
+export interface RevealReading {
+  boxTop: number;
+  boxBottom: number;
+  viewTop: number;
+  viewBottom: number;
+}
+
+/**
+ * How far to scroll a container down (up, when under 0) to bring a box to
+ * the middle of what can be seen of it: 0 while it is already in view.
+ */
+export function revealBy({ boxTop, boxBottom, viewTop, viewBottom }: RevealReading): number {
+  if (boxTop >= viewTop && boxBottom <= viewBottom) return 0;
+  return Math.round(boxTop - viewTop - (viewBottom - viewTop - (boxBottom - boxTop)) / 2);
 }
