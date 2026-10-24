@@ -1,4 +1,3 @@
-import { BanknoteIcon, PackageCheckIcon, Trash2Icon } from "lucide-react";
 import { clientName, paymentText } from "./packages.util";
 import type { PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
@@ -17,11 +16,8 @@ import { coveringDocuments, documentRoute, refLabel } from "~/features/documents
 export interface PackageHandlers {
   clientsById: ReadonlyMap<string, ClientView>;
   onEdit: (pkg: PackageView) => void;
-  onDelete: (pkg: PackageView) => void;
-  onMakeStandalone: (pkg: PackageView) => void;
-  onPay: (pkg: PackageView) => void;
-  /** Its WhatsApp menu: ask to pay, send for records, open the chat. */
-  whatsapp: (pkg: PackageView) => Action;
+  /** Paid ▾ on one owed something (usePaidAction), the same as wherever else it is listed. */
+  paid: (pkg: PackageView) => Action;
 }
 
 const helper = createDataTableColumnHelper<PackageView>();
@@ -86,24 +82,12 @@ function PackageDocuments({ pkg }: { pkg: PackageView }) {
 }
 
 /**
- * What can be done to a package: pay what it owes or see its payment;
- * behind ⋯, WhatsApp the client (ask to pay, send its documents), keep one
- * bought in a session as its own (so the session no longer buys it), or
- * delete it: each as its `can` says. A click on its row edits it.
+ * A package's one quick action: Paid ▾ while it owes something. Everything
+ * else (WhatsApp, keeping one bought in a session as its own, delete) is in
+ * its dialog, which a click on its row opens.
  */
 export function packageActions(pkg: PackageView, handlers: PackageHandlers): RowActionSet {
-  const set = { actions: [] as Array<Action>, more: [] as Array<Action> };
-  if (pkg.can.pay.ok) {
-    set.actions.push({ type: "button", label: "Mark paid", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
-  } else if (pkg.paid) {
-    set.actions.push({ type: "button", label: "Payment", icon: BanknoteIcon, onClick: () => handlers.onPay(pkg) });
-  }
-  set.more.push(handlers.whatsapp(pkg));
-  if (pkg.can.makeStandalone.ok) {
-    set.more.push({ type: "button", label: "Keep as its own", icon: PackageCheckIcon, onClick: () => handlers.onMakeStandalone(pkg) });
-  }
-  set.more.push({ type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", can: pkg.can.delete, onClick: () => handlers.onDelete(pkg) });
-  return set;
+  return { actions: pkg.can.pay.ok ? [handlers.paid(pkg)] : [] };
 }
 
 /** The phone layout of a row: who, the price, credits left and when bought, the note; then its actions. */

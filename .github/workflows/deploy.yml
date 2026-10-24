@@ -35,9 +35,46 @@ permissions:
   id-token: write
 
 jobs:
+  # What changed since the branch last deployed in full, so only those parts
+  # deploy: a change to the web alone skips the stacks. Compared with the
+  # last successful run, not the previous push, so what a failed deploy left
+  # out deploys with the next one. A run by hand deploys everything.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      web: ${{ steps.changed.outputs.web }}
+      lambda: ${{ steps.changed.outputs.lambda }}
+      infra: ${{ steps.changed.outputs.infra }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Find the last deploy
+        id: last
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch "$GITHUB_REF_NAME" \
+            --status success --limit 1 --json headSha --jq '.[0].headSha // ""')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: What changed
+        id: changed
+        run: node scripts/changed.mjs "${{ steps.last.outputs.sha }}"
+
   # Infra first: the web build reads its configuration from the stack outputs,
-  # so it must not run against outputs from the previous deploy.
+  # so it must not run against outputs from the previous deploy. The stacks
+  # carry the Lambdas, so a change to them deploys here too.
   infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true' || needs.changes.outputs.lambda == 'true'
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.env_name || (github.ref_name == 'production' && 'production') || 'staging' }}
 
@@ -114,8 +151,14 @@ jobs:
           AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ vars.AWS_REGION }}
 
+  # After infra when it deploys (its outputs may have changed), and on its
+  # own when only the web did, reading the outputs already there.
   web:
-    needs: infra
+    needs: [changes, infra]
+    if: >-
+      !cancelled()
+      && (needs.changes.outputs.web == 'true' || needs.changes.outputs.infra == 'true')
+      && (needs.infra.result == 'success' || needs.infra.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.env_name || (github.ref_name == 'production' && 'production') || 'staging' }}
 

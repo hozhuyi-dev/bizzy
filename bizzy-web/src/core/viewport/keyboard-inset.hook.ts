@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { isTypedInto, keyboardInset } from "./keyboard-inset.util";
+import { keyboardInset, opensKeyboard } from "./keyboard-inset.util";
 
 // After focus moves, a last look once the keyboard has finished coming up or
 // going down: iOS doesn't always say so with an event of its own.
@@ -34,7 +34,7 @@ export function useKeyboardInset(element: HTMLElement | null) {
         height: viewport.height,
         offsetTop: viewport.offsetTop,
         scale: viewport.scale,
-        editing: isTypedInto(document.activeElement),
+        editing: opensKeyboard(document.activeElement),
       });
       if (inset === last) return;
       last = inset;

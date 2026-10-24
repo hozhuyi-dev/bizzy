@@ -2,7 +2,6 @@ import { BellIcon, CalendarIcon, CheckIcon, FileTextIcon, PackageIcon, ReceiptIc
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import type { TimelineDocument, TimelineDocumentRef, TimelineEntry, TimelinePackage, TimelineSession } from "../../timeline.types";
 import type { PackageView } from "~/features/packages/packages.types";
-import type { Payable } from "~/features/payments/payments.types";
 import type { SessionView } from "~/features/sessions/sessions.types";
 import { lengthAndPlace, recordText, stageBadges } from "~/features/sessions/session-stage.util";
 import { DocumentStatusBadge } from "~/features/documents/documents.columns";
@@ -13,6 +12,7 @@ import { FollowUpDoneButton } from "~/features/follow-ups/components/follow-up-d
 import { formatDue, isOverdue } from "~/features/follow-ups/follow-ups.util";
 import { packagePayables } from "~/features/packages/packages.util";
 import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.component";
+import { ANOTHER_DAY } from "~/features/payments/paid-action.hook";
 import { SessionQuickActions } from "~/features/sessions/components/session-quick-actions/session-quick-actions.component";
 import { TimelineChip, TimelineItem, TimelineLink } from "~/components/shared/list/timeline/timeline.component";
 import { Badge } from "~/components/ui/badge";
@@ -34,10 +34,9 @@ import { formatCents } from "~/core/utils/money.util";
 /** The dialogs a timeline's entries open, which the timeline keeps. */
 export interface TimelineHandlers {
   onEditFollowUp: (followUp: FollowUpView) => void;
-  onEditPackage: (pkg: PackageView) => void;
+  /** Its dialog; at its payment, to pay for it another day. */
+  onEditPackage: (pkg: PackageView, at?: "payment") => void;
   onCancelSession: (session: SessionView) => void;
-  /** Paid another day: the payment form. */
-  onPayOther: (payables: Array<Payable>) => void;
 }
 
 export interface TimelineEntryProps {
@@ -109,7 +108,7 @@ export function SessionItem({ session, upcoming, handlers }: SessionItemProps) {
           </>
         )
       }
-      buttons={<SessionQuickActions session={session} onCancel={handlers.onCancelSession} onPayOther={handlers.onPayOther} />}
+      buttons={<SessionQuickActions session={session} onCancel={handlers.onCancelSession} />}
       open={page}
     />
   );
@@ -143,7 +142,7 @@ export function FollowUpItem({ followUp, upcoming, onEdit }: FollowUpItemProps) 
           </TimelineLink>
         )
       }
-      buttons={!done && <FollowUpDoneButton followUp={followUp} />}
+      buttons={<FollowUpDoneButton followUp={followUp} />}
       onOpen={() => onEdit(followUp)}
     />
   );
@@ -161,7 +160,14 @@ export function PackageItem({ pkg, handlers }: { pkg: TimelinePackage; handlers:
       title={`${formatHours(pkg.hours)} package for ${formatCents(pkg.priceCents)}`}
       meta={[`${formatHours(pkg.creditsLeft)} left`, pkg.note].filter(Boolean).join(" · ")}
       links={pkg.documents.length > 0 && <DocumentLinks docs={pkg.documents} />}
-      buttons={payables.length > 0 && <PaidMenu payables={payables} onOther={() => handlers.onPayOther(payables)} />}
+      buttons={
+        payables.length > 0 && (
+          <PaidMenu
+            payables={payables}
+            another={{ type: "button", label: ANOTHER_DAY, onClick: () => handlers.onEditPackage(pkg, "payment") }}
+          />
+        )
+      }
       onOpen={() => handlers.onEditPackage(pkg)}
     />
   );

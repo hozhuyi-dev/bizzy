@@ -40,7 +40,7 @@ import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
-import { PackageForm } from "~/features/packages/components/package-form/package-form.component";
+import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
 import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
 import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
@@ -48,8 +48,6 @@ import { PageHeader } from "~/components/shared/layout/page-header/page-header.c
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
 import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
-import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
-import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Field, FieldError, FieldGroup } from "~/components/ui/field";
 import { formatDate } from "~/core/utils/date.util";
 import { fieldErrors, moneyError, requiredError } from "~/core/utils/form.util";
@@ -372,13 +370,12 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
           <NewSessionDialog open={booking} clientId={client.id} onClose={() => setBooking(false)} />
           <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
           <RecordPaymentDialog client={client} open={paying} onClose={() => setPaying(false)} />
-          <SheetDialog open={addingPackage} onClose={() => setAddingPackage(false)}>
-            <DialogHeader>
-              <DialogTitle>Add package</DialogTitle>
-              <DialogDescription>For {client.name}</DialogDescription>
-            </DialogHeader>
-            {addingPackage && <PackageForm clientId={client.id} onDone={() => setAddingPackage(false)} />}
-          </SheetDialog>
+          <PackageDialog
+            target={addingPackage ? { mode: "new", clientId: client.id } : null}
+            onClose={() => setAddingPackage(false)}
+            newTitle="Add package"
+            description={`For ${client.name}`}
+          />
           <DeleteClientDialog
             client={client}
             open={deleting}

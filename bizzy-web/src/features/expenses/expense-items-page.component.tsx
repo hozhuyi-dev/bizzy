@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
+import { useSelector } from "@tanstack/react-form";
+import { ArchiveIcon, ArchiveRestoreIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
 import type { CatalogueView, ExpenseItem } from "./expenses.types";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
@@ -12,8 +15,10 @@ import { CellEmpty } from "~/components/shared/list/data-table/data-table-cell.c
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { SearchInput } from "~/components/shared/list/search-input/search-input.component";
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
+import { DialogActions } from "~/components/shared/dialog/dialog-actions/dialog-actions.component";
+import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { Badge } from "~/components/ui/badge";
-import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { FieldGroup } from "~/components/ui/field";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { requiredError } from "~/core/utils/form.util";
@@ -132,6 +137,28 @@ function ItemForm({ item, catalogue, onDone }: { item: ExpenseItem; catalogue: C
     },
   });
 
+  const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
+  // Archived, it isn't suggested on new expenses; those recorded keep it. As
+  // a client's, an action, not a field: done at once, closing the dialog.
+  const archiveAction: Action = {
+    type: "button",
+    label: item.archived ? "Unarchive" : "Archive",
+    icon: item.archived ? ArchiveRestoreIcon : ArchiveIcon,
+    disabled: save.isPending,
+    onClick: () =>
+      save.mutate(
+        { ...item, archived: !item.archived },
+        {
+          onSuccess: () => {
+            toast.success(item.archived ? `${item.name} is suggested again` : `${item.name} archived`);
+            form.reset();
+            onDone();
+          },
+          onError: toastRefusal,
+        },
+      ),
+  };
+
   return (
     <form
       className="flex flex-col gap-4"
@@ -151,20 +178,13 @@ function ItemForm({ item, catalogue, onDone }: { item: ExpenseItem; catalogue: C
         <form.AppField name="categoryId" validators={{ onChange: ({ value }) => requiredError(value, "Choose a category") }}>
           {(field) => <field.SelectField label="Category" items={all} options={offered} />}
         </form.AppField>
-        <form.AppField name="archived">
-          {(field) => (
-            <field.CheckboxField
-              label="Archived"
-              description="Not suggested on new expenses. Expenses already recorded keep it."
-            />
-          )}
-        </form.AppField>
       </FieldGroup>
-      <DialogFooter>
+      <DialogActions menu={[archiveAction]} onCancel={onDone}>
         <form.AppForm>
           <form.SubmitButton label="Save" />
         </form.AppForm>
-      </DialogFooter>
+      </DialogActions>
+      <UnsavedChangesDialog when={hasChanges} />
     </form>
   );
 }

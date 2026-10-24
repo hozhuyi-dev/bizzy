@@ -14,7 +14,30 @@ permissions:
   contents: read
 
 jobs:
+  # What the pull request changes, so only those parts are checked. A job
+  # skipped by its `if` counts as passed, so required checks don't wait on it.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.changed.outputs.web }}
+      lambda: ${{ steps.changed.outputs.lambda }}
+      infra: ${{ steps.changed.outputs.infra }}
+
+    steps:
+      # The pull request's merge commit, and the base branch it merges into
+      # as its first parent.
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: What changed
+        id: changed
+        run: node scripts/changed.mjs HEAD^1
+
   lambda:
+    needs: changes
+    if: needs.changes.outputs.lambda == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,7 +67,10 @@ jobs:
       - name: Race
         run: go test -race ./internal/features/googlesync/... ./internal/platform/txn/... ./internal/platform/router/...
 
+  # `cdk synth` builds the Lambdas, so a change to them is checked here too.
   infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true' || needs.changes.outputs.lambda == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -94,6 +120,8 @@ jobs:
           SYNC_TIME_ZONE: Asia/Kuala_Lumpur
 
   web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
 
     steps:

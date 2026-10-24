@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { Trash2Icon } from "lucide-react";
+import { CheckIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { daysFromToday, toCreateFollowUp, toFollowUpFields, toFollowUpValues } from "../../follow-ups.form";
 import { FollowUpsMutation } from "../../follow-ups.mutation";
+import { useMarkDone } from "../../follow-ups.hook";
 import type { FollowUpTarget } from "../../follow-ups.types";
+import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ClientSelectField } from "~/features/clients/components/client-select-field/client-select-field.component";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { InlineConfirm } from "~/components/shared/actions/inline-action/inline-action.component";
+import { DialogActions } from "~/components/shared/dialog/dialog-actions/dialog-actions.component";
 import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { Button } from "~/components/ui/button";
-import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { FieldGroup } from "~/components/ui/field";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
@@ -56,6 +58,7 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
   const update = FollowUpsMutation.useUpdate();
   const remove = FollowUpsMutation.useDelete();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const markDone = useMarkDone();
   const editing = target.mode === "edit" ? target.followUp : undefined;
   const sessionId = target.mode === "new" ? target.sessionId : undefined;
   const fixedClient = target.mode === "new" && Boolean(target.clientId);
@@ -77,6 +80,11 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
   });
 
   const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
+  // Closes once something done to it from ⋯ is done: its edits aren't asked about.
+  const leave = () => {
+    form.reset();
+    onClose();
+  };
   const clientId = useSelector(form.store, (state) => state.values.clientId);
   const summary = useSelector(form.store, (state) => state.values.summary);
   const clientName = clientsById.get(clientId)?.name;
@@ -164,46 +172,38 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
         </form.AppField>
       </FieldGroup>
 
-      {/* One row of buttons on a phone too (SheetDialog): Delete first, kept to the left on a wide screen. */}
-      <DialogFooter>
-        {editing && confirmingDelete ? (
-          <InlineConfirm
-            question="Delete it from your calendar too?"
-            yes="Delete"
-            pending={remove.isPending}
-            onNo={() => setConfirmingDelete(false)}
-            onYes={() =>
-              remove.mutate(editing.id, {
-                onSuccess: () => {
-                  toast.success("Follow-up deleted from your calendar");
-                  form.reset();
-                  onClose();
-                },
-                onError: toastRefusal,
-              })
-            }
-          />
-        ) : (
-          <>
-            {editing && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-destructive hover:text-destructive sm:mr-auto"
-                onClick={() => setConfirmingDelete(true)}
-              >
-                <Trash2Icon /> Delete
-              </Button>
-            )}
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <form.AppForm>
-              <form.SubmitButton label={editing ? "Save" : "Add follow-up"} />
-            </form.AppForm>
-          </>
-        )}
-      </DialogFooter>
+      <DialogActions
+        // Its rows' one step (Done, Not done), then Delete; each closes the dialog once done, its edits left.
+        menu={editing && [
+          editing.doneAt
+            ? { type: "button", label: "Not done", icon: RotateCcwIcon, disabled: markDone.isPending, onClick: () => markDone.mark(editing, false, leave) }
+            : { type: "button", label: "Mark done", icon: CheckIcon, disabled: markDone.isPending, onClick: () => markDone.mark(editing, true, leave) },
+          { type: "button", label: "Delete", icon: Trash2Icon, style: "destructive", onClick: () => setConfirmingDelete(true) },
+        ] satisfies Array<Action>}
+        onCancel={onClose}
+        confirm={
+          editing && confirmingDelete
+            ? {
+                question: "Delete it from your calendar too?",
+                yes: "Delete",
+                pending: remove.isPending,
+                onNo: () => setConfirmingDelete(false),
+                onYes: () =>
+                  remove.mutate(editing.id, {
+                    onSuccess: () => {
+                      toast.success("Follow-up deleted from your calendar");
+                      leave();
+                    },
+                    onError: toastRefusal,
+                  }),
+              }
+            : null
+        }
+      >
+        <form.AppForm>
+          <form.SubmitButton label={editing ? "Save" : "Add follow-up"} />
+        </form.AppForm>
+      </DialogActions>
       <UnsavedChangesDialog when={hasChanges} />
     </form>
   );
