@@ -30,7 +30,8 @@ export interface SessionHandlers {
   search?: SessionSearch | undefined;
   clientsById: ReadonlyMap<string, ClientView>;
   packagesById: ReadonlyMap<string, PackageView>;
-  onConfirm: (session: SessionView) => void;
+  /** Its quick actions (useSessionQuickActions), the same as wherever else it is listed. */
+  quickActions: (session: SessionView) => Array<Action>;
 }
 
 const helper = createDataTableColumnHelper<SessionHit>();
@@ -150,16 +151,7 @@ function boughtOf(session: SessionView, handlers: SessionHandlers): PackageView 
   return session.bought ? handlers.packagesById.get(session.bought.id) : undefined;
 }
 
-/** The quick fixes a list can make; everything else is on the session's page. */
-export function sessionActions(session: SessionView, handlers: SessionHandlers): Array<Action> {
-  const actions: Array<Action> = [];
-  if (session.todo.includes("confirm")) {
-    actions.push({ type: "button", label: "Confirm", icon: CheckIcon, onClick: () => handlers.onConfirm(session) });
-  }
-  return actions;
-}
-
-/** The phone layout of a row: who and where it stands, when and where, the summary; then Confirm. */
+/** The phone layout of a row: who and where it stands, when and where, the summary; then its quick actions. */
 export function SessionCard({ session, handlers }: { session: SessionHit; handlers: SessionHandlers }) {
   return (
     <DataCard
@@ -173,7 +165,7 @@ export function SessionCard({ session, handlers }: { session: SessionHit; handle
       meta={`${formatSessionTime(session.start)} · ${lengthAndPlace(session)}`}
       detail={session.excerpt ? <span className="italic">{session.excerpt}</span> : session.record.summary}
       detailTitle={session.excerpt ?? (session.record.summary || undefined)}
-      actions={sessionActions(session, handlers)}
+      actions={handlers.quickActions(session)}
       open={sessionLink(session.id, handlers.search)}
     />
   );
@@ -239,7 +231,7 @@ export function createSessionColumns(handlers: SessionHandlers) {
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
       meta: { width: "fit" },
-      cell: ({ row }) => <RowActions actions={sessionActions(row.original, handlers)} />,
+      cell: ({ row }) => <RowActions actions={handlers.quickActions(row.original)} />,
     }),
   ]);
 }

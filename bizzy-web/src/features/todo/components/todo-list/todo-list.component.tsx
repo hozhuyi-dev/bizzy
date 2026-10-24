@@ -6,25 +6,24 @@ import type { TodoFilter, TodoView } from "../../todo.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { PackageView } from "~/features/packages/packages.types";
-import type { Payable } from "~/features/payments/payments.types";
 import type { SessionReason, SessionView } from "~/features/sessions/sessions.types";
+import type { PackageTarget } from "~/features/packages/components/package-dialog/package-dialog.component";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ConflictActions } from "~/features/conflicts/components/conflict-actions/conflict-actions.component";
 import { conflictKind, conflictTime } from "~/features/conflicts/conflicts.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { packagePayables } from "~/features/packages/packages.util";
-import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
 import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.component";
+import { ANOTHER_DAY } from "~/features/payments/paid-action.hook";
+import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
 import { CancelSessionDialog } from "~/features/sessions/components/cancel-session-dialog/cancel-session-dialog.component";
 import { SessionQuickActions } from "~/features/sessions/components/session-quick-actions/session-quick-actions.component";
 import { owedText } from "~/features/sessions/session-payment.util";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
-import { DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { DataList, DataListItem, DataRow  } from "~/components/shared/list/data-list/data-list.component";
-import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { formatDate, formatHours, formatSessionTime, todayISO } from "~/core/utils/date.util";
@@ -52,7 +51,7 @@ const LEAVE_MS = 300;
 export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
   const [filter, setFilter] = useState<TodoFilter>();
   const [cancelling, setCancelling] = useState<SessionView | null>(null);
-  const [paying, setPaying] = useState<Array<Payable> | null>(null);
+  const [editingPackage, setEditingPackage] = useState<PackageTarget>(null);
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUpTarget | null>(null);
   const leaving = useLeaving(items);
   const progress = progressOf(items, todayISO());
@@ -71,12 +70,7 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
         onClose={() => setCancelling(null)}
       />
       <FollowUpDialog target={editingFollowUp} onClose={() => setEditingFollowUp(null)} />
-      <SheetDialog open={paying !== null} onClose={() => setPaying(null)}>
-        <DialogHeader>
-          <DialogTitle>Payment</DialogTitle>
-        </DialogHeader>
-        {paying && <PaymentPanel payables={paying} onPaid={() => setPaying(null)} onCancel={() => setPaying(null)} />}
-      </SheetDialog>
+      <PackageDialog target={editingPackage} onClose={() => setEditingPackage(null)} />
     </>
   );
 
@@ -137,9 +131,11 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
                   {inGroup.map(({ item, gone }) => (
                     <DataListItem key={todoKey(item)} gone={gone}>
                       {item.kind === "session" && (
-                        <SessionTodo session={item.session} onCancel={setCancelling} onPayOther={setPaying} />
+                        <SessionTodo session={item.session} onCancel={setCancelling} />
                       )}
-                      {item.kind === "package" && <PackageTodo pkg={item.package} onPayOther={setPaying} />}
+                      {item.kind === "package" && (
+                        <PackageTodo pkg={item.package} onOpen={(pkg, at) => setEditingPackage({ mode: "edit", pkg, at })} />
+                      )}
                       {item.kind === "followUp" && (
                         <FollowUpRow
                           followUp={item.followUp}
@@ -225,10 +221,9 @@ function AllCleared({ cleared }: { cleared: number }) {
 interface SessionTodoProps {
   session: SessionView;
   onCancel: (session: SessionView) => void;
-  onPayOther: (payables: Array<Payable>) => void;
 }
 
-function SessionTodo({ session, onCancel, onPayOther }: SessionTodoProps) {
+function SessionTodo({ session, onCancel }: SessionTodoProps) {
   const collecting = session.todo.includes("collect");
 
   return (
@@ -254,13 +249,13 @@ function SessionTodo({ session, onCancel, onPayOther }: SessionTodoProps) {
       detail={session.record.summary}
       detailTitle={session.record.summary}
       open={{ to: "/sessions/$id", params: { id: session.id }, search: { from: "home" } }}
-      actions={<SessionQuickActions session={session} onCancel={onCancel} onPayOther={onPayOther} from="home" />}
+      actions={<SessionQuickActions session={session} onCancel={onCancel} from="home" />}
     />
   );
 }
 
-/** A package bought on its own, to collect. */
-function PackageTodo({ pkg, onPayOther }: { pkg: PackageView; onPayOther: (payables: Array<Payable>) => void }) {
+/** A package bought on its own, to collect. It opens its dialog, in place as a follow-up does; another day, at its payment. */
+function PackageTodo({ pkg, onOpen }: { pkg: PackageView; onOpen: (pkg: PackageView, at?: "payment") => void }) {
   const clientsById = ClientsQuery.useById();
   const client = clientsById.get(pkg.clientId);
   const payables = packagePayables(pkg).filter((p) => !p.paid);
@@ -282,8 +277,12 @@ function PackageTodo({ pkg, onPayOther }: { pkg: PackageView; onPayOther: (payab
       meta={`Package of ${formatHours(pkg.hours)} · bought ${formatDate(pkg.purchasedAt)} · ${formatCents(pkg.owedCents)} due`}
       detail={pkg.note}
       detailTitle={pkg.note}
-      open={{ to: "/packages" }}
-      actions={payables.length > 0 && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}
+      onOpen={() => onOpen(pkg)}
+      actions={
+        payables.length > 0 && (
+          <PaidMenu payables={payables} another={{ type: "button", label: ANOTHER_DAY, onClick: () => onOpen(pkg, "payment") }} />
+        )
+      }
     />
   );
 }

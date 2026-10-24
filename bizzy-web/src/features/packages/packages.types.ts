@@ -57,8 +57,11 @@ export interface PackageFields {
   priceCents?: number;
   purchasedAt?: string;
   note?: string;
-  /** Paid there and then. */
-  paid?: PaymentInput;
-  /** Move what was received for it to a new price, on a receipt not issued yet. */
-  updatePayment?: boolean;
+  /** What was paid for it, after its price: recorded, recorded again (another day or way, a new price) or undone. */
+  payment?: PackagePaymentChoice;
+}
+
+/** A package's payment as entered, in full; mirrors packages.PaymentChoice. Without one it undoes the payment recorded. */
+export interface PackagePaymentChoice {
+  payment?: PaymentInput;
 }

@@ -4,9 +4,7 @@ import type { Action } from "~/components/shared/actions/action-bar/action-bar.t
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { Loadable } from "~/core/utils/query.util";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
-import { PackageForm } from "~/features/packages/components/package-form/package-form.component";
-import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
-import { DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
 import { newSessionAction } from "~/features/sessions/sessions.util";
@@ -57,12 +55,7 @@ export function HomePage() {
       />
       <NewSessionDialog open={adding} returnTo="home" onClose={() => setAdding(false)} />
       <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
-      <SheetDialog open={addingPackage} onClose={() => setAddingPackage(false)}>
-        <DialogHeader>
-          <DialogTitle>New package</DialogTitle>
-        </DialogHeader>
-        {addingPackage && <PackageForm onDone={() => setAddingPackage(false)} />}
-      </SheetDialog>
+      <PackageDialog target={addingPackage ? { mode: "new" } : null} onClose={() => setAddingPackage(false)} />
       <PageSections
         sections={[
           { id: "today", title: "Today", content: <Today /> },

@@ -1,16 +1,13 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { CheckIcon, NotebookPenIcon, PencilLineIcon, XIcon } from "lucide-react";
-import { useConfirmBooking } from "../../session-booking.hook";
-import { sessionPayables } from "../../session-payment.util";
+import { NotebookPenIcon } from "lucide-react";
+import { useSessionQuickActions } from "../../session-quick-actions.hook";
 import { SessionsMutation } from "../../sessions.mutation";
 import type { SessionReturnTo, SessionView } from "../../sessions.types";
-import type { Payable } from "~/features/payments/payments.types";
-import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.component";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { ActionButton } from "~/components/shared/actions/action-bar/action-bar.component";
 import { InlineField } from "~/components/shared/actions/inline-action/inline-action.component";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
-import { HintTooltip } from "~/components/shared/feedback/hint-tooltip/hint-tooltip.component";
 import { Button } from "~/components/ui/button";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -18,60 +15,27 @@ interface SessionQuickActionsProps {
   session: SessionView;
   /** Asks to cancel it (a dialog the list keeps). */
   onCancel: (session: SessionView) => void;
-  /** Paid another day: the payment form (a dialog the list keeps). */
-  onPayOther: (payables: Array<Payable>) => void;
-  /** Where the session's page goes back to, from Write full notes. */
+  /** Where the session's page goes back to, from Another day and Write full notes. */
   from?: SessionReturnTo | undefined;
 }
 
 /**
- * The fix for each thing left to do on a session, as far as its `can`
- * allows: Confirm (or Cancel), a one-line summary, Paid. Nothing when
- * nothing is left. Wherever a session is listed with what is left to do
- * (the to-do list, a client's timeline), these are its buttons, in place:
- * Add summary swaps them for the one line until it is saved.
+ * A session's quick actions (useSessionQuickActions) as buttons of their
+ * own, for a row that lays out its own (the to-do list, a client's
+ * timeline): Add summary swaps them for the one line, in place, until it
+ * is saved.
  */
-export function SessionQuickActions({ session, onCancel, onPayOther, from }: SessionQuickActionsProps) {
+export function SessionQuickActions({ session, onCancel, from }: SessionQuickActionsProps) {
   const [writing, setWriting] = useState(false);
-  const confirm = useConfirmBooking();
-  const { todo, can } = session;
+  const quick = useSessionQuickActions();
 
   if (writing) return <SummaryField session={session} from={from} onDone={() => setWriting(false)} />;
-  if (todo.includes("confirm")) {
-    return (
-      <>
-        <Button size="sm" disabled={confirm.pending} onClick={() => void confirm.confirm(session.id).catch(toastRefusal)}>
-          <CheckIcon /> Confirm
-        </Button>
-        <HintTooltip hint={can.cancel.why}>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!can.cancel.ok}
-            focusableWhenDisabled
-            className="data-disabled:cursor-not-allowed data-disabled:opacity-50"
-            onClick={() => onCancel(session)}
-          >
-            <XIcon /> Cancel session
-          </Button>
-        </HintTooltip>
-      </>
-    );
-  }
-  const payables = sessionPayables(session).filter((p) => !p.paid);
-  const record = todo.includes("record") && can.record.ok;
-  const collect = todo.includes("collect") && can.pay.ok && payables.length > 0;
-  if (!record && !collect) return null;
-  return (
-    <>
-      {record && (
-        <Button size="sm" variant="outline" onClick={() => setWriting(true)}>
-          <PencilLineIcon /> Add summary
-        </Button>
-      )}
-      {collect && <PaidMenu payables={payables} onOther={() => onPayOther(payables)} />}
-    </>
-  );
+  const actions = quick(session, {
+    page: { to: "/sessions/$id", params: { id: session.id }, search: { from } },
+    onCancel,
+    onAddSummary: () => setWriting(true),
+  });
+  return actions.map((action) => <ActionButton key={action.label} action={action} size="sm" />);
 }
 
 interface SummaryFieldProps {

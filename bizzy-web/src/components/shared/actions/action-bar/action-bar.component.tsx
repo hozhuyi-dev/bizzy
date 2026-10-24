@@ -198,7 +198,7 @@ function ActionButtonOnly({
     case "menu":
       if (menus === "sheet") {
         return (
-          <SheetTrigger title={label} actions={action.actions}>
+          <SheetTrigger title={action.heading ?? label} actions={action.actions}>
             {(open) => (
               <Button type="button" onClick={open} {...common}>
                 {content}
@@ -215,9 +215,12 @@ function ActionButtonOnly({
             <ChevronDownIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-auto">
-            {action.actions.map((item) => (
-              <ActionMenuItem key={item.label} action={item} />
-            ))}
+            <DropdownMenuGroup>
+              {action.heading && <DropdownMenuLabel>{action.heading}</DropdownMenuLabel>}
+              {action.actions.map((item) => (
+                <ActionMenuItem key={item.label} action={item} />
+              ))}
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       );
@@ -281,7 +284,7 @@ export function ActionMenu({ actions, size = "default", className, menus = "drop
           action.type === "menu" ? (
             <DropdownMenuGroup key={action.label}>
               {i > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel>{action.label}</DropdownMenuLabel>
+              <DropdownMenuLabel>{action.heading ?? action.label}</DropdownMenuLabel>
               {action.actions.map((item) => (
                 <ActionMenuItem key={item.label} action={item} />
               ))}

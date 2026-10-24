@@ -41,6 +41,8 @@ export type Action =
        */
       type: "menu";
       actions: ReadonlyArray<MenuItemAction>;
+      /** Over its items, in place of the label (Paid ▾: "Session · RM 95 today, by"). */
+      heading?: string | undefined;
     });
 
 /** An action a menu can hold: any but another menu. */

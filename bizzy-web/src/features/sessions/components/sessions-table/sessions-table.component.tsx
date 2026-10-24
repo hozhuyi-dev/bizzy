@@ -1,14 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { SessionCard, createSessionColumns, sessionLink } from "../../sessions.columns";
-import { useConfirmBooking } from "../../session-booking.hook";
+import { useSessionQuickActions } from "../../session-quick-actions.hook";
+import { CancelSessionDialog } from "../cancel-session-dialog/cancel-session-dialog.component";
 import type { ReactNode } from "react";
 import type { SessionHandlers } from "../../sessions.columns";
-import type { SessionHit, SessionSearch } from "../../sessions.types";
+import type { SessionHit, SessionSearch, SessionView } from "../../sessions.types";
 import type { Loadable } from "~/core/utils/query.util";
 import { allOf } from "~/core/utils/query.util";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
@@ -26,15 +26,16 @@ interface SessionsTableProps {
 }
 
 /**
- * Sessions with the quick fix the user can make to them: confirm. Each
- * links to its page, where everything else is.
+ * Sessions with the quick fixes the user can make to them, as wherever
+ * else they are listed (useSessionQuickActions). Each links to its page,
+ * where everything else is.
  */
 export function SessionsTable({ sessions, empty, search, source }: SessionsTableProps) {
   const clients = ClientsQuery.useList();
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
-  const booking = useConfirmBooking();
-  const confirm = booking.confirm;
+  const quick = useSessionQuickActions();
+  const [cancelling, setCancelling] = useState<SessionView | null>(null);
 
   const packagesById = useMemo(
     () => new Map((packages.data ?? []).map((pkg) => [pkg.id, pkg])),
@@ -46,9 +47,9 @@ export function SessionsTable({ sessions, empty, search, source }: SessionsTable
       search,
       clientsById,
       packagesById,
-      onConfirm: (session) => void confirm(session.id).catch(toastRefusal),
+      quickActions: (session) => quick(session, { page: sessionLink(session.id, search), onCancel: setCancelling }),
     }),
-    [search, clientsById, packagesById, confirm],
+    [search, clientsById, packagesById, quick],
   );
 
   const columns = useMemo(() => createSessionColumns(handlers), [handlers]);
@@ -64,12 +65,19 @@ export function SessionsTable({ sessions, empty, search, source }: SessionsTable
   });
 
   return (
-    <DataTable
-      table={table}
-      empty={empty}
-      source={source && allOf(source, clients, packages)}
-      rowLink={(session) => sessionLink(session.id, search)}
-      renderCard={(row) => <SessionCard session={row.original} handlers={handlers} />}
-    />
+    <>
+      <DataTable
+        table={table}
+        empty={empty}
+        source={source && allOf(source, clients, packages)}
+        rowLink={(session) => sessionLink(session.id, search)}
+        renderCard={(row) => <SessionCard session={row.original} handlers={handlers} />}
+      />
+      <CancelSessionDialog
+        session={cancelling}
+        clientName={cancelling ? (clientsById.get(cancelling.clientId)?.name ?? cancelling.clientName) : "the client"}
+        onClose={() => setCancelling(null)}
+      />
+    </>
   );
 }

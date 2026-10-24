@@ -59,6 +59,7 @@ func Locks(tx *txn.Tx, p *Package, used Usage) (apperr.Locks, error) {
 		"purchasedAt": CanMoveBought(p),
 		"hours":       CanResize(tx, p),
 		"priceCents":  CanReprice(tx, p),
+		"payment":     CanChangePayment(tx, p),
 	})
 }
 

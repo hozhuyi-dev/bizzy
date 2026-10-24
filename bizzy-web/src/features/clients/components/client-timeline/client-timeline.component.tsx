@@ -4,19 +4,15 @@ import type { ClientView } from "../../clients.types";
 import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { TimelineEntry } from "~/features/timeline/timeline.types";
 import type { TimelineHandlers } from "~/features/timeline/components/timeline-entry/timeline-entry.component";
-import type { PackageView } from "~/features/packages/packages.types";
-import type { Payable } from "~/features/payments/payments.types";
+import type { PackageTarget } from "~/features/packages/components/package-dialog/package-dialog.component";
 import type { SessionView } from "~/features/sessions/sessions.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { TimelineQuery } from "~/features/timeline/timeline.query";
 import { TIMELINE_FACETS, entryKey } from "~/features/timeline/timeline.util";
 import { TimelineEntryItem } from "~/features/timeline/components/timeline-entry/timeline-entry.component";
 import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
-import { PackageForm } from "~/features/packages/components/package-form/package-form.component";
-import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
+import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
 import { CancelSessionDialog } from "~/features/sessions/components/cancel-session-dialog/cancel-session-dialog.component";
-import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
-import { DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
@@ -42,16 +38,14 @@ export function ClientTimeline({ client }: { client: ClientView }) {
   const [filter, setFilter] = useState<ListFilter>(NO_FILTER);
   const pages = TimelineQuery.useSearch(client.id, filter);
   const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
-  const [editingPackage, setEditingPackage] = useState<PackageView | null>(null);
+  const [editingPackage, setEditingPackage] = useState<PackageTarget>(null);
   const [cancelling, setCancelling] = useState<SessionView | null>(null);
-  const [paying, setPaying] = useState<Array<Payable> | null>(null);
   const [allUpcoming, setAllUpcoming] = useState(false);
   const handlers = useMemo<TimelineHandlers>(
     () => ({
       onEditFollowUp: (f) => setFollowUp({ mode: "edit", followUp: f }),
-      onEditPackage: setEditingPackage,
+      onEditPackage: (pkg, at) => setEditingPackage({ mode: "edit", pkg, at }),
       onCancelSession: setCancelling,
-      onPayOther: setPaying,
     }),
     [],
   );
@@ -116,20 +110,7 @@ export function ClientTimeline({ client }: { client: ClientView }) {
       <LoadMore pages={pages} found={past.length > 0} />
       <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
       <CancelSessionDialog session={cancelling} clientName={client.name} onClose={() => setCancelling(null)} />
-      <SheetDialog open={paying !== null} onClose={() => setPaying(null)}>
-        <DialogHeader>
-          <DialogTitle>Payment</DialogTitle>
-        </DialogHeader>
-        {paying && <PaymentPanel payables={paying} onPaid={() => setPaying(null)} onCancel={() => setPaying(null)} />}
-      </SheetDialog>
-      <SheetDialog open={editingPackage !== null} onClose={() => setEditingPackage(null)}>
-        <DialogHeader>
-          <DialogTitle>Edit package</DialogTitle>
-        </DialogHeader>
-        {editingPackage && (
-          <PackageForm key={editingPackage.id} pkg={editingPackage} onDone={() => setEditingPackage(null)} />
-        )}
-      </SheetDialog>
+      <PackageDialog target={editingPackage} onClose={() => setEditingPackage(null)} />
     </div>
   );
 }

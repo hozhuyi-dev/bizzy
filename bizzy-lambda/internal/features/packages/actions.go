@@ -19,11 +19,15 @@ type Fields struct {
 	PriceCents  *int64     `json:"priceCents,omitempty"`
 	PurchasedAt *time.Time `json:"purchasedAt,omitempty"`
 	Note        *string    `json:"note,omitempty"`
-	// Paid records it paid, when the user was paid there and then.
-	Paid *documents.PaymentInput `json:"paid,omitempty"`
-	// UpdatePayment moves what was received for it to a new price, on a
-	// receipt not issued yet.
-	UpdatePayment bool `json:"updatePayment,omitempty"`
+	// Payment sets what was paid for it, after its price: recorded,
+	// recorded again (another day or way, or at a new price) or undone.
+	Payment *PaymentChoice `json:"payment,omitempty"`
+}
+
+// PaymentChoice is what was paid for a package, as entered: its payment,
+// in full, or none (Payment nil), undoing one recorded by mistake.
+type PaymentChoice struct {
+	Payment *documents.PaymentInput `json:"payment,omitempty"`
 }
 
 // Create buys a package on its own.
@@ -208,8 +212,20 @@ func CanUndoPayment(tx *txn.Tx, p *Package) error {
 	return nil
 }
 
+// CanChangePayment is the refusal for recording, changing or undoing a
+// package's payment: no issued receipt records it.
+func CanChangePayment(tx *txn.Tx, p *Package) error {
+	paid, err := documents.Received(tx, documents.PackageSource(p.ID))
+	if err != nil || paid == nil || !paid.Issued {
+		return err
+	}
+	return apperr.Refused(fmt.Sprintf("%s records its payment. Cancel it first, then change the payment.", paid.ReceiptNumber),
+		apperr.Remedy{Action: "documents.cancel", Target: paid.ReceiptID, Label: "Cancel " + paid.ReceiptNumber})
+}
+
 // apply makes the changes f asks, in order: who, how many, when, then
-// what it costs (described by how many, dated when). New lines go on into.
+// what it costs (described by how many, dated when), then what was paid
+// for it. New lines go on into.
 func apply(tx *txn.Tx, p *Package, f Fields, used Usage, into string) error {
 	src := documents.PackageSource(p.ID)
 	cfg, err := settings.Get(tx)
@@ -278,22 +294,27 @@ func apply(tx *txn.Tx, p *Package, f Fields, used Usage, into string) error {
 	if f.Note != nil {
 		p.Note = strings.TrimSpace(*f.Note)
 	}
-	if f.UpdatePayment {
-		if err := documents.Repay(tx, src); err != nil {
-			return err
-		}
-	}
-	if f.Paid != nil {
-		if paid, err := documents.Received(tx, src); err != nil || paid != nil {
-			return err
-		}
-		pay, err := f.Paid.Check(tx.Now(), tx.Location())
-		if err != nil {
-			return err
-		}
-		return documents.Pay(tx, []documents.Paying{{Source: src, ClientID: p.ClientID, What: describe(tx, p)}}, pay)
+	if f.Payment != nil {
+		return setPayment(tx, p, f.Payment.Payment)
 	}
 	return nil
+}
+
+// setPayment records what was paid for a package, in full at its price,
+// in place of any payment it had; with none, it undoes its payment.
+func setPayment(tx *txn.Tx, p *Package, in *documents.PaymentInput) error {
+	if err := CanChangePayment(tx, p); err != nil {
+		return err
+	}
+	src := documents.PackageSource(p.ID)
+	if in == nil {
+		return documents.Unpay(tx, src)
+	}
+	pay, err := in.Check(tx.Now(), tx.Location())
+	if err != nil {
+		return err
+	}
+	return documents.Pay(tx, []documents.Paying{{Source: src, ClientID: p.ClientID, What: describe(tx, p)}}, pay)
 }
 
 func day(tx *txn.Tx, t time.Time) string {

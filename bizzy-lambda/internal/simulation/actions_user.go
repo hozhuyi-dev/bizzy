@@ -192,7 +192,7 @@ var moneyActions = []Action{
 			"priceCents": rapid.SampledFrom([]int64{0, 40000, 85000}).Draw(t, "price"), "purchasedAt": startTime(t, w),
 		}
 		if rapid.Bool().Draw(t, "paid there and then?") {
-			in["paid"] = map[string]any{"method": "cash"}
+			in["payment"] = map[string]any{"payment": map[string]any{"method": "cash"}}
 		}
 		w.call(t, "packages.create", in)
 	}},
@@ -211,7 +211,17 @@ var moneyActions = []Action{
 		case 4:
 			in["note"] = "Gift"
 		}
-		in["updatePayment"] = rapid.Bool().Draw(t, "update the payment?")
+		// What its dialog's payment section sends: the payment recorded
+		// again (as the form does with a new price), another, or undone.
+		switch rapid.IntRange(0, 3).Draw(t, "payment") {
+		case 0:
+			in["payment"] = map[string]any{"payment": map[string]any{
+				"method": rapid.SampledFrom([]string{"cash", "tng", "bank_transfer"}).Draw(t, "method"),
+				"paidOn": rapid.SampledFrom([]string{"", "2026-01-15"}).Draw(t, "paid on"),
+			}}
+		case 1:
+			in["payment"] = map[string]any{}
+		}
 		v := packageView(t, w, p)
 		w.callAsLocked(t, "packages.update", in, v.Locked, packages.Fields{}, packageChanges(v, in)...)
 	}},
@@ -534,6 +544,9 @@ func packageChanges(v packages.View, in map[string]any) []string {
 	}
 	if at, ok := in["purchasedAt"].(time.Time); ok && !at.Equal(v.PurchasedAt) {
 		out = append(out, "purchasedAt")
+	}
+	if _, ok := in["payment"]; ok && (in["payment"].(map[string]any)["payment"] != nil || v.Paid != nil) {
+		out = append(out, "payment")
 	}
 	return out
 }
