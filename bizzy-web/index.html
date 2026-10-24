@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- interactive-widget: on Android the keyboard shrinks the page, so what is
+         fixed to the bottom sits on it; iOS ignores it (see useKeyboardInset). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Bizzy</title>
     <script>

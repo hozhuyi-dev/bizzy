@@ -49,6 +49,9 @@ export function NavSheet({ open, onClose, sync, onCalendarGuide, onSignOut }: Na
               <Link
                 key={item.to}
                 to={item.to}
+                // The router marks a link on any path under it current too (Expenses
+                // on Items), over aria-current here; pageOf decides instead.
+                activeOptions={{ exact: true }}
                 aria-current={item === page ? "page" : undefined}
                 className={cn(DRAWER_ROW, module.pages.length > 1 && "pl-6")}
                 onClick={onClose}

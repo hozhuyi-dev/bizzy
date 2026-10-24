@@ -75,19 +75,18 @@ function NextVisitForm({ from, clientName, onClose }: { from: SessionDraft; clie
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <div className="flex flex-wrap items-start gap-4">
+        <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,4fr)] items-start gap-3 sm:grid-cols-[10rem_8rem] sm:gap-4">
           <form.AppField name="date" validators={{ onChange: ({ value }) => requiredError(value, "Pick a day") }}>
             {(field) => (
               <field.TextField
                 label="Day"
                 type="date"
-                className="w-auto"
                 description={field.state.value && field.state.value < todayISO() ? "That day has passed." : undefined}
               />
             )}
           </form.AppField>
           <form.AppField name="time" validators={{ onChange: ({ value }) => requiredError(value, "Pick a time") }}>
-            {(field) => <field.TextField label="Start" type="time" step={300} className="w-auto" />}
+            {(field) => <field.TextField label="Start" type="time" step={300} />}
           </form.AppField>
         </div>
         <form.AppField name="tentative">

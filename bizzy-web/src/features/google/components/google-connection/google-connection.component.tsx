@@ -89,7 +89,7 @@ function Connected({ connection }: { connection: GoogleConnectionView }) {
             if (item && id !== connection.calendarId) setChoosing({ id: item.value, name: item.label });
           }}
         >
-          <SelectTrigger className="w-full max-w-sm">
+          <SelectTrigger className="w-full max-w-sm data-[size=default]:h-(--control-height)">
             <SelectValue placeholder="Choose a calendar" />
           </SelectTrigger>
           <SelectContent>

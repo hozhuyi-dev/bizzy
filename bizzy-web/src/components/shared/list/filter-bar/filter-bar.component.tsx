@@ -657,7 +657,7 @@ function DaysPicker({
         if (ready) onPick(from === to ? from : `${from}~${to}`);
       }}
     >
-      <label className="flex flex-col gap-1">
+      <label className="flex min-w-0 flex-1 basis-36 flex-col gap-1">
         <span className="text-xs text-muted-foreground">From</span>
         <Input
           type="date"
@@ -667,7 +667,7 @@ function DaysPicker({
           autoFocus
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="flex min-w-0 flex-1 basis-36 flex-col gap-1">
         <span className="text-xs text-muted-foreground">To</span>
         <Input
           type="date"

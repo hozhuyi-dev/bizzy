@@ -1,17 +1,20 @@
 import { cn } from "cn";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertDialog, AlertDialogContent } from "~/components/ui/alert-dialog";
 import { Dialog, DialogContent } from "~/components/ui/dialog";
+import { useKeyboardInset } from "~/core/viewport/keyboard-inset.hook";
 
 /**
  * Roomy on a wide screen; on a phone, a sheet from the bottom, so a form
  * keeps its room above the keyboard. Taller than the screen, it scrolls,
  * its footer's buttons kept in view at the bottom; the title scrolls away,
- * leaving the room to the fields.
+ * leaving the room to the fields. On a phone it rides above the keyboard
+ * (useKeyboardInset), so the footer's buttons stay in reach while typing.
  */
 const SHEET = [
-  "max-h-[90dvh] overflow-y-auto sm:max-w-lg",
-  "max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0",
+  "max-h-[calc(90dvh-var(--keyboard-inset))] overflow-y-auto sm:max-w-lg",
+  "max-sm:top-auto max-sm:bottom-(--keyboard-inset) max-sm:left-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0",
   "max-sm:rounded-b-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
   "max-sm:data-open:slide-in-from-bottom-8 max-sm:data-closed:slide-out-to-bottom-8",
   // Sticky over the fields scrolling under it: its muted tint laid on the
@@ -42,18 +45,26 @@ interface SheetDialogProps {
 
 /** Every dialog in the app: a form, or a panel to act on. */
 export function SheetDialog({ open, onClose, children }: SheetDialogProps) {
+  const [sheet, setSheet] = useState<HTMLDivElement | null>(null);
+  useKeyboardInset(sheet);
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={SHEET}>{children}</DialogContent>
+      <DialogContent ref={setSheet} className={SHEET}>
+        {children}
+      </DialogContent>
     </Dialog>
   );
 }
 
 /** A confirmation, laid out as SheetDialog; a click outside leaves it open. */
 export function SheetAlertDialog({ open, onClose, children }: SheetDialogProps) {
+  const [sheet, setSheet] = useState<HTMLDivElement | null>(null);
+  useKeyboardInset(sheet);
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <AlertDialogContent className={ALERT_SHEET}>{children}</AlertDialogContent>
+      <AlertDialogContent ref={setSheet} className={ALERT_SHEET}>
+        {children}
+      </AlertDialogContent>
     </AlertDialog>
   );
 }

@@ -1,8 +1,9 @@
 import { cn } from "cn";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { usePageSlots } from "~/components/shared/layout/page-header/page-header.hook";
 import { useHeight } from "~/core/scroll-spy/scroll-spy.hook";
 import { setDockHeight } from "~/core/scroll-spy/scroll-spy.util";
+import { useKeyboardInset } from "~/core/viewport/keyboard-inset.hook";
 
 // The dock and its tray: frosted panels floating over the page.
 const PANEL =
@@ -22,9 +23,8 @@ const PANEL =
  */
 export function PageDock() {
   const { setDock, setTray } = usePageSlots();
-  const [frameRef, height] = useHeight<HTMLDivElement>();
-  const [element, setElement] = useState<HTMLDivElement | null>(null);
-  useKeyboardInset(element);
+  const [frameRef, height, frame] = useHeight<HTMLDivElement>();
+  useKeyboardInset(frame);
 
   useEffect(() => {
     setDockHeight(height);
@@ -33,11 +33,9 @@ export function PageDock() {
 
   return (
     <div
-      ref={(node) => {
-        frameRef.current = node;
-        setElement(node);
-      }}
-      className="pointer-events-none fixed inset-x-0 bottom-(--keyboard-inset,0px) z-(--z-dock) flex flex-col items-end gap-1.5 px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] has-[[data-slot=page-dock]:empty]:hidden md:hidden"
+      ref={frameRef}
+      // Lifted over the keyboard by translate, which moves it without laying the page out again.
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-(--z-dock) flex -translate-y-(--keyboard-inset) flex-col items-end gap-1.5 px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] has-[[data-slot=page-dock]:empty]:hidden md:hidden"
     >
       <div ref={setTray} data-slot="page-dock-tray" className={cn(PANEL, "w-full px-1 py-1")} />
       <div
@@ -47,28 +45,4 @@ export function PageDock() {
       />
     </div>
   );
-}
-
-/**
- * Keeps the dock on top of the phone's keyboard: the keyboard shrinks only
- * the visual viewport, and a fixed element sits at the bottom of the layout
- * one, under the keyboard, so it is raised by the difference. Not while
- * zoomed in, when that difference is the zoom's.
- */
-function useKeyboardInset(element: HTMLElement | null) {
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    if (!element || !viewport) return undefined;
-    const update = () => {
-      const inset = viewport.scale > 1.01 ? 0 : window.innerHeight - viewport.height - viewport.offsetTop;
-      element.style.setProperty("--keyboard-inset", `${Math.max(0, Math.round(inset))}px`);
-    };
-    update();
-    viewport.addEventListener("resize", update);
-    viewport.addEventListener("scroll", update);
-    return () => {
-      viewport.removeEventListener("resize", update);
-      viewport.removeEventListener("scroll", update);
-    };
-  }, [element]);
 }

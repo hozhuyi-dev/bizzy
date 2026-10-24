@@ -183,8 +183,7 @@ function PaymentForm({ payables, onDone, onCancel }: PaymentFormProps) {
           <field.TextField
             label="On"
             type="date"
-            className="w-auto"
-            inputClassName="w-auto"
+            inputClassName="max-w-44"
             // Money comes in on a day that has come; one ahead is most likely a slip.
             description={field.state.value > todayISO() ? "That day hasn't come yet." : undefined}
           />

@@ -19,6 +19,7 @@ export function RecordEditor({ draft, disabled }: { draft: RecordDraft; disabled
         <FieldLabel htmlFor="record-summary">Summary</FieldLabel>
         <Input
           id="record-summary"
+          className="h-(--control-height)"
           value={draft.summary}
           maxLength={300}
           placeholder="L4/L5 mobilisation, pain 6 → 3"

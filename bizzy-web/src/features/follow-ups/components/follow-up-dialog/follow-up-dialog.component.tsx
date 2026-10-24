@@ -111,13 +111,12 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
         </form.AppField>
 
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-start gap-2">
+          <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,4fr)] items-start gap-2 sm:grid-cols-[10rem_8rem]">
             <form.AppField name="date" validators={{ onChange: ({ value }) => requiredError(value, "Pick a day") }}>
               {(field) => (
                 <field.TextField
                   label="When"
                   type="date"
-                  className="w-auto"
                   // Fine for a note of a call made; most often a slip.
                   description={field.state.value && field.state.value < todayISO() ? "That day has passed." : undefined}
                 />
@@ -134,7 +133,7 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
                         fieldApi.form.getFieldValue("allDay") ? undefined : requiredError(value, "Pick a time"),
                     }}
                   >
-                    {(field) => <field.TextField label="Time" type="time" step={300} className="w-auto" />}
+                    {(field) => <field.TextField label="Time" type="time" step={300} />}
                   </form.AppField>
                 )
               }

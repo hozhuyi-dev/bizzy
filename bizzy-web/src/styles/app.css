@@ -222,9 +222,15 @@
   --row-height: 3.5rem;
   /* The least a button is on a phone, to tap with a thumb. */
   --touch-target: 2.5rem;
+  /* A form's box (a line of text, a date, a pick from a list): one height
+     for all, a thumb's on a phone. */
+  --control-height: 2rem;
   --banners-height: 0px;
   /* What the phone's dock (PageDock) takes off the bottom, set while it shows. */
   --dock-height: 0px;
+  /* How much of the screen's bottom a phone's keyboard covers, set by
+     useKeyboardInset on what rides above it (the dock, a sheet). */
+  --keyboard-inset: 0px;
   --sticky-top: calc(var(--nav-height) + var(--page-header-height) + var(--banners-height));
 
   /* The page's layers, bottom to top. */
@@ -244,6 +250,7 @@
   :root {
     --nav-height: 3.5rem;
     --page-header-height: 0px;
+    --control-height: var(--touch-target);
   }
 }
 
@@ -299,16 +306,18 @@
 }
 
 /* The last section is at least a screen tall, less what sticks above it,
-   so jumping to it brings its heading to the top like the others. */
+   so jumping to it brings its heading to the top like the others. The
+   screen with the browser's bars shown (svh): it holds still while they
+   fold away, where dvh would lay the page out again on every frame. */
 @utility fill-last-section {
   & > :last-child {
     min-height: calc(
-      100dvh - var(--sticky-top) - var(--contents-height) - var(--section-gap) - var(--page-bottom) - var(--dock-height)
+      100svh - var(--sticky-top) - var(--contents-height) - var(--section-gap) - var(--page-bottom) - var(--dock-height)
     );
   }
   @variant md {
     & > :last-child {
-      min-height: calc(100dvh - var(--sticky-top) - var(--section-gap) - var(--page-bottom) - var(--dock-height));
+      min-height: calc(100svh - var(--sticky-top) - var(--section-gap) - var(--page-bottom) - var(--dock-height));
     }
   }
 }
@@ -326,11 +335,37 @@
     scrollbar-gutter: stable;
     }
 }
-/* iOS Safari zooms the page when an input under 16px takes focus. */
+/* iOS Safari zooms the page when an input under 16px takes focus; a pick
+   from a list (a button) takes the same size, so a form's boxes match. */
 @media (pointer: coarse) {
   input,
   select,
-  textarea {
+  textarea,
+  [data-slot="select-trigger"] {
     font-size: 16px !important;
+  }
+}
+
+/*
+ * iOS (every browser there is WebKit) draws its own date and time boxes,
+ * taller than their height and wider than their width, so a row of them
+ * overlaps. Without that look they are plain boxes sized like the rest;
+ * a tap still opens the system's picker.
+ */
+@layer base {
+  @supports (-webkit-touch-callout: none) {
+    input:is([type="date"], [type="time"], [type="datetime-local"]) {
+      -webkit-appearance: none;
+      appearance: none;
+      min-width: 0;
+      max-width: 100%;
+    }
+    input::-webkit-date-and-time-value {
+      margin: 0;
+      text-align: start;
+    }
+    input::-webkit-datetime-edit {
+      padding: 0;
+    }
   }
 }
