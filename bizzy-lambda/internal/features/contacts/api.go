@@ -50,7 +50,7 @@ func Routes(r *router.Router, run *txn.Runner, dir Directory) {
 		if err != nil {
 			return nil, err
 		}
-		_, err = txn.Run(ctx, run, func(tx *txn.Tx) (any, error) { return nil, Refresh(tx, []Person{p}, false) })
+		_, err = txn.Run(ctx, run, func(tx *txn.Tx) (any, error) { return nil, Refresh(tx, []Person{p}) })
 		return View(p), err
 	}))
 }

@@ -32,6 +32,9 @@ const (
 	// calendars, to choose the one the sync reads.
 	ScopeEvents       = "https://www.googleapis.com/auth/calendar.events"
 	ScopeCalendarList = "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+	// ScopeAppCalendars makes calendars and deletes those the app made:
+	// asked for in development and staging only, for data:copy.
+	ScopeAppCalendars = "https://www.googleapis.com/auth/calendar.app.created"
 )
 
 // Scopes are what the app asks for. openid and email only name the account

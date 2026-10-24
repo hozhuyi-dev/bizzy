@@ -4,7 +4,9 @@
 //
 //   node scripts/copy.mjs <from> <to>   e.g. production staging
 //
-// <to> must be development or staging. Each environment's table, buckets and
+// <to> must be development or staging, and its deployed code this checkout's.
+// COPY_PHONE and COPY_EMAIL override the business's own phone and email,
+// which stand in for every client's. Each environment's table, buckets and
 // Google settings are read from its deployed api Lambda; see aws.mjs for the
 // region and credentials.
 

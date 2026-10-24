@@ -46,9 +46,23 @@ type App struct {
 const PayURL = "https://pay.example"
 
 func New() *App {
-	a := &App{Table: table.NewMemory(), Contacts: &fakecontacts.Directory{}, Blobs: memblob.New(), PaySite: memblob.New(), Now: Epoch}
+	a, _, err := From(nil, Epoch)
+	if err != nil {
+		panic(err)
+	}
+	return a
+}
+
+// From is the app on a memory table filled by load (a copy of real data:
+// see internal/snapshot), migrated as a deploy does, with the clock at
+// now.
+func From(load func(context.Context, table.Table) error, now time.Time) (*App, migrate.Report, error) {
+	a := &App{Table: table.NewMemory(), Contacts: &fakecontacts.Directory{}, Blobs: memblob.New(), PaySite: memblob.New(), Now: now}
 	a.Calendar = &fakecal.Calendar{Now: func() time.Time { return a.Now }}
-	ids := 0
+	ids, prefix := 0, "id"
+	if load != nil {
+		prefix = "new" // never one of the loaded items' ids
+	}
 	a.App = app.New(app.Deps{
 		Table:      a.Table,
 		Blobs:      a.Blobs,
@@ -58,13 +72,16 @@ func New() *App {
 		Calendar:   func(context.Context) (calendar.Calendar, error) { return a.Calendar, nil },
 		Location:   KL,
 		Now:        func() time.Time { return a.Now },
-		NewID:      func() string { ids++; return fmt.Sprintf("id%03d", ids) },
+		NewID:      func() string { ids++; return fmt.Sprintf("%s%03d", prefix, ids) },
 	})
-	// As a deploy does: the code serves only a table at its version.
-	if _, err := migrate.Run(context.Background(), migrate.Options{Runner: a.Runner, Kinds: app.Kinds(), Migrations: migrations.All}); err != nil {
-		panic(err)
+	if load != nil {
+		if err := load(context.Background(), a.Table); err != nil {
+			return a, migrate.Report{}, err
+		}
 	}
-	return a
+	// As a deploy does: the code serves only a table at its version.
+	rep, err := migrate.Run(context.Background(), migrate.Options{Runner: a.Runner, Kinds: app.Kinds(), Migrations: migrations.All})
+	return a, rep, err
 }
 
 // Call sends an action as the web app does. refused is the error the app

@@ -475,8 +475,7 @@ func (s *Sync) refreshContacts(ctx context.Context) func() error {
 		if err != nil {
 			return err
 		}
-		_, err := txn.Run(ctx, s.Runner, func(tx *txn.Tx) (any, error) { return nil, contacts.Refresh(tx, people, true) })
-		return err
+		return contacts.RefreshAll(ctx, s.Runner, people)
 	}
 }
 

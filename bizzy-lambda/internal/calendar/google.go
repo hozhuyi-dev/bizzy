@@ -57,6 +57,30 @@ func Calendars(ctx context.Context, client *http.Client) ([]List, error) {
 	return all, googleauth.Wrap("list calendars", err)
 }
 
+// CreateCalendar makes a calendar in the user's account, in a time zone.
+// It needs googleauth.ScopeAppCalendars, which can delete only the
+// calendars the app made.
+func CreateCalendar(ctx context.Context, client *http.Client, name, timeZone string) (List, error) {
+	service, err := gcal.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return List{}, err
+	}
+	c, err := service.Calendars.Insert(&gcal.Calendar{Summary: name, TimeZone: timeZone}).Context(ctx).Do()
+	if err != nil {
+		return List{}, googleauth.Wrap("create calendar", err)
+	}
+	return List{ID: c.Id, Name: c.Summary}, nil
+}
+
+// DeleteCalendar deletes a calendar the app made, and every event in it.
+func DeleteCalendar(ctx context.Context, client *http.Client, id string) error {
+	service, err := gcal.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return err
+	}
+	return googleauth.Wrap("delete calendar", service.Calendars.Delete(id).Context(ctx).Do())
+}
+
 func (g *Google) ID() string { return g.calendarID }
 
 func (g *Google) Changed(ctx context.Context, since, from, to time.Time) ([]Event, error) {

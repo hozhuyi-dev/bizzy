@@ -29,9 +29,9 @@ Sign-in is Google via Cognito. Only `ALLOWED_EMAIL` gets identity-pool credentia
 
 ```
 bizzy-infra/    bin/bizzy-infra.ts → lib/{auth,data,api,web}-stack.ts, bin/bizzy-ci.ts → lib/ci-stack.ts, constructs in lib/common/
-bizzy-lambda/   cmd/{api,public,job-quarterly,migrate,copy}/main.go, internal/{app,features,migrations,platform,calendar,simulation,testutil}/
+bizzy-lambda/   cmd/{api,public,job-quarterly,migrate,copy}/main.go, internal/{app,features,migrations,platform,calendar,snapshot,simulation,testutil}/
 bizzy-web/      src/main.tsx, src/routes/ (file routes), src/features/<feature>/
-scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs; migrate.mjs, copy.mjs: run cmd/migrate, cmd/copy
+scripts/        web-env.mjs: writes bizzy-web/.env.<env> from stack outputs; migrate.mjs, copy.mjs, replay.mjs: run cmd/migrate, cmd/copy, TestReplay
 ```
 
 ### bizzy-infra
@@ -124,8 +124,9 @@ The table's SQL-style migrations. The code serves only a table at its own versio
 
 - **Every change to a stored type or a `Meta`** needs one (once production holds data; see Conventions). `TestSchema` refuses to `-update` SCHEMA.md without one. One with no `Up` is enough when no item needs changing by hand: every run rewrites every item as the code writes it.
 - **Writing one**: `internal/migrations/NNN_<what>.go`, appended to `All` (never reorder or change a deployed one). It works on stored JSON (`migrate.EachItem`), never a feature's types, imports only `platform`, changes nothing when run twice, and has `testdata/NNN/{before,after}.json`.
+- **Trying one**: `pnpm data:replay production` runs it on production's data in memory (see [Trying changes](#trying-changes-on-productions-data)).
 - **Deploying**: CI dry-runs the migrations on an in-memory copy, deploys, then invokes `cmd/migrate`: back up (production; backups older than 35 days are deleted, point-in-time recovery covers them), raise the fence (requests get `unavailable`), migrate, decode every item strictly, rewrite them, check every invariant, lower the fence. A failure leaves the fence up until a fixed migration runs.
-- **Capacity**: the table's 5 reads and writes a second would take hours over every item once it holds a few years of data. So every run over every item (a deploy's review and dry run, a migration, `data:copy`) first raises the capacity to what the table's size needs to finish in about 5 minutes, then sets it back ([dynamo/capacity.go](bizzy-lambda/internal/platform/dynamo/capacity.go)). Capacity is billed by the hour it is set, used or not, so a raise costs cents, and a small table is never raised.
+- **Capacity**: the table's 5 reads and writes a second would take hours over every item once it holds a few years of data. So every run over every item (a deploy's review and dry run, a migration, `data:copy`, `data:replay`) first raises the capacity to what the table's size needs to finish in about 5 minutes, then sets it back ([dynamo/capacity.go](bizzy-lambda/internal/platform/dynamo/capacity.go)). Capacity is billed by the hour it is set, used or not, so a raise costs cents, and a small table is never raised.
 
 ### bizzy-web
 
@@ -158,7 +159,7 @@ The table's SQL-style migrations. The code serves only a table at its own versio
 
 Requires Node 24, pnpm 10, Go (see `go.mod`) and the AWS CLI. The local frontend runs against the real `development` stacks.
 
-1. **Google Cloud**: enable the Calendar and People APIs. Publish the OAuth consent screen with scopes `calendar.events`, `calendar.calendarlist.readonly` and `contacts` (in "Testing", refresh tokens expire after 7 days). Create a Web OAuth client with redirect URIs `https://<project>-<env>.auth.<region>.amazoncognito.com/oauth2/idpresponse` and `<app origin>/google-callback`.
+1. **Google Cloud**: enable the Calendar and People APIs. Publish the OAuth consent screen with scopes `calendar.events`, `calendar.calendarlist.readonly`, `contacts` and `calendar.app.created` (asked for outside production only, by `data:copy`; in "Testing", refresh tokens expire after 7 days). Create a Web OAuth client with redirect URIs `https://<project>-<env>.auth.<region>.amazoncognito.com/oauth2/idpresponse` and `<app origin>/google-callback`.
 2. `cp bizzy-infra/.env.example bizzy-infra/.env.development` and fill it in, with `http://localhost:4200/` as callback/logout URL and your email as `ALLOWED_EMAIL`.
 3. `pnpm install && pnpm aws:login && pnpm dev:deploy`
 4. `pnpm web:dev`, open http://localhost:4200, and connect a **test** Google account in Settings.
@@ -181,7 +182,8 @@ Staging deploys from `main` and production from `production`, by GitHub Actions 
 pnpm dev:deploy          # deploy development stacks, migrate, write bizzy-web/.env.development
 pnpm lambda:deploy       # hotswap development Lambdas after Go changes, then migrate
 pnpm lambda:migrate:dry  # what the next deploy's migrations would do (writes nothing)
-pnpm data:copy production staging   # replace staging's (or development's) data with production's; see below
+pnpm data:replay production         # this checkout on production's data, in memory; see below
+pnpm data:copy production staging   # replace staging's (or development's) data with production's, scrubbed
 pnpm web:dev             # http://localhost:4200
 pnpm web:env             # rewrite the web env only
 pnpm cdk:diff
@@ -202,17 +204,17 @@ go test ./internal/features/settings -run TestPayPageFiles -update   # the same 
 TABLE_NAME=<scratch table> go test ./internal/platform/dynamo   # the table contract against real DynamoDB; it wipes the table
 ```
 
-## Copying data between environments
+## Trying changes on production's data
 
-`pnpm data:copy <from> <to>` ([cmd/copy](bizzy-lambda/cmd/copy/main.go)) replaces development's or staging's data with another environment's, to try the app (or the next migration) on real data. Run it from the code deployed to `<to>`, as it migrates the copy with this checkout's migrations. It:
+- **`pnpm data:replay production`** runs this checkout on production's data in memory, reading production only: its migrations, every view and PDF, then the simulation's random actions and checks ([replay_test.go](bizzy-lambda/internal/simulation/replay_test.go)). Run it before merging a migration or a large change: it needs no deployed environment and no Google.
+- **`pnpm data:copy production staging`** (or `development`) replaces that environment's data with production's, to use the change by hand ([cmd/copy](bizzy-lambda/cmd/copy/main.go)). Run it from the code deployed there.
 
-- raises both tables' capacity as far as the source's size needs, then sets it back;
-- fences `<to>`, wipes it except its Google connection, and copies every item except the sync's state, event links and conflicts;
-- copies issued PDFs as they are, and puts a small placeholder in for every attachment (the list still shows the original's size);
-- migrates, then publishes `<to>`'s payment page from the copied settings;
-- empties `<to>`'s chosen calendar and syncs, so it shows every copied session and follow-up. It refuses when that calendar is `<from>`'s. With none chosen, choose an empty one in Settings.
+The copy writes nothing until the data is migrated, scrubbed and checked in memory. It refuses a target whose deployed code isn't this checkout's, or whose Google account is the source's. It:
 
-Clients' contacts stay linked to `<from>`'s Google account: in a test account the sync marks them missing, and keeps the copied details.
+- takes the source as of one moment ([internal/snapshot](bizzy-lambda/internal/snapshot/snapshot.go)), leaving out what ties it to its own Google account: the connection, the sync's state, event links and conflicts;
+- **scrubs whatever could reach a client**: every phone becomes the business's own, and every email its own with a `+bizzy-…` tag (`COPY_PHONE` and `COPY_EMAIL` override them). Known fields are replaced whole, and any number or address found in other text too. Anything new that sends to clients must stay covered by it;
+- makes a calendar for the copy (`bizzy-staging · 24 Oct 2026 15:04`) and a contact per linked client under the label `bizzy-staging`, replacing the last copy's. development and staging share one test Google account, so a copy touches only what is named for its environment, and it can delete only calendars the app made (`calendar.app.created`, asked for outside production);
+- writes the target behind the fence, with issued PDFs as kept and a placeholder for every attachment, then syncs the last 60 days on; the app backfills the rest.
 
 ## If share links are flooded
 

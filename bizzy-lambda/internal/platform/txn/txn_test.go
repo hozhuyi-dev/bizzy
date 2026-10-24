@@ -454,3 +454,43 @@ func TestARequestSaysTheVersionsItLastSaw(t *testing.T) {
 		t.Errorf("versions of a request that read nothing = %v; want none", none.Versions())
 	}
 }
+
+func TestRunBatchedChangesMoreThanOneCommitTakes(t *testing.T) {
+	r, _ := newRunner()
+	ctx := context.Background()
+	var all []string
+	for i := range 2 * table.MaxWrites {
+		all = append(all, fmt.Sprintf("n%03d", i))
+	}
+	add := func(tx *txn.Tx, id string) (bool, error) {
+		return true, notes.Add(tx, &note{ID: id, Owner: "jane", At: day})
+	}
+	if _, err := txn.Run(ctx, r, func(tx *txn.Tx) (any, error) {
+		for _, id := range all {
+			if _, err := add(tx, id); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	}); !errors.Is(err, table.ErrTooBig) {
+		t.Fatalf("one commit of %d writes: %v, want ErrTooBig", len(all), err)
+	}
+	n, err := txn.RunBatched(ctx, r, all, add)
+	if err != nil || n != len(all) {
+		t.Fatalf("RunBatched: %d changed, %v", n, err)
+	}
+	pin := func(tx *txn.Tx, id string) (bool, error) {
+		nt, err := notes.Get(tx, id)
+		if err != nil || nt.Pinned || id > "n050" {
+			return false, err
+		}
+		nt.Pinned = true
+		return true, nil
+	}
+	if n, err := txn.RunBatched(ctx, r, all, pin); err != nil || n != 51 {
+		t.Errorf("pinning some: %d changed, %v; want 51", n, err)
+	}
+	if n, err := txn.RunBatched(ctx, r, all, pin); err != nil || n != 0 {
+		t.Errorf("pinning again: %d changed, %v; want 0", n, err)
+	}
+}
