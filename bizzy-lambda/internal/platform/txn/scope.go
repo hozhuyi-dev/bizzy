@@ -21,8 +21,8 @@ type Scope struct {
 	changed  map[string]bool
 	versions table.Versions
 	values   map[any]any
-	ends    []func(ctx context.Context)
-	counts  map[string]int
+	ends     []func(ctx context.Context)
+	counts   map[string]int
 }
 
 type scopeKey struct{}
