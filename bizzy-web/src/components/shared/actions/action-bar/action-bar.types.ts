@@ -57,7 +57,11 @@ export type MenuItemAction = ActionCommon &
     | { type: "toggle"; pressed: boolean; onPressedChange: (pressed: boolean) => void }
   );
 
-export type ActionSize = "default" | "sm" | "xs";
+/** lg is the phone's dock, sized for a thumb. */
+export type ActionSize = "lg" | "default" | "sm" | "xs";
+
+/** How a bar's ⋯ and menus open: dropdowns, or sheets from the bottom (the phone's dock). */
+export type MenuStyle = "dropdown" | "sheet";
 
 /** The width below which a bar's `more` folds behind ⋯ (see ActionBar). */
 export type FoldWidth = "md" | "lg";

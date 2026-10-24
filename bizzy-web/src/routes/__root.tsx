@@ -8,6 +8,8 @@ import { NavBar } from "~/features/nav-bar/components/nav-bar/nav-bar.component"
 import { StayCurrent } from "~/features/sync/components/stay-current/stay-current.component";
 import { queryClient } from "~/core/config/query-client.config";
 import { AppBannerContext } from "~/components/shared/layout/page-header/page-header.hook";
+import { PageHeaderSlotsProvider } from "~/components/shared/layout/page-header/page-header-slots.component";
+import { PageDock } from "~/components/shared/layout/page-dock/page-dock.component";
 import { SetupNotice } from "~/features/settings/components/setup-notice/setup-notice.component";
 import { NavigationProgress } from "~/components/shared/feedback/navigation-progress/navigation-progress.component";
 import "~/styles/app.css";
@@ -22,7 +24,13 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* One provider, so moving from one tooltip to the next shows it at once. */}
       <TooltipProvider>{isPublic ? <Outlet /> : <AuthGate />}</TooltipProvider>
-      <Toaster position="top-center" />
+      {/* At the bottom, away from the header's actions on a wide screen, and
+          just above a phone's dock, by the thumb that tapped what it is about. */}
+      <Toaster
+        position="bottom-right"
+        offset={{ bottom: "max(1.5rem, var(--dock-height))" }}
+        mobileOffset={{ bottom: "max(1rem, var(--dock-height))" }}
+      />
     </QueryClientProvider>
   );
 }
@@ -37,16 +45,21 @@ function AuthGate() {
   if (status !== "signed-in") return <AuthScreen status={status} />;
 
   return (
-    <div className="min-h-dvh">
-      <StayCurrent />
-      <NavBar />
-      <NavigationProgress />
-      <main className="mx-auto max-w-(--content-width) px-(--page-gutter) pb-(--page-bottom)">
-        {/* What is left to set up, on every page's header. */}
-        <AppBannerContext value={<SetupNotice />}>
-          <Outlet />
-        </AppBannerContext>
-      </main>
-    </div>
+    <PageHeaderSlotsProvider>
+      <div className="min-h-dvh">
+        <StayCurrent />
+        <NavBar />
+        <NavigationProgress />
+        {/* On a phone the page header leaves the page (into the nav bar and the
+            dock), so the page keeps its air under the nav bar itself. */}
+        <main className="mx-auto max-w-(--content-width) px-(--page-gutter) pb-[calc(var(--page-bottom)+var(--dock-height))] max-md:pt-(--section-gap)">
+          {/* What is left to set up, on every page's header. */}
+          <AppBannerContext value={<SetupNotice />}>
+            <Outlet />
+          </AppBannerContext>
+        </main>
+        <PageDock />
+      </div>
+    </PageHeaderSlotsProvider>
   );
 }

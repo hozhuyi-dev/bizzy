@@ -36,12 +36,19 @@ export function BeeMark({ className }: { className?: string | undefined }) {
   );
 }
 
+/** The Bizzy name alone: beside the bee, or where the bee is already (a phone's menu). */
+export function Wordmark({ className }: { className?: string | undefined }) {
+  return (
+    <span className={cn("text-lg leading-none font-semibold tracking-tight text-brand-strong", className)}>Bizzy</span>
+  );
+}
+
 /** The bee with the Bizzy wordmark, for the nav bar and the sign-in card. */
 export function Logo({ className }: { className?: string | undefined }) {
   return (
     <span className={cn("inline-flex items-center gap-2 text-lg leading-none", className)}>
       <BeeMark className="size-7" />
-      <span className="font-semibold tracking-tight text-brand-strong">Bizzy</span>
+      <Wordmark />
     </span>
   );
 }

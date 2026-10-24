@@ -14,6 +14,9 @@ import { usePager, useStepKeys } from "~/core/list/pager.hook";
 /** How long the panel's filter rests before it counts what it finds. */
 const COUNT_DELAY = 300;
 
+/** Thumb-sized in a phone's dock (PageDock), where the header puts it. */
+const IN_DOCK = "in-data-[slot=page-dock]:size-9";
+
 interface PanelOptions {
   /** Makes the panel's filter the one stepped through. */
   onApply: (filter: ListFilter) => void;
@@ -65,6 +68,7 @@ export function ListPager<T>({ list, filter, current, itemLink, panel }: ListPag
       <Button
         variant="ghost"
         size="icon-sm"
+        className={IN_DOCK}
         aria-label={`Previous ${list.noun}`}
         title={`Previous ${list.noun} (K)`}
         disabled={!pager.canStep.before || (pager.stepping !== undefined && pager.stepping !== "before")}
@@ -83,6 +87,7 @@ export function ListPager<T>({ list, filter, current, itemLink, panel }: ListPag
       <Button
         variant="ghost"
         size="icon-sm"
+        className={IN_DOCK}
         aria-label={`Next ${list.noun}`}
         title={`Next ${list.noun} (J)`}
         disabled={!pager.canStep.after || (pager.stepping !== undefined && pager.stepping !== "after")}
@@ -117,7 +122,15 @@ function FilterPanel<T>({ list, filter, panel, children }: FilterPanelProps<T>) 
       }}
     >
       <PopoverTrigger
-        render={<Button variant="outline" size="sm" aria-label={`Filter ${list.nouns}`} title={`Filter ${list.nouns}`} />}
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className="in-data-[slot=page-dock]:h-9 in-data-[slot=page-dock]:px-3"
+            aria-label={`Filter ${list.nouns}`}
+            title={`Filter ${list.nouns}`}
+          />
+        }
       >
         <ListFilterIcon className="hidden sm:block" />
         {children}

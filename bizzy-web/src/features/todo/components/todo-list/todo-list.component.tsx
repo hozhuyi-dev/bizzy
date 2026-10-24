@@ -75,7 +75,7 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
         <DialogHeader>
           <DialogTitle>Payment</DialogTitle>
         </DialogHeader>
-        {paying && <PaymentPanel payables={paying} onPaid={() => setPaying(null)} />}
+        {paying && <PaymentPanel payables={paying} onPaid={() => setPaying(null)} onCancel={() => setPaying(null)} />}
       </SheetDialog>
     </>
   );

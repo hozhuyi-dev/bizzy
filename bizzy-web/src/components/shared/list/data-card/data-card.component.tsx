@@ -11,6 +11,10 @@ import { Card, CardContent } from "~/components/ui/card";
 interface DataCardProps {
   /** Who or what, with its badges; it names the card for screen readers. */
   title: ReactNode;
+  /** Before the lines, their height: a TickSlot (the item's icon, and its tick). */
+  leading?: ReactNode;
+  /** Ticked: tinted and ringed, so what is ticked reads at a glance down the list. */
+  selected?: boolean | undefined;
   /** At the top right, what matters at a glance: an amount. */
   value?: ReactNode;
   /** The line under the title: when, where, how much. */
@@ -19,9 +23,9 @@ interface DataCardProps {
   detail?: ReactNode;
   /** The detail in full, for when it is cut short. */
   detailTitle?: string | undefined;
-  /** Its buttons, along the bottom. */
+  /** What is left to do with it, as buttons along the bottom. */
   actions?: ReadonlyArray<Action> | undefined;
-  /** The rest, behind ⋯. */
+  /** The rest, behind ⋯: with the buttons, or at the side without them, so the card keeps its height. */
   more?: ReadonlyArray<Action> | undefined;
   /** Its page: a tap anywhere on the card opens it. */
   open?: LinkOptions | undefined;
@@ -33,8 +37,10 @@ interface DataCardProps {
  * A table row on a phone, laid out like a to-do row (DataRow): three lines
  * of text, each one line long (cut short with an ellipsis), the last kept
  * even when empty; then its buttons along the bottom, full width and big
- * enough for a thumb. Every card in a list is one height, so the list
- * never shifts.
+ * enough for a thumb, when something is left to do. Every card in a list is
+ * one height, so the list never shifts: what is not left to do (copy a link)
+ * sits behind a ⋯ at the side, and ticking (a TickSlot before the lines)
+ * only tints the card.
  *
  * With an `open` (or `onOpen`), a tap anywhere on the card opens it: a link
  * (or button) stretched under the content, which lets taps through to it
@@ -42,13 +48,32 @@ interface DataCardProps {
  * so. The stretched link is also the way in by keyboard and screen reader,
  * named by the title; no button or link in the card need go there too.
  */
-export function DataCard({ title, value, meta, detail, detailTitle, actions = [], more = [], open, onOpen }: DataCardProps) {
+export function DataCard({
+  title,
+  leading,
+  selected,
+  value,
+  meta,
+  detail,
+  detailTitle,
+  actions = [],
+  more = [],
+  open,
+  onOpen,
+}: DataCardProps) {
   const titleId = useId();
   const tappable = open !== undefined || onOpen !== undefined;
-  const hasButtons = actions.length > 0 || more.length > 0;
+  const hasButtons = actions.length > 0;
+  const sideMenu = !hasButtons && more.length > 0;
 
   return (
-    <Card size="sm" className={cn(tappable && "relative transition-colors has-[[data-card-link]:active]:bg-muted/40")}>
+    <Card
+      size="sm"
+      className={cn(
+        tappable && "relative transition-colors has-[[data-card-link]:active]:bg-muted/40",
+        selected && "bg-primary/5 ring-primary/40",
+      )}
+    >
       {open ? (
         <Link {...open} data-card-link="" aria-labelledby={titleId} className={STRETCHED} />
       ) : (
@@ -69,6 +94,7 @@ export function DataCard({ title, value, meta, detail, detailTitle, actions = []
         )}
       >
         <div className="flex min-w-0 items-center gap-2">
+          {leading && <div className="-ml-0.5 mr-1 flex shrink-0 items-center">{leading}</div>}
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <div className="flex h-6 min-w-0 items-center gap-2">
               <div
@@ -84,7 +110,11 @@ export function DataCard({ title, value, meta, detail, detailTitle, actions = []
               {detail}
             </div>
           </div>
-          {tappable && <ChevronRightIcon aria-hidden="true" className="-mr-1 size-4 shrink-0 text-muted-foreground/60" />}
+          {sideMenu ? (
+            <ActionMenu actions={more} className="-mr-1.5 self-end" />
+          ) : (
+            tappable && <ChevronRightIcon aria-hidden="true" className="-mr-1 size-4 shrink-0 text-muted-foreground/60" />
+          )}
         </div>
 
         {hasButtons && (

@@ -1,18 +1,18 @@
 import type { DocumentSummary } from "~/features/documents/documents.types";
-import type { CardTick } from "~/features/documents/documents.columns";
+import type { Tick } from "~/components/shared/list/tick-slot/tick-slot.component";
 import {
   DocumentStatusBadge,
   DocumentTypeIcon,
   documentDateColumn,
   documentLink,
   documentName,
-  documentTickColumn,
-  tickAction,
+  documentSlotColumn,
 } from "~/features/documents/documents.columns";
 import { coversText } from "~/features/documents/documents.util";
 import { CellText } from "~/components/shared/list/data-table/data-table-cell.component";
 import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
+import { TickSlot } from "~/components/shared/list/tick-slot/tick-slot.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 
@@ -31,7 +31,7 @@ function aboutText(doc: DocumentSummary): string {
  */
 export const createClientDocumentColumns = () =>
   helper.columns([
-    documentTickColumn,
+    documentSlotColumn,
     documentDateColumn,
     helper.accessor((doc) => doc.number ?? "", {
       id: "number",
@@ -41,10 +41,7 @@ export const createClientDocumentColumns = () =>
         const doc = row.original;
         return (
           <CellText sub={coversText(doc.covers)}>
-            <span className="flex min-w-0 items-center gap-2">
-              <DocumentTypeIcon type={doc.type} />
-              <span className="truncate font-medium">{documentName(doc)}</span>
-            </span>
+            <span className="truncate font-medium">{documentName(doc)}</span>
           </CellText>
         );
       },
@@ -60,20 +57,20 @@ export const createClientDocumentColumns = () =>
     }),
   ]);
 
-/** The phone layout of a row: ticked with a toggle, as a card has no checkbox. */
-export function ClientDocumentCard({ doc, tick }: { doc: DocumentSummary; tick: CardTick }) {
+/** The phone layout of a row: ticked by its slot, as the documents list's. */
+export function ClientDocumentCard({ doc, tick }: { doc: DocumentSummary; tick: Tick }) {
   return (
     <DataCard
+      leading={<TickSlot icon={<DocumentTypeIcon type={doc.type} />} tick={tick} />}
+      selected={tick.ticked}
       title={
         <>
-          <DocumentTypeIcon type={doc.type} />
           <span className="font-medium">{documentName(doc)}</span>
           <DocumentStatusBadge status={doc.status} revising={doc.revising} />
         </>
       }
       value={formatCents(doc.totalCents)}
       meta={aboutText(doc)}
-      actions={tickAction(tick)}
       open={documentLink(doc)}
     />
   );

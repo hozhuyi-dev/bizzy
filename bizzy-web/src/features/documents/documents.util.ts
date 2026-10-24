@@ -16,6 +16,7 @@ import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
 import { filterUrl, listRequest } from "~/core/list/filter.util";
 import { formatSpan, monthKey } from "~/core/utils/date.util";
+import { formatCents } from "~/core/utils/money.util";
 
 /** The documents list's filter in its URL: this month unless it says otherwise. */
 export const documentsUrl = filterUrl(DOCUMENT_FACETS, () => monthKey(new Date()));
@@ -165,10 +166,25 @@ export function documentPresets(now = new Date()): Array<FilterPreset> {
   ];
 }
 
-/** The one client a filter narrows to, if it is one: what is ticked is then theirs alone. */
-export function singleClientOf(filter: ListFilter): string | undefined {
-  const clients = filter.chips.client ?? [];
-  return clients.length === 1 ? clients[0] : undefined;
+/**
+ * What the ticked are, under their count: whose, then how many of each
+ * type ("2 invoices, 1 receipt"), with what they come to when all are of
+ * one type, as an invoice's and a receipt's totals don't add up to anything.
+ */
+export function tickedSummary(chosen: ReadonlyArray<DocumentSummary>, clientName: string): string {
+  const types = (["invoice", "receipt"] as const)
+    .map((type) => ({ type, docs: chosen.filter((doc) => doc.type === type) }))
+    .filter(({ docs }) => docs.length > 0);
+  const counts = types
+    .map(({ type, docs }) => {
+      const spec = DOCUMENT_TYPES[type];
+      return `${docs.length} ${(docs.length === 1 ? spec.title : spec.plural).toLowerCase()}`;
+    })
+    .join(", ");
+  const [only] = types;
+  const total =
+    types.length === 1 && only ? ` · ${formatCents(only.docs.reduce((sum, doc) => sum + doc.totalCents, 0))}` : "";
+  return [clientName, counts].filter(Boolean).join(" · ") + total;
 }
 
 /** The search the filter asks the API for. */

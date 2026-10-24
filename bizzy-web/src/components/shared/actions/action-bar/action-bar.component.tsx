@@ -1,9 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { cn } from "cn";
 import { ChevronDownIcon, MoreHorizontalIcon } from "lucide-react";
-import type { Action, ActionSize, ActionStyle, FoldWidth, MenuItemAction } from "./action-bar.types";
+import { useState } from "react";
+import type { ReactNode } from "react";
+import type { Action, ActionSize, ActionStyle, FoldWidth, MenuItemAction, MenuStyle } from "./action-bar.types";
 import { Button } from "~/components/ui/button";
 import { HintTooltip } from "~/components/shared/feedback/hint-tooltip/hint-tooltip.component";
+import { ActionSheet } from "~/components/shared/actions/action-sheet/action-sheet.component";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -41,6 +44,8 @@ interface ActionBarProps {
    * a section beside its contents).
    */
   foldBelow?: FoldWidth | undefined;
+  /** How ⋯ and menus open: dropdowns, or sheets in the phone's dock. */
+  menus?: MenuStyle | undefined;
 }
 
 // Whole class names, so Tailwind sees them: `more` shown inline from the
@@ -64,6 +69,7 @@ export function ActionBar({
   className,
   buttonClassName,
   foldBelow = "md",
+  menus = "dropdown",
 }: ActionBarProps) {
   if (actions.length === 0 && more.length === 0 && menu.length === 0) return null;
   const fold = FOLDS[foldBelow];
@@ -76,6 +82,7 @@ export function ActionBar({
           size={size}
           defaultStyle={defaultStyle}
           className={cn(fold.inline, buttonClassName)}
+          menus={menus}
         />
       ))}
       {actions.map((action) => (
@@ -85,11 +92,12 @@ export function ActionBar({
           size={size}
           defaultStyle={defaultStyle}
           className={buttonClassName}
+          menus={menus}
         />
       ))}
       {/* One ⋯ either way: with `more` in it on a phone, without on wider screens. */}
-      <ActionMenu actions={[...more, ...menu]} size={size} className={fold.folded} />
-      <ActionMenu actions={menu} size={size} className={fold.wide} />
+      <ActionMenu actions={[...more, ...menu]} size={size} className={fold.folded} menus={menus} />
+      <ActionMenu actions={menu} size={size} className={fold.wide} menus={menus} />
     </div>
   );
 }
@@ -99,6 +107,7 @@ interface ActionButtonProps {
   size?: ActionSize;
   defaultStyle?: ActionStyle;
   className?: string | undefined;
+  menus?: MenuStyle | undefined;
 }
 
 /** One action as a button; one its verdict says no to says why in a tooltip. */
@@ -115,7 +124,14 @@ function PlainButton(props: ActionButtonProps) {
   return <ActionButtonOnly {...props} action={{ ...props.action, type: "button", onClick: () => undefined }} />;
 }
 
-function ActionButtonOnly({ action, size = "default", defaultStyle = "secondary", className, ...rest }: ActionButtonProps) {
+function ActionButtonOnly({
+  action,
+  size = "default",
+  defaultStyle = "secondary",
+  className,
+  menus = "dropdown",
+  ...rest
+}: ActionButtonProps) {
   const { label, icon: Icon, style = defaultStyle, iconOnlyOnPhone, iconAfter } = action;
   const disabled = isDisabled(action);
   const why = action.can?.ok === false;
@@ -180,6 +196,18 @@ function ActionButtonOnly({ action, size = "default", defaultStyle = "secondary"
         </Button>
       );
     case "menu":
+      if (menus === "sheet") {
+        return (
+          <SheetTrigger title={label} actions={action.actions}>
+            {(open) => (
+              <Button type="button" onClick={open} {...common}>
+                {content}
+                <ChevronDownIcon />
+              </Button>
+            )}
+          </SheetTrigger>
+        );
+      }
       return (
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button {...common} />}>
@@ -196,17 +224,51 @@ function ActionButtonOnly({ action, size = "default", defaultStyle = "secondary"
   }
 }
 
+interface SheetTriggerProps {
+  title: string;
+  hideTitle?: boolean;
+  actions: ReadonlyArray<Action>;
+  /** The button, given what opens the sheet. */
+  children: (open: () => void) => ReactNode;
+}
+
+/** A button opening its actions as a sheet from the bottom. */
+function SheetTrigger({ title, hideTitle, actions, children }: SheetTriggerProps) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      {children(() => setOpen(true))}
+      <ActionSheet open={open} onClose={() => setOpen(false)} title={title} hideTitle={hideTitle} actions={actions} />
+    </>
+  );
+}
+
 interface ActionMenuProps {
   actions: ReadonlyArray<Action>;
   size?: ActionSize;
   className?: string | undefined;
+  menus?: MenuStyle | undefined;
 }
 
-const ICON_SIZES = { default: "icon", sm: "icon-sm", xs: "icon-xs" } as const satisfies Record<ActionSize, string>;
+const ICON_SIZES = { lg: "icon-lg", default: "icon", sm: "icon-sm", xs: "icon-xs" } as const satisfies Record<
+  ActionSize,
+  string
+>;
 
 /** The same actions behind ⋯: a toggle ticks, a destructive one is red, a menu is a group under its label. */
-export function ActionMenu({ actions, size = "default", className }: ActionMenuProps) {
+export function ActionMenu({ actions, size = "default", className, menus = "dropdown" }: ActionMenuProps) {
   if (actions.length === 0) return null;
+  if (menus === "sheet") {
+    return (
+      <SheetTrigger title="More actions" hideTitle actions={actions}>
+        {(open) => (
+          <Button variant="ghost" size={ICON_SIZES[size]} aria-label="More actions" className={className} onClick={open}>
+            <MoreHorizontalIcon />
+          </Button>
+        )}
+      </SheetTrigger>
+    );
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger

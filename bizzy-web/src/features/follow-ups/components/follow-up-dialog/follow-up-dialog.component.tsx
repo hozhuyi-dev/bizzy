@@ -165,7 +165,8 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
         </form.AppField>
       </FieldGroup>
 
-      <DialogFooter className="sm:justify-between">
+      {/* One row of buttons on a phone too (SheetDialog): Delete first, kept to the left on a wide screen. */}
+      <DialogFooter>
         {editing && confirmingDelete ? (
           <InlineConfirm
             question="Delete it from your calendar too?"
@@ -185,26 +186,22 @@ function FollowUpForm({ target, onClose }: { target: FollowUpTarget; onClose: ()
           />
         ) : (
           <>
-            {editing ? (
+            {editing && (
               <Button
                 type="button"
                 variant="ghost"
-                className="text-destructive hover:text-destructive"
+                className="text-destructive hover:text-destructive sm:mr-auto"
                 onClick={() => setConfirmingDelete(true)}
               >
                 <Trash2Icon /> Delete
               </Button>
-            ) : (
-              <span />
             )}
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
-              <form.AppForm>
-                <form.SubmitButton label={editing ? "Save" : "Add follow-up"} />
-              </form.AppForm>
-            </div>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <form.AppForm>
+              <form.SubmitButton label={editing ? "Save" : "Add follow-up"} />
+            </form.AppForm>
           </>
         )}
       </DialogFooter>

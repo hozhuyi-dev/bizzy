@@ -141,6 +141,7 @@ function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
       <PageHeader
         {...header}
         title={documentLabel(doc.number, doc.revision)}
+        subtitle={draft.recipient.name || undefined}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
         actions={[documentIssueAction(editor)]}
         moreActions={[whatsapp, ...editorActions.more]}
@@ -182,6 +183,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
       <PageHeader
         {...header}
         title={documentLabel(doc.number, doc.revision)}
+        subtitle={content.recipient.name || undefined}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
         // An issued receipt is mostly sent, viewed and kept; revising is rare,
         // so nothing claims the always-visible slot and the title keeps the
