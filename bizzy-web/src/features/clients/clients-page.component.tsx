@@ -22,6 +22,7 @@ import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
+import { presetLabel } from "~/core/list/filter.util";
 
 interface ClientsPageProps {
   /** Words, and chips: where each client stands, how long since they were seen, what is missing. */
@@ -47,6 +48,7 @@ export function ClientsPage({ filter, onFilterChange }: ClientsPageProps) {
     <>
       <PageHeader
         title="Clients"
+        subtitle={presetLabel(filter, CLIENT_PRESETS)}
         actions={[{ type: "link", label: "New client", icon: PlusIcon, style: "primary", link: { to: "/clients/new" } }]}
         toolbar={
           <FilterBar

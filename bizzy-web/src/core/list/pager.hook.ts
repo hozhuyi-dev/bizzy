@@ -16,7 +16,19 @@ const AUTO_READS = 3;
 
 /** A list read a page at a time from the top (usePages) as a window. */
 export function usePagesWindow<T>(pages: UseInfiniteQueryResult<InfiniteData<Page<T>>>): ListWindow<T> {
-  const items = useMemo(() => pageItems(pages.data), [pages.data]);
+  return usePagesWindowOf(pages, pageItems);
+}
+
+/**
+ * Pages read from the top as a window onto what `itemsOf` takes from them:
+ * one kind of a list of several (a client's timeline). Keep `itemsOf` the
+ * same from render to render.
+ */
+export function usePagesWindowOf<TPage, T>(
+  pages: UseInfiniteQueryResult<InfiniteData<TPage>>,
+  itemsOf: (data: InfiniteData<TPage> | undefined) => Array<T>,
+): ListWindow<T> {
+  const items = useMemo(() => itemsOf(pages.data), [itemsOf, pages.data]);
   const { fetchNextPage } = pages;
   return {
     items,
@@ -29,7 +41,7 @@ export function usePagesWindow<T>(pages: UseInfiniteQueryResult<InfiniteData<Pag
       if (side === "before") return { items, hasBefore: false, hasAfter: pages.hasNextPage };
       const next = await fetchNextPage();
       if (next.isError) throw next.error;
-      return { items: pageItems(next.data), hasBefore: false, hasAfter: next.hasNextPage };
+      return { items: itemsOf(next.data), hasBefore: false, hasAfter: next.hasNextPage };
     },
   };
 }

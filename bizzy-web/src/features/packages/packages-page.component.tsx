@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
-import { PackageCard, createPackageColumns } from "./packages.columns";
-import { PACKAGE_PRESETS, matchesPackage, packageFacets, packagePayables } from "./packages.util";
+import { PACKAGE_SORTING, PackageCard, createPackageColumns } from "./packages.columns";
+import { PACKAGE_PRESETS, matchesPackage, packageFacets, packagePayables, packagesUrl } from "./packages.util";
 import { PackagesQuery } from "./packages.query";
 import { useOpenPackage } from "./package-open.hook";
 import type { PackageHandlers } from "./packages.columns";
@@ -18,9 +18,7 @@ import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.compon
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-
-/** How packages sort until a column is picked: latest bought first, as every dated list. */
-const LATEST_FIRST = [{ id: "purchasedAt", desc: true }];
+import { presetLabel } from "~/core/list/filter.util";
 
 // Stable fallback: a fresh [] each render would rebuild the row models.
 const NO_PACKAGES: Array<PackageView> = [];
@@ -51,18 +49,20 @@ export function PackagesPage({ filter, onFilterChange }: PackagesPageProps) {
     return all.filter((pkg) => matchesPackage(pkg, { text: "", when, chips }));
   }, [packages.data, narrowing]);
   const paid = usePaidAction();
+  // Each package's page steps through the list as it is filtered and sorted here.
+  const search = useMemo(() => packagesUrl.toSearch(filter), [filter]);
 
   const handlers = useMemo<PackageHandlers>(
     () => ({
       clientsById,
-      onEdit: (pkg) => openPackage({ mode: "edit", pkg }),
+      onEdit: (pkg) => openPackage({ mode: "edit", pkg, search }),
       paid: (pkg) =>
         paid(
           packagePayables(pkg).filter((p) => !p.paid),
-          { type: "button", label: ANOTHER_DAY, onClick: () => openPackage({ mode: "edit", pkg, at: "payment" }) },
+          { type: "button", label: ANOTHER_DAY, onClick: () => openPackage({ mode: "edit", pkg, at: "payment", search }) },
         ),
     }),
-    [clientsById, paid, openPackage],
+    [clientsById, paid, openPackage, search],
   );
 
   const columns = useMemo(() => createPackageColumns(handlers), [handlers]);
@@ -72,13 +72,14 @@ export function PackagesPage({ filter, onFilterChange }: PackagesPageProps) {
     columns,
     data: rows,
     getRowId: (pkg) => pkg.id,
-    ...sortingFromFilter(filter, onFilterChange, LATEST_FIRST, columns),
+    ...sortingFromFilter(filter, onFilterChange, PACKAGE_SORTING, columns),
   });
 
   return (
     <>
       <PageHeader
         title="Packages"
+        subtitle={presetLabel(filter, PACKAGE_PRESETS)}
         actions={[
           {
             type: "button",

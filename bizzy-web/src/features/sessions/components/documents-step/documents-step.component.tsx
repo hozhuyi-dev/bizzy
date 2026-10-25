@@ -61,6 +61,8 @@ function DocumentsStep({ session, bought }: { session: SessionView; bought: Pack
   const items = documentItems(session);
   const charged = items.reduce((sum, item) => sum + item.amountCents, 0);
   const charges = items.map((item) => `${item.label} ${formatCents(item.amountCents)}`).join(" · ");
+  // Each steps through this session's documents, in this order.
+  const within = { session: session.id };
 
   return (
     <DataList label="Documents">
@@ -78,9 +80,9 @@ function DocumentsStep({ session, bought }: { session: SessionView; bought: Pack
         return docs.map((doc) => (
           <DataListItem key={doc.ref.id}>
             {type === "invoice" ? (
-              <DocumentRow doc={doc} meta={`Invoice · ${formatCents(charged)}`} detail={charges || undefined} />
+              <DocumentRow doc={doc} search={within} meta={`Invoice · ${formatCents(charged)}`} detail={charges || undefined} />
             ) : (
-              <DocumentRow doc={doc} meta={receiptMeta(doc, session, bought)} />
+              <DocumentRow doc={doc} search={within} meta={receiptMeta(doc, session, bought)} />
             )}
           </DataListItem>
         ));

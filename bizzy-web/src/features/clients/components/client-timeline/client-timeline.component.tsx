@@ -39,13 +39,15 @@ export function ClientTimeline({ client }: { client: ClientView }) {
   const openPackage = useOpenPackage();
   const [cancelling, setCancelling] = useState<SessionView | null>(null);
   const [allUpcoming, setAllUpcoming] = useState(false);
+  // Each entry's page steps through the timeline's entries of its kind, as here.
   const handlers = useMemo<TimelineHandlers>(
     () => ({
-      onEditFollowUp: (f) => openFollowUp({ mode: "edit", followUp: f }),
-      onEditPackage: (pkg, at) => openPackage({ mode: "edit", pkg, at }),
+      clientId: client.id,
+      onEditFollowUp: (f) => openFollowUp({ mode: "edit", followUp: f, search: { timeline: client.id } }),
+      onEditPackage: (pkg, at) => openPackage({ mode: "edit", pkg, at, search: { timeline: client.id } }),
       onCancelSession: setCancelling,
     }),
-    [openFollowUp, openPackage],
+    [client.id, openFollowUp, openPackage],
   );
 
   const upcoming = pages.data?.pages[0]?.upcoming ?? [];

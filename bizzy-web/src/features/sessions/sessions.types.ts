@@ -186,16 +186,21 @@ export interface SessionDraft {
   tentative: boolean;
 }
 
-/** Where a session was opened from, to go back there. */
-export type SessionReturnTo = "home";
+/**
+ * Where on Home a session was opened from, the list its page steps
+ * through: the to-do list, or today's sessions.
+ */
+export type SessionReturnTo = "home" | "today";
 
 /** The sessions list's filter, as its URL keeps it. */
 export type SessionsSearch = FilterSearch<(typeof SESSION_FACETS)[number]>;
 
 /** A session page's search: the list it steps through, and where it was opened from. */
 export interface SessionSearch extends SessionsSearch {
-  /** Where to go back to once saved. */
+  /** Opened from Home: the list there it steps through instead. */
   from?: SessionReturnTo | undefined;
+  /** Opened from a client's timeline (their id): its sessions instead. */
+  timeline?: string | undefined;
 }
 
 export type StageTone = "neutral" | "done" | "info" | "waiting" | "attention";

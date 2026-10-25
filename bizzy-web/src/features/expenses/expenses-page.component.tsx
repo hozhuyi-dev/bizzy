@@ -12,7 +12,7 @@ import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.compon
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
+import { formatWhen, isNarrowed, pageItems, presetLabel } from "~/core/list/filter.util";
 import { formatCents } from "~/core/utils/money.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 import { allOf } from "~/core/utils/query.util";
@@ -52,6 +52,7 @@ export function ExpensesPage({ filter, onFilterChange }: ExpensesPageProps) {
     <>
       <PageHeader
         title="Expenses"
+        subtitle={presetLabel(filter, presets)}
         actions={[
           { type: "link", label: "New expense", icon: PlusIcon, style: "primary", link: { to: "/expenses/new" } },
         ]}

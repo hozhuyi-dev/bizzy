@@ -17,9 +17,9 @@ export const DocumentsQuery = {
   byClient,
 
   /** The documents a filter finds, latest first, a page at a time. */
-  useSearch: (filter: ListFilter) => {
+  useSearch: (filter: ListFilter, enabled = true) => {
     const request = searchDocumentsRequest(filter);
-    return usePages(DocumentKeys.search(request), (after) => DocumentsService.search({ ...request, after }));
+    return usePages(DocumentKeys.search(request), (after) => DocumentsService.search({ ...request, after }), enabled);
   },
 
   useDetail: (id: string) => useQuery(detail(id)),

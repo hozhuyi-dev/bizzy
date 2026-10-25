@@ -22,6 +22,9 @@ export interface PackageHandlers {
 
 const helper = createDataTableColumnHelper<PackageView>();
 
+/** How packages sort until a column is picked: latest bought first, as every dated list. */
+export const PACKAGE_SORTING = [{ id: "purchasedAt", desc: true }];
+
 function creditsText(pkg: PackageView): string {
   return `${formatHours(pkg.creditsLeft)} of ${formatHours(pkg.hours)} left`;
 }
@@ -73,7 +76,7 @@ function PackageDocuments({ pkg }: { pkg: PackageView }) {
   return (
     <span className="flex items-center gap-2">
       {docs.map(({ type, ref, issued }) => (
-        <TextLink key={ref.id} to={documentRoute(type)} params={{ id: ref.id }} className="text-sm">
+        <TextLink key={ref.id} to={documentRoute(type)} params={{ id: ref.id }} search={{ package: pkg.id }} className="text-sm">
           {refLabel(type, ref, issued)}
         </TextLink>
       ))}

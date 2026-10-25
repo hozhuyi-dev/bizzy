@@ -1,10 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { FilterSearch } from "~/core/list/filter.types";
-import type { FOLLOW_UP_FACETS } from "~/features/follow-ups/follow-ups.constant";
+import type { FollowUpsSearch } from "~/features/follow-ups/follow-ups.types";
 import { FollowUpsPage } from "~/features/follow-ups/follow-ups-page.component";
 import { followUpsUrl } from "~/features/follow-ups/follow-ups.util";
-
-export type FollowUpsSearch = FilterSearch<(typeof FOLLOW_UP_FACETS)[number]>;
 
 export const Route = createFileRoute("/follow-ups/")({
   validateSearch: (search: Record<string, unknown>): FollowUpsSearch => followUpsUrl.validate(search),

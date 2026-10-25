@@ -48,6 +48,7 @@ import {
 import {
   applyPreset,
   formatWhen,
+  presetLabel,
   presetOf,
   stepWhen,
   whenDays,
@@ -481,7 +482,7 @@ function PresetMenu({
           <Button variant="outline" className="max-w-40 shrink-0 sm:max-w-56" />
         }
       >
-        <span className="truncate">{current?.label ?? "Custom"}</span>
+        <span className="truncate">{presetLabel(value, presets)}</span>
         <ChevronDownIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-auto min-w-48">
@@ -495,7 +496,8 @@ function PresetMenu({
             }}
           >
             {presets.map((preset) => (
-              <DropdownMenuRadioItem key={preset.label} value={preset.label}>
+              // Picking one is the whole job: the menu closes, as a phone's sheet does.
+              <DropdownMenuRadioItem key={preset.label} value={preset.label} closeOnClick>
                 {preset.label}
               </DropdownMenuRadioItem>
             ))}
@@ -526,7 +528,7 @@ function PresetSheet({
         className="max-w-40 min-w-0 shrink"
         onClick={() => setOpen(true)}
       >
-        <span className="truncate">{current?.label ?? "Custom"}</span>
+        <span className="truncate">{presetLabel(value, presets)}</span>
         <ChevronDownIcon />
       </Button>
       <DrawerDialog

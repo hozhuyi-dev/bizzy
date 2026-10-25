@@ -317,6 +317,7 @@ function ClientEditor({ client, initialName, header }: ClientEditorProps) {
       <PageHeader
         {...header}
         title={client?.name ?? "New client"}
+        kind={client ? "Client" : undefined}
         actions={actions}
         moreActions={more}
         foldBelow="lg"

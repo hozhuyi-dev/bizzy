@@ -22,9 +22,9 @@ import { allOf } from "~/core/utils/query.util";
 
 const FORM_ID = "payment-form";
 
-/** The client's page, or wherever it was opened from. */
+/** The client's page, where it goes back to when it wasn't opened from another page. */
 function parentOf(id: string, client: ClientView | undefined) {
-  return { to: "/clients/$id", params: { id }, label: client?.name ?? "Client", back: true } as const;
+  return { to: "/clients/$id", params: { id }, label: client?.name ?? "Client" } as const;
 }
 
 /**
@@ -62,7 +62,7 @@ export function RecordPaymentPage({ id }: { id: string }) {
     if (payables.length === 0) {
       return (
         <>
-          <PageHeader parent={parent} title="Record a payment" />
+          <PageHeader parent={parent} title={client.name} kind="Record a payment" />
           <EmptyStateFrame art={<BeeArt pool="empty" />} title={`${client.name} owes nothing.`} />
         </>
       );
@@ -71,7 +71,7 @@ export function RecordPaymentPage({ id }: { id: string }) {
   }
   return (
     <>
-      <PageHeader parent={parent} title={page.error ? "Not available" : "…"} />
+      <PageHeader parent={parent} title={page.error ? "Not available" : "…"} kind="Record a payment" />
       {page.error ? (
         <ErrorState
           error={page.error}
@@ -94,7 +94,7 @@ function RecordPayment({ client, payables }: { client: ClientView; payables: Rea
 
   return (
     <>
-      <PageHeader parent={parent} title="Record a payment" actions={[submit]} />
+      <PageHeader parent={parent} title={client.name} kind="Record a payment" actions={[submit]} />
       <form
         id={FORM_ID}
         noValidate

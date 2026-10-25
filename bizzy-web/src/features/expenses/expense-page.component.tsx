@@ -34,7 +34,7 @@ import { PendingButton } from "~/components/shared/actions/pending-button/pendin
 import { FieldGroup } from "~/components/ui/field";
 import { formatCents } from "~/core/utils/money.util";
 import { moneyError, requiredError } from "~/core/utils/form.util";
-import { todayISO } from "~/core/utils/date.util";
+import { formatDate, todayISO } from "~/core/utils/date.util";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
@@ -102,7 +102,7 @@ export function ExpensePage(props: ExpensePageProps) {
   const page = props.mode === "edit" ? allOf(catalogue, expense) : catalogue;
   return (
     <>
-      <PageHeader {...header} title={page.error ? "Not available" : "…"} />
+      <PageHeader {...header} title={page.error ? "Not available" : "…"} kind="Expense" />
       {page.error ? (
         <ErrorState
           error={page.error}
@@ -330,6 +330,8 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
       <PageHeader
         {...header}
         title={expense ? (expense.vendor ?? "Expense") : "New expense"}
+        kind={expense ? "Expense" : undefined}
+        subtitle={expense && formatDate(expense.date)}
         actions={[
           {
             type: "submit",

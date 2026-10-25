@@ -30,15 +30,16 @@ export function useMarkDone() {
 }
 
 /**
- * Opens a follow-up's page: one to edit, or a new one, for a client and
- * from a session when given (kept in history, not the URL: see HistoryState).
+ * Opens a follow-up's page: one to edit, stepping through the list it was
+ * opened from, or a new one, for a client and from a session when given
+ * (kept in history, not the URL: see HistoryState).
  */
 export function useOpenFollowUp(): (target: FollowUpTarget) => void {
   const navigate = useNavigate();
   return useCallback(
     (target: FollowUpTarget) =>
       target.mode === "edit"
-        ? void navigate({ to: "/follow-ups/$id", params: { id: target.followUp.id } })
+        ? void navigate({ to: "/follow-ups/$id", params: { id: target.followUp.id }, search: target.search ?? {} })
         : void navigate({ to: "/follow-ups/new", state: { clientId: target.clientId, sessionId: target.sessionId } }),
     [navigate],
   );

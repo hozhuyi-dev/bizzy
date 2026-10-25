@@ -1,4 +1,4 @@
-import type { DocumentSummary } from "~/features/documents/documents.types";
+import type { DocumentSearch, DocumentSummary } from "~/features/documents/documents.types";
 import type { Tick } from "~/components/shared/list/tick-slot/tick-slot.component";
 import {
   DocumentStatusBadge,
@@ -57,8 +57,8 @@ export const createClientDocumentColumns = () =>
     }),
   ]);
 
-/** The phone layout of a row: ticked by its slot, as the documents list's. */
-export function ClientDocumentCard({ doc, tick }: { doc: DocumentSummary; tick: Tick }) {
+/** The phone layout of a row: ticked by its slot, as the documents list's; `search`, the list its page steps through. */
+export function ClientDocumentCard({ doc, tick, search }: { doc: DocumentSummary; tick: Tick; search: DocumentSearch }) {
   return (
     <DataCard
       leading={<TickSlot icon={<DocumentTypeIcon type={doc.type} />} tick={tick} />}
@@ -71,7 +71,7 @@ export function ClientDocumentCard({ doc, tick }: { doc: DocumentSummary; tick: 
       }
       value={formatCents(doc.totalCents)}
       meta={aboutText(doc)}
-      open={documentLink(doc)}
+      open={documentLink(doc, search)}
     />
   );
 }

@@ -43,12 +43,29 @@ export function todoKey(item: TodoView): string {
   }
 }
 
+/** The kinds of item on the list that have a page of their own. */
+export type TodoItemKind = "session" | "package" | "followUp";
+
+/** An item's id, for a kind with a page of its own. */
+function itemId(item: TodoView): string | undefined {
+  switch (item.kind) {
+    case "session":
+      return item.session.id;
+    case "package":
+      return item.package.id;
+    case "followUp":
+      return item.followUp.id;
+    case "conflict":
+      return undefined;
+  }
+}
+
 /**
- * The sessions on the list, in its order, each once: what a session opened
- * from Home steps through, so the user can work through it in one go.
+ * The items of one kind on the list, in its order, each once: what one
+ * opened from Home steps through, so the user can work through it in one go.
  */
-export function todoSessionIds(items: ReadonlyArray<TodoView>): Array<string> {
-  return [...new Set(items.flatMap((item) => (item.kind === "session" ? [item.session.id] : [])))];
+export function todoIds(items: ReadonlyArray<TodoView>, kind: TodoItemKind): Array<string> {
+  return [...new Set(items.flatMap((item) => (item.kind === kind ? [itemId(item) ?? ""] : [])))];
 }
 
 /** The list's order, as the API sends it: oldest first, then by kind. */

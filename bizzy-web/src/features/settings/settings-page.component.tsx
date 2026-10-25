@@ -104,6 +104,8 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
     <>
       <PageHeader
         title="Settings"
+        // Whose details these are, as saved: what invoices and the payment page say.
+        subtitle={saved.businessName || undefined}
         actions={[
           {
             type: "submit",

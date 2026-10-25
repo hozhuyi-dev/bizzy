@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { BanIcon, CalendarPlusIcon, CalendarX2Icon, CheckIcon, CircleHelpIcon, Trash2Icon, XIcon } from "lucide-react";
 import { bookingStep } from "./components/booking-step/booking-step.component";
 import { useBookingForm } from "./components/booking-form/booking-form.component";
@@ -23,6 +22,7 @@ import type { SessionFullView, SessionReturnTo } from "./sessions.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { ListFilter } from "~/core/list/filter.types";
+import type { Parent } from "~/components/shared/layout/page-header/page-header.component";
 import { PageSteps } from "~/components/shared/layout/page-steps/page-steps.component";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ConflictActions } from "~/features/conflicts/components/conflict-actions/conflict-actions.component";
@@ -34,6 +34,7 @@ import { PackagesQuery } from "~/features/packages/packages.query";
 import { useWhatsAppMenu } from "~/features/whatsapp/whatsapp.hook";
 import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
+import { timelineParent } from "~/features/timeline/timeline.list";
 import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -42,24 +43,28 @@ import { clientOf } from "~/features/clients/clients.util";
 import { formatDate, formatSessionTime } from "~/core/utils/date.util";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 import { allOf } from "~/core/utils/query.util";
+import { useGoBack } from "~/core/navigation/go-back.hook";
 import { isApiError } from "~/core/utils/api-error.util";
 
 /**
- * `filter`: the sessions list it steps through (unless opened from Home,
- * which steps through the to-do list). Opened to settle a calendar edit by
+ * `filter`: the sessions list it steps through, unless opened from Home
+ * (`returnTo`) or a client's timeline (`timeline`, their id), whose
+ * sessions it steps through instead. Opened to settle a calendar edit by
  * changing its booking (history's `settle`), it starts changing it.
  */
 export interface SessionPageProps {
   id: string;
   returnTo?: SessionReturnTo | undefined;
+  timeline?: string | undefined;
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
 }
 
-/** Home, or the sessions list with the filter it was left at. */
-function parentOf(returnTo: SessionReturnTo | undefined, filter?: ListFilter) {
-  if (returnTo === "home") return { to: "/", label: "Home" } as const;
-  return { to: "/sessions", label: "Sessions", search: filter ? sessionsUrl.toSearch(filter) : {} } as const;
+/** The list it steps through, as its breadcrumb: Home's, the client's timeline, or the sessions list with its filter. */
+function parentOf(returnTo: SessionReturnTo | undefined, timeline: string | undefined, filter: ListFilter): Parent {
+  if (returnTo) return { to: "/", label: "Home" };
+  if (timeline) return timelineParent(timeline);
+  return { to: "/sessions", label: "Sessions", search: sessionsUrl.toSearch(filter) };
 }
 
 /**
@@ -67,12 +72,12 @@ function parentOf(returnTo: SessionReturnTo | undefined, filter?: ListFilter) {
  * payment, then the optional documents and follow-ups. A new one is added
  * on its own page (NewSessionPage), and opens here once it has happened.
  */
-export function SessionPage({ id, returnTo, filter, onFilterChange }: SessionPageProps) {
+export function SessionPage({ id, returnTo, timeline, filter, onFilterChange }: SessionPageProps) {
   const detail = SessionsQuery.useDetail(id);
   // What it shows names and credits from: it opens with them, so nothing fills in after.
   const clients = ClientsQuery.useList();
   const packages = PackagesQuery.useList(true);
-  const parent = parentOf(returnTo, filter);
+  const parent = parentOf(returnTo, timeline, filter);
   // Steps on while the next one loads, so the header stays put.
   const pager = (
     <SessionPager
@@ -80,18 +85,19 @@ export function SessionPage({ id, returnTo, filter, onFilterChange }: SessionPag
       session={detail.data}
       gone={isApiError(detail.error, "not_found")}
       returnTo={returnTo}
+      timeline={timeline}
       filter={filter}
       onFilterChange={onFilterChange}
     />
   );
 
   if (detail.data && clients.data && packages.data) {
-    return <SessionSteps session={detail.data} returnTo={returnTo} filter={filter} pager={pager} />;
+    return <SessionSteps session={detail.data} returnTo={returnTo} parent={parent} pager={pager} />;
   }
   const page = allOf(detail, clients, packages);
   return (
     <>
-      <PageHeader parent={parent} title={page.error ? "Not available" : "…"} pager={pager} />
+      <PageHeader parent={parent} title={page.error ? "Not available" : "…"} kind="Session" pager={pager} />
       {page.error ? (
         <ErrorState
           error={page.error}
@@ -109,12 +115,11 @@ export function SessionPage({ id, returnTo, filter, onFilterChange }: SessionPag
 interface SessionStepsProps {
   session: SessionFullView;
   returnTo: SessionReturnTo | undefined;
-  filter: ListFilter;
+  parent: Parent;
   pager: ReactNode;
 }
 
-function SessionSteps({ session, returnTo, filter, pager }: SessionStepsProps) {
-  const navigate = useNavigate();
+function SessionSteps({ session, returnTo, parent, pager }: SessionStepsProps) {
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   const record = useRecordDraft(session, session.notes);
@@ -129,12 +134,12 @@ function SessionSteps({ session, returnTo, filter, pager }: SessionStepsProps) {
   const [editingBooking, setEditingBooking] = useState(Boolean(settled) && session.can.update.ok);
   const confirm = useConfirmBooking();
 
-  const parent = parentOf(returnTo, filter);
   const client = clientOf(clientsById, session.clientId);
   const bought = boughtIn(session, packages.data);
   const covering = coveringCredits(session, packages.data);
+  const goBack = useGoBack(parent as LinkOptions);
   // Only after deleting it, so an open booking edit is moot.
-  const leave = () => void navigate({ ...parent, ignoreBlocker: true });
+  const leave = () => goBack({ leaving: true });
   const waiting = conflicts.data ?? [];
   const unconfirmed = session.tentative && !session.cancelledAt;
 
@@ -169,15 +174,18 @@ function SessionSteps({ session, returnTo, filter, pager }: SessionStepsProps) {
     recordStep(session, record),
     paymentStep(session, covering, bought),
     documentsStep(session, bought),
-    followUpsStep(session, followUps.data, addFollowUp, (f) => openFollowUp({ mode: "edit", followUp: f })),
+    followUpsStep(session, followUps.data, addFollowUp, (f) =>
+      openFollowUp({ mode: "edit", followUp: f, search: { session: session.id } }),
+    ),
   ];
 
   const header: PageHeaderProps = {
     parent,
     title: client?.name ?? session.clientName,
     titleLink: client ? { to: "/clients/$id", params: { id: client.id } } : undefined,
-    // The day tells a client's sessions apart.
-    subtitle: formatDate(session.start),
+    kind: "Session",
+    // The day and time tell a client's sessions apart.
+    subtitle: formatSessionTime(session.start),
     pager,
     moreActions: more,
     menuActions: menu,

@@ -7,6 +7,11 @@ import { daysFromToday, toCreateFollowUp, toFollowUpFields, toFollowUpValues } f
 import { FollowUpsMutation } from "./follow-ups.mutation";
 import { FollowUpsQuery } from "./follow-ups.query";
 import { useMarkDone } from "./follow-ups.hook";
+import { formatDue } from "./follow-ups.util";
+import { FollowUpPager, followUpParent } from "./components/follow-up-pager/follow-up-pager.component";
+import type { FollowUpStepping } from "./components/follow-up-pager/follow-up-pager.component";
+import type { ReactNode } from "react";
+import type { Parent } from "~/components/shared/layout/page-header/page-header.component";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { FollowUpTarget, FollowUpView } from "./follow-ups.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
@@ -37,6 +42,7 @@ import { useGoBack } from "~/core/navigation/go-back.hook";
 import { formatDate, formatSessionTime, todayISO } from "~/core/utils/date.util";
 import { requiredError } from "~/core/utils/form.util";
 import { allOf } from "~/core/utils/query.util";
+import { isApiError } from "~/core/utils/api-error.util";
 
 const FORM_ID = "follow-up-form";
 
@@ -44,8 +50,8 @@ const FORM_ID = "follow-up-form";
 const MAX_SUMMARY = 200;
 const MAX_NOTES = 8000;
 
-/** Opened from wherever it was needed, it goes back there; else to the list. */
-const PARENT = { to: "/follow-ups", label: "Follow-ups", back: true } as const;
+/** A new one's list, where it goes back to when it wasn't opened from another page. */
+const PARENT: Parent = { to: "/follow-ups", label: "Follow-ups" };
 
 /** Quick picks, counted from today. */
 const IN = [
@@ -62,26 +68,33 @@ const IN = [
  * phone too. A new one starts with the client and session it was opened
  * for, as the page that opened it left them in history.
  */
-export function FollowUpPage({ id }: { id?: string | undefined }) {
+export function FollowUpPage({ id, stepping }: { id?: string | undefined; stepping?: FollowUpStepping | undefined }) {
   const detail = FollowUpsQuery.useDetail(id);
   const clients = ClientsQuery.useList();
   const clientId = useLocation({ select: (location) => location.state.clientId });
   const sessionId = useLocation({ select: (location) => location.state.sessionId });
+  const header: FollowUpHeader = {
+    parent: stepping ? followUpParent(stepping.within, stepping.filter) : PARENT,
+    // Steps on while the next one loads, so the header stays put.
+    pager: id !== undefined && stepping && (
+      <FollowUpPager id={id} gone={isApiError(detail.error, "not_found")} stepping={stepping} />
+    ),
+  };
 
   if (clients.data && (id === undefined || detail.data)) {
     const target: FollowUpTarget = detail.data ? { mode: "edit", followUp: detail.data } : { mode: "new", clientId, sessionId };
-    return <FollowUpEditor key={detail.data?.id ?? "new"} target={target} />;
+    return <FollowUpEditor key={detail.data?.id ?? "new"} target={target} header={header} />;
   }
   const page = id === undefined ? clients : allOf(clients, detail);
   return (
     <>
-      <PageHeader parent={PARENT} title={page.error ? "Not available" : "…"} />
+      <PageHeader {...header} title={page.error ? "Not available" : "…"} kind="Follow-up" />
       {page.error ? (
         <ErrorState
           error={page.error}
           retry={page.refetch}
           size="page"
-          back={{ label: `Back to ${PARENT.label}`, link: PARENT as LinkOptions }}
+          back={{ label: `Back to ${header.parent.label}`, link: header.parent as LinkOptions }}
         />
       ) : (
         <LoadingState shape="page" />
@@ -90,13 +103,19 @@ export function FollowUpPage({ id }: { id?: string | undefined }) {
   );
 }
 
-function FollowUpEditor({ target }: { target: FollowUpTarget }) {
+/** The header's way back and pager, the same while the follow-up loads. */
+interface FollowUpHeader {
+  parent: Parent;
+  pager: ReactNode;
+}
+
+function FollowUpEditor({ target, header }: { target: FollowUpTarget; header: FollowUpHeader }) {
   const clientsById = ClientsQuery.useById();
   const create = FollowUpsMutation.useCreate();
   const update = FollowUpsMutation.useUpdate();
   const remove = FollowUpsMutation.useDelete();
   const markDone = useMarkDone();
-  const goBack = useGoBack(PARENT);
+  const goBack = useGoBack(header.parent as LinkOptions);
   const [deleting, setDeleting] = useState(false);
   const editing = target.mode === "edit" ? target.followUp : undefined;
   const sessionId = target.mode === "new" ? target.sessionId : undefined;
@@ -222,9 +241,11 @@ function FollowUpEditor({ target }: { target: FollowUpTarget }) {
   return (
     <>
       <PageHeader
-        parent={PARENT}
-        title={editing ? `Follow up with ${editing.clientName}` : clientName ? `Follow up with ${clientName}` : "New follow-up"}
-        subtitle={editing ? formatDate(editing.due) : undefined}
+        {...header}
+        title={(editing ? (clientName ?? editing.clientName) : clientName) ?? "New follow-up"}
+        titleLink={editing && clientsById.has(editing.clientId) ? { to: "/clients/$id", params: { id: editing.clientId } } : undefined}
+        kind={editing ? "Follow-up" : clientName ? "New follow-up" : undefined}
+        subtitle={editing ? `due ${formatDue(editing)}` : undefined}
         // Save while there is something to keep; a new one is nothing until added.
         actions={!editing || hasChanges ? [save] : []}
         menuActions={

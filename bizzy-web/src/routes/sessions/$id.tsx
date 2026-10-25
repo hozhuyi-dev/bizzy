@@ -22,6 +22,7 @@ function SessionRoute() {
       key={id}
       id={id}
       returnTo={search.from}
+      timeline={search.timeline}
       filter={sessionsUrl.toFilter(search)}
       // A new list to step through replaces the entry: Back still returns to the list.
       onFilterChange={(next) =>

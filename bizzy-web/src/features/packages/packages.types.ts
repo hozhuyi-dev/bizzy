@@ -1,6 +1,8 @@
 import type { DocumentRef } from "~/features/documents/documents.types";
 import type { Paid, PaymentInput } from "~/features/payments/payments.types";
 import type { Locks, Verdict } from "~/core/lambda/lambda.types";
+import type { FilterSearch } from "~/core/list/filter.types";
+import type { PACKAGE_FACETS } from "./packages.constant";
 
 // Mirrors bizzy-lambda/internal/features/packages/api.go.
 
@@ -68,8 +70,19 @@ export interface PackagePaymentChoice {
 
 /**
  * The package a page opens: a new one (for a client, to start with), or
- * one to edit, opened at its payment to pay for it.
+ * one to edit, opened at its payment to pay for it, with the list it steps
+ * through.
  */
 export type PackageTarget =
   | { mode: "new"; clientId?: string | undefined }
-  | { mode: "edit"; pkg: PackageView; at?: "payment" | undefined };
+  | { mode: "edit"; pkg: PackageView; at?: "payment" | undefined; search?: PackageSearch | undefined };
+
+/** The packages list's filter, as its URL keeps it; a package's page takes it too. */
+export type PackagesSearch = FilterSearch<(typeof PACKAGE_FACETS)[number]>;
+
+/** A package page's search: the list it steps through. Opened from Home, the to-do list's; else the packages list with its filter. */
+export interface PackageSearch extends PackagesSearch {
+  from?: "home" | undefined;
+  /** Opened from a client's timeline (their id): its packages. */
+  timeline?: string | undefined;
+}

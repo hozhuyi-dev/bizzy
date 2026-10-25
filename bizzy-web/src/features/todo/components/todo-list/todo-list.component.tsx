@@ -130,13 +130,16 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
                         <SessionTodo session={item.session} onCancel={setCancelling} />
                       )}
                       {item.kind === "package" && (
-                        <PackageTodo pkg={item.package} onOpen={(pkg, at) => openPackage({ mode: "edit", pkg, at })} />
+                        <PackageTodo
+                          pkg={item.package}
+                          onOpen={(pkg, at) => openPackage({ mode: "edit", pkg, at, search: { from: "home" } })}
+                        />
                       )}
                       {item.kind === "followUp" && (
                         <FollowUpRow
                           followUp={item.followUp}
                           showKind
-                          onEdit={(followUp) => openFollowUp({ mode: "edit", followUp })}
+                          onEdit={(followUp) => openFollowUp({ mode: "edit", followUp, search: { from: "home" } })}
                         />
                       )}
                       {item.kind === "conflict" && <ConflictTodo conflict={item.conflict} />}
@@ -296,7 +299,7 @@ function ConflictTodo({ conflict }: { conflict: ConflictView }) {
         <>
           <CalendarX2Icon className="size-4 text-muted-foreground" aria-hidden="true" />
           {conflict.itemId && conflict.itemKind === "followUp" ? (
-            <TextLink to="/follow-ups/$id" params={{ id: conflict.itemId }}>
+            <TextLink to="/follow-ups/$id" params={{ id: conflict.itemId }} search={{ from: "home" }}>
               “{conflict.title}”
             </TextLink>
           ) : conflict.itemId ? (

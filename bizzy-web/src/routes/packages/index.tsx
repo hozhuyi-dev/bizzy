@@ -1,10 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { FilterSearch } from "~/core/list/filter.types";
-import type { PACKAGE_FACETS } from "~/features/packages/packages.constant";
+import type { PackagesSearch } from "~/features/packages/packages.types";
 import { PackagesPage } from "~/features/packages/packages-page.component";
 import { packagesUrl } from "~/features/packages/packages.util";
-
-export type PackagesSearch = FilterSearch<(typeof PACKAGE_FACETS)[number]>;
 
 export const Route = createFileRoute("/packages/")({
   validateSearch: (search: Record<string, unknown>): PackagesSearch => packagesUrl.validate(search),

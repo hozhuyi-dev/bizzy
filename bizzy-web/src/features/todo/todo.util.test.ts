@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { groupOf, matchesFilter, progressOf, todoSessionIds, withSession } from "./todo.util";
+import { groupOf, matchesFilter, progressOf, todoIds, withSession } from "./todo.util";
 import type { TodoView } from "./todo.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
@@ -42,10 +42,12 @@ describe("to-do list", () => {
     expect(matchesFilter(conflict, "record")).toBe(false);
   });
 
-  test("its sessions, in order, each once, without follow-ups", () => {
+  test("its items of one kind, in order, each once", () => {
     const items = [sessionItem("a", "", ["record"]), followUp, conflict, sessionItem("b", "", ["collect"])];
-    expect(todoSessionIds(items)).toEqual(["a", "b"]);
-    expect(todoSessionIds([...items, sessionItem("a", "", ["collect"])])).toEqual(["a", "b"]);
+    expect(todoIds(items, "session")).toEqual(["a", "b"]);
+    expect(todoIds([...items, sessionItem("a", "", ["collect"])], "session")).toEqual(["a", "b"]);
+    expect(todoIds(items, "followUp")).toEqual(["f1"]);
+    expect(todoIds(items, "package")).toEqual([]);
   });
 });
 
