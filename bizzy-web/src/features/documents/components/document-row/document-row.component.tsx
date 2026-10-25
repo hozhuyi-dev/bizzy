@@ -3,7 +3,7 @@ import { DocumentStatusBadge } from "../../documents.columns";
 import { documentRoute, refLabel } from "../../documents.util";
 import { IssueButton } from "../issue-button/issue-button.component";
 import type { ReactNode } from "react";
-import type { DocumentLink } from "../../documents.types";
+import type { DocumentLink, DocumentSearch } from "../../documents.types";
 import { DataRow } from "~/components/shared/list/data-list/data-list.component";
 
 interface DocumentRowProps {
@@ -12,6 +12,8 @@ interface DocumentRowProps {
   meta?: ReactNode;
   /** The last line: what it charges for. */
   detail?: string | undefined;
+  /** The list its page steps through: the documents of the page it is on. */
+  search?: DocumentSearch | undefined;
 }
 
 /**
@@ -19,9 +21,9 @@ interface DocumentRowProps {
  * like every to-do row (DataRow): its number and whether it is issued, then
  * Issue while it is a draft. A click anywhere on the row opens it.
  */
-export function DocumentRow({ doc, meta, detail }: DocumentRowProps) {
+export function DocumentRow({ doc, meta, detail, search }: DocumentRowProps) {
   const { type, ref, issued } = doc;
-  const page = { to: documentRoute(type), params: { id: ref.id } };
+  const page = { to: documentRoute(type), params: { id: ref.id }, search: search ?? {} };
   const Icon = type === "invoice" ? FileTextIcon : ReceiptIcon;
 
   return (

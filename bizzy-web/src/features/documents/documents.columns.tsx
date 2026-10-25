@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { DOCUMENT_STATUS, DOCUMENT_TYPES } from "./documents.constant";
 import { coversText, documentLabel, documentRoute, shareUrl } from "./documents.util";
 import type { LinkOptions } from "@tanstack/react-router";
-import type { DocumentStatus, DocumentSummary, DocumentType, DocumentsSearch } from "./documents.types";
+import type { DocumentSearch, DocumentStatus, DocumentSummary, DocumentType, DocumentsSearch } from "./documents.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { Tick } from "~/components/shared/list/tick-slot/tick-slot.component";
@@ -27,7 +27,7 @@ export function DocumentStatusBadge({ status, revising }: { status: DocumentStat
 }
 
 /** The document's page, with the list it steps through. */
-export function documentLink(doc: Pick<DocumentSummary, "id" | "type">, search?: DocumentsSearch): LinkOptions {
+export function documentLink(doc: Pick<DocumentSummary, "id" | "type">, search?: DocumentSearch): LinkOptions {
   return { to: documentRoute(doc.type), params: { id: doc.id }, search: search ?? {} };
 }
 

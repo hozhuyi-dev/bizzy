@@ -21,6 +21,7 @@ import { dayRange } from "~/core/utils/date.util";
 import { ErrorState } from "~/components/shared/feedback/error-state/error-state.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { QUIPS } from "~/core/constants/quips.constant";
+import { quipOfTheDay } from "~/components/shared/feedback/quip/quip.util";
 
 /**
  * The user's day: today's sessions, then everything that needs them
@@ -46,6 +47,7 @@ export function HomePage() {
     <>
       <PageHeader
         title="Home"
+        subtitle={quipOfTheDay(QUIPS.home)}
         actions={[newSessionAction("home")]}
         moreActions={shortcuts}
         foldBelow="lg"
@@ -96,7 +98,7 @@ function Today() {
             <span className="w-16 shrink-0 text-sm text-muted-foreground tabular-nums">
               {time.format(new Date(session.start))}
             </span>
-            <TextLink to="/sessions/$id" params={{ id: session.id }} search={{ from: "home" }}>
+            <TextLink to="/sessions/$id" params={{ id: session.id }} search={{ from: "today" }}>
               {client?.name ?? "Unknown client"}
             </TextLink>
             {session.location === "visit" && <HomeIcon className="size-3.5 text-muted-foreground" aria-label="Home visit" />}

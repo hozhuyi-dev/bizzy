@@ -4,6 +4,7 @@ import type {
   DocumentFile,
   DocumentLink,
   DocumentRef,
+  DocumentSearch,
   DocumentStatus,
   DocumentSummary,
   DocumentType,
@@ -14,16 +15,51 @@ import type { ClientView } from "~/features/clients/clients.types";
 import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
-import { filterUrl, listRequest } from "~/core/list/filter.util";
+import { NO_FILTER, filterUrl, listRequest } from "~/core/list/filter.util";
 import { formatSpan, monthKey } from "~/core/utils/date.util";
+import { textParam } from "~/core/utils/url-param.util";
 import { formatCents } from "~/core/utils/money.util";
 
 /** The documents list's filter in its URL: this month unless it says otherwise. */
 export const documentsUrl = filterUrl(DOCUMENT_FACETS, () => monthKey(new Date()));
 
+/** The search a document's page takes: the list it steps through. */
+export function validateDocumentSearch(search: Record<string, unknown>): DocumentSearch {
+  return {
+    ...documentsUrl.validate(search),
+    session: textParam(search.session),
+    package: textParam(search.package),
+    timeline: textParam(search.timeline),
+  };
+}
+
 /** The documents list, with a filter: where a document's page goes back to. */
 export function documentsLink(filter: ListFilter) {
   return { to: "/documents", label: "Documents", search: documentsUrl.toSearch(filter) } as const;
+}
+
+/**
+ * A client's documents, at any time, narrowed as their page's section is:
+ * what a document opened from their page steps through, in the same order.
+ */
+export function clientDocumentsSearch(clientId: string, chips: ListFilter["chips"] = {}): DocumentSearch {
+  return documentsUrl.toSearch({ ...NO_FILTER, chips: { ...chips, client: [clientId] } });
+}
+
+/**
+ * The client a filter is for, when it narrows by nothing but them and by
+ * type and status: then their documents, read whole for their page, answer
+ * it (see documentsOfClient), in the same order.
+ */
+export function oneClientOf(filter: ListFilter): string | undefined {
+  const { client = [], payment = [] } = filter.chips;
+  return client.length === 1 && payment.length === 0 && !filter.when && !filter.text.trim() ? client[0] : undefined;
+}
+
+/** A client's documents of the types and statuses the chips name (any, for none). */
+export function documentsOfClient(docs: ReadonlyArray<DocumentSummary>, chips: ListFilter["chips"]): Array<DocumentSummary> {
+  const { type = [], status = [] } = chips;
+  return docs.filter((doc) => (type.length === 0 || type.includes(doc.type)) && (status.length === 0 || status.includes(doc.status)));
 }
 
 /** Where a document sits in its list, as the API files it. */

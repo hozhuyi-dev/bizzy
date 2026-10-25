@@ -10,7 +10,7 @@ import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.compon
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
+import { formatWhen, isNarrowed, pageItems, presetLabel } from "~/core/list/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 interface SessionsPageProps {
@@ -37,6 +37,7 @@ export function SessionsPage({ filter, onFilterChange }: SessionsPageProps) {
     <>
       <PageHeader
         title="Sessions"
+        subtitle={presetLabel(filter, presets)}
         actions={[newSessionAction()]}
         toolbar={
           <FilterBar

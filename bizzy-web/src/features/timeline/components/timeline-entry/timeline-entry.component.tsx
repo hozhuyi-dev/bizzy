@@ -3,10 +3,12 @@ import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import type { TimelineDocument, TimelineDocumentRef, TimelineEntry, TimelinePackage, TimelineSession } from "../../timeline.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { SessionView } from "~/features/sessions/sessions.types";
+import type { DocumentSearch } from "~/features/documents/documents.types";
 import { lengthAndPlace, recordText, stageBadges } from "~/features/sessions/session-stage.util";
 import { DocumentStatusBadge } from "~/features/documents/documents.columns";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
 import { coversText, documentRoute, refLabel } from "~/features/documents/documents.util";
+import { clientSessionsSearch } from "~/features/sessions/sessions.util";
 import { IssueButton } from "~/features/documents/components/issue-button/issue-button.component";
 import { FollowUpDoneButton } from "~/features/follow-ups/components/follow-up-done-button/follow-up-done-button.component";
 import { formatDue, isOverdue } from "~/features/follow-ups/follow-ups.util";
@@ -33,6 +35,8 @@ import { formatCents } from "~/core/utils/money.util";
 
 /** The dialogs a timeline's entries open, which the timeline keeps. */
 export interface TimelineHandlers {
+  /** Whose timeline it is: an entry's page steps through the timeline's entries of its kind. */
+  clientId: string;
   onEditFollowUp: (followUp: FollowUpView) => void;
   /** Its dialog; at its payment, to pay for it another day. */
   onEditPackage: (pkg: PackageView, at?: "payment") => void;
@@ -53,7 +57,7 @@ export function TimelineEntryItem({ entry, upcoming, handlers }: TimelineEntryPr
     case "followUp":
       return <FollowUpItem followUp={entry.followUp} upcoming={upcoming} onEdit={handlers.onEditFollowUp} />;
     case "document":
-      return <DocumentItem doc={entry.document} />;
+      return <DocumentItem doc={entry.document} clientId={handlers.clientId} />;
     case "package":
       return <PackageItem pkg={entry.package} handlers={handlers} />;
   }
@@ -67,7 +71,7 @@ interface SessionItemProps {
 
 /** A session: when, and how it stands; what was written; how long and where; what came of it. */
 export function SessionItem({ session, upcoming, handlers }: SessionItemProps) {
-  const page = { to: "/sessions/$id", params: { id: session.id } } as const;
+  const page = { to: "/sessions/$id", params: { id: session.id }, search: { timeline: handlers.clientId } } as const;
   const badges = stageBadges(session);
   const summary = session.excerpt ?? session.record.summary;
   const meta = [
@@ -91,7 +95,7 @@ export function SessionItem({ session, upcoming, handlers }: SessionItemProps) {
       links={
         (session.documents.length > 0 || session.followUps.length > 0 || session.credits.length > 0) && (
           <>
-            <DocumentLinks docs={session.documents} />
+            <DocumentLinks docs={session.documents} search={{ session: session.id }} />
             {session.credits.map((credit) => (
               <TimelineChip key={credit.packageId}>
                 <PackageIcon className="size-3" aria-hidden="true" />
@@ -137,7 +141,7 @@ export function FollowUpItem({ followUp, upcoming, onEdit }: FollowUpItemProps) 
       meta={followUp.notes}
       links={
         followUp.sessionId && (
-          <TimelineLink to="/sessions/$id" params={{ id: followUp.sessionId }}>
+          <TimelineLink to="/sessions/$id" params={{ id: followUp.sessionId }} search={clientSessionsSearch(followUp.clientId)}>
             <CalendarIcon className="size-3" aria-hidden="true" /> From a session
           </TimelineLink>
         )
@@ -159,7 +163,7 @@ export function PackageItem({ pkg, handlers }: { pkg: TimelinePackage; handlers:
       badges={pkg.owedCents > 0 && <Badge variant="attention">Unpaid</Badge>}
       title={`${formatHours(pkg.hours)} package for ${formatCents(pkg.priceCents)}`}
       meta={[`${formatHours(pkg.creditsLeft)} left`, pkg.note].filter(Boolean).join(" · ")}
-      links={pkg.documents.length > 0 && <DocumentLinks docs={pkg.documents} />}
+      links={pkg.documents.length > 0 && <DocumentLinks docs={pkg.documents} search={{ package: pkg.id }} />}
       buttons={
         payables.length > 0 && (
           <PaidMenu
@@ -173,9 +177,9 @@ export function PackageItem({ pkg, handlers }: { pkg: TimelinePackage; handlers:
   );
 }
 
-/** A document covering several sessions or packages, where the newest of them is. */
-export function DocumentItem({ doc }: { doc: TimelineDocument }) {
-  const page = { to: documentRoute(doc.type), params: { id: doc.id } } as const;
+/** A document covering several sessions or packages, where the newest of them is; its page steps through the timeline's. */
+export function DocumentItem({ doc, clientId }: { doc: TimelineDocument; clientId: string }) {
+  const page = { to: documentRoute(doc.type), params: { id: doc.id }, search: { timeline: clientId } } as const;
   return (
     <TimelineItem
       icon={doc.type === "invoice" ? FileTextIcon : ReceiptIcon}
@@ -190,12 +194,12 @@ export function DocumentItem({ doc }: { doc: TimelineDocument }) {
   );
 }
 
-/** "INV-0012 (+3)": an entry's documents, saying how many others each covers. */
-function DocumentLinks({ docs }: { docs: ReadonlyArray<TimelineDocumentRef> }) {
+/** "INV-0012 (+3)": an entry's documents, saying how many others each covers; each page steps through the entry's. */
+function DocumentLinks({ docs, search }: { docs: ReadonlyArray<TimelineDocumentRef>; search: DocumentSearch }) {
   return docs.map((doc) => {
     const Icon = doc.type === "invoice" ? FileTextIcon : ReceiptIcon;
     return (
-      <TimelineLink key={doc.id} to={documentRoute(doc.type)} params={{ id: doc.id }}>
+      <TimelineLink key={doc.id} to={documentRoute(doc.type)} params={{ id: doc.id }} search={search}>
         <Icon className="size-3" aria-hidden="true" />
         {refLabel(doc.type, doc, doc.status !== "draft")}
         {doc.others > 0 && <span className="text-muted-foreground">(+{doc.others})</span>}

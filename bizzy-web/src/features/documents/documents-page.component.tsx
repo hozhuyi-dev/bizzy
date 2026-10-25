@@ -17,7 +17,7 @@ import { SelectionHint } from "~/components/shared/list/selection-bar/selection-
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
-import { formatWhen, isNarrowed, pageItems } from "~/core/list/filter.util";
+import { formatWhen, isNarrowed, pageItems, presetLabel } from "~/core/list/filter.util";
 import { allOf } from "~/core/utils/query.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
@@ -85,7 +85,7 @@ export function DocumentsPage({ filter, onFilterChange }: DocumentsPageProps) {
 
   return (
     <>
-      <PageHeader title="Documents" toolbar={toolbar} />
+      <PageHeader title="Documents" subtitle={presetLabel(filter, presets)} toolbar={toolbar} />
       <div className={cn("transition-opacity", documents.isPlaceholderData && "opacity-60")}>
         <DataTable
           table={table}

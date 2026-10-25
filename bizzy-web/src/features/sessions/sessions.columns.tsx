@@ -20,7 +20,7 @@ import { createDataTableColumnHelper } from "~/components/shared/list/data-table
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
 import { TextLink } from "~/components/shared/link/text-link/text-link.component";
-import { documentRoute, refLabel } from "~/features/documents/documents.util";
+import { clientDocumentsSearch, documentRoute, refLabel } from "~/features/documents/documents.util";
 import { formatCents } from "~/core/utils/money.util";
 import { formatSessionTime } from "~/core/utils/date.util";
 import { clientOf } from "~/features/clients/clients.util";
@@ -118,7 +118,8 @@ function SessionDocuments({ session, handlers }: { session: SessionView; handler
   return (
     <span className="flex items-center gap-2">
       {docs.map(({ type, ref, issued }) => (
-        <TextLink key={ref.id} to={documentRoute(type)} params={{ id: ref.id }} className="text-sm">
+        // Each steps through the session's documents, as its page lists them.
+        <TextLink key={ref.id} to={documentRoute(type)} params={{ id: ref.id }} search={{ session: session.id }} className="text-sm">
           {refLabel(type, ref, issued)}
         </TextLink>
       ))}
@@ -130,6 +131,8 @@ function SessionDocuments({ session, handlers }: { session: SessionView; handler
               key={ref.id}
               to={documentRoute(type)}
               params={{ id: ref.id }}
+              // Another package's: it steps through the client's documents.
+              search={clientDocumentsSearch(session.clientId)}
               className="font-normal text-muted-foreground decoration-muted-foreground/30"
             >
               {refLabel(type, ref, issued)}

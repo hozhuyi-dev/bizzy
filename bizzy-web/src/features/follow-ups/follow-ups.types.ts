@@ -1,4 +1,5 @@
-import type { ListRequest } from "~/core/list/filter.types";
+import type { FilterSearch, ListRequest } from "~/core/list/filter.types";
+import type { FOLLOW_UP_FACETS } from "./follow-ups.constant";
 
 // Mirrors bizzy-lambda/internal/features/followups/api.go.
 
@@ -59,7 +60,25 @@ export interface SearchFollowUpsRequest extends ListRequest {
   clientIds: Array<string>;
 }
 
-/** The follow-up a page opens: a new one (maybe for a client, from a session), or one to edit. */
+/** The follow-ups list's filter, as its URL keeps it; a follow-up's page takes it too. */
+export type FollowUpsSearch = FilterSearch<(typeof FOLLOW_UP_FACETS)[number]>;
+
+/**
+ * A follow-up page's search: the list it steps through. Opened from Home,
+ * the to-do list's; from a session's page, that session's; else the
+ * follow-ups list with its filter.
+ */
+export interface FollowUpSearch extends FollowUpsSearch {
+  from?: "home" | undefined;
+  session?: string | undefined;
+  /** Opened from a client's timeline (their id): its follow-ups. */
+  timeline?: string | undefined;
+}
+
+/**
+ * The follow-up a page opens: a new one (maybe for a client, from a
+ * session), or one to edit, with the list it steps through.
+ */
 export type FollowUpTarget =
   | { mode: "new"; clientId?: string | undefined; sessionId?: string | undefined }
-  | { mode: "edit"; followUp: FollowUpView };
+  | { mode: "edit"; followUp: FollowUpView; search?: FollowUpSearch | undefined };

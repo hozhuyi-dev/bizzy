@@ -44,7 +44,7 @@ declare module "@tanstack/react-router" {
     /** The session a new one is booked after: its next visit, with the same client, length and place. */
     after?: string | undefined;
     /** Where the new session's page goes back to, once it has one. */
-    from?: "home" | undefined;
+    from?: "home" | "today" | undefined;
     /** A package opened to pay for it: its payment comes into view. */
     at?: "payment" | undefined;
     /** The calendar edit the page was opened to settle (a remedy's second step): once saved, back to the to-do list (useSettleReturn). */

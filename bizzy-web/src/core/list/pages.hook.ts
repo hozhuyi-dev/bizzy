@@ -10,9 +10,11 @@ import type { Page } from "./filter.types";
 export function usePages<TPage extends Page<unknown>>(
   queryKey: QueryKey,
   fetchPage: (after: string | undefined) => Promise<TPage>,
+  enabled = true,
 ) {
   return useInfiniteQuery({
     queryKey,
+    enabled,
     queryFn: ({ pageParam }) => fetchPage(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next,

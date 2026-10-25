@@ -154,6 +154,19 @@ export interface DocumentCan extends DocumentSummaryCan {
 /** The invoices or receipts list's filter, as its URL keeps it; their documents' pages take it too. */
 export type DocumentsSearch = FilterSearch<(typeof DOCUMENT_FACETS)[number]>;
 
+/**
+ * A document page's search: the list it steps through. Opened from a
+ * session's or a package's page (or a row's link to its documents), that
+ * one's documents, in the order its page lists them; else the documents
+ * list with its filter.
+ */
+export interface DocumentSearch extends DocumentsSearch {
+  session?: string | undefined;
+  package?: string | undefined;
+  /** Opened from a client's timeline (their id): its documents. */
+  timeline?: string | undefined;
+}
+
 /** documents.search's request: an empty filter takes every value. */
 export interface SearchDocumentsRequest extends ListRequest {
   types: Array<DocumentType>;

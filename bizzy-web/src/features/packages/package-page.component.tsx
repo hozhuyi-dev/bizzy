@@ -8,6 +8,10 @@ import { usePackageSave } from "./package-save.hook";
 import { PackagesMutation } from "./packages.mutation";
 import { PackagesQuery } from "./packages.query";
 import { clientName } from "./packages.util";
+import { PackagePager, packageParent } from "./components/package-pager/package-pager.component";
+import type { PackageStepping } from "./components/package-pager/package-pager.component";
+import type { ReactNode } from "react";
+import type { Parent } from "~/components/shared/layout/page-header/page-header.component";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { PackageView } from "./packages.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
@@ -45,6 +49,7 @@ import { LoadingState } from "~/components/shared/feedback/loading-state/loading
 import { NotFoundPage } from "~/components/shared/feedback/not-found-page/not-found-page.component";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { useGoBack } from "~/core/navigation/go-back.hook";
+import { clientSessionsSearch } from "~/features/sessions/sessions.util";
 import { scrollToSection } from "~/core/scroll-spy/scroll-spy.util";
 import { formatDate, formatHours, todayISO } from "~/core/utils/date.util";
 import { moneyError, requiredError, wholeNumberError } from "~/core/utils/form.util";
@@ -53,8 +58,8 @@ import { allOf } from "~/core/utils/query.util";
 
 const FORM_ID = "package-form";
 
-/** Opened from wherever it was needed, it goes back there; else to the list. */
-const PARENT = { to: "/packages", label: "Packages", back: true } as const;
+/** A new one's list, where it goes back to when it wasn't opened from another page. */
+const PARENT: Parent = { to: "/packages", label: "Packages" };
 
 // Not paid yet: first, so a new package starts left to collect.
 const PAID_BY = [{ value: "", label: "Not yet" }, ...PAYMENT_CHOICES];
@@ -67,36 +72,38 @@ const PAID_BY = [{ value: "", label: "Not yet" }, ...PAYMENT_CHOICES];
  * opened for, and one opened to pay for it starts at its payment, as the
  * page that opened it left them in history.
  */
-export function PackagePage({ id }: { id?: string | undefined }) {
+export function PackagePage({ id, stepping }: { id?: string | undefined; stepping?: PackageStepping | undefined }) {
   // Every package is read already (sessions show their credits): one cached read.
   const packages = PackagesQuery.useList(true);
   const clients = ClientsQuery.useList();
   const clientId = useLocation({ select: (location) => location.state.clientId });
   const at = useLocation({ select: (location) => location.state.at });
+  const pkg = id === undefined ? undefined : packages.data?.find((p) => p.id === id);
+  const gone = id !== undefined && packages.data !== undefined && !pkg;
+  const header: PackageHeader = {
+    parent: stepping ? packageParent(stepping) : PARENT,
+    // Steps on while the next one loads, so the header stays put.
+    pager: id !== undefined && stepping && <PackagePager id={id} gone={gone} stepping={stepping} />,
+  };
+  const back = { label: `Back to ${header.parent.label}`, link: header.parent as LinkOptions };
 
   const page = allOf(packages, clients);
   if (packages.data && clients.data) {
-    const pkg = id === undefined ? undefined : packages.data.find((p) => p.id === id);
-    if (id !== undefined && !pkg) {
+    if (gone) {
       return (
         <>
-          <PageHeader parent={PARENT} title="Not available" />
-          <NotFoundPage message="This package was deleted." back={{ label: `Back to ${PARENT.label}`, link: PARENT as LinkOptions }} />
+          <PageHeader {...header} title="Not available" kind="Package" />
+          <NotFoundPage message="This package was deleted." back={back} />
         </>
       );
     }
-    return <PackageEditor key={pkg?.id ?? "new"} pkg={pkg} clientId={clientId} at={at} />;
+    return <PackageEditor key={pkg?.id ?? "new"} pkg={pkg} clientId={clientId} at={at} header={header} />;
   }
   return (
     <>
-      <PageHeader parent={PARENT} title={page.error ? "Not available" : "…"} />
+      <PageHeader {...header} title={page.error ? "Not available" : "…"} kind="Package" />
       {page.error ? (
-        <ErrorState
-          error={page.error}
-          retry={page.refetch}
-          size="page"
-          back={{ label: `Back to ${PARENT.label}`, link: PARENT as LinkOptions }}
-        />
+        <ErrorState error={page.error} retry={page.refetch} size="page" back={back} />
       ) : (
         <LoadingState shape="page" />
       )}
@@ -104,7 +111,14 @@ export function PackagePage({ id }: { id?: string | undefined }) {
   );
 }
 
+/** The header's way back and pager, the same while the package loads. */
+interface PackageHeader {
+  parent: Parent;
+  pager: ReactNode;
+}
+
 interface PackageEditorProps {
+  header: PackageHeader;
   /** Omitted for a new one. */
   pkg: PackageView | undefined;
   /** The client a new one is for, to start with. */
@@ -118,9 +132,9 @@ interface PackageEditorProps {
  * session's client and day; a payment an issued receipt records) is
  * disabled, saying why.
  */
-function PackageEditor({ pkg, clientId, at }: PackageEditorProps) {
+function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
   const clientsById = ClientsQuery.useById();
-  const goBack = useGoBack(PARENT);
+  const goBack = useGoBack(header.parent as LinkOptions);
   // Added to settle a calendar edit: back to the to-do list once saved.
   const settled = useSettleReturn();
   const save = usePackageSave(
@@ -157,6 +171,8 @@ function PackageEditor({ pkg, clientId, at }: PackageEditorProps) {
   const isSubmitting = useSelector(form.store, (state) => state.isSubmitting);
   const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
   const actions = usePackageActions(pkg, () => goBack({ leaving: true }));
+  // A new one opened for a client is theirs from the start.
+  const newFor = clientId ? clientsById.get(clientId)?.name : undefined;
 
   const submit: Action = {
     type: "submit",
@@ -171,7 +187,7 @@ function PackageEditor({ pkg, clientId, at }: PackageEditorProps) {
       {pkg?.boughtIn && (
         <p className="text-sm text-muted-foreground">
           Bought in{" "}
-          <TextLink to="/sessions/$id" params={{ id: pkg.boughtIn }}>
+          <TextLink to="/sessions/$id" params={{ id: pkg.boughtIn }} search={clientSessionsSearch(pkg.clientId)}>
             a session
           </TextLink>
           , and on its invoice.
@@ -321,9 +337,11 @@ function PackageEditor({ pkg, clientId, at }: PackageEditorProps) {
   return (
     <>
       <PageHeader
-        parent={PARENT}
-        title={pkg ? clientName(pkg, clientsById) : "New package"}
-        subtitle={pkg && `${formatHours(pkg.hours)}, ${formatDate(pkg.purchasedAt)}`}
+        {...header}
+        title={pkg ? clientName(pkg, clientsById) : (newFor ?? "New package")}
+        titleLink={pkg && clientsById.has(pkg.clientId) ? { to: "/clients/$id", params: { id: pkg.clientId } } : undefined}
+        kind={pkg ? "Package" : newFor ? "New package" : undefined}
+        subtitle={pkg && `${formatHours(pkg.hours)}, bought ${formatDate(pkg.purchasedAt)}`}
         // Save while there is something to keep; a new one is nothing until added.
         actions={!pkg || hasChanges ? [submit] : []}
         moreActions={actions.more}
@@ -368,6 +386,7 @@ function documentsStep(pkg: PackageView | undefined): PageStep {
           <DataListItem key={doc.ref.id}>
             <DocumentRow
               doc={doc}
+              search={{ package: pkg.id }}
               meta={
                 doc.type === "invoice"
                   ? `Invoice · ${formatCents(pkg.priceCents)}`

@@ -9,6 +9,7 @@ import { CellText } from "~/components/shared/list/data-table/data-table-cell.co
 import { createDataTableColumnHelper } from "~/components/shared/list/data-table/data-table.config";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
 import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
+import { clientSessionsSearch } from "~/features/sessions/sessions.util";
 import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { clientOf } from "~/features/clients/clients.util";
 import { formatDate } from "~/core/utils/date.util";
@@ -72,7 +73,7 @@ export function FollowUpCard({ followUp, handlers }: { followUp: FollowUpView; h
           {followUp.sessionId && (
             <>
               {" · "}
-              <TextLink to="/sessions/$id" params={{ id: followUp.sessionId }} className="font-normal">
+              <TextLink to="/sessions/$id" params={{ id: followUp.sessionId }} search={clientSessionsSearch(followUp.clientId)} className="font-normal">
                 from a session
               </TextLink>
             </>
@@ -113,7 +114,12 @@ export function createFollowUpColumns(handlers: FollowUpHandlers) {
           className="max-w-48"
           sub={
             row.original.sessionId && (
-              <TextLink to="/sessions/$id" params={{ id: row.original.sessionId }} className="font-normal">
+              <TextLink
+                to="/sessions/$id"
+                params={{ id: row.original.sessionId }}
+                search={clientSessionsSearch(row.original.clientId)}
+                className="font-normal"
+              >
                 from a session
               </TextLink>
             )

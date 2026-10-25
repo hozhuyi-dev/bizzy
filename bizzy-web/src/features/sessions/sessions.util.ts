@@ -10,16 +10,25 @@ import type { Place } from "~/core/list/pager.types";
 import { clientFacet } from "~/features/clients/clients.util";
 import { paperworkFacet } from "~/features/documents/documents.util";
 import { PAYMENT_FACET } from "~/features/payments/payments.util";
-import { filterUrl, listRequest } from "~/core/list/filter.util";
+import { NO_FILTER, filterUrl, listRequest } from "~/core/list/filter.util";
 import { monthKey } from "~/core/utils/date.util";
-import { oneOf } from "~/core/utils/url-param.util";
+import { oneOf, textParam } from "~/core/utils/url-param.util";
 
 /** The sessions list's filter in its URL: this month unless it says otherwise. */
 export const sessionsUrl = filterUrl(SESSION_FACETS, () => monthKey(new Date()));
 
 /** The search a session's page takes: the list it steps through, and where it was opened from. */
 export function validateSessionSearch(search: Record<string, unknown>): SessionSearch {
-  return { ...sessionsUrl.validate(search), from: oneOf(search.from, ["home"] as const) };
+  return {
+    ...sessionsUrl.validate(search),
+    from: oneOf(search.from, ["home", "today"] as const),
+    timeline: textParam(search.timeline),
+  };
+}
+
+/** A client's sessions, at any time: what a session opened from their page steps through. */
+export function clientSessionsSearch(clientId: string): SessionSearch {
+  return sessionsUrl.toSearch({ ...NO_FILTER, chips: { client: [clientId] } });
 }
 
 /** Where a session sits in the sessions list: by its start. */

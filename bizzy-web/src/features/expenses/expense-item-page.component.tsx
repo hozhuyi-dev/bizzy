@@ -24,7 +24,7 @@ const FORM_ID = "expense-item-form";
 const MAX_NAME = 100;
 
 /** Opened from wherever it was needed, it goes back there; else to the items. */
-const PARENT = { to: "/expenses/items", label: "Items", back: true } as const;
+const PARENT = { to: "/expenses/items", label: "Items" } as const;
 
 /** One thing the user buys: renamed, moved to another category for lines from now on, or archived. */
 export function ExpenseItemPage({ id }: { id: string }) {
@@ -103,6 +103,7 @@ function ItemEditor({ item, catalogue }: { item: ExpenseItem; catalogue: Catalog
       <PageHeader
         parent={PARENT}
         title={item.name}
+        kind="Item"
         badges={item.archived && <Badge variant="neutral">Archived</Badge>}
         actions={hasChanges ? [submit] : []}
         menuActions={[archive]}

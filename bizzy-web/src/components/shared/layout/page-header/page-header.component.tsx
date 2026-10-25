@@ -14,30 +14,33 @@ import { useHeight } from "~/core/scroll-spy/scroll-spy.hook";
 import { setBannersHeight } from "~/core/scroll-spy/scroll-spy.util";
 import { moduleOf } from "~/core/navigation/navigation.util";
 
-interface Parent {
+/**
+ * The list the page steps through, or the page holding it (Home's to-do
+ * list, a session's documents): the breadcrumb on a wide screen, linked
+ * with its filter. A phone's ← goes back instead, as the browser's Back
+ * does, to wherever the page was opened from; to this only when there is
+ * nowhere to go back to, as when opened from outside the app.
+ */
+export interface Parent {
   to: NonNullable<LinkProps["to"]>;
   label: string;
   search?: LinkOptions["search"];
   params?: LinkOptions["params"];
-  /**
-   * Goes back to the page it was opened from, as the browser's Back does
-   * (a form's page, opened from wherever it is needed); the link only when
-   * there is none, as when opened from outside the app.
-   */
-  back?: boolean | undefined;
 }
 
 interface PageHeaderProps {
+  /** The broader of what the page is about: a session's client, a list's name. */
   title: ReactNode;
   /** Where the title is the name of something with a page of its own (a session's client): opens it. */
   titleLink?: LinkOptions | undefined;
+  /** What the page is, for one of an item: "Session", "Invoice", "New package". */
+  kind?: string | undefined;
   /**
-   * What tells this item apart, after the title on a wide screen ("Aisyah ·
-   * Tue 5 Oct") and on a line under it on a phone, where the parent's name
-   * stands there otherwise.
+   * What narrows it down: the item's day or number, a list's preset. After
+   * the kind, on the line under the title on a phone ("Session · Tue 5
+   * Oct") and after the title on a wide screen.
    */
   subtitle?: ReactNode;
-  /** The list this page sits under, linked before the title as a breadcrumb; with its filter, when it has one. */
   parent?: Parent;
   /** Next to the title: status badges. */
   badges?: ReactNode;
@@ -82,10 +85,13 @@ interface PageHeaderProps {
  * sticks under the nav bar (--nav-height) so actions stay in reach on long
  * tables, with the banners under it; the toolbar scrolls with the page.
  *
- * A phone has no room for that row: the title goes into the nav bar, on two
- * lines (the title, then the subtitle or the list it is under), and the way
- * back, the pager and the actions into the dock at the bottom, within a
- * thumb's reach (see PageSlots). Pages say the same either way.
+ * Every page says the same two things, the broader first: what it is about
+ * (the title: a client, a list), then what it is and what narrows it down
+ * (kind and subtitle: "Invoice · INV260042-00", a list's preset). A phone
+ * has no room for that row: the title goes into the nav bar, always on two
+ * lines, so it sits in one place on every page, and the way back, the pager
+ * and the actions into the dock at the bottom, within a thumb's reach (see
+ * PageSlots). Pages say the same either way.
  */
 export function PageHeader(props: PageHeaderProps) {
   const { banners, toolbar } = props;
@@ -112,9 +118,21 @@ export function PageHeader(props: PageHeaderProps) {
 
 type HeaderProps = PageHeaderProps & { module: Module | undefined };
 
+/** Kind and subtitle, "Session · Tue 5 Oct": the line under a phone's title, after a wide one's. */
+function Aside({ kind, subtitle }: Pick<PageHeaderProps, "kind" | "subtitle">) {
+  return (
+    <>
+      {kind}
+      {kind && subtitle ? " · " : null}
+      {subtitle}
+    </>
+  );
+}
+
 function WideHeader({
   title,
   titleLink,
+  kind,
   subtitle,
   parent,
   module,
@@ -127,23 +145,37 @@ function WideHeader({
 }: HeaderProps) {
   const { setActions } = usePageSlots();
   const hasActions = [actions, moreActions, menuActions].some((list) => (list?.length ?? 0) > 0);
+  // Nothing the breadcrumb says already: a module named as its page ("Clients ›
+  // Clients"), a title that is the parent ("Aisyah › Aisyah"), a kind its list
+  // names ("Sessions › Aisyah · Session").
+  const moduleCrumb = module && module.pages.length > 1 && module.label !== title ? module.label : undefined;
+  const crumb = parent?.label ?? moduleCrumb;
+  const shownTitle = crumb !== undefined && title === crumb ? undefined : title;
+  const shownKind = kind && crumb?.toLowerCase().startsWith(kind.toLowerCase()) ? undefined : kind;
+  const aside = (shownKind || subtitle) && <Aside kind={shownKind} subtitle={subtitle} />;
   return (
     <header className="group/header sticky top-(--nav-height) z-(--z-header) -mx-(--page-gutter) mb-(--section-gap) flex h-(--page-header-height) items-center gap-3 border-b bg-background px-(--page-gutter)">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         {parent && <ParentLink {...parent} />}
-        {module && module.pages.length > 1 && <ModuleCrumb label={module.label} />}
+        {moduleCrumb && <ModuleCrumb label={moduleCrumb} />}
         <h1 className="truncate type-page-title">
-          {titleLink ? (
-            <Link
-              {...titleLink}
-              className="rounded-md underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              {title}
-            </Link>
+          {shownTitle === undefined ? (
+            aside
           ) : (
-            title
+            <>
+              {titleLink ? (
+                <Link
+                  {...titleLink}
+                  className="rounded-md underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  {shownTitle}
+                </Link>
+              ) : (
+                shownTitle
+              )}
+              {aside && <span className="font-normal text-muted-foreground"> · {aside}</span>}
+            </>
           )}
-          {subtitle && <span className="font-normal text-muted-foreground"> · {subtitle}</span>}
         </h1>
         {badges && <div className="flex shrink-0 items-center gap-1">{badges}</div>}
       </div>
@@ -180,6 +212,7 @@ function WideHeader({
 function CompactHeader({
   title,
   titleLink,
+  kind,
   subtitle,
   parent,
   module,
@@ -193,8 +226,8 @@ function CompactHeader({
   const slots = usePageSlots();
   const dock = dockActions(actions, moreActions);
   const hasActions = [actions, moreActions, menuActions].some((list) => (list?.length ?? 0) > 0);
-  // Under the title: what tells the item apart, else where it sits.
-  const under = subtitle ?? parent?.label ?? (module && module.pages.length > 1 ? module.label : undefined);
+  // Under the title: what it is and what narrows it down, else where it sits.
+  const fallback = parent?.label ?? (module && module.pages.length > 1 ? module.label : undefined);
 
   return (
     <>
@@ -218,7 +251,10 @@ function CompactHeader({
               )}
               {badges && <div className="flex shrink-0 items-center gap-1">{badges}</div>}
             </div>
-            {under && <p className="truncate text-xs text-muted-foreground">{under}</p>}
+            {/* Always there, if only empty, so the title sits in one place on every page. */}
+            <p className="truncate text-xs text-muted-foreground">
+              {kind || subtitle ? <Aside kind={kind} subtitle={subtitle} /> : (fallback ?? " ")}
+            </p>
           </>,
           slots.title,
         )}
@@ -271,24 +307,12 @@ function dockActions(
   return { actions: [{ ...first, iconOnlyOnPhone: false }], more: rest };
 }
 
-/** A Parent's click: Back, for one that goes back while there is a page to go back to; else its link. */
-function useBackClick(back: boolean | undefined) {
-  const router = useRouter();
-  return (event: MouseEvent) => {
-    if (!back || !router.history.canGoBack()) return;
-    event.preventDefault();
-    router.history.back();
-  };
-}
-
-/** The way back: the list's name on wider screens, an arrow on a phone. */
-function ParentLink({ to, label, search, params, back }: Parent) {
-  const onClick = useBackClick(back);
+/** The list the page steps through, by name before the title on wider screens. */
+function ParentLink({ to, label, search, params }: Parent) {
   return (
     <>
       <Link
         {...({ to, search, params } as LinkOptions)}
-        onClick={onClick}
         className="shrink-0 rounded-md type-page-title text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         {label}
@@ -298,16 +322,25 @@ function ParentLink({ to, label, search, params, back }: Parent) {
   );
 }
 
-/** A phone's way back to the list, at the dock's left edge. */
-function BackButton({ to, label, search, params, back }: Parent) {
-  const onClick = useBackClick(back);
+/**
+ * A phone's way back, at the dock's left edge: the browser's Back, to the
+ * page it was opened from, found as it was left. Opened from outside the
+ * app, there is none: the parent's link.
+ */
+function BackButton({ to, label, search, params }: Parent) {
+  const router = useRouter();
+  const onClick = (event: MouseEvent) => {
+    if (!router.history.canGoBack()) return;
+    event.preventDefault();
+    router.history.back();
+  };
   return (
     <Button
       variant="ghost"
       size="icon-lg"
       className="shrink-0"
-      aria-label={`Back to ${label}`}
-      title={`Back to ${label}`}
+      aria-label="Back"
+      title={router.history.canGoBack() ? "Back" : `Back to ${label}`}
       render={<Link {...({ to, search, params } as LinkOptions)} onClick={onClick} />}
       nativeButton={false}
     >

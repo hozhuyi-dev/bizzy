@@ -5,7 +5,7 @@ import { FollowUpsTable } from "./components/follow-ups-table/follow-ups-table.c
 import { useOpenFollowUp } from "./follow-ups.hook";
 import { FollowUpsQuery } from "./follow-ups.query";
 import { FOLLOW_UP_ORIGIN_FACET, FOLLOW_UP_STATUS_FACET } from "./follow-ups.constant";
-import { FOLLOW_UP_PRESETS } from "./follow-ups.util";
+import { FOLLOW_UP_PRESETS, followUpsUrl } from "./follow-ups.util";
 import type { FollowUpView } from "./follow-ups.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
@@ -14,7 +14,7 @@ import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.compon
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { isNarrowed, pageItems } from "~/core/list/filter.util";
+import { isNarrowed, pageItems, presetLabel } from "~/core/list/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
 interface FollowUpsPageProps {
@@ -38,12 +38,14 @@ export function FollowUpsPage({ filter, onFilterChange }: FollowUpsPageProps) {
   const onlyDone = filter.chips.status?.length === 1 && filter.chips.status[0] === "done";
   const items = useMemo(() => pageItems(list.data), [list.data]);
   const openFollowUp = useOpenFollowUp();
-  const edit = (followUp: FollowUpView) => openFollowUp({ mode: "edit", followUp });
+  // Each follow-up's page steps through the list as it is filtered here.
+  const edit = (followUp: FollowUpView) => openFollowUp({ mode: "edit", followUp, search: followUpsUrl.toSearch(filter) });
 
   return (
     <>
       <PageHeader
         title="Follow-ups"
+        subtitle={presetLabel(filter, FOLLOW_UP_PRESETS)}
         actions={[
           {
             type: "button",

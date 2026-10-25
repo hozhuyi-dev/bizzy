@@ -67,6 +67,7 @@ export function InsightsPage({ year, onYearChange }: InsightsPageProps) {
     <>
       <PageHeader
         title="Insights"
+        subtitle={String(year)}
         toolbar={
           <Select
             items={years.map((y) => ({ value: String(y), label: String(y) }))}

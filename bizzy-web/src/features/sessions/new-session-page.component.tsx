@@ -22,11 +22,9 @@ import { allOf } from "~/core/utils/query.util";
 
 const FORM_ID = "booking-form";
 
-/** Home, or the sessions list: where a session's page goes back to. Opened from elsewhere, it goes back there. */
+/** Home, or the sessions list: where it goes back to when it wasn't opened from another page. */
 function parentOf(from: SessionReturnTo | undefined) {
-  return from === "home"
-    ? ({ to: "/", label: "Home", back: true } as const)
-    : ({ to: "/sessions", label: "Sessions", back: true } as const);
+  return from ? ({ to: "/", label: "Home" } as const) : ({ to: "/sessions", label: "Sessions" } as const);
 }
 
 /**
@@ -55,7 +53,7 @@ export function NewSessionPage() {
   }
   return (
     <>
-      <PageHeader parent={parent} title={page.error ? "Not available" : "…"} />
+      <PageHeader parent={parent} title={page.error ? "Not available" : "…"} kind="New session" />
       {page.error ? (
         <ErrorState
           error={page.error}
@@ -117,7 +115,8 @@ function NewSession({ initial, from, nextVisit }: NewSessionProps) {
     <>
       <PageHeader
         parent={parent}
-        title={nextVisit && clientName ? `Next visit for ${clientName}` : "New session"}
+        title={clientName ?? "New session"}
+        kind={clientName ? (nextVisit ? "Next visit" : "New session") : undefined}
         actions={[submit]}
       />
       <form

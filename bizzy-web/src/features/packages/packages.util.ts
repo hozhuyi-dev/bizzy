@@ -1,12 +1,13 @@
 import { PACKAGE_FACETS } from "./packages.constant";
-import type { PackageView } from "./packages.types";
+import type { PackageSearch, PackageView } from "./packages.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import type { Payable } from "~/features/payments/payments.types";
 import { clientFacet } from "~/features/clients/clients.util";
 import { paperworkFacet, paperworkOf } from "~/features/documents/documents.util";
 import { methodShortLabel } from "~/features/payments/payments.util";
-import { filterUrl, whenDays } from "~/core/list/filter.util";
+import { NO_FILTER, filterUrl, whenDays } from "~/core/list/filter.util";
+import { oneOf, textParam } from "~/core/utils/url-param.util";
 import { formatDate, formatHours, toISODate } from "~/core/utils/date.util";
 
 export function clientName(pkg: PackageView, clientsById: ReadonlyMap<string, ClientView>): string {
@@ -30,6 +31,16 @@ export function packagePayables(pkg: PackageView): Array<Payable> {
 
 /** The packages list's filter in its URL: the open ones, unless it says otherwise. */
 export const packagesUrl = filterUrl(PACKAGE_FACETS, undefined, { status: ["open"] });
+
+/** The search a package's page takes: the list it steps through. */
+export function validatePackageSearch(search: Record<string, unknown>): PackageSearch {
+  return { ...packagesUrl.validate(search), from: oneOf(search.from, ["home"] as const), timeline: textParam(search.timeline) };
+}
+
+/** A client's packages, used up or not, latest bought first, as their page lists them: what one opened there steps through. */
+export function clientPackagesSearch(clientId: string): PackageSearch {
+  return packagesUrl.toSearch({ ...NO_FILTER, chips: { client: [clientId], status: [] } });
+}
 
 /** How a package stands, as the Status chip narrows by it; one can be more than one. */
 type PackageStatus = "open" | "unpaid" | "used";

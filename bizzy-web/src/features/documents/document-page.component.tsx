@@ -18,13 +18,14 @@ import {
 } from "./components/document-editor/document-editor.component";
 import { useDocumentEditor } from "./components/document-editor/document-editor.hook";
 import { DocumentPdfView } from "./components/document-pdf-view/document-pdf-view.component";
+import { DocumentPager, documentParent } from "./components/document-pager/document-pager.component";
 import { DocumentStatusBadge, documentLink } from "./documents.columns";
 import { DocumentsMutation } from "./documents.mutation";
 import { DocumentsQuery } from "./documents.query";
-import { documentLabel, documentPlace, documentsLink, documentsUrl, shareUrl } from "./documents.util";
-import { DOCUMENTS_LIST } from "./documents.list";
+import { documentLabel, documentsUrl, shareUrl } from "./documents.util";
 import { DOCUMENT_TYPES } from "./documents.constant";
 import { useDocumentPdf } from "./documents.hook";
+import type { DocumentWithin } from "./components/document-pager/document-pager.component";
 import type { PdfSource } from "./documents.hook";
 import type { ReactNode } from "react";
 import type { LinkOptions } from "@tanstack/react-router";
@@ -32,8 +33,8 @@ import type { DocumentContent, DocumentRevision, DocumentType, DocumentView, Rec
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
+import type { Parent } from "~/components/shared/layout/page-header/page-header.component";
 import { Banner } from "~/components/shared/layout/banner/banner.component";
-import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { Timeline, TimelineItem, TimelineNow } from "~/components/shared/list/timeline/timeline.component";
 import { PageSections } from "~/components/shared/layout/page-sections/page-sections.component";
@@ -63,37 +64,38 @@ import { ErrorState } from "~/components/shared/feedback/error-state/error-state
 interface DocumentPageProps {
   id: string;
   type: DocumentType;
-  /** The list it steps through. */
+  /** The session's or package's page it was opened from, whose documents it steps through. */
+  within: DocumentWithin;
+  /** Else the documents list it steps through. */
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
 }
 
-export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageProps) {
+export function DocumentPage({ id, type, within, filter, onFilterChange }: DocumentPageProps) {
   const detail = DocumentsQuery.useDetail(id);
   // Its client's name is in the header: it opens with it.
   const clients = ClientsQuery.useList();
-  // The breadcrumb: its list, with the filter it was left at.
-  const parent = documentsLink(filter);
-  const header = {
+  const parent = documentParent(within, filter);
+  const header: DocumentHeader = {
     parent,
     pager: (
-      <ListPager
-        list={DOCUMENTS_LIST}
+      <DocumentPager
+        id={id}
+        type={type}
+        doc={detail.data}
+        gone={isApiError(detail.error, "not_found")}
+        within={within}
         filter={filter}
-        current={{ id, place: detail.data && documentPlace(detail.data), gone: isApiError(detail.error, "not_found") }}
-        itemLink={(next) => documentLink({ id: next, type }, documentsUrl.toSearch(filter))}
-        panel={{
-          onApply: onFilterChange,
-          listLink: documentsLink,
-        }}
+        onFilterChange={onFilterChange}
       />
     ),
   };
 
   const doc = detail.data;
   if (doc && clients.data) {
-    // A link to it under the other type's address (an invoice's id as a receipt): its own page.
-    if (doc.type !== type) return <Navigate {...documentLink(doc)} replace />;
+    // A link to it under the other type's address (an invoice's id as a receipt, a step
+    // from one to the other): its own page, stepping through the same list.
+    if (doc.type !== type) return <Navigate {...documentLink(doc, { ...documentsUrl.toSearch(filter), ...within })} replace />;
     if (doc.draft) {
       // Remount on every save so the form restarts from what was stored.
       return <DraftDocument key={detail.dataUpdatedAt} doc={doc} draft={doc.draft} revisions={doc.revisions} header={header} />;
@@ -103,7 +105,7 @@ export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageP
   const page = allOf(detail, clients);
   return (
     <>
-      <PageHeader {...header} title={page.error ? "Not available" : "…"} />
+      <PageHeader {...header} title={page.error ? "Not available" : "…"} kind={DOCUMENT_TYPES[type].title} />
       {page.error ? (
         <ErrorState
           error={page.error}
@@ -120,8 +122,23 @@ export function DocumentPage({ id, type, filter, onFilterChange }: DocumentPageP
 
 /** The header's way back and pager, the same while the document loads. */
 interface DocumentHeader {
-  parent: ReturnType<typeof documentsLink>;
+  parent: Parent;
   pager: ReactNode;
+}
+
+/**
+ * Whose it is, then what it is: "Aisyah" over "Invoice · INV260042-00", or
+ * "Draft invoice" for one never issued. The client's name opens their page.
+ */
+function useDocumentTitle(doc: DocumentView, recipient: Recipient) {
+  const client = clientOf(ClientsQuery.useById(), doc.clientId);
+  const { title } = DOCUMENT_TYPES[doc.type];
+  return {
+    title: client?.name ?? (recipient.name || title),
+    titleLink: client ? ({ to: "/clients/$id", params: { id: client.id } } as const) : undefined,
+    kind: doc.number ? title : `Draft ${title.toLowerCase()}`,
+    subtitle: doc.number ? documentLabel(doc.number, doc.revision) : undefined,
+  };
 }
 
 interface DraftDocumentProps {
@@ -136,13 +153,13 @@ function DraftDocument({ doc, draft, revisions, header }: DraftDocumentProps) {
   const editorActions = documentEditorActions(editor);
   const whatsapp = useDocumentWhatsApp(doc, draft.recipient);
   const history = historySection(doc, revisions);
+  const named = useDocumentTitle(doc, draft.recipient);
 
   return (
     <>
       <PageHeader
         {...header}
-        title={documentLabel(doc.number, doc.revision)}
-        subtitle={draft.recipient.name || undefined}
+        {...named}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
         actions={[documentIssueAction(editor)]}
         moreActions={[whatsapp, ...editorActions.more]}
@@ -178,13 +195,13 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
   const [resettingLink, setResettingLink] = useState(false);
   const whatsapp = useDocumentWhatsApp(doc, content.recipient);
   const links = useLinkActions(doc, () => setResettingLink(true));
+  const named = useDocumentTitle(doc, content.recipient);
 
   return (
     <>
       <PageHeader
         {...header}
-        title={documentLabel(doc.number, doc.revision)}
-        subtitle={content.recipient.name || undefined}
+        {...named}
         badges={<DocumentStatusBadge status={doc.status} revising={doc.status === "issued" && Boolean(doc.draft)} />}
         // An issued receipt is mostly sent, viewed and kept; revising is rare,
         // so nothing claims the always-visible slot and the title keeps the

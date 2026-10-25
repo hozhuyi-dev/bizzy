@@ -234,6 +234,11 @@ export function presetOf(filter: ListFilter, presets: ReadonlyArray<FilterPreset
   );
 }
 
+/** What the list is showing, by its preset's name: Custom for one of her own. */
+export function presetLabel(filter: ListFilter, presets: ReadonlyArray<FilterPreset>): string {
+  return presetOf(filter, presets)?.label ?? "Custom";
+}
+
 /** The filter a preset makes, with the words kept; its sort, if it has one, else the list's own. */
 export function applyPreset(filter: ListFilter, preset: FilterPreset): ListFilter {
   return { text: filter.text, when: preset.when, chips: preset.chips, sort: preset.sort };

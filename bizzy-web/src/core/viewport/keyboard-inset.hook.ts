@@ -43,6 +43,11 @@ export function useKeyboardInset(element: HTMLElement | null, { hideWhileMoving 
     let settle: number | undefined;
     let quiet: number | undefined;
     let last = -1;
+    // Until when a keyboard may still be coming: a while after focus goes
+    // into a box. Not for as long as one has focus: iOS's own button puts
+    // the keyboard away and leaves the box focused, and the page's scrolling
+    // after that is only scrolling.
+    let coming = 0;
 
     // Hidden at once (no fade, the move is under way), shown again after
     // the quiet; anything moving meanwhile starts the quiet again.
@@ -79,12 +84,16 @@ export function useKeyboardInset(element: HTMLElement | null, { hideWhileMoving 
       frame ||= requestAnimationFrame(apply);
     };
     // The screen moving while a keyboard is up, or coming: iOS moves what
-    // is fixed with it, before this hears of it.
+    // is fixed with it, before this hears of it. One coming back to a box
+    // still focused (tapped again) changes the inset, which hides it too.
     const onMove = () => {
-      if (last > 0 || opensKeyboard(document.activeElement)) moving();
+      if (last > 0 || performance.now() < coming) moving();
       schedule();
     };
-    const onFocus = () => {
+    const onFocus = (event: FocusEvent) => {
+      if (event.type === "focusin" && event.target instanceof Element && opensKeyboard(event.target)) {
+        coming = performance.now() + SETTLE_MS;
+      }
       onMove();
       window.clearTimeout(settle);
       settle = window.setTimeout(schedule, SETTLE_MS);

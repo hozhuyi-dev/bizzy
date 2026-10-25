@@ -7,6 +7,7 @@ import { DataRow } from "~/components/shared/list/data-list/data-list.component"
 import { TextLink } from "~/components/shared/link/text-link/text-link.component";
 import { Badge } from "~/components/ui/badge";
 import { clientOf } from "~/features/clients/clients.util";
+import { clientSessionsSearch } from "~/features/sessions/sessions.util";
 
 interface FollowUpRowProps {
   followUp: FollowUpView;
@@ -57,7 +58,12 @@ export function FollowUpRow({ followUp, onEdit, hideClient, showSession = true, 
           {showSession && followUp.sessionId && (
             <>
               {" · "}
-              <TextLink to="/sessions/$id" params={{ id: followUp.sessionId }} className="font-normal">
+              <TextLink
+                to="/sessions/$id"
+                params={{ id: followUp.sessionId }}
+                search={clientSessionsSearch(followUp.clientId)}
+                className="font-normal"
+              >
                 from a session
               </TextLink>
             </>

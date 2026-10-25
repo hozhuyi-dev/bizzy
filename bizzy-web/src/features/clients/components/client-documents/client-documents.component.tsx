@@ -7,7 +7,12 @@ import type { PageSection } from "~/components/shared/layout/page-sections/page-
 import type { ListFilter } from "~/core/list/filter.types";
 import { DocumentsQuery } from "~/features/documents/documents.query";
 import { documentLink, documentTick } from "~/features/documents/documents.columns";
-import { DOCUMENT_STATUS_FACET, DOCUMENT_TYPE_FACET } from "~/features/documents/documents.util";
+import {
+  DOCUMENT_STATUS_FACET,
+  DOCUMENT_TYPE_FACET,
+  clientDocumentsSearch,
+  documentsOfClient,
+} from "~/features/documents/documents.util";
 import { canTick } from "~/features/documents/documents.hook";
 import { TickedBar } from "~/features/documents/components/ticked-bar/ticked-bar.component";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
@@ -36,10 +41,7 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
   const [selection, setSelection] = useState<RowSelectionState>({});
 
   const all = useMemo(() => docs.data ?? [], [docs.data]);
-  const data = useMemo(() => {
-    const { type = [], status = [] } = filter.chips;
-    return all.filter((doc) => (type.length === 0 || type.includes(doc.type)) && (status.length === 0 || status.includes(doc.status)));
-  }, [all, filter.chips]);
+  const data = useMemo(() => documentsOfClient(all, filter.chips), [all, filter.chips]);
   const table = useTable({
     features: dataTableFeatures,
     columns: COLUMNS,
@@ -53,8 +55,10 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
   });
   const chosen = data.filter((doc) => selection[doc.id]);
   const ticking = chosen.length > 0;
+  // Each document's page steps through these, narrowed as here: the documents list's order too.
+  const search = useMemo(() => client && clientDocumentsSearch(client.id, filter.chips), [client, filter.chips]);
 
-  if (!client) return undefined;
+  if (!client || !search) return undefined;
   return {
     id: "documents",
     title: "Documents",
@@ -77,11 +81,12 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
           table={table}
           source={docs}
           query={filter.text}
-          rowLink={(doc) => documentLink(doc)}
+          rowLink={(doc) => documentLink(doc, search)}
           empty={<EmptyState quips={QUIPS.timeline}>No invoices or receipts yet. They're drafted with each session.</EmptyState>}
           renderCard={(row) => (
             <ClientDocumentCard
               doc={row.original}
+              search={search}
               tick={documentTick(
                 row.original,
                 { tickable: row.getCanSelect(), ticked: row.getIsSelected(), onTickedChange: (on) => row.toggleSelected(on) },
