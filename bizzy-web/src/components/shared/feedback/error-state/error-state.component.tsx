@@ -8,6 +8,7 @@ import { BeeArt } from "~/components/shared/feedback/bee-art/bee-art.component";
 import { FallbackState } from "~/components/shared/feedback/fallback-state/fallback-state.component";
 import { NotFoundPage } from "~/components/shared/feedback/not-found-page/not-found-page.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { isApiError } from "~/core/utils/api-error.util";
 import { errorDetails } from "~/core/utils/error-details.util";
 
@@ -68,10 +69,10 @@ export function ErrorState({ error, retry, size = "section", title, back }: Erro
 function RetryButton({ retry }: { retry: (() => unknown) | undefined }) {
   const [trying, setTrying] = useState(false);
   return (
-    <Button
+    <PendingButton
       variant="outline"
       size="sm"
-      disabled={trying}
+      pending={trying}
       onClick={() => {
         if (!retry) {
           window.location.reload();
@@ -81,9 +82,9 @@ function RetryButton({ retry }: { retry: (() => unknown) | undefined }) {
         void Promise.resolve(retry()).finally(() => setTrying(false));
       }}
     >
-      <RotateCwIcon className={trying ? "motion-safe:animate-spin" : undefined} />
-      {trying ? "Trying…" : "Try again"}
-    </Button>
+      <RotateCwIcon />
+      Try again
+    </PendingButton>
   );
 }
 

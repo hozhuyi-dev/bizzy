@@ -11,6 +11,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 
 interface DeleteClientDialogProps {
   client: ClientView;
@@ -34,9 +35,9 @@ export function DeleteClientDialog({ client, open, onClose, onDeleted }: DeleteC
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel>Keep them</AlertDialogCancel>
-        <Button
+        <PendingButton
           variant="destructive"
-          disabled={remove.isPending}
+          pending={remove.isPending}
           onClick={() =>
             remove.mutate(client.id, {
               onSuccess: () => {
@@ -48,8 +49,8 @@ export function DeleteClientDialog({ client, open, onClose, onDeleted }: DeleteC
             })
           }
         >
-          {remove.isPending ? "Deleting…" : "Delete"}
-        </Button>
+          Delete
+        </PendingButton>
       </AlertDialogFooter>
     </SheetAlertDialog>
   );

@@ -67,11 +67,11 @@ export function useRemedy(conflict?: ConflictView) {
   const open = (step: OpenStep) => {
     switch (step.kind) {
       case "open":
-        return void navigate({ to: step.to, params: { id: step.id }, search: settle ? { from: "home", settle } : {} });
+        return void navigate({ to: step.to, params: { id: step.id }, search: settle ? { from: "home" } : {}, state: { settle } });
       case "open-new-client":
-        return void navigate({ to: "/clients/new", search: { name: step.name, settle } });
+        return void navigate({ to: "/clients/new", state: { name: step.name, settle } });
       case "open-packages":
-        return void navigate({ to: "/packages", search: { new: step.clientId ?? "", settle } });
+        return void navigate({ to: "/packages/new", state: { clientId: step.clientId, settle } });
     }
   };
 

@@ -81,9 +81,9 @@ function CategoriesEditor({ initial }: { initial: Array<ExpenseCategory> }) {
           {
             type: "submit",
             form: FORM_ID,
-            label: isSubmitting ? "Saving…" : "Save",
+            label: "Save",
             style: "primary",
-            disabled: isSubmitting,
+            pending: isSubmitting,
           },
         ]}
       />

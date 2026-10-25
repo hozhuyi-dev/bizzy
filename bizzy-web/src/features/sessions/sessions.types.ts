@@ -196,8 +196,6 @@ export type SessionsSearch = FilterSearch<(typeof SESSION_FACETS)[number]>;
 export interface SessionSearch extends SessionsSearch {
   /** Where to go back to once saved. */
   from?: SessionReturnTo | undefined;
-  /** The calendar edit it was opened to settle: once its booking is saved, back to the to-do list. */
-  settle?: string | undefined;
 }
 
 export type StageTone = "neutral" | "done" | "info" | "waiting" | "attention";

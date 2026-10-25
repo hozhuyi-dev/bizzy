@@ -65,3 +65,11 @@ export interface PackageFields {
 export interface PackagePaymentChoice {
   payment?: PaymentInput;
 }
+
+/**
+ * The package a page opens: a new one (for a client, to start with), or
+ * one to edit, opened at its payment to pay for it.
+ */
+export type PackageTarget =
+  | { mode: "new"; clientId?: string | undefined }
+  | { mode: "edit"; pkg: PackageView; at?: "payment" | undefined };

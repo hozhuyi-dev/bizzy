@@ -1,8 +1,5 @@
 import { useEffect } from "react";
-import { opensKeyboard, revealBy } from "./keyboard-inset.util";
-
-// iOS: every browser there is WebKit, the only engine with this property.
-const IOS = typeof CSS !== "undefined" && CSS.supports("-webkit-touch-callout", "none");
+import { IOS, opensKeyboard, revealBy } from "./keyboard-inset.util";
 
 // A finger moving further than this between down and up was scrolling, not tapping.
 const TAP_SLOP_PX = 10;

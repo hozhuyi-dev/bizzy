@@ -1,12 +1,12 @@
 import { toast } from "sonner";
+import { useSelector } from "@tanstack/react-form";
 import { PaymentsMutation } from "../../payments.mutation";
 import { PAYMENT_CHOICES } from "../../payments.constant";
 import { methodLabel } from "../../payments.util";
 import type { Payable, PaymentMethod } from "../../payments.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
-import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Checkbox } from "~/components/ui/checkbox";
-import { DialogFooter } from "~/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "~/components/ui/field";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { fieldErrors, requiredError } from "~/core/utils/form.util";
@@ -19,20 +19,9 @@ const keyOf = (p: Payable) => `${p.item.kind}:${p.item.id}:${p.paid ? "paid" : "
  * What was received for each item, and a form for what is still owed.
  * Clients pay in full: each item is paid all it owes. A payment is a draft
  * receipt until it is issued; after that, it stays as issued. One recorded
- * by mistake is undone, and recorded again. In a dialog (`onCancel`), Mark
- * paid is in its footer, beside Cancel.
+ * by mistake is undone, and recorded again.
  */
-export function PaymentPanel({
-  payables,
-  onPaid,
-  onCancel,
-}: {
-  payables: ReadonlyArray<Payable>;
-  /** After recording what was owed. */
-  onPaid?: () => void;
-  /** In a dialog: closes it, from Cancel in its footer. */
-  onCancel?: () => void;
-}) {
+export function PaymentPanel({ payables }: { payables: ReadonlyArray<Payable> }) {
   const paid = payables.filter((p) => p.paid);
   const owed = payables.filter((p) => !p.paid && p.dueCents > 0);
 
@@ -42,7 +31,7 @@ export function PaymentPanel({
         <PaymentSummary key={keyOf(p)} payable={p} showLabel={payables.length > 1} />
       ))}
       {owed.length > 0 && (
-        <PaymentForm key={owed.map(keyOf).join()} payables={owed} onDone={onPaid} onCancel={onCancel} />
+        <PaymentForm key={owed.map(keyOf).join()} payables={owed} />
       )}
     </div>
   );
@@ -62,10 +51,10 @@ function PaymentSummary({ payable, showLabel }: { payable: Payable; showLabel: b
       {paid.issued ? (
         <span className="text-xs text-muted-foreground">On an issued receipt.</span>
       ) : (
-        <Button
+        <PendingButton
           variant="ghost"
           size="sm"
-          disabled={setPayment.isPending}
+          pending={setPayment.isPending}
           onClick={() =>
             setPayment.mutate(
               { items: [payable.item], payment: null },
@@ -74,17 +63,12 @@ function PaymentSummary({ payable, showLabel }: { payable: Payable; showLabel: b
           }
         >
           Undo
-        </Button>
+        </PendingButton>
       )}
     </div>
   );
 }
 
-interface PaymentFormProps {
-  payables: ReadonlyArray<Payable>;
-  onDone?: (() => void) | undefined;
-  onCancel?: (() => void) | undefined;
-}
 
 interface PaymentValues {
   /** The payables ticked, by keyOf. */
@@ -94,7 +78,33 @@ interface PaymentValues {
   paidOn: string;
 }
 
-function PaymentForm({ payables, onDone, onCancel }: PaymentFormProps) {
+/** Mark paid in place, under what is owed (a session's Payment step). */
+function PaymentForm({ payables }: { payables: ReadonlyArray<Payable> }) {
+  const payment = usePaymentForm(payables);
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void payment.form.handleSubmit();
+      }}
+    >
+      {payment.fields}
+      <div className="flex flex-wrap items-center gap-2">
+        <payment.form.AppForm>
+          <payment.form.SubmitButton label="Mark paid" />
+        </payment.form.AppForm>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * What was paid for what is owed: which of them (when there are several),
+ * how and on which day. Its fields, for a form the caller lays out with
+ * its Mark paid (PaymentForm, or a page's header); `onDone` once recorded.
+ */
+export function usePaymentForm(payables: ReadonlyArray<Payable>, onDone?: () => void) {
   const setPayment = PaymentsMutation.useSet();
   const [first] = payables;
   const single = payables.length === 1;
@@ -119,14 +129,10 @@ function PaymentForm({ payables, onDone, onCancel }: PaymentFormProps) {
     },
   });
 
-  return (
-    <form
-      className="flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
+  const submitting = useSelector(form.store, (state) => state.isSubmitting);
+
+  const fields = (
+    <>
       {single && first ? (
         <p className="text-sm">
           <b>{formatCents(first.dueCents)}</b> for the {first.label.toLowerCase()}
@@ -190,22 +196,8 @@ function PaymentForm({ payables, onDone, onCancel }: PaymentFormProps) {
         )}
       </form.AppField>
 
-      {onCancel ? (
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-          <form.AppForm>
-            <form.SubmitButton label="Mark paid" />
-          </form.AppForm>
-        </DialogFooter>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <form.AppForm>
-            <form.SubmitButton label="Mark paid" />
-          </form.AppForm>
-        </div>
-      )}
-    </form>
+    </>
   );
+
+  return { form, fields, submitting };
 }

@@ -1,17 +1,15 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTable } from "@tanstack/react-table";
 import { PlusIcon } from "lucide-react";
-import { PackageDialog } from "./components/package-dialog/package-dialog.component";
 import { PackageCard, createPackageColumns } from "./packages.columns";
 import { PACKAGE_PRESETS, matchesPackage, packageFacets, packagePayables } from "./packages.util";
 import { PackagesQuery } from "./packages.query";
+import { useOpenPackage } from "./package-open.hook";
 import type { PackageHandlers } from "./packages.columns";
-import type { PackageTarget } from "./components/package-dialog/package-dialog.component";
 import type { PackageView } from "./packages.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ANOTHER_DAY, usePaidAction } from "~/features/payments/paid-action.hook";
-import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { sortingFromFilter } from "~/components/shared/list/data-table/data-table-sort.util";
@@ -31,10 +29,6 @@ interface PackagesPageProps {
   /** Words, days bought, and chips: Open (by default), clients, and how far their documents have got. */
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
-  /** Opens a new package for this client. */
-  newFor?: string | undefined;
-  /** The calendar edit it was opened to settle: once the package is added, back to the to-do list. */
-  settle?: string | undefined;
 }
 
 /**
@@ -42,9 +36,8 @@ interface PackagesPageProps {
  * paid. Every package is loaded already (sessions show their credits), so
  * the search, days and chips filter here, in the browser.
  */
-export function PackagesPage({ filter, onFilterChange, newFor, settle }: PackagesPageProps) {
-  const [editing, setEditing] = useState<PackageTarget>(newFor || settle ? { mode: "new", clientId: newFor } : null);
-  const settled = useSettleReturn(settle);
+export function PackagesPage({ filter, onFilterChange }: PackagesPageProps) {
+  const openPackage = useOpenPackage();
   // Every package, as sessions and clients read them: one cached read, filtered here.
   const packages = PackagesQuery.useList(true);
   const clients = ClientsQuery.useList();
@@ -62,14 +55,14 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
   const handlers = useMemo<PackageHandlers>(
     () => ({
       clientsById,
-      onEdit: (pkg) => setEditing({ mode: "edit", pkg }),
+      onEdit: (pkg) => openPackage({ mode: "edit", pkg }),
       paid: (pkg) =>
         paid(
           packagePayables(pkg).filter((p) => !p.paid),
-          { type: "button", label: ANOTHER_DAY, onClick: () => setEditing({ mode: "edit", pkg, at: "payment" }) },
+          { type: "button", label: ANOTHER_DAY, onClick: () => openPackage({ mode: "edit", pkg, at: "payment" }) },
         ),
     }),
-    [clientsById, paid],
+    [clientsById, paid, openPackage],
   );
 
   const columns = useMemo(() => createPackageColumns(handlers), [handlers]);
@@ -92,7 +85,7 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
             label: "New package",
             icon: PlusIcon,
             style: "primary",
-            onClick: () => setEditing({ mode: "new" }),
+            onClick: () => openPackage({ mode: "new" }),
           },
         ]}
         toolbar={
@@ -118,13 +111,6 @@ export function PackagesPage({ filter, onFilterChange, newFor, settle }: Package
               </EmptyState>
             }
             renderCard={(row) => <PackageCard pkg={row.original} handlers={handlers} />}
-      />
-
-      <PackageDialog
-        target={editing}
-        onClose={() => setEditing(null)}
-        quiet={editing?.mode === "new" && Boolean(settled)}
-        onDone={editing?.mode === "new" ? settled : undefined}
       />
 
     </>

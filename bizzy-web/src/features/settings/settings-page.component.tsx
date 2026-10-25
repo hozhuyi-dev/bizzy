@@ -108,9 +108,9 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
           {
             type: "submit",
             form: FORM_ID,
-            label: isSubmitting ? "Saving…" : "Save settings",
+            label: "Save settings",
             style: "primary",
-            disabled: isSubmitting,
+            pending: isSubmitting,
           },
         ]}
       />

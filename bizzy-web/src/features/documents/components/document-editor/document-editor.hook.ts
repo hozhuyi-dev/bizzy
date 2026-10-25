@@ -31,7 +31,7 @@ export function useDocumentEditor(doc: DocumentView, draft: DocumentContent) {
   const discard = DocumentsMutation.useDiscardDraft();
   const move = DocumentsMutation.useMoveLines();
   const navigate = useNavigate();
-  // Adding sessions to it, in a dialog.
+  // Adding sessions to it, in place at the top of its lines.
   const [adding, setAdding] = useState(false);
   const nextRevision = doc.number ? (doc.revision ?? 0) + 1 : undefined;
 

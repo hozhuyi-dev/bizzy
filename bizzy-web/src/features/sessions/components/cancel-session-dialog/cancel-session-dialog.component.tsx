@@ -12,6 +12,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Field, FieldLabel } from "~/components/ui/field";
 import { AutocompleteInput } from "~/components/shared/form/autocomplete-input/autocomplete-input.component";
 import { formatSessionTime } from "~/core/utils/date.util";
@@ -33,7 +34,7 @@ interface CancelSessionDialogProps {
  */
 export function CancelSessionDialog({ session, clientName, onClose }: CancelSessionDialogProps) {
   return (
-    <SheetAlertDialog open={session !== null} onClose={onClose}>
+    <SheetAlertDialog open={session !== null} onClose={onClose} typed>
       {session && <CancelSession key={session.id} session={session} clientName={clientName} onClose={onClose} />}
     </SheetAlertDialog>
   );
@@ -58,9 +59,9 @@ function CancelSession({ session, clientName, onClose }: Omit<CancelSessionDialo
       </Field>
       <AlertDialogFooter>
         <AlertDialogCancel>Keep it</AlertDialogCancel>
-        <Button
+        <PendingButton
           variant="destructive"
-          disabled={cancel.isPending}
+          pending={cancel.isPending}
           onClick={() =>
             cancel.mutate(
               { id: session.id, reason },
@@ -74,8 +75,8 @@ function CancelSession({ session, clientName, onClose }: Omit<CancelSessionDialo
             )
           }
         >
-          {cancel.isPending ? "Cancelling…" : "Cancel session"}
-        </Button>
+          Cancel session
+        </PendingButton>
       </AlertDialogFooter>
     </>
   );

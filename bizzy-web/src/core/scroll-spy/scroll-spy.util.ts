@@ -1,6 +1,6 @@
 /**
  * The scrolling behind pages split into sections with a list of them to jump
- * between (PageSections, the session's PipelineLayout): which section is
+ * between (PageSections, PageSteps): which section is
  * being read, and where the sticky bars end. Shared so each layout keeps its
  * own look while the fiddly measuring lives in one place.
  */

@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GoogleCallbackRouteImport } from './routes/google-callback'
 import { Route as InsightsRouteImport } from './routes/insights'
-import { Route as PackagesRouteImport } from './routes/packages'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsIdRouteImport } from './routes/clients/$id'
@@ -23,17 +22,25 @@ import { Route as DocumentsIndexRouteImport } from './routes/documents/index'
 import { Route as ExpensesIndexRouteImport } from './routes/expenses/index'
 import { Route as ExpensesIdRouteImport } from './routes/expenses/$id'
 import { Route as ExpensesCategoriesRouteImport } from './routes/expenses/categories'
-import { Route as ExpensesItemsRouteImport } from './routes/expenses/items'
 import { Route as ExpensesNewRouteImport } from './routes/expenses/new'
 import { Route as ExpensesVendorsRouteImport } from './routes/expenses/vendors'
 import { Route as FollowUpsIndexRouteImport } from './routes/follow-ups/index'
+import { Route as FollowUpsIdRouteImport } from './routes/follow-ups/$id'
 import { Route as FollowUpsDoneRouteImport } from './routes/follow-ups/done'
+import { Route as FollowUpsNewRouteImport } from './routes/follow-ups/new'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
 import { Route as InvoicesIdRouteImport } from './routes/invoices/$id'
+import { Route as PackagesIndexRouteImport } from './routes/packages/index'
+import { Route as PackagesIdRouteImport } from './routes/packages/$id'
+import { Route as PackagesNewRouteImport } from './routes/packages/new'
 import { Route as ReceiptsIndexRouteImport } from './routes/receipts/index'
 import { Route as ReceiptsIdRouteImport } from './routes/receipts/$id'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as SessionsIdRouteImport } from './routes/sessions/$id'
+import { Route as SessionsNewRouteImport } from './routes/sessions/new'
+import { Route as ClientsIdPaymentRouteImport } from './routes/clients/$id_.payment'
+import { Route as ExpensesItemsIndexRouteImport } from './routes/expenses/items/index'
+import { Route as ExpensesItemsIdRouteImport } from './routes/expenses/items/$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -48,11 +55,6 @@ const GoogleCallbackRoute = GoogleCallbackRouteImport.update({
 const InsightsRoute = InsightsRouteImport.update({
   id: '/insights',
   path: '/insights',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PackagesRoute = PackagesRouteImport.update({
-  id: '/packages',
-  path: '/packages',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -105,11 +107,6 @@ const ExpensesCategoriesRoute = ExpensesCategoriesRouteImport.update({
   path: '/expenses/categories',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ExpensesItemsRoute = ExpensesItemsRouteImport.update({
-  id: '/expenses/items',
-  path: '/expenses/items',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ExpensesNewRoute = ExpensesNewRouteImport.update({
   id: '/expenses/new',
   path: '/expenses/new',
@@ -125,9 +122,19 @@ const FollowUpsIndexRoute = FollowUpsIndexRouteImport.update({
   path: '/follow-ups/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FollowUpsIdRoute = FollowUpsIdRouteImport.update({
+  id: '/follow-ups/$id',
+  path: '/follow-ups/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FollowUpsDoneRoute = FollowUpsDoneRouteImport.update({
   id: '/follow-ups/done',
   path: '/follow-ups/done',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FollowUpsNewRoute = FollowUpsNewRouteImport.update({
+  id: '/follow-ups/new',
+  path: '/follow-ups/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
@@ -138,6 +145,21 @@ const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
 const InvoicesIdRoute = InvoicesIdRouteImport.update({
   id: '/invoices/$id',
   path: '/invoices/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PackagesIndexRoute = PackagesIndexRouteImport.update({
+  id: '/packages/',
+  path: '/packages/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PackagesIdRoute = PackagesIdRouteImport.update({
+  id: '/packages/$id',
+  path: '/packages/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PackagesNewRoute = PackagesNewRouteImport.update({
+  id: '/packages/new',
+  path: '/packages/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReceiptsIndexRoute = ReceiptsIndexRouteImport.update({
@@ -160,12 +182,31 @@ const SessionsIdRoute = SessionsIdRouteImport.update({
   path: '/sessions/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SessionsNewRoute = SessionsNewRouteImport.update({
+  id: '/sessions/new',
+  path: '/sessions/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsIdPaymentRoute = ClientsIdPaymentRouteImport.update({
+  id: '/clients/$id_/payment',
+  path: '/clients/$id/payment',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesItemsIndexRoute = ExpensesItemsIndexRouteImport.update({
+  id: '/expenses/items/',
+  path: '/expenses/items/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesItemsIdRoute = ExpensesItemsIdRouteImport.update({
+  id: '/expenses/items/$id',
+  path: '/expenses/items/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
-  '/packages': typeof PackagesRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
@@ -173,26 +214,33 @@ export interface FileRoutesByFullPath {
   '/d/$token': typeof DTokenRoute
   '/expenses/$id': typeof ExpensesIdRoute
   '/expenses/categories': typeof ExpensesCategoriesRoute
-  '/expenses/items': typeof ExpensesItemsRoute
   '/expenses/new': typeof ExpensesNewRoute
   '/expenses/vendors': typeof ExpensesVendorsRoute
+  '/follow-ups/$id': typeof FollowUpsIdRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
+  '/follow-ups/new': typeof FollowUpsNewRoute
   '/invoices/$id': typeof InvoicesIdRoute
+  '/packages/$id': typeof PackagesIdRoute
+  '/packages/new': typeof PackagesNewRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
   '/documents/': typeof DocumentsIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/follow-ups/': typeof FollowUpsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/packages/': typeof PackagesIndexRoute
   '/receipts/': typeof ReceiptsIndexRoute
   '/sessions/': typeof SessionsIndexRoute
+  '/clients/$id/payment': typeof ClientsIdPaymentRoute
+  '/expenses/items/$id': typeof ExpensesItemsIdRoute
+  '/expenses/items/': typeof ExpensesItemsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
-  '/packages': typeof PackagesRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
@@ -200,27 +248,34 @@ export interface FileRoutesByTo {
   '/d/$token': typeof DTokenRoute
   '/expenses/$id': typeof ExpensesIdRoute
   '/expenses/categories': typeof ExpensesCategoriesRoute
-  '/expenses/items': typeof ExpensesItemsRoute
   '/expenses/new': typeof ExpensesNewRoute
   '/expenses/vendors': typeof ExpensesVendorsRoute
+  '/follow-ups/$id': typeof FollowUpsIdRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
+  '/follow-ups/new': typeof FollowUpsNewRoute
   '/invoices/$id': typeof InvoicesIdRoute
+  '/packages/$id': typeof PackagesIdRoute
+  '/packages/new': typeof PackagesNewRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/new': typeof SessionsNewRoute
   '/clients': typeof ClientsIndexRoute
   '/documents': typeof DocumentsIndexRoute
   '/expenses': typeof ExpensesIndexRoute
   '/follow-ups': typeof FollowUpsIndexRoute
   '/invoices': typeof InvoicesIndexRoute
+  '/packages': typeof PackagesIndexRoute
   '/receipts': typeof ReceiptsIndexRoute
   '/sessions': typeof SessionsIndexRoute
+  '/clients/$id/payment': typeof ClientsIdPaymentRoute
+  '/expenses/items/$id': typeof ExpensesItemsIdRoute
+  '/expenses/items': typeof ExpensesItemsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/google-callback': typeof GoogleCallbackRoute
   '/insights': typeof InsightsRoute
-  '/packages': typeof PackagesRoute
   '/settings': typeof SettingsRoute
   '/clients/$id': typeof ClientsIdRoute
   '/clients/new': typeof ClientsNewRoute
@@ -228,20 +283,28 @@ export interface FileRoutesById {
   '/d/$token': typeof DTokenRoute
   '/expenses/$id': typeof ExpensesIdRoute
   '/expenses/categories': typeof ExpensesCategoriesRoute
-  '/expenses/items': typeof ExpensesItemsRoute
   '/expenses/new': typeof ExpensesNewRoute
   '/expenses/vendors': typeof ExpensesVendorsRoute
+  '/follow-ups/$id': typeof FollowUpsIdRoute
   '/follow-ups/done': typeof FollowUpsDoneRoute
+  '/follow-ups/new': typeof FollowUpsNewRoute
   '/invoices/$id': typeof InvoicesIdRoute
+  '/packages/$id': typeof PackagesIdRoute
+  '/packages/new': typeof PackagesNewRoute
   '/receipts/$id': typeof ReceiptsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
+  '/sessions/new': typeof SessionsNewRoute
   '/clients/': typeof ClientsIndexRoute
   '/documents/': typeof DocumentsIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
   '/follow-ups/': typeof FollowUpsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/packages/': typeof PackagesIndexRoute
   '/receipts/': typeof ReceiptsIndexRoute
   '/sessions/': typeof SessionsIndexRoute
+  '/clients/$id_/payment': typeof ClientsIdPaymentRoute
+  '/expenses/items/$id': typeof ExpensesItemsIdRoute
+  '/expenses/items/': typeof ExpensesItemsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -249,7 +312,6 @@ export interface FileRouteTypes {
     | '/'
     | '/google-callback'
     | '/insights'
-    | '/packages'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
@@ -257,26 +319,33 @@ export interface FileRouteTypes {
     | '/d/$token'
     | '/expenses/$id'
     | '/expenses/categories'
-    | '/expenses/items'
     | '/expenses/new'
     | '/expenses/vendors'
+    | '/follow-ups/$id'
     | '/follow-ups/done'
+    | '/follow-ups/new'
     | '/invoices/$id'
+    | '/packages/$id'
+    | '/packages/new'
     | '/receipts/$id'
     | '/sessions/$id'
+    | '/sessions/new'
     | '/clients/'
     | '/documents/'
     | '/expenses/'
     | '/follow-ups/'
     | '/invoices/'
+    | '/packages/'
     | '/receipts/'
     | '/sessions/'
+    | '/clients/$id/payment'
+    | '/expenses/items/$id'
+    | '/expenses/items/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/google-callback'
     | '/insights'
-    | '/packages'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
@@ -284,26 +353,33 @@ export interface FileRouteTypes {
     | '/d/$token'
     | '/expenses/$id'
     | '/expenses/categories'
-    | '/expenses/items'
     | '/expenses/new'
     | '/expenses/vendors'
+    | '/follow-ups/$id'
     | '/follow-ups/done'
+    | '/follow-ups/new'
     | '/invoices/$id'
+    | '/packages/$id'
+    | '/packages/new'
     | '/receipts/$id'
     | '/sessions/$id'
+    | '/sessions/new'
     | '/clients'
     | '/documents'
     | '/expenses'
     | '/follow-ups'
     | '/invoices'
+    | '/packages'
     | '/receipts'
     | '/sessions'
+    | '/clients/$id/payment'
+    | '/expenses/items/$id'
+    | '/expenses/items'
   id:
     | '__root__'
     | '/'
     | '/google-callback'
     | '/insights'
-    | '/packages'
     | '/settings'
     | '/clients/$id'
     | '/clients/new'
@@ -311,27 +387,34 @@ export interface FileRouteTypes {
     | '/d/$token'
     | '/expenses/$id'
     | '/expenses/categories'
-    | '/expenses/items'
     | '/expenses/new'
     | '/expenses/vendors'
+    | '/follow-ups/$id'
     | '/follow-ups/done'
+    | '/follow-ups/new'
     | '/invoices/$id'
+    | '/packages/$id'
+    | '/packages/new'
     | '/receipts/$id'
     | '/sessions/$id'
+    | '/sessions/new'
     | '/clients/'
     | '/documents/'
     | '/expenses/'
     | '/follow-ups/'
     | '/invoices/'
+    | '/packages/'
     | '/receipts/'
     | '/sessions/'
+    | '/clients/$id_/payment'
+    | '/expenses/items/$id'
+    | '/expenses/items/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GoogleCallbackRoute: typeof GoogleCallbackRoute
   InsightsRoute: typeof InsightsRoute
-  PackagesRoute: typeof PackagesRoute
   SettingsRoute: typeof SettingsRoute
   ClientsIdRoute: typeof ClientsIdRoute
   ClientsNewRoute: typeof ClientsNewRoute
@@ -339,20 +422,28 @@ export interface RootRouteChildren {
   DTokenRoute: typeof DTokenRoute
   ExpensesIdRoute: typeof ExpensesIdRoute
   ExpensesCategoriesRoute: typeof ExpensesCategoriesRoute
-  ExpensesItemsRoute: typeof ExpensesItemsRoute
   ExpensesNewRoute: typeof ExpensesNewRoute
   ExpensesVendorsRoute: typeof ExpensesVendorsRoute
+  FollowUpsIdRoute: typeof FollowUpsIdRoute
   FollowUpsDoneRoute: typeof FollowUpsDoneRoute
+  FollowUpsNewRoute: typeof FollowUpsNewRoute
   InvoicesIdRoute: typeof InvoicesIdRoute
+  PackagesIdRoute: typeof PackagesIdRoute
+  PackagesNewRoute: typeof PackagesNewRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
   SessionsIdRoute: typeof SessionsIdRoute
+  SessionsNewRoute: typeof SessionsNewRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
   DocumentsIndexRoute: typeof DocumentsIndexRoute
   ExpensesIndexRoute: typeof ExpensesIndexRoute
   FollowUpsIndexRoute: typeof FollowUpsIndexRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
+  PackagesIndexRoute: typeof PackagesIndexRoute
   ReceiptsIndexRoute: typeof ReceiptsIndexRoute
   SessionsIndexRoute: typeof SessionsIndexRoute
+  ClientsIdPaymentRoute: typeof ClientsIdPaymentRoute
+  ExpensesItemsIdRoute: typeof ExpensesItemsIdRoute
+  ExpensesItemsIndexRoute: typeof ExpensesItemsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -376,13 +467,6 @@ declare module '@tanstack/react-router' {
       path: '/insights'
       fullPath: '/insights'
       preLoaderRoute: typeof InsightsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/packages': {
-      id: '/packages'
-      path: '/packages'
-      fullPath: '/packages'
-      preLoaderRoute: typeof PackagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -455,13 +539,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExpensesCategoriesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/expenses/items': {
-      id: '/expenses/items'
-      path: '/expenses/items'
-      fullPath: '/expenses/items'
-      preLoaderRoute: typeof ExpensesItemsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/expenses/new': {
       id: '/expenses/new'
       path: '/expenses/new'
@@ -483,11 +560,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FollowUpsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/follow-ups/$id': {
+      id: '/follow-ups/$id'
+      path: '/follow-ups/$id'
+      fullPath: '/follow-ups/$id'
+      preLoaderRoute: typeof FollowUpsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/follow-ups/done': {
       id: '/follow-ups/done'
       path: '/follow-ups/done'
       fullPath: '/follow-ups/done'
       preLoaderRoute: typeof FollowUpsDoneRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/follow-ups/new': {
+      id: '/follow-ups/new'
+      path: '/follow-ups/new'
+      fullPath: '/follow-ups/new'
+      preLoaderRoute: typeof FollowUpsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invoices/': {
@@ -502,6 +593,27 @@ declare module '@tanstack/react-router' {
       path: '/invoices/$id'
       fullPath: '/invoices/$id'
       preLoaderRoute: typeof InvoicesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/packages/': {
+      id: '/packages/'
+      path: '/packages'
+      fullPath: '/packages/'
+      preLoaderRoute: typeof PackagesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/packages/$id': {
+      id: '/packages/$id'
+      path: '/packages/$id'
+      fullPath: '/packages/$id'
+      preLoaderRoute: typeof PackagesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/packages/new': {
+      id: '/packages/new'
+      path: '/packages/new'
+      fullPath: '/packages/new'
+      preLoaderRoute: typeof PackagesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/receipts/': {
@@ -532,6 +644,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SessionsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sessions/new': {
+      id: '/sessions/new'
+      path: '/sessions/new'
+      fullPath: '/sessions/new'
+      preLoaderRoute: typeof SessionsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/$id_/payment': {
+      id: '/clients/$id_/payment'
+      path: '/clients/$id/payment'
+      fullPath: '/clients/$id/payment'
+      preLoaderRoute: typeof ClientsIdPaymentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses/items/': {
+      id: '/expenses/items/'
+      path: '/expenses/items'
+      fullPath: '/expenses/items/'
+      preLoaderRoute: typeof ExpensesItemsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses/items/$id': {
+      id: '/expenses/items/$id'
+      path: '/expenses/items/$id'
+      fullPath: '/expenses/items/$id'
+      preLoaderRoute: typeof ExpensesItemsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -539,7 +679,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GoogleCallbackRoute: GoogleCallbackRoute,
   InsightsRoute: InsightsRoute,
-  PackagesRoute: PackagesRoute,
   SettingsRoute: SettingsRoute,
   ClientsIdRoute: ClientsIdRoute,
   ClientsNewRoute: ClientsNewRoute,
@@ -547,20 +686,28 @@ const rootRouteChildren: RootRouteChildren = {
   DTokenRoute: DTokenRoute,
   ExpensesIdRoute: ExpensesIdRoute,
   ExpensesCategoriesRoute: ExpensesCategoriesRoute,
-  ExpensesItemsRoute: ExpensesItemsRoute,
   ExpensesNewRoute: ExpensesNewRoute,
   ExpensesVendorsRoute: ExpensesVendorsRoute,
+  FollowUpsIdRoute: FollowUpsIdRoute,
   FollowUpsDoneRoute: FollowUpsDoneRoute,
+  FollowUpsNewRoute: FollowUpsNewRoute,
   InvoicesIdRoute: InvoicesIdRoute,
+  PackagesIdRoute: PackagesIdRoute,
+  PackagesNewRoute: PackagesNewRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,
   SessionsIdRoute: SessionsIdRoute,
+  SessionsNewRoute: SessionsNewRoute,
   ClientsIndexRoute: ClientsIndexRoute,
   DocumentsIndexRoute: DocumentsIndexRoute,
   ExpensesIndexRoute: ExpensesIndexRoute,
   FollowUpsIndexRoute: FollowUpsIndexRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
+  PackagesIndexRoute: PackagesIndexRoute,
   ReceiptsIndexRoute: ReceiptsIndexRoute,
   SessionsIndexRoute: SessionsIndexRoute,
+  ClientsIdPaymentRoute: ClientsIdPaymentRoute,
+  ExpensesItemsIdRoute: ExpensesItemsIdRoute,
+  ExpensesItemsIndexRoute: ExpensesItemsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

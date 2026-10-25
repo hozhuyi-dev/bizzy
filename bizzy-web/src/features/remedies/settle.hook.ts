@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { QueryClient } from "@tanstack/react-query";
@@ -45,13 +45,14 @@ export async function reportSettled(
 }
 
 /**
- * For a page a fix opened to settle a calendar edit (`?settle=<event>`, a
- * remedy's second step). Once the page has saved, it goes back to the
- * to-do list with one toast for both: what was saved, and whether the edit
- * went in. Undefined when the page wasn't opened for one: it then says
- * and goes on as it would.
+ * For a page a fix opened to settle a calendar edit (a remedy's second
+ * step, with the edit's event as `settle` in history: see HistoryState).
+ * Once the page has saved, it goes back to the to-do list with one toast
+ * for both: what was saved, and whether the edit went in. Undefined when
+ * the page wasn't opened for one: it then says and goes on as it would.
  */
-export function useSettleReturn(settle: string | undefined): ((done: string) => void) | undefined {
+export function useSettleReturn(): ((done: string) => void) | undefined {
+  const settle = useLocation({ select: (location) => location.state.settle });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   // As the list was when the page opened: saving refreshes it.

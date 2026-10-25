@@ -26,8 +26,8 @@ export const SessionsQuery = {
   page,
   range,
 
-  /** One session and its notes. */
-  useDetail: (id: string) => useQuery({ ...page(id), select: (p) => p.session }),
+  /** One session and its notes; read only when `enabled`. */
+  useDetail: (id: string, enabled = true) => useQuery({ ...page(id), select: (p) => p.session, enabled }),
 
   /** The calendar edits waiting on a session's event. */
   useConflicts: (id: string) => useQuery({ ...page(id), select: (p) => p.conflicts }),

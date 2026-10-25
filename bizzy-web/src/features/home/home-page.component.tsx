@@ -1,12 +1,10 @@
 import { useMemo, useState } from "react";
 import { BellPlusIcon, HomeIcon, PackagePlusIcon, ReceiptIcon, UserPlusIcon } from "lucide-react";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
-import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { Loadable } from "~/core/utils/query.util";
-import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
-import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
+import { useOpenFollowUp } from "~/features/follow-ups/follow-ups.hook";
+import { useOpenPackage } from "~/features/packages/package-open.hook";
 import { ClientsQuery } from "~/features/clients/clients.query";
-import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
 import { newSessionAction } from "~/features/sessions/sessions.util";
 import { stageBadges } from "~/features/sessions/session-stage.util";
 import { SessionsQuery } from "~/features/sessions/sessions.query";
@@ -35,13 +33,12 @@ export function HomePage() {
   // Both parts name clients: each opens with them.
   const clients = ClientsQuery.useList();
   const count = todo.data?.length;
-  const [adding, setAdding] = useState(false);
-  const [addingPackage, setAddingPackage] = useState(false);
-  const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
+  const openPackage = useOpenPackage();
+  const openFollowUp = useOpenFollowUp();
   const shortcuts: Array<Action> = [
     { type: "link", label: "New client", icon: UserPlusIcon, link: { to: "/clients/new" } },
-    { type: "button", label: "New package", icon: PackagePlusIcon, onClick: () => setAddingPackage(true) },
-    { type: "button", label: "New follow-up", icon: BellPlusIcon, onClick: () => setFollowUp({ mode: "new" }) },
+    { type: "button", label: "New package", icon: PackagePlusIcon, onClick: () => openPackage({ mode: "new" }) },
+    { type: "button", label: "New follow-up", icon: BellPlusIcon, onClick: () => openFollowUp({ mode: "new" }) },
     { type: "link", label: "New expense", icon: ReceiptIcon, link: { to: "/expenses/new" } },
   ];
 
@@ -49,13 +46,10 @@ export function HomePage() {
     <>
       <PageHeader
         title="Home"
-        actions={[newSessionAction(() => setAdding(true))]}
+        actions={[newSessionAction("home")]}
         moreActions={shortcuts}
         foldBelow="lg"
       />
-      <NewSessionDialog open={adding} returnTo="home" onClose={() => setAdding(false)} />
-      <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
-      <PackageDialog target={addingPackage ? { mode: "new" } : null} onClose={() => setAddingPackage(false)} />
       <PageSections
         sections={[
           { id: "today", title: "Today", content: <Today /> },

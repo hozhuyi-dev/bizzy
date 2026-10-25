@@ -306,13 +306,17 @@
 }
 
 /* The last section is at least a screen tall, less what sticks above it,
-   so jumping to it brings its heading to the top like the others. The
-   screen with the browser's bars shown (svh): it holds still while they
-   fold away, where dvh would lay the page out again on every frame. */
+   so jumping to it brings its heading to the top like the others. On a
+   phone, the screen with the browser's bars folded away (lvh), the
+   tallest it gets: with the bars shown there is room to spare, but a jump
+   never falls short once they fold (Chrome's URL bar shrinking as the page
+   scrolls). Wider, the bars don't fold, and svh is the screen. Both hold
+   still while the bars move, where dvh would lay the page out again on
+   every frame. */
 @utility fill-last-section {
   & > :last-child {
     min-height: calc(
-      100svh - var(--sticky-top) - var(--contents-height) - var(--section-gap) - var(--page-bottom) - var(--dock-height)
+      100lvh - var(--sticky-top) - var(--contents-height) - var(--section-gap) - var(--page-bottom) - var(--dock-height)
     );
   }
   @variant md {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CheckIcon, XIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Input } from "~/components/ui/input";
 
 /*
@@ -28,9 +29,9 @@ export function InlineConfirm({ question, yes, pending, onYes, onNo, size = "sm"
       <span title={question} className="line-clamp-2 min-w-0 flex-1 text-xs leading-tight sm:line-clamp-1 sm:text-sm">
         {question}
       </span>
-      <Button size={size} variant="destructive" disabled={pending} autoFocus onClick={onYes}>
+      <PendingButton size={size} variant="destructive" pending={pending} autoFocus onClick={onYes}>
         {yes}
-      </Button>
+      </PendingButton>
       <Button size={size} variant="ghost" disabled={pending} onClick={onNo}>
         Keep
       </Button>
@@ -88,9 +89,9 @@ export function InlineField({
         onKeyDown={(e) => e.key === "Escape" && onCancel()}
         className={size === "xs" ? "h-6 flex-1" : "h-7 flex-1"}
       />
-      <Button type="submit" size={size} disabled={!ok || pending}>
+      <PendingButton type="submit" size={size} disabled={!ok} pending={pending}>
         <CheckIcon /> Save
-      </Button>
+      </PendingButton>
       <Button type="button" size={size === "xs" ? "icon-xs" : "icon-sm"} variant="ghost" aria-label="Cancel" onClick={onCancel}>
         <XIcon />
       </Button>

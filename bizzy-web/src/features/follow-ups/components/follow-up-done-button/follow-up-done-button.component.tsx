@@ -1,7 +1,7 @@
 import { CheckIcon, RotateCcwIcon } from "lucide-react";
 import { useMarkDone } from "../../follow-ups.hook";
 import type { FollowUpView } from "../../follow-ups.types";
-import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 
 /**
  * Done on a follow-up waiting, Not done on one done: the one button a
@@ -10,12 +10,12 @@ import { Button } from "~/components/ui/button";
 export function FollowUpDoneButton({ followUp }: { followUp: FollowUpView }) {
   const { mark, isPending } = useMarkDone();
   return followUp.doneAt ? (
-    <Button size="sm" variant="outline" disabled={isPending} onClick={() => mark(followUp, false)}>
+    <PendingButton size="sm" variant="outline" pending={isPending} onClick={() => mark(followUp, false)}>
       <RotateCcwIcon /> Not done
-    </Button>
+    </PendingButton>
   ) : (
-    <Button size="sm" variant="outline" disabled={isPending} onClick={() => mark(followUp)}>
+    <PendingButton size="sm" variant="outline" pending={isPending} onClick={() => mark(followUp)}>
       <CheckIcon /> Done
-    </Button>
+    </PendingButton>
   );
 }

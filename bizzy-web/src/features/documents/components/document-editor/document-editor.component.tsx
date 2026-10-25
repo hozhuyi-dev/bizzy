@@ -1,6 +1,6 @@
 import { EyeIcon, ListPlusIcon, PlusIcon, SaveIcon, SplitIcon, Trash2Icon } from "lucide-react";
 import { DOCUMENT_TYPES } from "../../documents.constant";
-import { AddSessionsDialog } from "../add-sessions-dialog/add-sessions-dialog.component";
+import { AddSessions } from "../add-sessions/add-sessions.component";
 import type { DocumentEditorState } from "./document-editor.hook";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
@@ -19,13 +19,12 @@ export function documentIssueAction(editor: DocumentEditorState): Action {
   const { doc, nextRevision, busy } = editor;
   return {
     type: "button",
-    label: editor.issuing
-      ? "Issuing…"
-      : nextRevision
-        ? `Issue Rev ${String(nextRevision).padStart(2, "0")}`
-        : `Issue ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
+    label: nextRevision
+      ? `Issue Rev ${String(nextRevision).padStart(2, "0")}`
+      : `Issue ${DOCUMENT_TYPES[doc.type].title.toLowerCase()}`,
     style: "primary",
     disabled: busy,
+    pending: editor.issuing,
     // Saved as it is, the API says; changes are saved first, and it decides then.
     can: editor.hasChanges ? undefined : doc.can.issue,
     onClick: () => void editor.issue(),
@@ -48,9 +47,10 @@ export function documentEditorActions(editor: DocumentEditorState): { more: Arra
       },
       {
         type: "button",
-        label: editor.saving && !editor.issuing ? "Saving…" : "Save draft",
+        label: "Save draft",
         icon: SaveIcon,
         disabled: busy,
+        pending: editor.saving && !editor.issuing,
         onClick: () => void editor.save(),
       },
     ],
@@ -133,7 +133,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                 type: "button",
                 label: "Add sessions",
                 icon: ListPlusIcon,
-                disabled: !editor.canMove || editor.busy,
+                disabled: !editor.canMove || editor.busy || editor.adding,
                 onClick: () => editor.setAdding(true),
               },
             ]
@@ -143,7 +143,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
         <form.Field name="lines" mode="array">
           {(linesField) => (
             <div className="flex flex-col gap-3">
-              <AddSessionsDialog doc={doc} open={editor.adding} onClose={() => editor.setAdding(false)} />
+              {editor.adding && <AddSessions doc={doc} onClose={() => editor.setAdding(false)} />}
               {linesField.state.value.map((line, i) => (
                 <div key={i} className="flex flex-col gap-1 border-b pb-3">
                   <div className="grid items-start gap-2 md:grid-cols-[minmax(0,1fr)_11rem_8rem_auto]">

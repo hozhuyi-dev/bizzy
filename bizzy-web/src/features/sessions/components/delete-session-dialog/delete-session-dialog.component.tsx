@@ -12,6 +12,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { formatSessionTime } from "~/core/utils/date.util";
@@ -82,9 +83,9 @@ function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omi
       )}
       <AlertDialogFooter>
         <AlertDialogCancel>Keep it</AlertDialogCancel>
-        <Button
+        <PendingButton
           variant="destructive"
-          disabled={remove.isPending}
+          pending={remove.isPending}
           onClick={() =>
             remove.mutate(
               { id: session.id, keepPackage: pkg === "keep" },
@@ -99,8 +100,8 @@ function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omi
             )
           }
         >
-          {remove.isPending ? "Deleting…" : "Delete"}
-        </Button>
+          Delete
+        </PendingButton>
       </AlertDialogFooter>
     </>
   );

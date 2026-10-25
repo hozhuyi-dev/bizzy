@@ -10,6 +10,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { useBackfill } from "~/features/sync/sync.hook";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
@@ -39,9 +40,9 @@ export function ResetData() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep data</AlertDialogCancel>
-          <Button
+          <PendingButton
             variant="destructive"
-            disabled={reset.isPending}
+            pending={reset.isPending}
             onClick={() =>
               reset.mutate(undefined, {
                 onSuccess: ({ deleted, synced, syncError }) => {
@@ -54,8 +55,8 @@ export function ResetData() {
               })
             }
           >
-            {reset.isPending ? "Resetting and syncing…" : "Reset"}
-          </Button>
+            Reset
+          </PendingButton>
         </AlertDialogFooter>
       </SheetAlertDialog>
     </>

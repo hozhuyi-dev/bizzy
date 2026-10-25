@@ -1,6 +1,6 @@
 import { sessionMinutes } from "./session-stage.util";
 import type { SessionDraft, SessionFields, SessionView } from "./sessions.types";
-import { toISODate, toTimeInput } from "~/core/utils/date.util";
+import { addDays, toISODate, toTimeInput } from "~/core/utils/date.util";
 import { centsToInput, parseCents } from "~/core/utils/money.util";
 
 /** Whether a package's price is per hour (`10x180`) or the total (`10@1800`). */
@@ -40,6 +40,16 @@ export function draftOf(session: SessionView): SessionDraft {
     homeVisit: session.location === "visit",
     tentative: session.tentative,
   };
+}
+
+/**
+ * The client's next visit after a session: the same weekday and time a
+ * week on, the same length and place, priced as usual (a package credit
+ * or the client's fee), confirmed.
+ */
+export function nextVisitDraft(session: SessionView): SessionDraft {
+  const { clientId, start, minutes, homeVisit } = draftOf(session);
+  return { clientId, start: addDays(new Date(start), 7).toISOString(), minutes, homeVisit, tentative: false };
 }
 
 export function toBookingValues(draft: SessionDraft): BookingValues {

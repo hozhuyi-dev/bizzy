@@ -2,7 +2,7 @@ import { PlusIcon } from "lucide-react";
 import { CANCELLED_STAGE, SESSION_FACETS, SESSION_PLACES } from "./sessions.constant";
 import { CANCELLED_BADGE, REASON_BADGES } from "./session-stage.util";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
-import type { SearchSessionsRequest, SessionLocation, SessionReason, SessionSearch, SessionView } from "./sessions.types";
+import type { SearchSessionsRequest, SessionLocation, SessionReason, SessionReturnTo, SessionSearch, SessionView } from "./sessions.types";
 import type { ClientView } from "~/features/clients/clients.types";
 import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import type { Paperwork } from "~/features/documents/documents.util";
@@ -12,14 +12,14 @@ import { paperworkFacet } from "~/features/documents/documents.util";
 import { PAYMENT_FACET } from "~/features/payments/payments.util";
 import { filterUrl, listRequest } from "~/core/list/filter.util";
 import { monthKey } from "~/core/utils/date.util";
-import { oneOf, textParam } from "~/core/utils/url-param.util";
+import { oneOf } from "~/core/utils/url-param.util";
 
 /** The sessions list's filter in its URL: this month unless it says otherwise. */
 export const sessionsUrl = filterUrl(SESSION_FACETS, () => monthKey(new Date()));
 
-/** The search a session's page takes: the list it steps through, where it was opened from, and for what. */
+/** The search a session's page takes: the list it steps through, and where it was opened from. */
 export function validateSessionSearch(search: Record<string, unknown>): SessionSearch {
-  return { ...sessionsUrl.validate(search), from: oneOf(search.from, ["home"] as const), settle: textParam(search.settle) };
+  return { ...sessionsUrl.validate(search), from: oneOf(search.from, ["home"] as const) };
 }
 
 /** Where a session sits in the sessions list: by its start. */
@@ -70,14 +70,14 @@ export function searchSessionsRequest(filter: ListFilter): SearchSessionsRequest
   };
 }
 
-/** Opens NewSessionDialog, to add a session to the calendar. */
-export function newSessionAction(onClick: () => void): Action {
+/** Opens a new session's page, to add one to the calendar; `from` Home, its page goes back there once it has one. */
+export function newSessionAction(from?: SessionReturnTo): Action {
   return {
-    type: "button",
+    type: "link",
     label: "New session",
     icon: PlusIcon,
     style: "primary",
     iconOnlyOnPhone: true,
-    onClick,
+    link: { to: "/sessions/new", state: { from } },
   };
 }

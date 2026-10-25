@@ -3,6 +3,7 @@ import { QrCodeIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import { toast } from "sonner";
 import { qrPayee, readQr } from "../../duitnow-qr.util";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 
 interface DuitNowQrFieldProps {
@@ -43,9 +44,9 @@ export function DuitNowQrField({ value, onChange }: DuitNowQrFieldProps) {
           <QrCodeIcon className="size-4 text-muted-foreground" />
           {value ? (payee ? `Pays ${payee}` : "QR added") : <span className="text-muted-foreground">No QR yet</span>}
         </span>
-        <Button type="button" variant="outline" size="sm" disabled={reading} onClick={() => input.current?.click()}>
-          <UploadIcon /> {reading ? "Reading…" : value ? "Replace" : "Upload QR"}
-        </Button>
+        <PendingButton type="button" variant="outline" size="sm" pending={reading} onClick={() => input.current?.click()}>
+          <UploadIcon /> {value ? "Replace" : "Upload QR"}
+        </PendingButton>
         {value && (
           <Button type="button" variant="ghost" size="sm" onClick={() => onChange("")}>
             <Trash2Icon /> Remove

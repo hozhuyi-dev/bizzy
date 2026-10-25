@@ -20,6 +20,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Label } from "~/components/ui/label";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
@@ -174,20 +175,16 @@ export function AttachmentList({ owner, can, addLabel = "Attach photos or PDFs" 
               e.target.value = "";
             }}
           />
-          <Button
+          <PendingButton
             type="button"
             variant="outline"
             size="sm"
-            disabled={progress !== null}
+            pending={progress !== null}
             onClick={() => input.current?.click()}
           >
             <PaperclipIcon />
-            {progress
-              ? progress.total === 1
-                ? "Uploading…"
-                : `Uploading ${progress.done + 1} of ${progress.total}…`
-              : addLabel}
-          </Button>
+            {addLabel}
+          </PendingButton>
           <div className="flex items-center gap-2">
             <Checkbox id={shrinkId} checked={shrink} onCheckedChange={setShrink} disabled={progress !== null} />
             <Label htmlFor={shrinkId} className="text-xs font-normal">
@@ -195,6 +192,7 @@ export function AttachmentList({ owner, can, addLabel = "Attach photos or PDFs" 
             </Label>
           </div>
           <span className="w-full text-xs text-muted-foreground">
+            {progress && progress.total > 1 && `Uploading ${progress.done + 1} of ${progress.total}. `}
             {shrink ? "Photos are shrunk to save space; open one to check it." : "Photos are uploaded at full size."}{" "}
             Up to 20 MB each.
           </span>
@@ -210,9 +208,9 @@ export function AttachmentList({ owner, can, addLabel = "Attach photos or PDFs" 
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep it</AlertDialogCancel>
-          <Button
+          <PendingButton
             variant="destructive"
-            disabled={remove.isPending}
+            pending={remove.isPending}
             onClick={() =>
               removing &&
               remove.mutate(removing.id, {
@@ -222,8 +220,8 @@ export function AttachmentList({ owner, can, addLabel = "Attach photos or PDFs" 
               })
             }
           >
-            {remove.isPending ? "Removing…" : "Remove"}
-          </Button>
+            Remove
+          </PendingButton>
         </AlertDialogFooter>
       </SheetAlertDialog>
     </div>

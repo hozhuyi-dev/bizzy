@@ -18,6 +18,8 @@ interface ActionCommon {
   /** Left out, the bar's default: secondary, or quiet in a table row. */
   style?: ActionStyle | undefined;
   disabled?: boolean | undefined;
+  /** While what it started is under way: its label kept, a spinner over it, and it can't be taken again. */
+  pending?: boolean | undefined;
   /**
    * What the API says of it now (a view's `can`): a no disables it and
    * says why. Every action on an entity passes its verdict here, so the web

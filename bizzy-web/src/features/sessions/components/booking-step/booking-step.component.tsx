@@ -1,6 +1,6 @@
 import { PencilIcon } from "lucide-react";
 import { hasHappened, sessionMinutes } from "../../session-stage.util";
-import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
+import type { PageStep } from "~/components/shared/layout/page-steps/page-steps.component";
 import type { SessionFullView } from "../../sessions.types";
 import { formatDate, formatSessionTime } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
@@ -18,11 +18,11 @@ function Lines({ children }: { children: Array<string | false | undefined> }) {
 }
 
 /**
- * Changing the booking is the step's own action, beside its title; the page
- * holds the dialog (`onEdit`), so it can open straight away to settle a
- * calendar edit. Not being confirmed yet is the page's banner.
+ * Changing the booking is the step's own action, beside its title: the page
+ * turns the step into its form (`onEdit`), so it can open that way straight
+ * away to settle a calendar edit. Not being confirmed yet is the page's banner.
  */
-export function bookingStep(session: SessionFullView, onEdit: () => void): PipelineStep {
+export function bookingStep(session: SessionFullView, onEdit: () => void): PageStep {
   const happened = hasHappened(session);
   return {
     id: "booking",

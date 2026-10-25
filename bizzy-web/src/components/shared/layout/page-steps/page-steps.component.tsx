@@ -10,7 +10,7 @@ import { useActiveSection, useCenteredCurrent } from "~/core/scroll-spy/scroll-s
 /** Where a step stands: done, the one to do now, still ahead, optional and untouched, or not needed at all. */
 export type StepState = "done" | "current" | "todo" | "optional" | "none";
 
-export interface PipelineStep {
+export interface PageStep {
   /** The anchor; unique on the page. */
   id: string;
   /** Short: it sits in the rail, and under a dot on a phone. */
@@ -27,8 +27,8 @@ export interface PipelineStep {
   content: ReactNode;
 }
 
-interface PipelineLayoutProps {
-  steps: ReadonlyArray<PipelineStep>;
+interface PageStepsProps {
+  steps: ReadonlyArray<PageStep>;
 }
 
 const ICONS: Record<StepState, typeof CircleIcon> = {
@@ -51,9 +51,10 @@ const STATE_LABELS: Record<StepState, string> = {
 };
 
 /**
- * A session's page: a rail of its steps, each with where it stands, its
- * dates and a summary, beside the steps' forms. The rail is the only place
- * that shows progress, so the forms carry no status of their own. It sticks
+ * The page of an item that moves through stages (a session, a package, a
+ * follow-up): a rail of its steps, each with where it stands, its dates
+ * and a summary, beside the steps' forms. The rail is the only place that
+ * shows progress, so the forms carry no status of their own. It sticks
  * beside the forms on wider screens; on a phone it becomes a timeline under
  * the header (dots joined by a line, titles below), and the summaries go,
  * the forms below saying the same.
@@ -63,7 +64,7 @@ const STATE_LABELS: Record<StepState, string> = {
  * look of the mark on the step being read (an underline on a phone, the
  * rail thickening beside it wider).
  */
-export function PipelineLayout({ steps }: PipelineLayoutProps) {
+export function PageSteps({ steps }: PageStepsProps) {
   const [active, jumpTo] = useActiveSection(steps.map((step) => step.id));
 
   // The phone's timeline is taller than PageSections's links: what sticks
@@ -98,7 +99,7 @@ function StepIcon({ state, className }: { state: StepState; className?: string }
 }
 
 interface RailProps {
-  steps: ReadonlyArray<PipelineStep>;
+  steps: ReadonlyArray<PageStep>;
   active: string | undefined;
   onJump: (id: string) => void;
 }
@@ -201,7 +202,7 @@ function Rail({ steps, active, onJump }: RailProps) {
   );
 }
 
-function StepSection({ step }: { step: PipelineStep }) {
+function StepSection({ step }: { step: PageStep }) {
   const { id, title, actions, more, content } = step;
   return (
     <section

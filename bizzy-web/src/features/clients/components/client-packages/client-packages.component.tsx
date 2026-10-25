@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { PackageIcon } from "lucide-react";
 import type { ClientView } from "../../clients.types";
-import type { PackageTarget } from "~/features/packages/components/package-dialog/package-dialog.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { packagePayables } from "~/features/packages/packages.util";
-import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
+import { useOpenPackage } from "~/features/packages/package-open.hook";
 import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.component";
 import { ANOTHER_DAY } from "~/features/payments/paid-action.hook";
 import { coveringDocuments, documentRoute, refLabel } from "~/features/documents/documents.util";
@@ -20,11 +19,11 @@ import { QUIPS } from "~/core/constants/quips.constant";
 
 /**
  * The client's packages, newest first: what each cost, what is left, and
- * its documents; Paid ▾ while one is owed. A row opens its dialog.
+ * its documents; Paid ▾ while one is owed. A row opens its page.
  */
 export function ClientPackages({ client }: { client: ClientView }) {
   const packages = PackagesQuery.useList(true);
-  const [editing, setEditing] = useState<PackageTarget>(null);
+  const openPackage = useOpenPackage();
   if (!packages.data) {
     return packages.error ? <ErrorState error={packages.error} retry={packages.refetch} /> : <LoadingState />;
   }
@@ -69,12 +68,12 @@ export function ClientPackages({ client }: { client: ClientView }) {
                 </span>
               }
               detail={pkg.note}
-              onOpen={() => setEditing({ mode: "edit", pkg })}
+              onOpen={() => openPackage({ mode: "edit", pkg })}
               actions={
                 pkg.can.pay.ok && (
                   <PaidMenu
                     payables={packagePayables(pkg).filter((p) => !p.paid)}
-                    another={{ type: "button", label: ANOTHER_DAY, onClick: () => setEditing({ mode: "edit", pkg, at: "payment" }) }}
+                    another={{ type: "button", label: ANOTHER_DAY, onClick: () => openPackage({ mode: "edit", pkg, at: "payment" }) }}
                   />
                 )
               }
@@ -82,7 +81,6 @@ export function ClientPackages({ client }: { client: ClientView }) {
           </DataListItem>
         ))}
       </DataList>
-      <PackageDialog target={editing} onClose={() => setEditing(null)} />
     </>
   );
 }

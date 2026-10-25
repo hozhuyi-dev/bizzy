@@ -1,4 +1,4 @@
-import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 
 interface LoadMoreProps {
   /** The paged query of the list above (see usePages). */
@@ -16,9 +16,9 @@ export function LoadMore({ pages, found }: LoadMoreProps) {
   if (!pages.hasNextPage) return null;
   return (
     <div className="flex justify-center py-3">
-      <Button variant="outline" size="sm" disabled={pages.isFetchingNextPage} onClick={() => void pages.fetchNextPage()}>
-        {pages.isFetchingNextPage ? "Looking…" : found ? "Show more" : "Look further back"}
-      </Button>
+      <PendingButton variant="outline" size="sm" pending={pages.isFetchingNextPage} onClick={() => void pages.fetchNextPage()}>
+        {found ? "Show more" : "Look further back"}
+      </PendingButton>
     </div>
   );
 }
