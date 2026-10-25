@@ -4,19 +4,17 @@ import { TODO_FILTERS, TODO_GROUPS } from "../../todo.constant";
 import { byTodoOrder, groupOf, matchesFilter, progressOf, todoKey } from "../../todo.util";
 import type { TodoFilter, TodoView } from "../../todo.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
-import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { SessionReason, SessionView } from "~/features/sessions/sessions.types";
-import type { PackageTarget } from "~/features/packages/components/package-dialog/package-dialog.component";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ConflictActions } from "~/features/conflicts/components/conflict-actions/conflict-actions.component";
 import { conflictKind, conflictTime } from "~/features/conflicts/conflicts.util";
-import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { useOpenFollowUp } from "~/features/follow-ups/follow-ups.hook";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
 import { packagePayables } from "~/features/packages/packages.util";
 import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.component";
 import { ANOTHER_DAY } from "~/features/payments/paid-action.hook";
-import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
+import { useOpenPackage } from "~/features/packages/package-open.hook";
 import { CancelSessionDialog } from "~/features/sessions/components/cancel-session-dialog/cancel-session-dialog.component";
 import { SessionQuickActions } from "~/features/sessions/components/session-quick-actions/session-quick-actions.component";
 import { owedText } from "~/features/sessions/session-payment.util";
@@ -51,8 +49,8 @@ const LEAVE_MS = 300;
 export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
   const [filter, setFilter] = useState<TodoFilter>();
   const [cancelling, setCancelling] = useState<SessionView | null>(null);
-  const [editingPackage, setEditingPackage] = useState<PackageTarget>(null);
-  const [editingFollowUp, setEditingFollowUp] = useState<FollowUpTarget | null>(null);
+  const openPackage = useOpenPackage();
+  const openFollowUp = useOpenFollowUp();
   const leaving = useLeaving(items);
   const progress = progressOf(items, todayISO());
 
@@ -69,8 +67,6 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
         clientName={cancelling?.clientName ?? "the client"}
         onClose={() => setCancelling(null)}
       />
-      <FollowUpDialog target={editingFollowUp} onClose={() => setEditingFollowUp(null)} />
-      <PackageDialog target={editingPackage} onClose={() => setEditingPackage(null)} />
     </>
   );
 
@@ -134,13 +130,13 @@ export function TodoList({ items }: { items: ReadonlyArray<TodoView> }) {
                         <SessionTodo session={item.session} onCancel={setCancelling} />
                       )}
                       {item.kind === "package" && (
-                        <PackageTodo pkg={item.package} onOpen={(pkg, at) => setEditingPackage({ mode: "edit", pkg, at })} />
+                        <PackageTodo pkg={item.package} onOpen={(pkg, at) => openPackage({ mode: "edit", pkg, at })} />
                       )}
                       {item.kind === "followUp" && (
                         <FollowUpRow
                           followUp={item.followUp}
                           showKind
-                          onEdit={(followUp) => setEditingFollowUp({ mode: "edit", followUp })}
+                          onEdit={(followUp) => openFollowUp({ mode: "edit", followUp })}
                         />
                       )}
                       {item.kind === "conflict" && <ConflictTodo conflict={item.conflict} />}
@@ -254,7 +250,7 @@ function SessionTodo({ session, onCancel }: SessionTodoProps) {
   );
 }
 
-/** A package bought on its own, to collect. It opens its dialog, in place as a follow-up does; another day, at its payment. */
+/** A package bought on its own, to collect. It opens its page, as a follow-up does; another day, at its payment. */
 function PackageTodo({ pkg, onOpen }: { pkg: PackageView; onOpen: (pkg: PackageView, at?: "payment") => void }) {
   const clientsById = ClientsQuery.useById();
   const client = clientsById.get(pkg.clientId);
@@ -300,7 +296,7 @@ function ConflictTodo({ conflict }: { conflict: ConflictView }) {
         <>
           <CalendarX2Icon className="size-4 text-muted-foreground" aria-hidden="true" />
           {conflict.itemId && conflict.itemKind === "followUp" ? (
-            <TextLink to="/follow-ups" search={{ open: conflict.itemId }}>
+            <TextLink to="/follow-ups/$id" params={{ id: conflict.itemId }}>
               “{conflict.title}”
             </TextLink>
           ) : conflict.itemId ? (

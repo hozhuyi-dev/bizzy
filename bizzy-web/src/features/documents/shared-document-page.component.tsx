@@ -8,6 +8,7 @@ import { useDocumentPdf } from "./documents.hook";
 import type { SharedDocumentView } from "./documents.types";
 import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
 import { isApiError } from "~/core/utils/api-error.util";
@@ -65,9 +66,9 @@ function SharedDocument({ doc }: { doc: SharedDocumentView }) {
             From {issuer.name} · <span>{formatDate(date)}</span> · <span>{formatCents(totalCents)}</span>
           </p>
         </div>
-        <Button onClick={() => downloadPdf({ file: doc.pdf })} disabled={busy}>
-          <DownloadIcon /> {busy ? "Saving…" : "Download"}
-        </Button>
+        <PendingButton onClick={() => downloadPdf({ file: doc.pdf })} pending={busy}>
+          <DownloadIcon /> Download
+        </PendingButton>
       </header>
       {cancelled && (
         <Banner
@@ -111,17 +112,17 @@ function SharedDocumentError({ error, retry }: { error: Error; retry: () => Prom
       {!gone && (
         <>
           <p className="text-sm text-muted-foreground">Check your connection, then try again.</p>
-          <Button
+          <PendingButton
             variant="outline"
-            disabled={trying}
+            pending={trying}
             onClick={() => {
               setTrying(true);
               void retry().finally(() => setTrying(false));
             }}
           >
-            <RotateCwIcon className={trying ? "motion-safe:animate-spin" : undefined} />
-            {trying ? "Trying…" : "Try again"}
-          </Button>
+            <RotateCwIcon />
+            Try again
+          </PendingButton>
         </>
       )}
     </div>

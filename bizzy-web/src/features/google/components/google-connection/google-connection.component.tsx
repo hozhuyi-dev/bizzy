@@ -15,6 +15,7 @@ import {
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { LoadingState } from "~/components/shared/feedback/loading-state/loading-state.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { formatDate } from "~/core/utils/date.util";
@@ -150,8 +151,9 @@ function ChooseCalendarDialog({
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel>Cancel</AlertDialogCancel>
-        <Button
-          disabled={!choice || setCalendar.isPending}
+        <PendingButton
+          disabled={!choice}
+          pending={setCalendar.isPending}
           onClick={() =>
             choice &&
             setCalendar.mutate(
@@ -167,8 +169,8 @@ function ChooseCalendarDialog({
             )
           }
         >
-          {setCalendar.isPending ? "Choosing…" : "Sync with it"}
-        </Button>
+          Sync with it
+        </PendingButton>
       </AlertDialogFooter>
     </SheetAlertDialog>
   );
@@ -188,9 +190,9 @@ function DisconnectDialog({ open, onClose }: { open: boolean; onClose: () => voi
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel>Keep connected</AlertDialogCancel>
-        <Button
+        <PendingButton
           variant="destructive"
-          disabled={disconnect.isPending}
+          pending={disconnect.isPending}
           onClick={() =>
             disconnect.mutate(undefined, {
               onSuccess: () => {
@@ -202,7 +204,7 @@ function DisconnectDialog({ open, onClose }: { open: boolean; onClose: () => voi
           }
         >
           Disconnect
-        </Button>
+        </PendingButton>
       </AlertDialogFooter>
     </SheetAlertDialog>
   );

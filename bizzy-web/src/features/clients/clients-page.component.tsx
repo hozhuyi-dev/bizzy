@@ -8,7 +8,6 @@ import { CLIENT_FACETS, CLIENT_PRESETS, clientsUrl } from "./clients.util";
 import type { ClientRow, ClientView, ClientsListSearch } from "./clients.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import type { Loadable } from "~/core/utils/query.util";
-import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
@@ -16,7 +15,7 @@ import { sortingFromFilter } from "~/components/shared/list/data-table/data-tabl
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
+import { useOpenFollowUp } from "~/features/follow-ups/follow-ups.hook";
 import { FollowUpsMutation } from "~/features/follow-ups/follow-ups.mutation";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { allOf } from "~/core/utils/query.util";
@@ -83,8 +82,8 @@ interface ClientsTableProps {
 function ClientsTable({ rows, source, filter, onFilterChange, search }: ClientsTableProps) {
   const { mutate: reachedOut } = FollowUpsMutation.useReachedOut();
   const { mutate: undo } = FollowUpsMutation.useDelete();
-  const [remind, setRemind] = useState<FollowUpTarget | null>(null);
-  const onRemind = useCallback((client: ClientView) => setRemind({ mode: "new", clientId: client.id }), []);
+  const openFollowUp = useOpenFollowUp();
+  const onRemind = useCallback((client: ClientView) => openFollowUp({ mode: "new", clientId: client.id }), [openFollowUp]);
 
   // A follow-up done today is the record of it; deleting it undoes a mis-tap.
   const onContacted = useCallback(
@@ -129,7 +128,6 @@ function ClientsTable({ rows, source, filter, onFilterChange, search }: ClientsT
         }
         renderCard={(row) => <ClientCard row={row.original} search={search} {...handlers} />}
       />
-      <FollowUpDialog target={remind} onClose={() => setRemind(null)} />
     </>
   );
 }

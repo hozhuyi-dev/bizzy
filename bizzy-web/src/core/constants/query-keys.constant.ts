@@ -28,6 +28,7 @@ export const ConflictKeys = {
 export const FollowUpKeys = {
   all: ["followUps"] as const,
   search: (request: object) => [...FollowUpKeys.all, "search", request] as const,
+  detail: (id: string) => [...FollowUpKeys.all, "detail", id] as const,
 };
 
 export const TimelineKeys = {

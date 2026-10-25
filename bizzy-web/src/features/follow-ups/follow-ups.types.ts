@@ -59,7 +59,7 @@ export interface SearchFollowUpsRequest extends ListRequest {
   clientIds: Array<string>;
 }
 
-/** What the dialog is for: a new follow-up (maybe for a client, from a session), or one to edit. */
+/** The follow-up a page opens: a new one (maybe for a client, from a session), or one to edit. */
 export type FollowUpTarget =
   | { mode: "new"; clientId?: string | undefined; sessionId?: string | undefined }
   | { mode: "edit"; followUp: FollowUpView };

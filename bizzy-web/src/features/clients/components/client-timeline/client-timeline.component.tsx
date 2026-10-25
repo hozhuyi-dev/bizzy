@@ -1,17 +1,15 @@
 import { useMemo, useState } from "react";
 import { ChevronUpIcon } from "lucide-react";
 import type { ClientView } from "../../clients.types";
-import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { TimelineEntry } from "~/features/timeline/timeline.types";
 import type { TimelineHandlers } from "~/features/timeline/components/timeline-entry/timeline-entry.component";
-import type { PackageTarget } from "~/features/packages/components/package-dialog/package-dialog.component";
 import type { SessionView } from "~/features/sessions/sessions.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { TimelineQuery } from "~/features/timeline/timeline.query";
 import { TIMELINE_FACETS, entryKey } from "~/features/timeline/timeline.util";
 import { TimelineEntryItem } from "~/features/timeline/components/timeline-entry/timeline-entry.component";
-import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
-import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
+import { useOpenFollowUp } from "~/features/follow-ups/follow-ups.hook";
+import { useOpenPackage } from "~/features/packages/package-open.hook";
 import { CancelSessionDialog } from "~/features/sessions/components/cancel-session-dialog/cancel-session-dialog.component";
 import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
 import { LoadMore } from "~/components/shared/list/load-more/load-more.component";
@@ -37,17 +35,17 @@ const UPCOMING_SHOWN = 3;
 export function ClientTimeline({ client }: { client: ClientView }) {
   const [filter, setFilter] = useState<ListFilter>(NO_FILTER);
   const pages = TimelineQuery.useSearch(client.id, filter);
-  const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
-  const [editingPackage, setEditingPackage] = useState<PackageTarget>(null);
+  const openFollowUp = useOpenFollowUp();
+  const openPackage = useOpenPackage();
   const [cancelling, setCancelling] = useState<SessionView | null>(null);
   const [allUpcoming, setAllUpcoming] = useState(false);
   const handlers = useMemo<TimelineHandlers>(
     () => ({
-      onEditFollowUp: (f) => setFollowUp({ mode: "edit", followUp: f }),
-      onEditPackage: (pkg, at) => setEditingPackage({ mode: "edit", pkg, at }),
+      onEditFollowUp: (f) => openFollowUp({ mode: "edit", followUp: f }),
+      onEditPackage: (pkg, at) => openPackage({ mode: "edit", pkg, at }),
       onCancelSession: setCancelling,
     }),
-    [],
+    [openFollowUp, openPackage],
   );
 
   const upcoming = pages.data?.pages[0]?.upcoming ?? [];
@@ -108,9 +106,7 @@ export function ClientTimeline({ client }: { client: ClientView }) {
       <FilterBar label={`Search ${client.name}'s timeline`} value={filter} onChange={setFilter} facets={TIMELINE_FACETS} />
       {body}
       <LoadMore pages={pages} found={past.length > 0} />
-      <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
       <CancelSessionDialog session={cancelling} clientName={client.name} onClose={() => setCancelling(null)} />
-      <PackageDialog target={editingPackage} onClose={() => setEditingPackage(null)} />
     </div>
   );
 }

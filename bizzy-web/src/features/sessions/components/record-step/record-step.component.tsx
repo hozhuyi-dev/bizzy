@@ -1,10 +1,10 @@
 import { RecordEditor } from "../record-editor/record-editor.component";
-import type { PipelineStep, StepState } from "../pipeline-layout/pipeline-layout.component";
+import type { PageStep, StepState } from "~/components/shared/layout/page-steps/page-steps.component";
 import type { RecordDraft } from "../record-editor/record-editor.hook";
 import type { SessionView } from "../../sessions.types";
 import { AttachmentList } from "~/features/attachments/components/attachment-list/attachment-list.component";
 
-export function recordStep(session: SessionView, record: RecordDraft): PipelineStep {
+export function recordStep(session: SessionView, record: RecordDraft): PageStep {
   const { can } = session;
   // Notes wait until the booking is confirmed.
   const blocked = session.todo.includes("confirm");

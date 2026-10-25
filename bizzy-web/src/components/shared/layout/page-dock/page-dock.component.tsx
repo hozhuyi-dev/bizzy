@@ -19,13 +19,15 @@ const PANEL =
  * Above it, the tray holds what narrows the list (a FilterBar's chips), so a
  * filtered list says so however far it is scrolled. Hidden while it holds
  * nothing. It rides above the keyboard while one is up, so Save stays in
- * reach while typing. Its height, the tray's and the air around them is
+ * reach while typing; on iOS it fades out while the keyboard or the page
+ * moves, and back in once they are still, so it is never seen overshooting
+ * (see useKeyboardInset). Its height, the tray's and the air around them is
  * --dock-height: the room left under the page, and the toasts' place.
  */
 export function PageDock() {
   const { setDock, setTray } = usePageSlots();
   const [frameRef, height, frame] = useHeight<HTMLDivElement>();
-  useKeyboardInset(frame);
+  useKeyboardInset(frame, { hideWhileMoving: true });
   useFocusInPlace(frame);
 
   useEffect(() => {
@@ -37,7 +39,11 @@ export function PageDock() {
     <div
       ref={frameRef}
       // Lifted over the keyboard by translate, which moves it without laying the page out again.
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-(--z-dock) flex -translate-y-(--keyboard-inset) flex-col items-end gap-1.5 px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] has-[[data-slot=page-dock]:empty]:hidden md:hidden"
+      // Gone at once while the screen moves, faded back in once it is still.
+      className={cn(
+        "pointer-events-none fixed inset-x-0 bottom-0 z-(--z-dock) flex -translate-y-(--keyboard-inset) flex-col items-end gap-1.5 px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] has-[[data-slot=page-dock]:empty]:hidden md:hidden",
+        "transition-opacity duration-150 motion-reduce:transition-none data-keyboard-moving:opacity-0 data-keyboard-moving:duration-0 data-keyboard-moving:**:pointer-events-none",
+      )}
     >
       <div ref={setTray} data-slot="page-dock-tray" className={cn(PANEL, "w-full px-1 py-1")} />
       <div

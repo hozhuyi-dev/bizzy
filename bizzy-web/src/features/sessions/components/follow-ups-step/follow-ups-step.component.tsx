@@ -1,5 +1,5 @@
 import { PlusIcon } from "lucide-react";
-import type { PipelineStep, StepState } from "../pipeline-layout/pipeline-layout.component";
+import type { PageStep, StepState } from "~/components/shared/layout/page-steps/page-steps.component";
 import type { SessionView } from "../../sessions.types";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import { FollowUpRow } from "~/features/follow-ups/components/follow-up-row/follow-up-row.component";
@@ -20,7 +20,7 @@ export function followUpsStep(
   followUps: ReadonlyArray<FollowUpView> | undefined,
   onAdd: (() => void) | undefined,
   onEdit: (followUp: FollowUpView) => void,
-): PipelineStep {
+): PageStep {
   const all = followUps ?? [];
   const open = all.filter((f) => !f.doneAt).sort((a, b) => a.due.localeCompare(b.due));
   const overdue = open.filter((f) => isOverdue(f));

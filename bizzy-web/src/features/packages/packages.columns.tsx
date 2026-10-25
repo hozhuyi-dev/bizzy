@@ -84,7 +84,7 @@ function PackageDocuments({ pkg }: { pkg: PackageView }) {
 /**
  * A package's one quick action: Paid ▾ while it owes something. Everything
  * else (WhatsApp, keeping one bought in a session as its own, delete) is in
- * its dialog, which a click on its row opens.
+ * its page, which a click on its row opens.
  */
 export function packageActions(pkg: PackageView, handlers: PackageHandlers): RowActionSet {
   return { actions: pkg.can.pay.ok ? [handlers.paid(pkg)] : [] };

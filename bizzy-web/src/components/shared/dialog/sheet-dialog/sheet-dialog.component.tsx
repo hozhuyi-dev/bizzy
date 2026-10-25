@@ -40,13 +40,25 @@ const SHEET = [
 /** The alert dialog sizes itself by data-size, so it is widened the same way. */
 const ALERT_SHEET = cn(SHEET, "data-[size=default]:max-w-none data-[size=default]:sm:max-w-lg");
 
+/**
+ * On a phone, a card at the top instead of a sheet at the bottom: the
+ * keyboard comes up under it, so a box typed into is never covered and
+ * nothing has to move.
+ */
+const AT_TOP =
+  "max-sm:top-[max(0.75rem,env(safe-area-inset-top))] max-sm:bottom-auto max-sm:left-2 max-sm:w-[calc(100%-1rem)] max-sm:rounded-b-xl max-sm:data-open:slide-in-from-top-8 max-sm:data-closed:slide-out-to-top-8 max-sm:[&_[data-slot$=dialog-footer]]:rounded-b-xl";
+
 interface SheetDialogProps {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
 }
 
-/** Every dialog in the app: a form, or a panel to act on. */
+/**
+ * A panel to read (the calendar guide). What has fields to fill in is a
+ * page of its own, or opens in place on its page, never a dialog: a
+ * phone's keyboard and a sheet over the page fight over where it sits.
+ */
 export function SheetDialog({ open, onClose, children }: SheetDialogProps) {
   const [sheet, setSheet] = useState<HTMLDivElement | null>(null);
   useKeyboardInset(sheet);
@@ -60,14 +72,22 @@ export function SheetDialog({ open, onClose, children }: SheetDialogProps) {
   );
 }
 
-/** A confirmation, laid out as SheetDialog; a click outside leaves it open. */
-export function SheetAlertDialog({ open, onClose, children }: SheetDialogProps) {
+interface SheetAlertDialogProps extends SheetDialogProps {
+  /** It asks for something typed (why it is cancelled): at the top on a phone, clear of the keyboard. */
+  typed?: boolean | undefined;
+}
+
+/**
+ * A confirmation, laid out as SheetDialog, a sheet at the bottom on a
+ * phone within the thumb's reach; a click outside leaves it open.
+ */
+export function SheetAlertDialog({ open, onClose, typed, children }: SheetAlertDialogProps) {
   const [sheet, setSheet] = useState<HTMLDivElement | null>(null);
   useKeyboardInset(sheet);
   useFocusInPlace(sheet);
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <AlertDialogContent ref={setSheet} className={ALERT_SHEET}>
+      <AlertDialogContent ref={setSheet} className={cn(ALERT_SHEET, typed && AT_TOP)}>
         {children}
       </AlertDialogContent>
     </AlertDialog>

@@ -1,5 +1,5 @@
 import { allSessionDocuments, documentItems, sessionDocuments } from "../../session-stage.util";
-import type { PipelineStep } from "../pipeline-layout/pipeline-layout.component";
+import type { PageStep } from "~/components/shared/layout/page-steps/page-steps.component";
 import type { SessionView } from "../../sessions.types";
 import type { DocumentLink, DocumentType } from "~/features/documents/documents.types";
 import type { PackageView } from "~/features/packages/packages.types";
@@ -11,7 +11,7 @@ import { DataList, DataListItem } from "~/components/shared/list/data-list/data-
 import { formatDate } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
-export function documentsStep(session: SessionView, bought: PackageView | undefined): PipelineStep {
+export function documentsStep(session: SessionView, bought: PackageView | undefined): PageStep {
   const docs = allSessionDocuments(session, bought);
   // Package credits pay it all: nothing to invoice, so nothing to receipt.
   if (docs.length === 0 && session.feeCents === 0 && session.credits.length > 0) {

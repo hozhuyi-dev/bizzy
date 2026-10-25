@@ -197,6 +197,16 @@ func Routes(r *router.Router, run *txn.Runner) {
 			})
 		})
 	}))
+	// followUps.get is one follow-up, for its page.
+	r.Query("followUps.get", router.Typed(func(ctx context.Context, in idRequest) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) (View, error) {
+			fu, err := FollowUps.Get(tx, in.ID)
+			if err != nil {
+				return View{}, err
+			}
+			return ViewOf(tx, fu)
+		})
+	}))
 	r.Mutation("followUps.create", router.Typed(func(ctx context.Context, in createRequest) (any, error) {
 		return one(ctx, func(tx *txn.Tx) (*FollowUp, error) { return Create(tx, in.Fields, in.SessionID) })
 	}))

@@ -48,6 +48,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Input } from "~/components/ui/input";
 import { formatCents } from "~/core/utils/money.util";
 import { formatDate } from "~/core/utils/date.util";
@@ -198,7 +199,7 @@ function IssuedDocument({ doc, content, revisions, header }: IssuedDocumentProps
             type: "button",
             label: "Revise",
             icon: PencilIcon,
-            disabled: revise.isPending,
+            pending: revise.isPending,
             can: doc.can.revise,
             onClick: () => revise.mutate(doc.id, { onError: toastRefusal }),
           },
@@ -293,9 +294,9 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: DocumentView; open: bool
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel>Keep it</AlertDialogCancel>
-        <Button
+        <PendingButton
           variant="destructive"
-          disabled={reset.isPending}
+          pending={reset.isPending}
           onClick={() =>
             reset.mutate(doc.id, {
               onSuccess: () => {
@@ -307,7 +308,7 @@ function ResetLinkDialog({ doc, open, onClose }: { doc: DocumentView; open: bool
           }
         >
           Reset link
-        </Button>
+        </PendingButton>
       </AlertDialogFooter>
     </SheetAlertDialog>
   );
@@ -381,7 +382,7 @@ function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean
   const title = DOCUMENT_TYPES[doc.type].title.toLowerCase();
 
   return (
-    <SheetAlertDialog open={open} onClose={onClose}>
+    <SheetAlertDialog open={open} onClose={onClose} typed>
       <AlertDialogHeader>
         <AlertDialogTitle>Cancel {documentLabel(doc.number, doc.revision)}?</AlertDialogTitle>
         <AlertDialogDescription>
@@ -392,9 +393,9 @@ function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean
       <Input className="h-(--control-height)" placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
       <AlertDialogFooter>
         <AlertDialogCancel>Keep it</AlertDialogCancel>
-        <Button
+        <PendingButton
           variant="destructive"
-          disabled={cancel.isPending}
+          pending={cancel.isPending}
           onClick={() =>
             cancel.mutate(
               { id: doc.id, reason },
@@ -409,7 +410,7 @@ function CancelDialog({ doc, open, onClose }: { doc: DocumentView; open: boolean
           }
         >
           Cancel {title}
-        </Button>
+        </PendingButton>
       </AlertDialogFooter>
     </SheetAlertDialog>
   );

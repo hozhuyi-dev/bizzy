@@ -1,10 +1,10 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { cn } from "cn";
 import { ArrowLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { DockContext, useAppBanner, useCompactLayout, usePageSlots } from "./page-header.hook";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import type { LinkOptions, LinkProps } from "@tanstack/react-router";
 import type { Action, FoldWidth } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { Module } from "~/core/navigation/navigation.types";
@@ -18,6 +18,13 @@ interface Parent {
   to: NonNullable<LinkProps["to"]>;
   label: string;
   search?: LinkOptions["search"];
+  params?: LinkOptions["params"];
+  /**
+   * Goes back to the page it was opened from, as the browser's Back does
+   * (a form's page, opened from wherever it is needed); the link only when
+   * there is none, as when opened from outside the app.
+   */
+  back?: boolean | undefined;
 }
 
 interface PageHeaderProps {
@@ -264,12 +271,24 @@ function dockActions(
   return { actions: [{ ...first, iconOnlyOnPhone: false }], more: rest };
 }
 
+/** A Parent's click: Back, for one that goes back while there is a page to go back to; else its link. */
+function useBackClick(back: boolean | undefined) {
+  const router = useRouter();
+  return (event: MouseEvent) => {
+    if (!back || !router.history.canGoBack()) return;
+    event.preventDefault();
+    router.history.back();
+  };
+}
+
 /** The way back: the list's name on wider screens, an arrow on a phone. */
-function ParentLink({ to, label, search }: Parent) {
+function ParentLink({ to, label, search, params, back }: Parent) {
+  const onClick = useBackClick(back);
   return (
     <>
       <Link
-        {...({ to, search } as LinkOptions)}
+        {...({ to, search, params } as LinkOptions)}
+        onClick={onClick}
         className="shrink-0 rounded-md type-page-title text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         {label}
@@ -280,7 +299,8 @@ function ParentLink({ to, label, search }: Parent) {
 }
 
 /** A phone's way back to the list, at the dock's left edge. */
-function BackButton({ to, label, search }: Parent) {
+function BackButton({ to, label, search, params, back }: Parent) {
+  const onClick = useBackClick(back);
   return (
     <Button
       variant="ghost"
@@ -288,7 +308,7 @@ function BackButton({ to, label, search }: Parent) {
       className="shrink-0"
       aria-label={`Back to ${label}`}
       title={`Back to ${label}`}
-      render={<Link {...({ to, search } as LinkOptions)} />}
+      render={<Link {...({ to, search, params } as LinkOptions)} onClick={onClick} />}
       nativeButton={false}
     >
       <ArrowLeftIcon />

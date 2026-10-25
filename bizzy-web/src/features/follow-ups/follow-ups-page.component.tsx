@@ -1,12 +1,12 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { PlusIcon } from "lucide-react";
 import { cn } from "cn";
-import { FollowUpDialog } from "./components/follow-up-dialog/follow-up-dialog.component";
 import { FollowUpsTable } from "./components/follow-ups-table/follow-ups-table.component";
+import { useOpenFollowUp } from "./follow-ups.hook";
 import { FollowUpsQuery } from "./follow-ups.query";
 import { FOLLOW_UP_ORIGIN_FACET, FOLLOW_UP_STATUS_FACET } from "./follow-ups.constant";
 import { FOLLOW_UP_PRESETS } from "./follow-ups.util";
-import type { FollowUpTarget, FollowUpView } from "./follow-ups.types";
+import type { FollowUpView } from "./follow-ups.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { clientFacet } from "~/features/clients/clients.util";
@@ -20,9 +20,6 @@ import { QUIPS } from "~/core/constants/quips.constant";
 interface FollowUpsPageProps {
   filter: ListFilter;
   onFilterChange: (filter: ListFilter) => void;
-  /** The follow-up open to edit, kept in the URL so it can be linked to. */
-  open?: string | undefined;
-  onOpenChange?: (id: string | undefined) => void;
 }
 
 /**
@@ -31,7 +28,7 @@ interface FollowUpsPageProps {
  * by status. Searched on the server: by words, client, status, where they
  * came from and days.
  */
-export function FollowUpsPage({ filter, onFilterChange, open, onOpenChange }: FollowUpsPageProps) {
+export function FollowUpsPage({ filter, onFilterChange }: FollowUpsPageProps) {
   const clients = ClientsQuery.useList();
   const facets = useMemo(
     () => [FOLLOW_UP_STATUS_FACET, clientFacet(clients.data ?? []), FOLLOW_UP_ORIGIN_FACET],
@@ -39,18 +36,9 @@ export function FollowUpsPage({ filter, onFilterChange, open, onOpenChange }: Fo
   );
   const list = FollowUpsQuery.useSearch(filter);
   const onlyDone = filter.chips.status?.length === 1 && filter.chips.status[0] === "done";
-  const [adding, setAdding] = useState<FollowUpTarget | null>(null);
   const items = useMemo(() => pageItems(list.data), [list.data]);
-  const opened = open ? items.find((followUp) => followUp.id === open) : undefined;
-  const target: FollowUpTarget | null = opened ? { mode: "edit", followUp: opened } : adding;
-  const edit = useCallback(
-    (followUp: FollowUpView) => (onOpenChange ? onOpenChange(followUp.id) : setAdding({ mode: "edit", followUp })),
-    [onOpenChange],
-  );
-  const close = () => {
-    setAdding(null);
-    if (open) onOpenChange?.(undefined);
-  };
+  const openFollowUp = useOpenFollowUp();
+  const edit = (followUp: FollowUpView) => openFollowUp({ mode: "edit", followUp });
 
   return (
     <>
@@ -63,7 +51,7 @@ export function FollowUpsPage({ filter, onFilterChange, open, onOpenChange }: Fo
             icon: PlusIcon,
             style: "primary",
             iconOnlyOnPhone: true,
-            onClick: () => setAdding({ mode: "new" }),
+            onClick: () => openFollowUp({ mode: "new" }),
           },
         ]}
         toolbar={
@@ -97,8 +85,6 @@ export function FollowUpsPage({ filter, onFilterChange, open, onOpenChange }: Fo
           />
           <LoadMore pages={list} found={items.length > 0} />
         </div>
-
-      <FollowUpDialog target={target} onClose={close} />
     </>
   );
 }

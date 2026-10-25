@@ -1,9 +1,23 @@
 import { useEffect } from "react";
-import { keyboardInset, opensKeyboard } from "./keyboard-inset.util";
+import { IOS, keyboardInset, opensKeyboard } from "./keyboard-inset.util";
 
 // After focus moves, a last look once the keyboard has finished coming up or
 // going down: iOS doesn't always say so with an event of its own.
 const SETTLE_MS = 400;
+
+// How long the screen must keep still before what hid while it moved shows again.
+const QUIET_MS = 150;
+
+interface KeyboardInsetOptions {
+  /**
+   * On iOS, hides the element (data-keyboard-moving) while the keyboard
+   * comes or goes and while the page moves under it, and shows it again
+   * once all is still, where it then belongs. iOS moves what is fixed
+   * before any script hears of it, so following it shows the element
+   * overshooting and settling back; hidden, it is only ever seen in place.
+   */
+  hideWhileMoving?: boolean | undefined;
+}
 
 /**
  * Keeps `element` above a phone's keyboard by publishing how much of the
@@ -20,13 +34,32 @@ const SETTLE_MS = 400;
  * again whenever the visual viewport moves, the page scrolls (iOS scrolls
  * the page itself to show the box being typed into) or focus moves.
  */
-export function useKeyboardInset(element: HTMLElement | null) {
+export function useKeyboardInset(element: HTMLElement | null, { hideWhileMoving = false }: KeyboardInsetOptions = {}) {
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!element || !viewport) return undefined;
+    const hides = hideWhileMoving && IOS;
     let frame = 0;
     let settle: number | undefined;
+    let quiet: number | undefined;
     let last = -1;
+
+    // Hidden at once (no fade, the move is under way), shown again after
+    // the quiet; anything moving meanwhile starts the quiet again.
+    const moving = () => {
+      if (!hides) return;
+      element.dataset.keyboardMoving = "";
+      window.clearTimeout(quiet);
+      quiet = window.setTimeout(still, QUIET_MS);
+    };
+    const still = () => {
+      quiet = undefined;
+      apply();
+      // Shown a frame after its last move is drawn, unless that moved it again.
+      requestAnimationFrame(() => {
+        if (quiet === undefined) delete element.dataset.keyboardMoving;
+      });
+    };
     const apply = () => {
       frame = 0;
       const inset = keyboardInset({
@@ -37,32 +70,42 @@ export function useKeyboardInset(element: HTMLElement | null) {
         editing: opensKeyboard(document.activeElement),
       });
       if (inset === last) return;
+      // The first reading is where it starts, not a move.
+      if (last !== -1) moving();
       last = inset;
       element.style.setProperty("--keyboard-inset", `${inset}px`);
     };
     const schedule = () => {
       frame ||= requestAnimationFrame(apply);
     };
-    const onFocus = () => {
+    // The screen moving while a keyboard is up, or coming: iOS moves what
+    // is fixed with it, before this hears of it.
+    const onMove = () => {
+      if (last > 0 || opensKeyboard(document.activeElement)) moving();
       schedule();
+    };
+    const onFocus = () => {
+      onMove();
       window.clearTimeout(settle);
       settle = window.setTimeout(schedule, SETTLE_MS);
     };
     apply();
-    viewport.addEventListener("resize", schedule);
-    viewport.addEventListener("scroll", schedule);
-    window.addEventListener("scroll", schedule, { passive: true });
+    viewport.addEventListener("resize", onMove);
+    viewport.addEventListener("scroll", onMove);
+    window.addEventListener("scroll", onMove, { passive: true });
     document.addEventListener("focusin", onFocus);
     document.addEventListener("focusout", onFocus);
     return () => {
-      viewport.removeEventListener("resize", schedule);
-      viewport.removeEventListener("scroll", schedule);
-      window.removeEventListener("scroll", schedule);
+      viewport.removeEventListener("resize", onMove);
+      viewport.removeEventListener("scroll", onMove);
+      window.removeEventListener("scroll", onMove);
       document.removeEventListener("focusin", onFocus);
       document.removeEventListener("focusout", onFocus);
       cancelAnimationFrame(frame);
       window.clearTimeout(settle);
+      window.clearTimeout(quiet);
       element.style.removeProperty("--keyboard-inset");
+      delete element.dataset.keyboardMoving;
     };
-  }, [element]);
+  }, [element, hideWhileMoving]);
 }

@@ -69,9 +69,15 @@ func BoughtIn(tx *txn.Tx, sessionID string) (*Package, error) {
 	return all[0], nil
 }
 
-// Description is how a package's line describes it.
+// Description is how a package's line, on its invoice and its receipt,
+// describes it: by its sessions, as clients count them, a credit an hour
+// each ("Physiotherapy package (10 sessions)").
 func Description(cfg settings.Settings, hours int) string {
-	return fmt.Sprintf("%s package (%s)", cfg.ServiceName, Hours(hours*60))
+	sessions := "sessions"
+	if hours == 1 {
+		sessions = "session"
+	}
+	return fmt.Sprintf("%s package (%d %s)", cfg.ServiceName, hours, sessions)
 }
 
 // Hours writes minutes as hours: "1.5 h".

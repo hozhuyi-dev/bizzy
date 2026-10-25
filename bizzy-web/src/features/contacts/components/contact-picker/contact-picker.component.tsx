@@ -7,9 +7,7 @@ import { searchContacts } from "../../contacts.util";
 import { ContactDetailsForm } from "../contact-details-form/contact-details-form.component";
 import type { ContactDetails, ContactView } from "../../contacts.types";
 import { useQuip } from "~/components/shared/feedback/quip/quip.hook";
-import { SheetDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
-import { DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { isApiError } from "~/core/utils/api-error.util";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -27,8 +25,8 @@ interface ContactPickerProps {
 }
 
 /**
- * Finds one of her Google contacts, or creates one for a client in a
- * dialog, as it is saved to Google at once.
+ * Finds one of the user's Google contacts, or creates one for a client in
+ * its place, saved to Google at once.
  */
 export function ContactPicker({ initialQuery, createFrom, onPick }: ContactPickerProps) {
   const contacts = ContactsQuery.useList();
@@ -37,24 +35,20 @@ export function ContactPicker({ initialQuery, createFrom, onPick }: ContactPicke
 
   const matches = useMemo(() => searchContacts(contacts.data ?? [], query), [contacts.data, query]);
 
-  return (
-    <>
-      <Matches query={query} onQueryChange={setQuery} matches={matches} onPick={onPick} onCreate={() => setCreating(true)} />
-      <SheetDialog open={creating} onClose={() => setCreating(false)}>
-        {creating && (
-          <NewContact
-            initial={createFrom ?? { givenName: query.trim(), email: "", phone: "", address: {} }}
-            recreating={Boolean(createFrom)}
-            onCreated={(contact) => {
-              setCreating(false);
-              onPick(contact);
-            }}
-            onCancel={() => setCreating(false)}
-          />
-        )}
-      </SheetDialog>
-    </>
-  );
+  if (creating) {
+    return (
+      <NewContact
+        initial={createFrom ?? { givenName: query.trim(), email: "", phone: "", address: {} }}
+        recreating={Boolean(createFrom)}
+        onCreated={(contact) => {
+          setCreating(false);
+          onPick(contact);
+        }}
+        onCancel={() => setCreating(false)}
+      />
+    );
+  }
+  return <Matches query={query} onQueryChange={setQuery} matches={matches} onPick={onPick} onCreate={() => setCreating(true)} />;
 }
 
 interface MatchesProps {
@@ -146,11 +140,10 @@ function NewContact({
   const create = ContactsMutation.useCreate();
 
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>{recreating ? "Recreate the contact" : "New contact"}</DialogTitle>
-        <DialogDescription>Saved to your Google contacts, so it's on your phone too.</DialogDescription>
-      </DialogHeader>
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        {recreating ? "The contact again" : "A new contact"}, saved to your Google contacts, so it's on your phone too.
+      </p>
       <ContactDetailsForm
         mode="create"
         initial={initial}
@@ -167,7 +160,7 @@ function NewContact({
           }
         }}
       />
-    </>
+    </div>
   );
 }
 

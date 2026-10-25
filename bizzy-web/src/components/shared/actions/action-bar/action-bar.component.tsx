@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import type { Action, ActionSize, ActionStyle, FoldWidth, MenuItemAction, MenuStyle } from "./action-bar.types";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { HintTooltip } from "~/components/shared/feedback/hint-tooltip/hint-tooltip.component";
 import { ActionSheet } from "~/components/shared/actions/action-sheet/action-sheet.component";
 import {
@@ -133,7 +134,7 @@ function ActionButtonOnly({
   ...rest
 }: ActionButtonProps) {
   const { label, icon: Icon, style = defaultStyle, iconOnlyOnPhone, iconAfter } = action;
-  const disabled = isDisabled(action);
+  const disabled = Boolean(action.disabled) || action.can?.ok === false;
   const why = action.can?.ok === false;
   const content = (
     <>
@@ -148,6 +149,7 @@ function ActionButtonOnly({
     variant: VARIANTS[style],
     size,
     disabled,
+    pending: action.pending,
     // Hovered and focused still, so its tooltip says why; dimmed as a disabled one.
     focusableWhenDisabled: why,
     "aria-label": iconOnlyOnPhone && Icon ? label : undefined,
@@ -162,55 +164,55 @@ function ActionButtonOnly({
   switch (action.type) {
     case "button":
       return (
-        <Button type="button" onClick={action.onClick} {...common}>
+        <PendingButton type="button" onClick={action.onClick} {...common}>
           {content}
-        </Button>
+        </PendingButton>
       );
     case "submit":
       return (
-        <Button type="submit" form={action.form} {...common}>
+        <PendingButton type="submit" form={action.form} {...common}>
           {content}
-        </Button>
+        </PendingButton>
       );
     case "link":
       return (
-        <Button render={<Link {...action.link} />} nativeButton={false} {...common}>
+        <PendingButton render={<Link {...action.link} />} nativeButton={false} {...common}>
           {content}
-        </Button>
+        </PendingButton>
       );
     case "external":
       return (
-        <Button render={<a href={action.href} target="_blank" rel="noreferrer" />} nativeButton={false} {...common}>
+        <PendingButton render={<a href={action.href} target="_blank" rel="noreferrer" />} nativeButton={false} {...common}>
           {content}
-        </Button>
+        </PendingButton>
       );
     case "toggle":
       return (
-        <Button
+        <PendingButton
           type="button"
           aria-pressed={action.pressed}
           onClick={() => action.onPressedChange(!action.pressed)}
           {...common}
         >
           {content}
-        </Button>
+        </PendingButton>
       );
     case "menu":
       if (menus === "sheet") {
         return (
           <SheetTrigger title={action.heading ?? label} actions={action.actions}>
             {(open) => (
-              <Button type="button" onClick={open} {...common}>
+              <PendingButton type="button" onClick={open} {...common}>
                 {content}
                 <ChevronDownIcon />
-              </Button>
+              </PendingButton>
             )}
           </SheetTrigger>
         );
       }
       return (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button {...common} />}>
+          <DropdownMenuTrigger render={<PendingButton {...common} />}>
             {content}
             <ChevronDownIcon />
           </DropdownMenuTrigger>
@@ -299,9 +301,9 @@ export function ActionMenu({ actions, size = "default", className, menus = "drop
   );
 }
 
-/** Whether an action can't be taken now: disabled by its caller, or its verdict says no. */
+/** Whether an action can't be taken now: disabled by its caller, under way, or its verdict says no. */
 function isDisabled(action: Action): boolean {
-  return Boolean(action.disabled) || action.can?.ok === false;
+  return Boolean(action.disabled) || Boolean(action.pending) || action.can?.ok === false;
 }
 
 function ActionMenuItem({ action }: { action: MenuItemAction }) {

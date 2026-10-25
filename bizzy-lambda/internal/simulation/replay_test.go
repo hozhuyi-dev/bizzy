@@ -13,6 +13,7 @@ import (
 	"bizzy-lambda/internal/features/contacts"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/features/expenses"
+	"bizzy-lambda/internal/features/followups"
 	"bizzy-lambda/internal/features/sessions"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/blobstore"
@@ -195,6 +196,7 @@ func readEveryView(t *testing.T, w *World) {
 		call("documents.pdf", map[string]any{"id": id})
 	})
 	read(expenses.Expenses.IDs, func(id string) { call("expenses.get", map[string]any{"id": id}) })
+	read(followups.FollowUps.IDs, func(id string) { call("followUps.get", map[string]any{"id": id}) })
 }
 
 // TestReplayOfSeeded replays the seeded world's data, as TestReplay does

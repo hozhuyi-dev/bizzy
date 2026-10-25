@@ -51,7 +51,7 @@ func price(tx *txn.Tx, s *Session, fee *int64) error {
 		if *fee < 0 {
 			return apperr.Invalid("A fee can't be negative.")
 		}
-		return charge(tx, s, *fee, true, s.Billable())
+		return charge(tx, s, *fee, true)
 	}
 	credits, err := creditsFor(tx, s.ID, s.ClientID, s.Start, s.Billable())
 	if err != nil {
@@ -67,7 +67,7 @@ func price(tx *txn.Tx, s *Session, fee *int64) error {
 		return err
 	}
 	if rate := client.FeeCents; rate != nil {
-		return charge(tx, s, Hourly(*rate, left), false, left)
+		return charge(tx, s, Hourly(*rate, left), false)
 	}
 	if err := documents.Uncharge(tx, s.Source()); err != nil {
 		return err
@@ -189,9 +189,9 @@ func Preview(tx *txn.Tx, clientID string, span Span, sessionID string, buysPacka
 	return c, nil
 }
 
-// charge puts the session's fee for minutes of it on its invoice line, or
-// a new line on the draft invoiceInto picks.
-func charge(tx *txn.Tx, s *Session, cents int64, typed bool, minutes int) error {
+// charge puts the session's fee on its invoice line, or a new line on the
+// draft invoiceInto picks.
+func charge(tx *txn.Tx, s *Session, cents int64, typed bool) error {
 	cfg, err := settings.Get(tx)
 	if err != nil {
 		return err
@@ -200,10 +200,8 @@ func charge(tx *txn.Tx, s *Session, cents int64, typed bool, minutes int) error 
 	if err != nil {
 		return err
 	}
+	// The service alone, however long the session: its time is on the line's date.
 	desc := cfg.ServiceName
-	if !typed {
-		desc += " (" + packages.Hours(minutes) + ")"
-	}
 	if _, line, err := documents.Invoice(tx, s.Source()); err != nil {
 		return err
 	} else if line != nil && line.Description != desc && ownDescription(cfg, line.Description) {
@@ -219,7 +217,8 @@ func charge(tx *txn.Tx, s *Session, cents int64, typed bool, minutes int) error 
 }
 
 // ownDescription reports whether a session's line says what charge wrote,
-// not something the user wrote, which stays.
+// not something the user wrote, which stays: the service, or the service
+// and its hours as lines once said ("Physiotherapy session (1.5 h)").
 func ownDescription(cfg settings.Settings, desc string) bool {
 	hours, ok := strings.CutPrefix(desc, cfg.ServiceName)
 	return ok && (hours == "" || strings.HasPrefix(hours, " (") && strings.HasSuffix(hours, " h)"))

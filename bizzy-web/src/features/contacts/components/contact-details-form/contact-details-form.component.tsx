@@ -5,7 +5,6 @@ import { useAppForm } from "~/components/shared/form/form.hook";
 import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { ErrorMessage } from "~/components/shared/feedback/error-message/error-message.component";
 import { Button } from "~/components/ui/button";
-import { DialogFooter } from "~/components/ui/dialog";
 import { FieldGroup } from "~/components/ui/field";
 import { emailError } from "~/core/utils/form.util";
 
@@ -20,8 +19,9 @@ interface ContactDetailsFormProps {
 }
 
 /**
- * A Google contact's details, written straight to Google, so in a dialog of
- * its own, apart from the client's Save. Enter saves.
+ * A Google contact's details, written straight to Google, so saved on
+ * their own, apart from the client's Save: its buttons end its fields,
+ * where it is open in place. Enter saves.
  */
 export function ContactDetailsForm({ mode, initial, submitLabel, onSubmit, onCancel, error }: ContactDetailsFormProps) {
   const form = useAppForm({
@@ -77,14 +77,14 @@ export function ContactDetailsForm({ mode, initial, submitLabel, onSubmit, onCan
         {error && <ErrorMessage>{error}</ErrorMessage>}
       </FieldGroup>
 
-      <DialogFooter>
+      <div className="flex flex-wrap justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         <form.AppForm>
           <form.SubmitButton label={submitLabel} />
         </form.AppForm>
-      </DialogFooter>
+      </div>
       <UnsavedChangesDialog when={hasChanges} />
     </form>
   );

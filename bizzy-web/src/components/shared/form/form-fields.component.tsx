@@ -7,6 +7,7 @@ import type { ComponentProps, ReactNode } from "react";
 import type { AnyFieldApi } from "@tanstack/react-form";
 import type { Suggestion } from "./autocomplete-input/autocomplete-input.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
@@ -399,22 +400,21 @@ export function ChoicesField({
   );
 }
 
-type SubmitButtonProps =Omit<ComponentProps<typeof Button>, "type" | "children"> & {
+type SubmitButtonProps = Omit<ComponentProps<typeof Button>, "type" | "children"> & {
   label: ReactNode;
-  /** While it saves. */
-  pendingLabel?: ReactNode;
 };
 
 /**
- * The form's submit. Only off while it saves: one with problems still
- * submits, which shows every error and takes the cursor to the first.
+ * The form's submit. Only off while it saves, its spinner turning: one
+ * with problems still submits, which shows every error and takes the
+ * cursor to the first.
  */
-export function SubmitButton({ label, pendingLabel = "Saving…", disabled, ...button }: SubmitButtonProps) {
+export function SubmitButton({ label, ...button }: SubmitButtonProps) {
   const form = useFormContext();
   const isSubmitting = useSelector(form.store, (state) => state.isSubmitting);
   return (
-    <Button type="submit" disabled={isSubmitting || disabled} {...button}>
-      {isSubmitting ? pendingLabel : label}
-    </Button>
+    <PendingButton type="submit" pending={isSubmitting} {...button}>
+      {label}
+    </PendingButton>
   );
 }

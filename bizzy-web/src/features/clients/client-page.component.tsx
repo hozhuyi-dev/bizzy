@@ -24,7 +24,6 @@ import { ClientOverview } from "./components/client-overview/client-overview.com
 import { ClientPackages } from "./components/client-packages/client-packages.component";
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
 import { DeleteClientDialog } from "./components/delete-client-dialog/delete-client-dialog.component";
-import { RecordPaymentDialog } from "./components/record-payment-dialog/record-payment-dialog.component";
 import { CLIENTS_LIST } from "./clients.list";
 import { clientsListLink, clientsUrl, contactProblem } from "./clients.util";
 import type { ReactNode } from "react";
@@ -33,15 +32,13 @@ import type { ClientFormValues } from "./clients.form";
 import type { ChosenContact, ClientView } from "./clients.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
-import type { FollowUpTarget } from "~/features/follow-ups/follow-ups.types";
 import type { ListFilter } from "~/core/list/filter.types";
 import { useWhatsApp } from "~/features/whatsapp/whatsapp.hook";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { ActivityQuery } from "~/features/activity/activity.query";
-import { FollowUpDialog } from "~/features/follow-ups/components/follow-up-dialog/follow-up-dialog.component";
-import { PackageDialog } from "~/features/packages/components/package-dialog/package-dialog.component";
-import { NewSessionDialog } from "~/features/sessions/components/booking-dialog/booking-dialog.component";
+import { useOpenFollowUp } from "~/features/follow-ups/follow-ups.hook";
+import { useOpenPackage } from "~/features/packages/package-open.hook";
 import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { ListPager } from "~/components/shared/list/list-pager/list-pager.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
@@ -66,14 +63,14 @@ const MAX_ID_NO = 20;
 type ClientEditorValues = ClientFormValues & { contact: ChosenContact | null };
 
 /**
- * `settle`: the calendar edit it was opened to settle; once saved, back to
- * the to-do list. `filter`: All clients or Reconnect, to step through.
+ * `filter`: All clients or Reconnect, to step through. Opened to settle a
+ * calendar edit (history's `settle`), once saved it goes back to the to-do
+ * list.
  */
 export type ClientPageProps =
   | {
       mode: "edit";
       id: string;
-      settle?: string | undefined;
       filter: ListFilter;
       onFilterChange: (filter: ListFilter) => void;
     }
@@ -81,7 +78,6 @@ export type ClientPageProps =
       mode: "new";
       /** Prefills, e.g. from an unmatched calendar name. */
       initialName?: string | undefined;
-      settle?: string | undefined;
     };
 
 /**
@@ -97,7 +93,7 @@ export function ClientPage(props: ClientPageProps) {
 
   if (props.mode === "new") {
     return (
-      <ClientEditor initialName={props.initialName} settle={props.settle} header={{ parent: clientsListLink(NO_FILTER) }} />
+      <ClientEditor initialName={props.initialName} header={{ parent: clientsListLink(NO_FILTER) }} />
     );
   }
 
@@ -119,7 +115,7 @@ export function ClientPage(props: ClientPageProps) {
   if (clients.data && activity.data) {
     const client = clients.data.find((c) => c.id === props.id);
     // Keyed so a different client starts the form afresh.
-    if (client) return <ClientEditor key={client.id} client={client} settle={props.settle} header={header} />;
+    if (client) return <ClientEditor key={client.id} client={client} header={header} />;
     return (
       <>
         <PageHeader {...header} title="Not available" />
@@ -149,13 +145,12 @@ interface ClientHeader {
 interface ClientEditorProps {
   client?: ClientView | undefined;
   initialName?: string | undefined;
-  settle?: string | undefined;
   header: ClientHeader;
 }
 
-function ClientEditor({ client, initialName, settle, header }: ClientEditorProps) {
+function ClientEditor({ client, initialName, header }: ClientEditorProps) {
   const navigate = useNavigate();
-  const settled = useSettleReturn(settle);
+  const settled = useSettleReturn();
   const save = useSaveClient(client, (saved, done) => {
     if (settled) settled(done);
     else if (!client) {
@@ -178,10 +173,8 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
   const problem = client && contactProblem(client);
   const owed = ActivityQuery.useByClient().get(client?.id ?? "")?.owedCents ?? 0;
   const documents = useClientDocumentsSection(client);
-  const [booking, setBooking] = useState(false);
-  const [followUp, setFollowUp] = useState<FollowUpTarget | null>(null);
-  const [paying, setPaying] = useState(false);
-  const [addingPackage, setAddingPackage] = useState(false);
+  const openFollowUp = useOpenFollowUp();
+  const openPackage = useOpenPackage();
   const [deleting, setDeleting] = useState(false);
   const archive = ClientsMutation.useArchive();
   const unarchive = ClientsMutation.useUnarchive();
@@ -289,7 +282,7 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
         {
           id: "packages",
           title: "Packages",
-          actions: [{ type: "button", label: "Add package", icon: PackagePlusIcon, onClick: () => setAddingPackage(true) }],
+          actions: [{ type: "button", label: "Add package", icon: PackagePlusIcon, onClick: () => openPackage({ mode: "new", clientId: client.id }) }],
           content: <ClientPackages client={client} />,
         },
         ...details,
@@ -299,19 +292,19 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
   const submit: Action = {
     type: "submit",
     form: FORM_ID,
-    label: isSubmitting ? "Saving…" : client ? "Save" : "Add client",
+    label: client ? "Save" : "Add client",
     style: "primary",
-    disabled: isSubmitting,
+    pending: isSubmitting,
   };
-  const book: Action = { type: "button", label: "Book session", icon: CalendarPlusIcon, onClick: () => setBooking(true) };
+  const book: Action = { type: "link", label: "Book session", icon: CalendarPlusIcon, link: { to: "/sessions/new", state: { clientId: client?.id } } };
   // Booking is the page's main job, until the details have changes to keep:
   // then Save takes its place and booking waits with the rest, beside it on
   // a wide screen and behind ⋯ on a phone.
   const actions: Array<Action> = client && !hasChanges ? [{ ...book, style: "primary" }] : [submit];
   const more: Array<Action> = client
     ? [
-        ...(owed > 0 ? [{ type: "button", label: "Record payment", icon: WalletIcon, onClick: () => setPaying(true) } satisfies Action] : []),
-        { type: "button", label: "Add follow-up", icon: BellPlusIcon, onClick: () => setFollowUp({ mode: "new", clientId: client.id }) },
+        ...(owed > 0 ? [{ type: "link", label: "Record payment", icon: WalletIcon, link: { to: "/clients/$id/payment", params: { id: client.id } } } satisfies Action] : []),
+        { type: "button", label: "Add follow-up", icon: BellPlusIcon, onClick: () => openFollowUp({ mode: "new", clientId: client.id }) },
         ...(whatsapp.canMessage(phone)
           ? [{ type: "button", label: "WhatsApp", icon: MessageCircleIcon, onClick: () => whatsapp.message(phone) } satisfies Action]
           : []),
@@ -367,15 +360,6 @@ function ClientEditor({ client, initialName, settle, header }: ClientEditorProps
       <UnsavedChangesDialog when={hasChanges} />
       {client && (
         <>
-          <NewSessionDialog open={booking} clientId={client.id} onClose={() => setBooking(false)} />
-          <FollowUpDialog target={followUp} onClose={() => setFollowUp(null)} />
-          <RecordPaymentDialog client={client} open={paying} onClose={() => setPaying(false)} />
-          <PackageDialog
-            target={addingPackage ? { mode: "new", clientId: client.id } : null}
-            onClose={() => setAddingPackage(false)}
-            newTitle="Add package"
-            description={`For ${client.name}`}
-          />
           <DeleteClientDialog
             client={client}
             open={deleting}

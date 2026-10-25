@@ -4,7 +4,7 @@ import { chosenFromContact, recreateFrom } from "../../clients.util";
 import type { ChosenContact } from "../../clients.types";
 import type { ContactView } from "~/features/contacts/contacts.types";
 import { ContactsQuery } from "~/features/contacts/contacts.query";
-import { ContactDetailsDialog } from "~/features/contacts/components/contact-details-dialog/contact-details-dialog.component";
+import { ContactDetailsEditor } from "~/features/contacts/components/contact-details-editor/contact-details-editor.component";
 import { ContactPicker } from "~/features/contacts/components/contact-picker/contact-picker.component";
 import { ContactSummary } from "~/features/contacts/components/contact-summary/contact-summary.component";
 import { Button } from "~/components/ui/button";
@@ -24,9 +24,9 @@ type Mode = "view" | "change" | "recreate";
 /**
  * The client's Google contact: a summary once chosen, with the contact
  * changed or recreated, or the link removed, in place, saved with the
- * client. Its details save straight to Google, so they are edited in a
- * dialog of their own. Without one, a picker that can also create the
- * contact.
+ * client. Its details save straight to Google, so they are edited in
+ * place of the summary with a Save of their own. Without one, a picker
+ * that can also create the contact.
  */
 export function ClientContact({ contact, linked, searchFor, clientName, onChange }: ClientContactProps) {
   const contacts = ContactsQuery.useList();
@@ -78,6 +78,16 @@ export function ClientContact({ contact, linked, searchFor, clientName, onChange
   const listed = contacts.data?.find((c) => c.resourceName === contact.resourceName);
   const shown = contact.missing || !listed ? contact : chosenFromContact(listed);
 
+  if (editing) {
+    return (
+      <ContactDetailsEditor
+        resourceName={contact.resourceName}
+        onClose={() => setEditing(false)}
+        onSaved={(saved) => onChange(chosenFromContact(saved))}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {contact.missing && (
@@ -114,11 +124,6 @@ export function ClientContact({ contact, linked, searchFor, clientName, onChange
           <UnlinkIcon /> Unlink
         </Button>
       </div>
-      <ContactDetailsDialog
-        resourceName={editing ? contact.resourceName : null}
-        onClose={() => setEditing(false)}
-        onSaved={(saved) => onChange(chosenFromContact(saved))}
-      />
     </div>
   );
 }

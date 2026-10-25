@@ -1,3 +1,6 @@
+/** iOS: every browser there is WebKit, the only engine with this property. */
+export const IOS = typeof CSS !== "undefined" && CSS.supports("-webkit-touch-callout", "none");
+
 /**
  * Less than a phone's keyboard (250px and up), more than the screen loses
  * to the browser's bars coming back or to the page bouncing at an end.

@@ -30,6 +30,7 @@ import {
 } from "~/components/ui/alert-dialog";
 import { SheetAlertDialog } from "~/components/shared/dialog/sheet-dialog/sheet-dialog.component";
 import { Button } from "~/components/ui/button";
+import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { FieldGroup } from "~/components/ui/field";
 import { formatCents } from "~/core/utils/money.util";
 import { moneyError, requiredError } from "~/core/utils/form.util";
@@ -333,9 +334,9 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
           {
             type: "submit",
             form: FORM_ID,
-            label: isSubmitting ? "Saving…" : "Save",
+            label: "Save",
             style: "primary",
-            disabled: isSubmitting,
+            pending: isSubmitting,
           },
         ]}
         menuActions={
@@ -370,9 +371,9 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep it</AlertDialogCancel>
-          <Button
+          <PendingButton
             variant="destructive"
-            disabled={remove.isPending}
+            pending={remove.isPending}
             onClick={() =>
               expense &&
               remove.mutate(expense.id, {
@@ -385,8 +386,8 @@ function ExpenseEditor({ expense, catalogue, header }: ExpenseEditorProps) {
               })
             }
           >
-            {remove.isPending ? "Deleting…" : "Delete"}
-          </Button>
+            Delete
+          </PendingButton>
         </AlertDialogFooter>
       </SheetAlertDialog>
     </>

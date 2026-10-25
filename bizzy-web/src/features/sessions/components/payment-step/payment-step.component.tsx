@@ -1,6 +1,6 @@
 import { hasHappened } from "../../session-stage.util";
 import { owedText, sessionPayables } from "../../session-payment.util";
-import type { PipelineStep, StepState } from "../pipeline-layout/pipeline-layout.component";
+import type { PageStep, StepState } from "~/components/shared/layout/page-steps/page-steps.component";
 import type { CoveringCredit, SessionView } from "../../sessions.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
@@ -12,7 +12,7 @@ export function paymentStep(
   session: SessionView,
   covering: ReadonlyArray<CoveringCredit>,
   bought: PackageView | undefined,
-): PipelineStep {
+): PageStep {
   const { paid } = session;
 
   let state: StepState = "todo";

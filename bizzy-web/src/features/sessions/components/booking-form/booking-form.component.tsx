@@ -12,9 +12,7 @@ import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hi
 import { saidAbove } from "~/features/remedies/remedies.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { useAppForm } from "~/components/shared/form/form.hook";
-import { UnsavedChangesDialog } from "~/components/shared/dialog/unsaved-changes-dialog/unsaved-changes-dialog.component";
 import { Button } from "~/components/ui/button";
-import { DialogFooter } from "~/components/ui/dialog";
 import { FieldDescription, FieldGroup } from "~/components/ui/field";
 import { Separator } from "~/components/ui/separator";
 import { useDebounced } from "~/core/utils/debounced.hook";
@@ -30,29 +28,29 @@ const PRICE_IS_ITEMS: Array<{ value: PriceIs; label: string }> = [
 /** Usual lengths, a tap away; any other is typed. */
 const LENGTHS = [30, 45, 60, 90];
 
-interface BookingFormProps {
+interface BookingFormOptions {
   initial: SessionDraft;
   /** The session being edited; omitted for a new one. */
   session?: SessionView | undefined;
   /** What its update can't change now: those fields are disabled, saying why. */
   locked?: Locks | undefined;
-  submitLabel: string;
   /**
    * Resolves once saved; a refusal is shown with its remedies and leaves
    * the form as it is. updatePayment moves what was received to the new
    * amounts.
    */
   onSubmit: (draft: SessionDraft, updatePayment: boolean) => Promise<void>;
-  onCancel: () => void;
 }
 
 /**
  * When and with whom, and what it costs: everything the calendar event
  * shows. The user fills in fields; the API writes the event, so its title
- * always reads back as this booking. Laid out for a dialog: its buttons sit
- * in the dialog's footer.
+ * always reads back as this booking. Its fields go in the page's Booking
+ * step (a new session's, or a session's own while it is being changed),
+ * and its Save in the page header, so the page wraps the fields in a form
+ * with the header's submit pointing at it (`form.handleSubmit`).
  */
-export function BookingForm({ initial, session, locked = {}, submitLabel, onSubmit, onCancel }: BookingFormProps) {
+export function useBookingForm({ initial, session, locked = {}, onSubmit }: BookingFormOptions) {
   const clientsById = ClientsQuery.useById();
   const packages = PackagesQuery.useList(true);
   // What was received follows a new fee only on a receipt not issued yet.
@@ -70,6 +68,7 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
   });
 
   const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
+  const submitting = useSelector(form.store, (state) => state.isSubmitting);
 
   // What would pay for it, as saving it will choose; asked once the time stops changing.
   const previewRequest = useDebounced(
@@ -108,14 +107,8 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
     }
   };
 
-  return (
-    <form
-      className="flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
+  const fields = (
+    <>
       <FieldGroup>
         <form.AppField
           name="clientId"
@@ -299,17 +292,10 @@ export function BookingForm({ initial, session, locked = {}, submitLabel, onSubm
         </form.AppField>
       )}
 
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <form.AppForm>
-          <form.SubmitButton label={submitLabel} />
-        </form.AppForm>
-      </DialogFooter>
-      <UnsavedChangesDialog when={hasChanges} />
-    </form>
+    </>
   );
+
+  return { form, fields, hasChanges, submitting };
 }
 
 /** "Until 11:00", once the day, start and length read as a time. */
