@@ -13,7 +13,7 @@ Back-office for a one-person physio practice: sessions, packages, invoices and r
 7. **Every rule is tested by use.** A property-based simulation drives every action, the calendar and the clock in random order, checking every invariant after every step.
 8. **Reads are the budget; Google is the wait.** The table is small and provisioned, and every consistent read costs a unit however small the item, so reads add up per call, not per byte. A request reads the versions item and what changed since; a response says what it changed and each kind's version, and the web reads again only what shows those, its own changes and any made elsewhere; a page is one call. A call to Google takes hundreds of milliseconds: none is made twice in a request, and those that don't wait on each other run at once.
 
-Conventions: identifiers say "user", never "her". Until production holds data, a change to how items are stored is a reset, not a migration: delete `bizzy-lambda/SCHEMA.md`, regenerate it, deploy (development by `pnpm dev:deploy`, staging by merging to `main`) and **Settings → Reset** in each. Production has no Reset, and connecting Google there syncs its calendar in: from then on, every such change is a [migration](#migrations).
+Conventions: identifiers say "user", never "her". Production holds data, so every change to how items are stored is a [migration](#migrations), never a reset.
 
 ## Tech stack
 
@@ -122,7 +122,7 @@ flowchart TD
 
 The table's SQL-style migrations. The code serves only a table at its own version (`migrations.Version`, in the `SCHEMA` item), so it reads items in the shape it writes them.
 
-- **Every change to a stored type or a `Meta`** needs one (once production holds data; see Conventions). `TestSchema` refuses to `-update` SCHEMA.md without one. One with no `Up` is enough when no item needs changing by hand: every run rewrites every item as the code writes it.
+- **Every change to a stored type or a `Meta`** needs one. `TestSchema` refuses to `-update` SCHEMA.md without one. One with no `Up` is enough when no item needs changing by hand: every run rewrites every item as the code writes it.
 - **Writing one**: `internal/migrations/NNN_<what>.go`, appended to `All` (never reorder or change a deployed one). It works on stored JSON (`migrate.EachItem`), never a feature's types, imports only `platform`, changes nothing when run twice, and has `testdata/NNN/{before,after}.json`.
 - **Trying one**: `pnpm data:replay production` runs it on production's data in memory (see [Trying changes](#trying-changes-on-productions-data)).
 - **Deploying**: CI dry-runs the migrations on an in-memory copy, deploys, then invokes `cmd/migrate`: back up (production; backups older than 35 days are deleted, point-in-time recovery covers them), raise the fence (requests get `unavailable`), migrate, decode every item strictly, rewrite them, check every invariant, lower the fence. A failure leaves the fence up until a fixed migration runs.
@@ -171,6 +171,8 @@ Requires Node 24, pnpm 10, Go (see `go.mod`) and the AWS CLI. The local frontend
 3. `pnpm install && pnpm aws:login && pnpm dev:deploy`
 4. `pnpm web:dev`, open http://localhost:4200, and connect a **test** Google account in Settings.
 
+**Settings → Reset** (development and staging only) deletes everything but the Google connection and syncs the calendar back in, for a clean slate; [`data:copy`](#trying-changes-on-productions-data) fills one with production's data instead.
+
 ### Staging and production
 
 Staging deploys from `main` and production from `production`, by GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)). A deploy takes only what changed since its branch last deployed in full ([scripts/changed.mjs](scripts/changed.mjs)): a web change alone skips the stacks, and a run by hand deploys everything. CI ([ci.yml](.github/workflows/ci.yml)) checks only what a pull request changes the same way. The account is bootstrapped and has GitHub's OIDC provider. For each environment:
@@ -180,8 +182,6 @@ Staging deploys from `main` and production from `production`, by GitHub Actions 
 3. In the Google OAuth client, add the redirect URI `https://bizzy-<env>.auth.ap-southeast-1.amazoncognito.com/oauth2/idpresponse`.
 4. Push the branch (or run **Actions → Deploy**).
 5. Add `<SiteUrl>/google-callback` to the OAuth client's redirect URIs, `SiteUrl` being the `<project>-<env>-web` stack's output. Then open the site, sign in, and connect Google in Settings.
-
-**Status:** staging is live. Production has done 1–3; left: push a `production` branch from `main` (4), then 5.
 
 ## Commands
 
