@@ -17,7 +17,7 @@ Every commit also moves one counter (`PK COMMIT`, `SK COUNTER`), which makes com
 
 One item (`PK SCHEMA`, `SK VERSION`) holds how many migrations the items have been through, and the fence while they run (see `internal/platform/migrate`).
 
-Schema version (migrations in `internal/migrations`): 0
+Schema version (migrations in `internal/migrations`): 1
 
 ## Kinds
 
@@ -106,6 +106,7 @@ Checked on every change to one:
 - **one-live-document-of-each-type**: An item is on at most one live invoice and one live receipt, once, and its Link says which
 - **documents-cover-something**: A live document is for at least one session or package: none is left on its own
 - **paid-in-full**: What a receipt says was received for an item is what its invoice charges, and something is charged
+- **receipt-lines-are-paid**: Every line of a receipt says how and when it was paid; no line of an invoice does
 - **documents-are-a-clients**: Every document is for one of the clients, who isn't deleted while it is
 - **lifecycle**: A draft has no number; an issued or cancelled one has its number, revision and link; a cancelled one isn't being edited
 - **every-issue-is-kept**: Every revision issued is kept as it was, so its PDF can be rebuilt, and its link opens it

@@ -180,3 +180,52 @@ func TestReceiptKeepsALineForWhatWasPaid(t *testing.T) {
 		t.Errorf("remedy = %+v, want discarding the draft", r)
 	}
 }
+
+// Receipts of payments made on different days go on one receipt, each
+// session keeping how and when it was paid, its lines in date order
+// whatever order they were ticked in.
+func TestCombineReceiptsOfDifferentPayments(t *testing.T) {
+	a, _, ss := setup(t)
+	pays := []struct{ method, paidOn string }{{"cash", "2026-10-11"}, {"tng", "2026-10-12"}, {"bank_transfer", "2026-10-13"}}
+	for i, s := range ss {
+		in := map[string]any{"items": []map[string]any{{"kind": "session", "id": s.ID}}, "payment": map[string]any{"method": pays[i].method, "paidOn": pays[i].paidOn}}
+		if err := a.Must("payments.set", in, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Latest first, as the documents list ticks them.
+	var ids []string
+	for i := len(ss) - 1; i >= 0; i-- {
+		ids = append(ids, session(t, a, ss[i].ID).Paid.ReceiptID)
+	}
+	var d documents.View
+	if err := a.Must("documents.combine", map[string]any{"ids": ids}, &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.ID != ids[0] || len(d.Draft.Lines) != 3 || d.TotalCents != 27000 {
+		t.Fatalf("combined: %+v", d.Draft)
+	}
+	for i, s := range ss {
+		if line := d.Draft.Lines[i]; line.Source == nil || line.Source.ID != s.ID {
+			t.Errorf("line %d covers %+v, want session %s: lines in date order", i, line.Source, s.ID)
+		}
+		paid := session(t, a, s.ID).Paid
+		if paid == nil || paid.ReceiptID != d.ID || string(paid.Method) != pays[i].method || paid.PaidOn != pays[i].paidOn {
+			t.Errorf("session %d paid %+v, want %+v on %s", i, paid, pays[i], d.ID)
+		}
+	}
+	// A line the user adds takes the latest payment, and the editor can't
+	// change any.
+	content := *d.Draft
+	content.Lines = append(content.Lines, documents.Line{Description: "Tape", AmountCents: 1500})
+	content.Lines[0].Payment = &documents.Payment{Method: "tng", PaidOn: "2026-10-01"}
+	if err := a.Must("documents.saveDraft", map[string]any{"id": d.ID, "content": content}, &d); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Draft.Lines[0].Payment; got == nil || got.PaidOn != "2026-10-11" {
+		t.Errorf("first line paid %+v, want as recorded", got)
+	}
+	if got := d.Draft.Lines[3].Payment; got == nil || got.PaidOn != "2026-10-13" {
+		t.Errorf("added line paid %+v, want the latest payment", got)
+	}
+}

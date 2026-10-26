@@ -114,6 +114,28 @@ var Invariants = []txn.Invariant{
 		},
 	},
 	{
+		ID: "receipt-lines-are-paid", Why: "Every line of a receipt says how and when it was paid; no line of an invoice does",
+		On: Documents.Name,
+		Broken: func(tx *txn.Tx, id string) ([]string, error) {
+			d, ok, err := Documents.Find(tx, id)
+			if err != nil || !ok {
+				return nil, err
+			}
+			var out []string
+			for _, c := range []*Content{d.Content, d.Draft} {
+				if c == nil {
+					continue
+				}
+				for _, line := range c.Lines {
+					if (line.Payment != nil) != (d.Type == TypeReceipt) {
+						out = append(out, fmt.Sprintf("%s %s: line %q says paid %v", d.Type, id, line.Description, line.Payment))
+					}
+				}
+			}
+			return out, nil
+		},
+	},
+	{
 		ID: "documents-are-a-clients", Why: "Every document is for one of the clients, who isn't deleted while it is",
 		On: Documents.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {

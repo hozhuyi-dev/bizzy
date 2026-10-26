@@ -1,0 +1,59 @@
+[
+  {
+    "pk": "DOC",
+    "sk": "r1",
+    "data": {
+      "id": "r1", "type": "receipt", "status": "draft", "clientId": "c1", "createdAt": "2026-10-05T03:00:00Z",
+      "draft": {
+        "date": "", "issuer": {"name": ""}, "recipient": {"name": ""},
+        "lines": [
+          {"id": "l1", "description": "Physiotherapy", "date": "2026-10-05", "amountCents": 9000, "source": {"kind": "session", "id": "s1"}},
+          {"id": "l2", "description": "Tape", "amountCents": 1500}
+        ],
+        "payment": {"method": "cash", "paidOn": "2026-10-05"}, "paidBy": "Cash", "totalCents": 10500
+      }
+    }
+  },
+  {
+    "pk": "DOC",
+    "sk": "r2",
+    "data": {
+      "id": "r2", "type": "receipt", "status": "issued", "clientId": "c1", "number": "RCP260001", "revision": 0,
+      "createdAt": "2026-10-08T03:00:00Z", "issuedAt": "2026-10-09T03:00:00Z", "shareToken": "t2",
+      "content": {
+        "date": "2026-10-09", "issuer": {"name": "Physio Co"}, "recipient": {"name": "Jane Smith"},
+        "lines": [{"id": "l3", "description": "Package", "date": "2026-10-08", "amountCents": 85000, "source": {"kind": "package", "id": "p1"}}],
+        "payment": {"method": "tng", "paidOn": "2026-10-08"}, "paidBy": "TnG", "totalCents": 85000
+      },
+      "draft": {
+        "date": "2026-10-09", "issuer": {"name": "Physio Co"}, "recipient": {"name": "Jane Smith"},
+        "lines": [{"id": "l3", "description": "Package of 10", "date": "2026-10-08", "amountCents": 85000, "source": {"kind": "package", "id": "p1"}}],
+        "payment": {"method": "tng", "paidOn": "2026-10-08"}, "paidBy": "TnG", "totalCents": 85000
+      }
+    }
+  },
+  {
+    "pk": "DOCREV",
+    "sk": "r2#00",
+    "data": {
+      "documentId": "r2", "revision": 0, "number": "RCP260001", "issuedAt": "2026-10-09T03:00:00Z", "pdfSha256": "abc",
+      "content": {
+        "date": "2026-10-09", "issuer": {"name": "Physio Co"}, "recipient": {"name": "Jane Smith"},
+        "lines": [{"id": "l3", "description": "Package", "date": "2026-10-08", "amountCents": 85000, "source": {"kind": "package", "id": "p1"}}],
+        "payment": {"method": "tng", "paidOn": "2026-10-08"}, "paidBy": "TnG", "totalCents": 85000
+      }
+    }
+  },
+  {
+    "pk": "DOC",
+    "sk": "i1",
+    "data": {
+      "id": "i1", "type": "invoice", "status": "draft", "clientId": "c1", "createdAt": "2026-10-05T03:00:00Z",
+      "draft": {
+        "date": "", "issuer": {"name": ""}, "recipient": {"name": ""},
+        "lines": [{"id": "l4", "description": "Physiotherapy", "date": "2026-10-05", "amountCents": 9000, "source": {"kind": "session", "id": "s1"}}],
+        "totalCents": 9000
+      }
+    }
+  }
+]

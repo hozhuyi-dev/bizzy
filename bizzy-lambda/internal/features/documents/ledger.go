@@ -104,7 +104,7 @@ func Received(tx *txn.Tx, src Source) (*Paid, error) {
 		return nil, err
 	}
 	p := &Paid{AmountCents: line.AmountCents, ReceiptID: d.ID, ReceiptNumber: d.Number, Issued: d.Issued()}
-	if pay := d.Counting().Payment; pay != nil {
+	if pay := line.Payment; pay != nil {
 		p.Method, p.PaidOn = pay.Method, pay.PaidOn
 	}
 	return p, nil
@@ -161,6 +161,7 @@ func SetCharge(tx *txn.Tx, c Charge) (*Document, error) {
 	d.Draft.Lines = append(d.Draft.Lines, Line{
 		ID: tx.NewID(), Description: c.Description, Date: c.Date, AmountCents: c.Cents, Source: &src, Typed: c.Typed,
 	})
+	inDateOrder(d.Draft.Lines)
 	d.Draft.TotalCents = d.Draft.Total()
 	return d, relink(tx, d)
 }
@@ -216,7 +217,6 @@ func MoveToClient(tx *txn.Tx, src Source, clientID string, into map[Type]string)
 		if d.Issued() {
 			return refuseIssued(d)
 		}
-		payment := d.Draft.Payment
 		line, err := takeLine(tx, d, src)
 		if err != nil {
 			return err
@@ -225,10 +225,8 @@ func MoveToClient(tx *txn.Tx, src Source, clientID string, into map[Type]string)
 		if err != nil {
 			return err
 		}
-		if len(to.Draft.Lines) == 0 {
-			setPayment(to.Draft, payment)
-		}
 		to.Draft.Lines = append(to.Draft.Lines, line)
+		inDateOrder(to.Draft.Lines)
 		to.Draft.TotalCents = to.Draft.Total()
 		into[t] = to.ID
 		if err := relink(tx, to); err != nil {
@@ -251,6 +249,7 @@ func Redate(tx *txn.Tx, src Source, day string) error {
 		case d == nil:
 		case !d.Issued():
 			line.Date = day
+			inDateOrder(d.Draft.Lines)
 		case line.Date == day && d.Draft == nil:
 		default:
 			if d.Draft == nil {
@@ -310,13 +309,13 @@ func Pay(tx *txn.Tx, items []Paying, p Payment) error {
 			if d, err = newDraft(tx, TypeReceipt, it.ClientID); err != nil {
 				return err
 			}
-			setPayment(d.Draft, &p)
 			drafts[it.ClientID] = d
 		}
-		src := it.Source
+		src, paid := it.Source, p
 		d.Draft.Lines = append(d.Draft.Lines, Line{
-			ID: tx.NewID(), Description: charged.Description, Date: charged.Date, AmountCents: charged.AmountCents, Source: &src,
+			ID: tx.NewID(), Description: charged.Description, Date: charged.Date, AmountCents: charged.AmountCents, Source: &src, Payment: &paid,
 		})
+		inDateOrder(d.Draft.Lines)
 		d.Draft.TotalCents = d.Draft.Total()
 		if err := relink(tx, d); err != nil {
 			return err
@@ -456,13 +455,6 @@ func takeLine(tx *txn.Tx, d *Document, src Source) (Line, error) {
 		}
 	}
 	return taken, relink(tx, d)
-}
-
-func setPayment(c *Content, p *Payment) {
-	c.Payment, c.PaidBy = p, ""
-	if p != nil {
-		c.PaidBy = MethodLabels[p.Method]
-	}
 }
 
 // relink points the Links of the items a document counts for at it, drops

@@ -132,12 +132,18 @@ func All(tx *txn.Tx) ([]Client, error) {
 	}
 	for _, d := range receipts {
 		c := d.Counting()
-		if c == nil || c.Payment == nil {
+		if c == nil {
 			continue
 		}
-		day, _ := time.Parse(time.DateOnly, c.Payment.PaidOn)
-		total := c.Total()
-		add(d.ClientID, day.Format("2006-01"), func(m *Month) { m.ReceivedCents += total })
+		// Each in the month it was paid: a receipt may record several payments.
+		for _, line := range c.Lines {
+			if line.Payment == nil {
+				continue
+			}
+			day, _ := time.Parse(time.DateOnly, line.Payment.PaidOn)
+			cents := line.AmountCents
+			add(d.ClientID, day.Format("2006-01"), func(m *Month) { m.ReceivedCents += cents })
+		}
 	}
 
 	if err := addOwed(tx, invoices, charged, of); err != nil {

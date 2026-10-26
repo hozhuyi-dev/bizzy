@@ -33,9 +33,16 @@ type Summary struct {
 	ShareToken string `json:"shareToken,omitempty"`
 	// Covers is what its lines are for, so a list tells documents apart.
 	Covers Covers `json:"covers"`
+	// CombineKey is the same for documents whose drafts can be put on one
+	// (see Combine), each as its Can.MoveLines says.
+	CombineKey string `json:"combineKey"`
 	// Can is what a list offers to do with it.
 	Can SummaryCan `json:"can"`
 }
+
+// combineKey is what documents share when their lines can move between
+// their drafts: their type and client.
+func combineKey(d *Document) string { return string(d.Type) + ":" + d.ClientID }
 
 // Covers is what a document's lines are for: how many sessions, packages
 // and other lines, and the span of their service dates (empty when none
@@ -97,6 +104,7 @@ func SummaryOf(d *Document, owing Owing) Summary {
 	s := Summary{
 		ID: d.ID, Type: d.Type, Status: d.Status, Number: d.Number, Revision: d.Revision, ClientID: d.ClientID,
 		FiledAt: d.filedAt(), Revising: d.Status == StatusIssued && d.Draft != nil, ShareToken: d.ShareToken,
+		CombineKey: combineKey(d),
 	}
 	// The document's own steps, which never fail to say.
 	s.Can.Send, _ = apperr.VerdictOf(CanSend(d))

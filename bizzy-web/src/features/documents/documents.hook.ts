@@ -102,9 +102,14 @@ function allOf(chosen: ReadonlyArray<DocumentSummary>, verdict: (doc: DocumentSu
   return chosen.map(verdict).find((v) => !v.ok) ?? { ok: true };
 }
 
-/** The type ticked drafts can be put together as: two or more, each whose lines can move, of one type. */
+/** The type ticked drafts can be put together as: two or more, each whose lines can move, all of one `combineKey`. */
 function combinable(docs: ReadonlyArray<DocumentSummary>): DocumentType | undefined {
   const [first] = docs;
   if (!first || docs.length < 2) return undefined;
-  return docs.every((doc) => doc.can.moveLines.ok && doc.type === first.type) ? first.type : undefined;
+  return docs.every((doc) => doc.can.moveLines.ok && doc.combineKey === first.combineKey) ? first.type : undefined;
+}
+
+/** Of the documents, the drafts of a type that can be put together: what Tick draft invoices ticks. */
+export function draftsOf(docs: ReadonlyArray<DocumentSummary>, type: DocumentType): Array<DocumentSummary> {
+  return docs.filter((doc) => doc.type === type && doc.can.moveLines.ok);
 }

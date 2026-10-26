@@ -24,7 +24,9 @@ import "bizzy-lambda/internal/platform/migrate"
 
 // All are the migrations; the Nth takes the table from version N-1 to N.
 // Version 0 is the shape before any.
-var All = []migrate.Migration{}
+var All = []migrate.Migration{
+	paymentPerLine,
+}
 
 // Version is the schema this code reads and writes: how many migrations
 // there are.
