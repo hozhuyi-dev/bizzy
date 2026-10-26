@@ -14,7 +14,7 @@ const content: DocumentContent = {
       source: { kind: "session", id: "e1" },
     },
   ],
-  paidBy: "Cash",
+  notes: "Thanks",
   totalCents: 9550,
 };
 
@@ -26,11 +26,11 @@ describe("document form", () => {
   test("totals typed amounts and drops empty fields", () => {
     const values = toFormValues(content);
     values.lines.push({ id: "", description: "Taping", date: "", amount: "20", source: undefined });
-    values.paidBy = " ";
+    values.notes = " ";
 
     const out = toContent(values);
     expect(out.totalCents).toBe(11550);
-    expect(out.paidBy).toBeUndefined();
+    expect(out.notes).toBeUndefined();
     expect(out.lines[1]).toEqual({ id: "", description: "Taping", amountCents: 2000 });
   });
 });

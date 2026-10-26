@@ -128,15 +128,11 @@ type Content struct {
 	Date string `json:"date"`
 	// Issuer and Recipient are filled from Settings and the client when a
 	// draft is read or issued, unless edited (see Fill).
-	Issuer    Issuer    `json:"issuer"`
-	Recipient Recipient `json:"recipient"`
-	Lines     []Line    `json:"lines"`
-	// Payment is how and when what a receipt covers was paid; PaidBy is
-	// its method as named ("Cash"), no longer printed.
-	Payment    *Payment `json:"payment,omitempty"`
-	PaidBy     string   `json:"paidBy,omitempty"`
-	Notes      string   `json:"notes,omitempty"`
-	TotalCents int64    `json:"totalCents"`
+	Issuer     Issuer    `json:"issuer"`
+	Recipient  Recipient `json:"recipient"`
+	Lines      []Line    `json:"lines"`
+	Notes      string    `json:"notes,omitempty"`
+	TotalCents int64     `json:"totalCents"`
 }
 
 // Issuer is the business as printed, copied from Settings.
@@ -162,7 +158,7 @@ type Recipient struct {
 	Address string `json:"address,omitempty"`
 }
 
-// Payment is how a receipt's items were paid, and the day.
+// Payment is how an item on a receipt was paid, and the day.
 type Payment struct {
 	Method Method `json:"method"`
 	PaidOn string `json:"paidOn"`
@@ -180,6 +176,10 @@ type Line struct {
 	// form or the draft), not taken from the client's usual fee, which a
 	// new usual fee leaves alone.
 	Typed bool `json:"typed,omitempty"`
+	// Payment is how and when what a receipt's line received was paid, so
+	// one receipt can record payments made on different days; nil on an
+	// invoice. A line the user adds to a receipt takes its latest payment.
+	Payment *Payment `json:"payment,omitempty"`
 }
 
 // Counting is the content that counts: the draft of one never issued, the

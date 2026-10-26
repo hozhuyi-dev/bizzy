@@ -44,9 +44,11 @@ export interface DocumentLine {
   source?: DocumentSource;
   /** The amount was entered for the item, not taken from the client's usual fee. */
   typed?: boolean;
+  /** On a receipt: how and when what it received was paid. The payment's to change, not the editor's. */
+  payment?: DocumentPayment;
 }
 
-/** How and when what a receipt covers was paid. */
+/** How and when what a receipt's line received was paid. */
 export interface DocumentPayment {
   method: PaymentMethod;
   paidOn: string;
@@ -59,10 +61,6 @@ export interface DocumentContent {
   issuer: Issuer;
   recipient: Recipient;
   lines: Array<DocumentLine>;
-  /** On a receipt. */
-  payment?: DocumentPayment;
-  /** The payment's method as named ("Cash"); not printed. */
-  paidBy?: string;
   notes?: string;
   totalCents: number;
 }
@@ -88,6 +86,8 @@ export interface DocumentSummary {
   shareToken?: string;
   /** What its lines are for, so a list tells documents apart. */
   covers: DocumentCovers;
+  /** The same for documents whose drafts can be put on one, each as its `can.moveLines` says. */
+  combineKey: string;
   /** What a list's actions on it would say now. */
   can: DocumentSummaryCan;
 }

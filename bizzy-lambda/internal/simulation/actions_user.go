@@ -334,7 +334,18 @@ var moneyActions = []Action{
 	{Name: "documents.combine", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		into := pick(t, w, "draft", drafts)
 		other := pick(t, w, "document", documents.Documents.All)
-		w.callRefusedAsViewed(t, "documents.combine", map[string]any{"ids": []string{into.ID, other.ID}}, documentCan(t, w, other).MoveLines)
+		// As the web puts ticked documents together: each can move its
+		// lines, and they share a combine key.
+		a, b := documentView(t, w, into), documentView(t, w, other)
+		viewed := a.Can.MoveLines
+		switch {
+		case !viewed.OK:
+		case !b.Can.MoveLines.OK:
+			viewed = b.Can.MoveLines
+		case a.CombineKey != b.CombineKey:
+			viewed = apperr.Verdict{Why: "not of one type and client"}
+		}
+		w.callAsViewed(t, "documents.combine", map[string]any{"ids": []string{into.ID, other.ID}}, viewed)
 	}},
 	{Name: "documents.place", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		into := ""
@@ -566,6 +577,10 @@ func documentCan(t *rapid.T, w *World, d *documents.Document) documents.Can {
 	return viewOf[struct {
 		Can documents.Can `json:"can"`
 	}](t, w, "documents.get", d.ID).Can
+}
+
+func documentView(t *rapid.T, w *World, d *documents.Document) documents.View {
+	return viewOf[documents.View](t, w, "documents.get", d.ID)
 }
 
 func sessionView(t *rapid.T, w *World, s *sessions.Session) sessions.View {

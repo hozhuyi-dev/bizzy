@@ -25,7 +25,7 @@ func TestLegal(t *testing.T) {
 		{"an amount", func(c *Content) { c.Lines[0].AmountCents, c.TotalCents = 5000, 5000 }, "its total"},
 		{"what a line covers", func(c *Content) { c.Lines[0].Source = &Source{Kind: SourceSession, ID: "s2"} }, `what line "Physiotherapy" covers`},
 		{"a line", func(c *Content) { c.Lines = append(c.Lines, Line{ID: "l2"}) }, "its lines"},
-		{"the payment", func(c *Content) { c.Payment = &Payment{Method: "cash", PaidOn: "2026-10-12"} }, "how and when it was paid"},
+		{"a line's payment", func(c *Content) { c.Lines[0].Payment = &Payment{Method: "cash", PaidOn: "2026-10-12"} }, `how and when "Physiotherapy" was paid`},
 	}
 	for _, c := range cases {
 		revision := issued

@@ -21,9 +21,6 @@ func Fill(c Content, cfg settings.Settings, client clients.Client) Content {
 	if c.Recipient == (Recipient{}) {
 		c.Recipient = recipientFrom(client)
 	}
-	if c.Payment != nil {
-		c.PaidBy = MethodLabels[c.Payment.Method]
-	}
 	return c
 }
 
@@ -61,8 +58,6 @@ func Normalize(in Content) (Content, error) {
 		Date:      strings.TrimSpace(in.Date),
 		Issuer:    trimIssuer(in.Issuer),
 		Recipient: trimRecipient(in.Recipient),
-		Payment:   in.Payment,
-		PaidBy:    strings.TrimSpace(in.PaidBy),
 		Notes:     strings.TrimSpace(in.Notes),
 	}
 	if out.Date != "" {
@@ -116,8 +111,6 @@ func Legal(issued, revision Content) string {
 		return "the business that issued it"
 	case revision.TotalCents != issued.TotalCents:
 		return "its total"
-	case !samePayment(issued.Payment, revision.Payment):
-		return "how and when it was paid"
 	case len(revision.Lines) != len(issued.Lines):
 		return "its lines"
 	}
@@ -130,6 +123,8 @@ func Legal(issued, revision Content) string {
 			return fmt.Sprintf("what line %q covers", line.Description)
 		case issued.Lines[i].AmountCents != line.AmountCents:
 			return fmt.Sprintf("the amount of %q", line.Description)
+		case !samePayment(issued.Lines[i].Payment, line.Payment):
+			return fmt.Sprintf("how and when %q was paid", line.Description)
 		}
 	}
 	return ""
@@ -147,6 +142,56 @@ func sameSource(a, b *Source) bool {
 // does, as it is for its sessions or packages.
 func covers(lines []Line) bool {
 	return slices.ContainsFunc(lines, func(l Line) bool { return l.Source != nil })
+}
+
+// paidAs sets how each line of a document's next content was paid from
+// what its lines said before (was): on a receipt, a line keeps the payment
+// of the line it was (by item, else by id), and a line the user adds takes
+// the latest. Nothing on an invoice is paid. What a receipt received, and
+// how, is the payment's to change, never the editor's.
+func paidAs(t Type, was, next []Line) {
+	var latest *Payment
+	for _, l := range was {
+		if l.Payment != nil && (latest == nil || l.Payment.PaidOn > latest.PaidOn) {
+			latest = l.Payment
+		}
+	}
+	for i := range next {
+		line := &next[i]
+		line.Payment = nil
+		if t != TypeReceipt {
+			continue
+		}
+		j := slices.IndexFunc(was, func(l Line) bool {
+			if line.Source != nil {
+				return sameSource(l.Source, line.Source)
+			}
+			return l.Source == nil && l.ID == line.ID
+		})
+		line.Payment = latest
+		if j >= 0 {
+			line.Payment = was[j].Payment
+		}
+	}
+}
+
+// inDateOrder puts a draft's lines in order of their service dates, those
+// without one last, keeping the order of lines on one day (a session
+// before the package bought in it). Lines on a draft never issued are
+// kept so: wherever they come from (put together, moved, added), they
+// land in their place. An issued document's lines stay as printed.
+func inDateOrder(lines []Line) {
+	slices.SortStableFunc(lines, func(a, b Line) int {
+		switch {
+		case a.Date == b.Date:
+			return 0
+		case a.Date == "":
+			return 1
+		case b.Date == "":
+			return -1
+		}
+		return strings.Compare(a.Date, b.Date)
+	})
 }
 
 // SourceLines indexes the lines that cover an item by what they cover.
