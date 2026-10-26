@@ -27,8 +27,9 @@ func stayIssued(d *Document, what string) error {
 // SaveDraft replaces what a draft says. Before the first issue anything
 // may change, and an amount the user changes on an invoice is the fee they
 // typed; a revision may only correct what has no legal weight (see
-// Legal). Lines keep what they cover, and an invoice line for an item
-// stays: the item is charged until it is deleted or moved.
+// Legal). Lines keep what they cover and how it was paid (see paidAs), and
+// an invoice line for an item stays: the item is charged until it is
+// deleted or moved. A draft never issued keeps its lines in date order.
 func SaveDraft(tx *txn.Tx, id string, in Content) (*Document, error) {
 	d, err := Documents.Get(tx, id)
 	if err != nil {
@@ -61,8 +62,10 @@ func SaveDraft(tx *txn.Tx, id string, in Content) (*Document, error) {
 			return nil, apperr.Refused(fmt.Sprintf("%q stays on an invoice: move its line to another draft instead.", line.Description))
 		}
 	}
-	// What a receipt received, and how, is the payment's to change.
-	next.Payment, next.PaidBy = d.Draft.Payment, d.Draft.PaidBy
+	paidAs(d.Type, d.Draft.Lines, next.Lines)
+	if !d.Issued() {
+		inDateOrder(next.Lines)
+	}
 	if !covers(next.Lines) {
 		return nil, apperr.Refused(fmt.Sprintf("A %s is for a session or package: keep a line for one, or discard the draft.", strings.ToLower(Types[d.Type].Title)),
 			apperr.Remedy{Action: "documents.discardDraft", Target: d.ID, Label: "Discard the draft"})
@@ -243,11 +246,11 @@ func Cancel(tx *txn.Tx, id, reason string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	setPayment(draft.Draft, d.Content.Payment)
 	for _, line := range d.Content.Lines {
 		line.ID = tx.NewID()
 		draft.Draft.Lines = append(draft.Draft.Lines, line)
 	}
+	inDateOrder(draft.Draft.Lines)
 	draft.Draft.TotalCents = draft.Draft.Total()
 	now := tx.Now().UTC()
 	d.Status, d.Draft, d.CancelledAt, d.CancelReason = StatusCancelled, nil, &now, reason
@@ -293,9 +296,10 @@ func CanMoveLines(d *Document) error {
 
 // MoveLines moves lines from one draft to another of the same client and
 // type, neither issued, or to a new one: to put a month of sessions on one
-// invoice, or a package on its own. Receipts move only between drafts of
-// the same payment. A draft left covering nothing goes, its other lines
-// with the ones moved; a new one must cover something.
+// invoice, or a package on its own. A receipt's lines keep their payments,
+// so one receipt can record several. A draft left covering nothing goes,
+// its other lines with the ones moved; a new one must cover something.
+// The draft they go to keeps its lines in date order (see inDateOrder).
 func MoveLines(tx *txn.Tx, fromID, toID string, lineIDs []string) error {
 	_, err := moveLines(tx, fromID, toID, lineIDs)
 	return err
@@ -318,7 +322,6 @@ func moveLines(tx *txn.Tx, fromID, toID string, lineIDs []string) (*Document, er
 		if to, err = newDraft(tx, from.Type, from.ClientID); err != nil {
 			return nil, err
 		}
-		setPayment(to.Draft, from.Draft.Payment)
 	} else if to, err = Documents.Get(tx, toID); err != nil {
 		return nil, err
 	}
@@ -327,10 +330,8 @@ func moveLines(tx *txn.Tx, fromID, toID string, lineIDs []string) (*Document, er
 		return nil, apperr.Invalid("Choose another draft.")
 	case to.Status != StatusDraft:
 		return nil, notAtStep("Lines move only between drafts not issued yet.")
-	case to.Type != from.Type || to.ClientID != from.ClientID:
+	case combineKey(to) != combineKey(from):
 		return nil, notAtStep("Lines move only between drafts of the same kind, for the same client.")
-	case !samePayment(to.Draft.Payment, from.Draft.Payment):
-		return nil, notAtStep("These receipts record different payments.")
 	}
 	for _, id := range lineIDs {
 		i := slices.IndexFunc(from.Draft.Lines, func(l Line) bool { return l.ID == id })
@@ -349,6 +350,7 @@ func moveLines(tx *txn.Tx, fromID, toID string, lineIDs []string) (*Document, er
 			return nil, err
 		}
 	}
+	inDateOrder(to.Draft.Lines)
 	from.Draft.TotalCents, to.Draft.TotalCents = from.Draft.Total(), to.Draft.Total()
 	if err := relink(tx, to); err != nil {
 		return nil, err
@@ -376,8 +378,8 @@ func Place(tx *txn.Tx, src Source, t Type, into string) (*Document, error) {
 }
 
 // Combine puts every line of the drafts ids[1:] on the draft ids[0], and
-// they go: a client's sessions on one invoice, or receipts of one payment
-// on one receipt.
+// they go: a client's sessions on one invoice, or their payments on one
+// receipt, in date order.
 func Combine(tx *txn.Tx, ids []string) (*Document, error) {
 	var unique []string
 	for _, id := range ids {

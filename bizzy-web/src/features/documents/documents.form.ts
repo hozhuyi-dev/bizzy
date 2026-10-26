@@ -1,4 +1,4 @@
-import type { DocumentContent, DocumentLine, DocumentPayment, DocumentSource, Issuer, Recipient } from "./documents.types";
+import type { DocumentContent, DocumentLine, DocumentSource, Issuer, Recipient } from "./documents.types";
 import { centsToInput, parseCents } from "~/core/utils/money.util";
 
 /** The editor works in strings; amounts are typed like "95" or "95.50". */
@@ -16,11 +16,8 @@ export interface ContentValues {
   date: string;
   issuer: Required<Issuer>;
   recipient: Required<Recipient>;
+  /** A receipt's lines say how they were paid; the API keeps that as recorded. */
   lines: Array<LineValues>;
-  /** A receipt's payment, as recorded: the payment's to change, not the editor's. */
-  payment: DocumentPayment | undefined;
-  /** The payment's method as named; the API sets it from the payment. */
-  paidBy: string;
   notes: string;
 }
 
@@ -52,8 +49,6 @@ export function toFormValues(content: DocumentContent): ContentValues {
       amount: centsToInput(line.amountCents),
       source: line.source,
     })),
-    payment: content.payment,
-    paidBy: content.paidBy ?? "",
     notes: content.notes ?? "",
   };
 }
@@ -77,8 +72,6 @@ export function toContent(values: ContentValues): DocumentContent {
     issuer: { ...compact(values.issuer), name: values.issuer.name },
     recipient: { ...compact(values.recipient), name: values.recipient.name },
     lines,
-    ...(values.payment ? { payment: values.payment } : {}),
-    ...(values.paidBy.trim() ? { paidBy: values.paidBy } : {}),
     ...(values.notes.trim() ? { notes: values.notes } : {}),
     // The API recomputes this.
     totalCents: lines.reduce((sum, line) => sum + line.amountCents, 0),
