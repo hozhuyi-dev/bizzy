@@ -2,8 +2,8 @@
 // the real calendar: it deletes everything but the Google connection and
 // the schema version, every attached file and issued PDF, and the payment
 // page, then syncs the calendar back in. It is never registered in production, where issued
-// invoices and receipts must be kept. Once production holds data, changes
-// to how items are stored are migrations (internal/migrations), not resets.
+// invoices and receipts must be kept. Changes to how items are stored are
+// migrations (internal/migrations), not resets.
 package reset
 
 import (
