@@ -44,6 +44,15 @@ func TestRender(t *testing.T) {
 		"receipt":      sample(TypeReceipt, "RCP260042", 1),
 		"draft":        func() Printed { p := sample(TypeInvoice, "", 1); p.Draft = true; return p }(),
 		"long-invoice": sample(TypeInvoice, "INV260002", 45),
+		// Billed to a company, for the family's sessions.
+		"family-invoice": func() Printed {
+			p := sample(TypeInvoice, "INV260003", 2)
+			p.Content.Recipient = Recipient{Name: "Tan Holdings Sdn Bhd", RegNo: "201901012345 (1234567-X)"}
+			src := SessionSource("s1")
+			p.Content.Lines[1].Source = &src
+			p.Content.Lines[1].For = &LineFor{ClientID: "c2", Name: "Adam Tan"}
+			return p
+		}(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := Render(p)

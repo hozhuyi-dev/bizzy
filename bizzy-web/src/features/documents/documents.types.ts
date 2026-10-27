@@ -25,10 +25,11 @@ export interface Issuer {
   accountNo?: string;
 }
 
-/** Who it is for: name and IC or passport number are printed; the contact details are kept, not printed. */
+/** Who pays: name and IC or passport number (or a billing name's registration number) are printed; the contact details are kept, not printed. */
 export interface Recipient {
   name: string;
   idNo?: string;
+  regNo?: string;
   email?: string;
   phone?: string;
   address?: string;
@@ -46,6 +47,8 @@ export interface DocumentLine {
   typed?: boolean;
   /** On a receipt: how and when what it received was paid. The payment's to change, not the editor's. */
   payment?: DocumentPayment;
+  /** Whom its item is for, when that isn't who pays; its item's, not the editor's. */
+  for?: { clientId: string; name?: string };
 }
 
 /** How and when what a receipt's line received was paid. */
@@ -86,6 +89,8 @@ export interface DocumentSummary {
   shareToken?: string;
   /** What its lines are for, so a list tells documents apart. */
   covers: DocumentCovers;
+  /** The clients its lines are for other than who pays (`clientId`): Mum's invoice for Adam's sessions. */
+  for: Array<string>;
   /** The same for documents whose drafts can be put on one, each as its `can.moveLines` says. */
   combineKey: string;
   /** What a list's actions on it would say now. */
@@ -135,6 +140,8 @@ export interface DocumentAskLine {
   number?: string;
   revision?: number;
   shareToken?: string;
+  /** Whom an item is for, when that isn't who pays. */
+  for?: string;
 }
 
 /** documents.ask's request: items (a session's sources, a package) and invoices. */
@@ -146,6 +153,8 @@ export interface AskDocumentsRequest {
 /** What each action on a document would say now, for its page; mirrors documents.Can. */
 export interface DocumentCan extends DocumentSummaryCan {
   issue: Verdict;
+  /** Billing it to another client: a draft never issued. */
+  setPayer: Verdict;
   revise: Verdict;
   cancel: Verdict;
   discardDraft: Verdict;

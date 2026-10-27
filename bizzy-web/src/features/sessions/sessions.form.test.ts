@@ -10,6 +10,16 @@ const booked: SessionDraft = {
   tentative: false,
 };
 
+describe("toSessionFields — who pays", () => {
+  it("sends a payer only when chosen: left alone, the client's usual one bills it", () => {
+    expect(toSessionFields(booked)).not.toHaveProperty("billTo");
+    expect(toSessionFields({ ...booked, billTo: "mum" })).toMatchObject({ billTo: "mum" });
+    const billed = { ...booked, billTo: "mum" };
+    expect(toSessionFields(billed, billed)).toEqual({});
+    expect(toSessionFields({ ...billed, billTo: "dad" }, billed)).toEqual({ billTo: "dad" });
+  });
+});
+
 describe("toSessionFields", () => {
   test("a new session sends the booking, and a fee or package only when entered", () => {
     expect(toSessionFields(booked)).toEqual({

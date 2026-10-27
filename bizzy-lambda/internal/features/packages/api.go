@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/documents"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/router"
@@ -24,6 +25,13 @@ type View struct {
 	PurchasedAt time.Time `json:"purchasedAt"`
 	BoughtIn    string    `json:"boughtIn,omitempty"`
 	Note        string    `json:"note,omitempty"`
+	// SharedWith are the other clients whose sessions its credits may pay
+	// for, and Uses how many hours of them each client's sessions use
+	// (its own client's too): one with any can't be unshared.
+	SharedWith []string `json:"sharedWith"`
+	Uses       []Use    `json:"uses"`
+	// Payer is who pays for it: billed by its invoice, or who would be.
+	Payer string `json:"payer"`
 	// CreditsUsed and CreditsLeft are in hours, by the half hour.
 	CreditsUsed float64         `json:"creditsUsed"`
 	CreditsLeft float64         `json:"creditsLeft"`
@@ -36,6 +44,12 @@ type View struct {
 	// can't change (see Locks).
 	Can    Can          `json:"can"`
 	Locked apperr.Locks `json:"locked"`
+}
+
+// Use is how many hours of a package's credits a client's sessions use.
+type Use struct {
+	ClientID string  `json:"clientId"`
+	Hours    float64 `json:"hours"`
 }
 
 // Can is what each action on a package would say now.
@@ -59,6 +73,7 @@ func Locks(tx *txn.Tx, p *Package, used Usage) (apperr.Locks, error) {
 		"purchasedAt": CanMoveBought(p),
 		"hours":       CanResize(tx, p),
 		"priceCents":  CanReprice(tx, p),
+		"billTo":      CanBillTo(tx, p),
 		"payment":     CanChangePayment(tx, p),
 	})
 }
@@ -67,13 +82,20 @@ func Locks(tx *txn.Tx, p *Package, used Usage) (apperr.Locks, error) {
 // and what is left to do on it.
 func ViewOf(tx *txn.Tx, p *Package, used Usage) (View, error) {
 	src := documents.PackageSource(p.ID)
-	n, err := used(tx, p.ID)
+	u, err := used(tx, p.ID)
 	if err != nil {
 		return View{}, err
 	}
+	n := u.Minutes()
 	v := View{
 		ID: p.ID, ClientID: p.ClientID, Hours: p.Hours, PurchasedAt: p.PurchasedAt, BoughtIn: p.BoughtIn, Note: p.Note,
+		SharedWith: append([]string{}, p.SharedWith...), Uses: []Use{},
 		CreditsUsed: float64(n) / 60, CreditsLeft: float64(max(p.Hours*60-n, 0)) / 60, Todo: []Reason{},
+	}
+	for _, id := range p.Clients() {
+		if u[id] > 0 {
+			v.Uses = append(v.Uses, Use{ClientID: id, Hours: float64(u[id]) / 60})
+		}
 	}
 	inv, line, err := documents.Invoice(tx, src)
 	if err != nil {
@@ -81,6 +103,9 @@ func ViewOf(tx *txn.Tx, p *Package, used Usage) (View, error) {
 	}
 	if line != nil {
 		v.PriceCents, v.Invoice = line.AmountCents, &DocumentRef{ID: inv.ID, Number: inv.Number}
+		v.Payer = inv.ClientID
+	} else if v.Payer, err = clients.PayerOf(tx, p.ClientID); err != nil {
+		return View{}, err
 	}
 	if v.Paid, err = documents.Received(tx, src); err != nil {
 		return View{}, err
@@ -90,7 +115,7 @@ func ViewOf(tx *txn.Tx, p *Package, used Usage) (View, error) {
 	}
 	v.Todo = p.Todo(v.OwedCents, tx.Now())
 	// The credits used, counted above, rather than counted again.
-	counted := func(*txn.Tx, string) (int, error) { return n, nil }
+	counted := func(*txn.Tx, string) (Used, error) { return u, nil }
 	for _, c := range []struct {
 		verdict *apperr.Verdict
 		check   error

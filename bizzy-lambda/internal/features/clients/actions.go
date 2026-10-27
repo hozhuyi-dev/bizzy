@@ -2,6 +2,7 @@ package clients
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"bizzy-lambda/internal/calendar"
@@ -18,6 +19,12 @@ type Fields struct {
 	HomeVisits *bool `json:"homeVisits,omitempty"`
 	// IDNo is their IC or passport number (see IDNo); "" clears it.
 	IDNo *string `json:"idNo,omitempty"`
+	// SharesWith, BillTo, BillingName and BillingIDNo are their defaults
+	// for new packages and documents (see Client); "" clears one.
+	SharesWith  *[]string `json:"sharesWith,omitempty"`
+	BillTo      *string   `json:"billTo,omitempty"`
+	BillingName *string   `json:"billingName,omitempty"`
+	BillingIDNo *string   `json:"billingIdNo,omitempty"`
 	// Contact links the client to a Google contact, read from Google by
 	// the route (see Routes); Unlink drops the link, to undo a wrong one.
 	Contact *Contact `json:"-"`
@@ -71,6 +78,19 @@ func Delete(tx *txn.Tx, id string, owners ...Owner) error {
 	}
 	if err := CanDelete(tx, c, owners...); err != nil {
 		return err
+	}
+	// Other clients' defaults name them no more.
+	all, err := Clients.All(tx)
+	if err != nil {
+		return err
+	}
+	for _, other := range all {
+		if other.BillTo == id {
+			other.BillTo = ""
+		}
+		if slices.Contains(other.SharesWith, id) {
+			other.SharesWith = slices.DeleteFunc(other.SharesWith, func(s string) bool { return s == id })
+		}
 	}
 	return Clients.Delete(tx, id)
 }
@@ -183,6 +203,33 @@ func apply(tx *txn.Tx, c *Client, f Fields) error {
 			return err
 		}
 		c.IDNo = id
+	}
+	if f.SharesWith != nil {
+		ids, err := others(tx, c.ID, *f.SharesWith, "family")
+		if err != nil {
+			return err
+		}
+		c.SharesWith = ids
+	}
+	if f.BillTo != nil {
+		ids, err := others(tx, c.ID, []string{*f.BillTo}, "payer")
+		if err != nil {
+			return err
+		}
+		c.BillTo = ""
+		if len(ids) > 0 {
+			c.BillTo = ids[0]
+		}
+	}
+	if f.BillingName != nil {
+		c.BillingName = strings.Join(strings.Fields(*f.BillingName), " ")
+	}
+	if f.BillingIDNo != nil {
+		id, err := BillingIDNo(*f.BillingIDNo)
+		if err != nil {
+			return err
+		}
+		c.BillingIDNo = id
 	}
 	switch {
 	case f.Contact != nil:

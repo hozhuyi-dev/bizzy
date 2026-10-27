@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
-	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/blobstore"
 	"bizzy-lambda/internal/platform/listing"
@@ -33,6 +32,9 @@ type Summary struct {
 	ShareToken string `json:"shareToken,omitempty"`
 	// Covers is what its lines are for, so a list tells documents apart.
 	Covers Covers `json:"covers"`
+	// For are the clients its lines are for other than who pays, each
+	// once, in line order: Mum's invoice for Adam's sessions.
+	For []string `json:"for"`
 	// CombineKey is the same for documents whose drafts can be put on one
 	// (see Combine), each as its Can.MoveLines says.
 	CombineKey string `json:"combineKey"`
@@ -93,6 +95,7 @@ type SummaryCan struct {
 type Can struct {
 	SummaryCan
 	Issue        apperr.Verdict `json:"issue"`
+	SetPayer     apperr.Verdict `json:"setPayer"`
 	Revise       apperr.Verdict `json:"revise"`
 	Cancel       apperr.Verdict `json:"cancel"`
 	DiscardDraft apperr.Verdict `json:"discardDraft"`
@@ -114,9 +117,15 @@ func SummaryOf(d *Document, owing Owing) Summary {
 	if c == nil {
 		c = d.Draft
 	}
+	s.For = []string{}
 	if c != nil {
 		s.Date, s.TotalCents, s.RecipientName = c.Date, c.TotalCents, c.Recipient.Name
 		s.Covers = coversOf(c.Lines)
+		for _, l := range c.Lines {
+			if l.For != nil && !slices.Contains(s.For, l.For.ClientID) {
+				s.For = append(s.For, l.For.ClientID)
+			}
+		}
 	}
 	return s
 }
@@ -171,6 +180,7 @@ func viewOf(tx *txn.Tx, d *Document, checks []Check) (*View, error) {
 		check   error
 	}{
 		{&v.Can.Issue, CanIssue(tx, d, checks...)},
+		{&v.Can.SetPayer, CanSetPayer(tx, d)},
 		{&v.Can.Revise, CanRevise(d)},
 		{&v.Can.Cancel, CanCancel(d)},
 		{&v.Can.DiscardDraft, CanDiscardDraft(d)},
@@ -181,16 +191,11 @@ func viewOf(tx *txn.Tx, d *Document, checks []Check) (*View, error) {
 		}
 	}
 	if d.Draft != nil && !d.Issued() {
-		cfg, err := settings.Get(tx)
+		content, err := filled(tx, d)
 		if err != nil {
 			return nil, err
 		}
-		client, err := clients.Clients.Get(tx, d.ClientID)
-		if err != nil {
-			return nil, err
-		}
-		filled := Fill(*d.Draft, cfg, *client)
-		v.Draft = &filled
+		v.Draft = &content
 	}
 	locked, err := Locks(d)
 	if err != nil {
@@ -310,6 +315,11 @@ type recordsRequest struct {
 	Items []Source `json:"items"`
 }
 
+type setPayerRequest struct {
+	ID       string `json:"id"`
+	ClientID string `json:"clientId"`
+}
+
 type shareRequest struct {
 	IDs []string `json:"ids"`
 }
@@ -368,14 +378,14 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 		})
 	}))
 	// documents.listByClient lists a client's documents of every type,
-	// latest first, as documents.search does (see filedAt).
+	// latest first, as documents.search does (see filedAt): those they
+	// pay, and those someone else pays for what is theirs.
 	r.Query("documents.listByClient", router.Typed(func(ctx context.Context, in clientRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) ([]Summary, error) {
-			all, err := Documents.OfClient(tx, in.ClientID)
+			all, err := OfClient(tx, in.ClientID)
 			if err != nil {
 				return nil, err
 			}
-			slices.Reverse(all)
 			return summaries(tx, all)
 		})
 	}))
@@ -447,6 +457,9 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store, checks ...
 	}))
 	r.Mutation("documents.moveLines", router.Typed(func(ctx context.Context, in moveLinesRequest) (any, error) {
 		return txn.Run(ctx, run, func(tx *txn.Tx) (any, error) { return nil, MoveLines(tx, in.From, in.To, in.LineIDs) })
+	}))
+	r.Mutation("documents.setPayer", router.Typed(func(ctx context.Context, in setPayerRequest) (any, error) {
+		return step(ctx, func(tx *txn.Tx) (*Document, error) { return SetPayer(tx, in.ID, in.ClientID) })
 	}))
 	r.Mutation("documents.combine", router.Typed(func(ctx context.Context, in combineRequest) (any, error) {
 		return step(ctx, func(tx *txn.Tx) (*Document, error) { return Combine(tx, in.IDs) })

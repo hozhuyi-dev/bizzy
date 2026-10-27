@@ -28,6 +28,8 @@ export interface ActivityView {
   creditsLeftMinutes?: number;
   /** What those credits are worth, at their share of each package's price. */
   creditsLeftCents?: number;
+  /** What packages shared with them have left: their holders' credits, never added to their own. */
+  sharedCreditsLeftMinutes?: number;
   openFollowUps?: number;
   /** When the soonest follow-up not done is due; it may be past. */
   nextFollowUpAt?: string;

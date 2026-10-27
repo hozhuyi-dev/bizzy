@@ -32,6 +32,7 @@ import { conflictKind } from "~/features/conflicts/conflicts.util";
 import { useOpenFollowUp } from "~/features/follow-ups/follow-ups.hook";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { useWhatsAppMenu } from "~/features/whatsapp/whatsapp.hook";
+import { recipientOf } from "~/features/whatsapp/whatsapp.util";
 import { Banner } from "~/components/shared/layout/banner/banner.component";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { timelineParent } from "~/features/timeline/timeline.list";
@@ -149,7 +150,8 @@ function SessionSteps({ session, returnTo, parent, pager }: SessionStepsProps) {
   const more: Array<Action> = client
     ? [
         whatsappMenu({
-          to: { name: client.name, phone: client.contact?.phone },
+          to: recipientOf(clientsById.get(session.payer) ?? client),
+          about: recipientOf(client),
           askToPay: { request: { items: session.sources }, can: session.can.askToPay },
           sendRecords: { items: session.sources, can: session.can.sendRecords },
           openChat: true,
@@ -170,7 +172,7 @@ function SessionSteps({ session, returnTo, parent, pager }: SessionStepsProps) {
   ];
 
   const steps: Array<PageStep> = [
-    bookingStep(session, () => setEditingBooking(true)),
+    bookingStep(session, () => setEditingBooking(true), clientsById.get(session.payer)?.name),
     recordStep(session, record),
     paymentStep(session, covering, bought),
     documentsStep(session, bought),

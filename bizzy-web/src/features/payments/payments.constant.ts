@@ -10,3 +10,6 @@ export const PAYMENT_METHODS: ReadonlyArray<{ value: PaymentMethod; label: strin
 
 /** The methods as a ChoiceField offers them: short on the button, in full on hover. */
 export const PAYMENT_CHOICES = PAYMENT_METHODS.map((method) => ({ value: method.value, label: method.short, title: method.label }));
+
+/** A new item's payment, as a ChoiceField offers it: not yet (left to collect), or how it was paid there and then. */
+export const PAID_NOW_CHOICES = [{ value: "", label: "Not yet" }, ...PAYMENT_CHOICES];

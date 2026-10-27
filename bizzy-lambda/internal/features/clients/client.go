@@ -33,6 +33,21 @@ type Client struct {
 	// their name on documents. It is kept in bizzy, not in Google: a
 	// billing identity, not a way to reach them (see IDNo).
 	IDNo string `json:"idNo,omitempty"`
+	// SharesWith are the clients whose sessions the client's new packages
+	// also pay for (a family): each package keeps its own list, copied
+	// from this when it is bought (see packages).
+	SharesWith []string `json:"sharesWith,omitempty"`
+	// BillTo is the client who pays for the client's new sessions and
+	// packages, unless what they are billed with says otherwise (see
+	// PayerOf); "" when they pay for themselves. It is followed one step
+	// only.
+	BillTo string `json:"billTo,omitempty"`
+	// BillingName is the name the documents they pay for are made out to
+	// (a company), and BillingIDNo what is printed under it (its
+	// registration number) in place of their IC; their own name and IC
+	// when "".
+	BillingName string `json:"billingName,omitempty"`
+	BillingIDNo string `json:"billingIdNo,omitempty"`
 	// Contact is the linked Google contact, where the client's details
 	// live, with a copy of them.
 	Contact *Contact `json:"contact,omitempty"`
@@ -47,7 +62,7 @@ func (c Client) Archived() bool { return c.ArchivedAt != nil }
 
 var Clients = txn.Kind[Client]{
 	Name: "CLIENT", Gone: "This client was deleted.",
-	Doc:   txn.Doc{What: "A client: name, calendar names, usual hourly fee and place, IC or passport number, a copy of their Google contact, and whether archived."},
+	Doc:   txn.Doc{What: "A client: name, calendar names, usual hourly fee and place, IC or passport number, who their packages are shared with and who pays for them by default, the name they are billed as, a copy of their Google contact, and whether archived."},
 	Meta:  func(c *Client) txn.Meta { return txn.Meta{ID: c.ID} },
 	Whole: true,
 }
@@ -147,9 +162,54 @@ func namesTaken(tx *txn.Tx, c *Client) error {
 	return nil
 }
 
+// PayerOf is who pays for what is new of a client's: whom they are billed
+// to, else themselves.
+func PayerOf(tx *txn.Tx, clientID string) (string, error) {
+	c, ok, err := Clients.Find(tx, clientID)
+	if err != nil || !ok || c.BillTo == "" {
+		return clientID, err
+	}
+	return c.BillTo, nil
+}
+
+// others is ids as a client's list of other clients keeps them: each
+// once, never the client themselves, each an existing client. what names
+// the list in a refusal.
+func others(tx *txn.Tx, self string, ids []string, what string) ([]string, error) {
+	var out []string
+	for _, id := range ids {
+		if id == "" || slices.Contains(out, id) {
+			continue
+		}
+		if id == self {
+			return nil, apperr.Invalid("A client can't be in their own %s.", what)
+		}
+		if _, ok, err := Clients.Find(tx, id); err != nil {
+			return nil, err
+		} else if !ok {
+			return nil, apperr.Invalid("A client in the %s was deleted.", what)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 // maxIDNo bounds an IC or passport number: a MyKad is 14 characters with
 // its dashes, a passport 9 or so.
 const maxIDNo = 20
+
+// maxBillingIDNo bounds a billing ID: a company's registration number,
+// old and new together ("201901012345 (1234567-X)"), is 25.
+const maxBillingIDNo = 40
+
+// BillingIDNo is a billing ID as kept and printed: in capitals, as typed.
+func BillingIDNo(typed string) (string, error) {
+	id := strings.ToUpper(strings.Join(strings.Fields(typed), " "))
+	if len(id) > maxBillingIDNo {
+		return "", apperr.Invalid("%q is too long for a billing ID.", typed)
+	}
+	return id, nil
+}
 
 // myKad is a MyKad number as typed, with or without dashes and spaces.
 var myKad = regexp.MustCompile(`^(\d{6})[- ]?(\d{2})[- ]?(\d{4})$`)

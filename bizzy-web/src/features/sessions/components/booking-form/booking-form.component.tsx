@@ -6,6 +6,9 @@ import type { BookingValues, PriceIs } from "../../sessions.form";
 import type { CoverView, PreviewSessionRequest, SessionDraft, SessionView } from "../../sessions.types";
 import type { Locks } from "~/core/lambda/lambda.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
+import { BILLED_TO_HELP } from "~/features/clients/clients.constant";
+import { pickableClients } from "~/features/clients/clients.util";
+import { PaidByField, PaidOnField } from "~/features/payments/components/paid-fields/paid-fields.component";
 import { ClientSelectField } from "~/features/clients/components/client-select-field/client-select-field.component";
 import { PackagesQuery } from "~/features/packages/packages.query";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
@@ -52,6 +55,7 @@ interface BookingFormOptions {
  */
 export function useBookingForm({ initial, session, locked = {}, onSubmit }: BookingFormOptions) {
   const clientsById = ClientsQuery.useById();
+  const clients = ClientsQuery.useList();
   const packages = PackagesQuery.useList(true);
   // What was received follows a new fee only on a receipt not issued yet.
   const repayable = Boolean(session?.paid && !session.paid.issued);
@@ -86,8 +90,10 @@ export function useBookingForm({ initial, session, locked = {}, onSubmit }: Book
     const credits = cover.credits
       .map(({ packageId, hours }) => {
         const pkg = packages.data?.find((p) => p.id === packageId);
+        // A package shared with them is named by whose it is.
+        const holder = pkg ? (clientsById.get(pkg.clientId)?.name ?? name) : name;
         return pkg
-          ? `${formatHours(hours)} of ${name}'s package bought ${formatDate(pkg.purchasedAt)} (${formatHours(pkg.creditsLeft)} left)`
+          ? `${formatHours(hours)} of ${holder}'s package bought ${formatDate(pkg.purchasedAt)} (${formatHours(pkg.creditsLeft)} left)`
           : `${formatHours(hours)} of ${name}'s package credits`;
       })
       .join(", then ");
@@ -107,6 +113,10 @@ export function useBookingForm({ initial, session, locked = {}, onSubmit }: Book
     }
   };
 
+  // Who can pay: every client (whoever pays now kept, archived or not), or whom the client is billed to.
+  const payers = pickableClients(clients.data ?? [], session?.payer);
+  const usualPayerName = cover ? clientsById.get(cover.payer)?.name : undefined;
+  const usualPayer = usualPayerName ? `As usual: ${usualPayerName}` : "As usual";
   const fields = (
     <>
       <FieldGroup>
@@ -114,8 +124,11 @@ export function useBookingForm({ initial, session, locked = {}, onSubmit }: Book
           name="clientId"
           validators={{ onChange: ({ value }) => requiredError(value, "Choose a client") }}
           listeners={{
-            // A new choice of client starts from their usual place.
-            onChange: ({ value }) => form.setFieldValue("homeVisit", clientsById.get(value)?.homeVisits ?? false),
+            // A new choice of client starts from their usual place, billed as they usually are.
+            onChange: ({ value }) => {
+              form.setFieldValue("homeVisit", clientsById.get(value)?.homeVisits ?? false);
+              form.setFieldValue("billTo", "");
+            },
           }}
         >
           {() => (
@@ -279,6 +292,47 @@ export function useBookingForm({ initial, session, locked = {}, onSubmit }: Book
             );
           }}
         </form.Subscribe>
+
+        <form.AppField name="billTo">
+          {(field) => (
+            <field.SelectField
+              label="Billed to"
+              items={[{ value: "", label: usualPayer }, ...payers]}
+              className="max-w-72"
+              disabled={locked.billTo !== undefined}
+              description={BILLED_TO_HELP}
+              hint={<LockedHint lock={locked.billTo} again={saidAbove(locked.billTo, locked.fee, locked.package)} />}
+            />
+          )}
+        </form.AppField>
+
+        {/* A new one only: afterwards it is marked paid on its page. Not one to confirm, which waits for it. */}
+        {!session && (
+          <form.Subscribe selector={(state) => [state.values.tentative, state.values.paidBy] as const}>
+            {([tentative, paidBy]) =>
+              !tentative && (
+                <>
+                  <form.AppField name="paidBy">
+                    {() => (
+                      <PaidByField
+                        notYet
+                        description="Paid there and then, in full with a package bought in it; nothing is recorded when package credits pay for it."
+                      />
+                    )}
+                  </form.AppField>
+                  {paidBy && (
+                    <form.AppField
+                      name="paidOn"
+                      validators={{ onChange: ({ value }) => requiredError(value, "Choose the day it was paid") }}
+                    >
+                      {() => <PaidOnField />}
+                    </form.AppField>
+                  )}
+                </>
+              )
+            }
+          </form.Subscribe>
+        )}
       </FieldGroup>
 
       {repayable && (

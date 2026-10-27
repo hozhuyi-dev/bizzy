@@ -1,12 +1,9 @@
 import { useEffect } from "react";
 import { IOS, opensKeyboard, revealBy } from "./keyboard-inset.util";
+import { whenKeyboardReady } from "./focus-in-view.util";
 
 // A finger moving further than this between down and up was scrolling, not tapping.
 const TAP_SLOP_PX = 10;
-
-// How long the keyboard may take to come up before the box is revealed anyway
-// (a hardware keyboard, or none: the visual viewport never resizes).
-const KEYBOARD_WAIT_MS = 600;
 
 /**
  * Lets what is typed into inside `element` (the dock, a sheet) take focus
@@ -32,7 +29,7 @@ export function useFocusInPlace(element: HTMLElement | null) {
       focusing = true;
       box.focus({ preventScroll: true });
       focusing = false;
-      revealWhenReady(box, element, keyboardUp);
+      whenKeyboardReady(box, keyboardUp, () => scrollToReveal(box, element));
     };
 
     const onTouchStart = (event: TouchEvent) => {
@@ -67,26 +64,6 @@ export function useFocusInPlace(element: HTMLElement | null) {
       element.removeEventListener("blur", onBlur, true);
     };
   }, [element]);
-}
-
-/** Scrolls the box into view once the keyboard is up: at once if it already was. */
-function revealWhenReady(box: HTMLElement, within: HTMLElement, keyboardUp: boolean) {
-  const viewport = window.visualViewport;
-  // Two frames: useKeyboardInset lifts what the box is in on the next one.
-  const reveal = () => requestAnimationFrame(() => requestAnimationFrame(() => scrollToReveal(box, within)));
-  if (keyboardUp || !viewport) {
-    reveal();
-    return;
-  }
-  let done = false;
-  const once = () => {
-    if (done) return;
-    done = true;
-    viewport.removeEventListener("resize", once);
-    reveal();
-  };
-  viewport.addEventListener("resize", once);
-  window.setTimeout(once, KEYBOARD_WAIT_MS);
 }
 
 /** Brings the box to the middle of what can be seen of its scrolling container inside `within`, if any. */

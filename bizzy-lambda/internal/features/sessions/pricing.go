@@ -1,7 +1,9 @@
 package sessions
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,9 +24,10 @@ import (
 // at least a half hour (Billable):
 //
 //  1. a fee entered for it (typed) is its whole fee;
-//  2. otherwise its client's packages bought by its start (one bought in
-//     the session itself included) pay with the credits they have left,
-//     oldest first, an hour a credit, a half hour at a time;
+//  2. otherwise the packages its client may use (their own, and those
+//     shared with them) bought by its start (one bought in the session
+//     itself included) pay with the credits they have left, oldest first,
+//     an hour a credit, a half hour at a time;
 //  3. what they leave is charged at the client's usual hourly fee, as it
 //     is when the session is priced;
 //  4. without one, that is refused: enter a fee.
@@ -89,14 +92,23 @@ func Hourly(rateCents int64, minutes int) int64 {
 
 // creditsFor is the credits that would pay for minutes of a session of a
 // client at start (sessionID: the one being priced, whose own credits are
-// its to keep): from each package bought by then with credits left,
-// oldest first, until they pay it all or run out.
+// its to keep): from each package the client may use, bought by then with
+// credits left, oldest first, until they pay it all or run out.
 func creditsFor(tx *txn.Tx, sessionID, clientID string, start time.Time, minutes int) ([]Credit, error) {
-	pkgs, err := packages.Packages.OfClient(tx, clientID)
+	all, err := packages.Packages.All(tx)
 	if err != nil {
 		return nil, err
 	}
-	used, err := usedByOthers(tx, clientID, sessionID)
+	var pkgs []*packages.Package
+	for _, p := range all {
+		if p.UsableBy(clientID) {
+			pkgs = append(pkgs, p)
+		}
+	}
+	slices.SortFunc(pkgs, func(a, b *packages.Package) int {
+		return cmp.Or(cmp.Compare(txn.TimeKey(a.PurchasedAt), txn.TimeKey(b.PurchasedAt)), cmp.Compare(a.ID, b.ID))
+	})
+	used, err := usedByOthers(tx, pkgs, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,20 +128,29 @@ func creditsFor(tx *txn.Tx, sessionID, clientID string, start time.Time, minutes
 	return out, nil
 }
 
-// usedByOthers is how many minutes of each of a client's packages their
-// sessions but one use.
-func usedByOthers(tx *txn.Tx, clientID, sessionID string) (map[string]int, error) {
-	ss, err := Sessions.OfClient(tx, clientID)
-	if err != nil {
-		return nil, err
-	}
+// usedByOthers is how many minutes of each of packages the sessions of
+// their clients but one use.
+func usedByOthers(tx *txn.Tx, pkgs []*packages.Package, sessionID string) (map[string]int, error) {
+	read := map[string]bool{}
 	used := map[string]int{}
-	for _, o := range ss {
-		if o.ID == sessionID {
-			continue
-		}
-		for _, c := range o.Credits {
-			used[c.PackageID] += c.Minutes
+	for _, p := range pkgs {
+		for _, clientID := range p.Clients() {
+			if read[clientID] {
+				continue
+			}
+			read[clientID] = true
+			ss, err := Sessions.OfClient(tx, clientID)
+			if err != nil {
+				return nil, err
+			}
+			for _, o := range ss {
+				if o.ID == sessionID {
+					continue
+				}
+				for _, c := range o.Credits {
+					used[c.PackageID] += c.Minutes
+				}
+			}
 		}
 	}
 	return used, nil
@@ -210,7 +231,7 @@ func charge(tx *txn.Tx, s *Session, cents int64, typed bool) error {
 		}
 	}
 	_, err = documents.SetCharge(tx, documents.Charge{
-		ClientID: s.ClientID, Source: s.Source(), Description: desc,
+		For: s.ClientID, Source: s.Source(), Description: desc,
 		Date: day(tx, s.Start), Cents: cents, Typed: typed, Into: into,
 	})
 	return err

@@ -10,6 +10,9 @@ function pkg(over: Partial<PackageView> = {}): PackageView {
     clientId: "c1",
     hours: 10,
     purchasedAt: "2026-10-01T02:00:00.000Z",
+    sharedWith: [],
+    uses: [],
+    payer: "c1",
     creditsUsed: 0,
     creditsLeft: 10,
     priceCents: 85000,
@@ -30,42 +33,23 @@ describe("toPackageFields", () => {
   });
 
   it("sends no payment for one left to collect", () => {
-    expect(toPackageFields(toPackageValues(pkg()), pkg()).payment).toBeUndefined();
+    expect(toPackageFields(toPackageValues(undefined, "c1"), undefined).payment).toBeUndefined();
   });
 
-  it("sends nothing of a payment left as it was", () => {
+  it("never sends a payment with an edit: it is recorded as itself", () => {
     const paid = pkg({ paid: PAID, owedCents: 0 });
     expect(toPackageFields(toPackageValues(paid), paid)).toEqual({});
+    expect(toPackageFields({ ...toPackageValues(paid), paidBy: "tng" }, paid).payment).toBeUndefined();
   });
 
-  it("records the payment again on another day", () => {
+  it("moves the payment to a new price only when asked", () => {
     const paid = pkg({ paid: PAID, owedCents: 0 });
-    const values = { ...toPackageValues(paid), paidOn: "2026-10-05" };
-    expect(toPackageFields(values, paid).payment).toEqual({ payment: { method: "cash", paidOn: "2026-10-05" } });
-  });
-
-  it("records the payment again with a new price, which it follows", () => {
-    const paid = pkg({ paid: PAID, owedCents: 0 });
-    const values = { ...toPackageValues(paid), price: "900" };
-    expect(toPackageFields(values, paid)).toEqual({
+    expect(toPackageFields({ ...toPackageValues(paid), price: "900" }, paid)).toEqual({ priceCents: 90000 });
+    expect(toPackageFields({ ...toPackageValues(paid), price: "900", updatePayment: true }, paid)).toEqual({
       priceCents: 90000,
-      payment: { payment: { method: "cash", paidOn: "2026-10-02" } },
+      updatePayment: true,
     });
-  });
-
-  it("undoes the payment once it is set back to not paid", () => {
-    const paid = pkg({ paid: PAID, owedCents: 0 });
-    const values = { ...toPackageValues(paid), paidBy: "" as const };
-    expect(toPackageFields(values, paid).payment).toEqual({});
-  });
-
-  it("leaves a payment an issued receipt records alone", () => {
-    const issued = pkg({
-      paid: { ...PAID, issued: true, receiptNumber: "R-0001" },
-      owedCents: 0,
-      locked: { payment: { ok: false, why: "R-0001 records its payment." } },
-    });
-    const values = { ...toPackageValues(issued), paidBy: "" as const };
-    expect(toPackageFields(values, issued).payment).toBeUndefined();
+    // Nothing to move without a new price.
+    expect(toPackageFields({ ...toPackageValues(paid), updatePayment: true }, paid)).toEqual({});
   });
 });

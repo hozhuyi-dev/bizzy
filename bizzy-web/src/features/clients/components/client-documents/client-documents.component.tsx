@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { useTable } from "@tanstack/react-table";
 import { ClientDocumentCard, createClientDocumentColumns } from "../../client-documents.columns";
+import { ClientsQuery } from "../../clients.query";
 import type { RowSelectionState } from "@tanstack/react-table";
 import type { ClientView } from "../../clients.types";
+import type { DocumentSummary } from "~/features/documents/documents.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
 import type { ListFilter } from "~/core/list/filter.types";
 import { DocumentsQuery } from "~/features/documents/documents.query";
@@ -15,6 +17,7 @@ import {
 } from "~/features/documents/documents.util";
 import { canTick } from "~/features/documents/documents.hook";
 import { TickedBar } from "~/features/documents/components/ticked-bar/ticked-bar.component";
+import { recipientOf } from "~/features/whatsapp/whatsapp.util";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { SelectionHint } from "~/components/shared/list/selection-bar/selection-bar.component";
 import { dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
@@ -23,7 +26,6 @@ import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state
 import { NO_FILTER } from "~/core/list/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
 
-const COLUMNS = createClientDocumentColumns();
 const FACETS = [DOCUMENT_TYPE_FACET, DOCUMENT_STATUS_FACET];
 
 /**
@@ -37,19 +39,25 @@ const FACETS = [DOCUMENT_TYPE_FACET, DOCUMENT_STATUS_FACET];
  */
 export function useClientDocumentsSection(client: ClientView | undefined): PageSection | undefined {
   const docs = DocumentsQuery.useByClient(client?.id ?? "");
+  const clientsById = ClientsQuery.useById();
+  const whose = useMemo(() => ({ clientId: client?.id ?? "", clientsById }), [client?.id, clientsById]);
+  const columns = useMemo(() => createClientDocumentColumns(whose), [whose]);
   const [filter, setFilter] = useState<ListFilter>(NO_FILTER);
   const [selection, setSelection] = useState<RowSelectionState>({});
 
   const all = useMemo(() => docs.data ?? [], [docs.data]);
   const data = useMemo(() => documentsOfClient(all, filter.chips), [all, filter.chips]);
+  // Who pays the ticked: the first tick's payer, as each message is one chat.
+  const payerId = data.find((doc) => selection[doc.id])?.clientId;
+  const tickable = (doc: DocumentSummary) => canTick(doc) && (payerId === undefined || doc.clientId === payerId);
   const table = useTable({
     features: dataTableFeatures,
-    columns: COLUMNS,
+    columns,
     data,
     getRowId: (doc) => doc.id,
     // In the documents list's order, the API's: by date, latest first.
     enableSorting: false,
-    enableRowSelection: (row) => canTick(row.original),
+    enableRowSelection: (row) => tickable(row.original),
     state: { rowSelection: selection },
     onRowSelectionChange: setSelection,
   });
@@ -87,6 +95,7 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
             <ClientDocumentCard
               doc={row.original}
               search={search}
+              whose={whose}
               tick={documentTick(
                 row.original,
                 { tickable: row.getCanSelect(), ticked: row.getIsSelected(), onTickedChange: (on) => row.toggleSelected(on) },
@@ -99,8 +108,8 @@ export function useClientDocumentsSection(client: ClientView | undefined): PageS
         {ticking && (
           <TickedBar
             chosen={chosen}
-            to={{ name: client.name, phone: client.contact?.phone }}
-            all={data.filter(canTick)}
+            to={recipientOf(clientsById.get(payerId ?? client.id) ?? client)}
+            all={data.filter(tickable)}
             onTick={(picked) => setSelection(Object.fromEntries(picked.map((doc) => [doc.id, true])))}
           />
         )}

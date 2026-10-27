@@ -1,5 +1,5 @@
 import { totals } from "../../client-activity.util";
-import { toClientRow } from "../../clients.util";
+import { creditsText, toClientRow } from "../../clients.util";
 import type { ClientView } from "../../clients.types";
 import { ActivityQuery } from "~/features/activity/activity.query";
 import { Fact, FactList } from "~/components/shared/layout/fact-list/fact-list.component";
@@ -34,7 +34,7 @@ export function ClientOverview({ client }: { client: ClientView }) {
           <Fact label="Last contacted">{row.lastContactedAt ? formatDate(row.lastContactedAt) : "—"}</Fact>
           <Fact label="Owed">{row.owedCents > 0 ? formatCents(row.owedCents) : "Nothing"}</Fact>
           <Fact label="Package credits">
-            {row.creditsLeftMinutes > 0 ? `${formatHours(row.creditsLeftMinutes / 60)} left` : "None"}
+            {creditsText(row) ?? "None"}
           </Fact>
           <Fact label="To record">{activity?.unrecorded ? `${activity.unrecorded} sessions` : "None"}</Fact>
           <Fact label="Last 12 months">

@@ -33,6 +33,10 @@ export const DocumentsMutation = {
       mutationFn: ({ from, to, lineIds }: { from: string; to?: string | undefined; lineIds: Array<string> }) =>
         DocumentsService.moveLines(from, to, lineIds),
     }),
+  useSetPayer: () =>
+    useMutation({
+      mutationFn: ({ id, clientId }: { id: string; clientId: string }) => DocumentsService.setPayer(id, clientId),
+    }),
   useCombine: () => useMutation({ mutationFn: (ids: Array<string>) => DocumentsService.combine(ids) }),
   usePlace: () =>
     useMutation({

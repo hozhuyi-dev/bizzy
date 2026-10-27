@@ -2,6 +2,7 @@ package clients
 
 import (
 	"fmt"
+	"slices"
 
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -44,4 +45,47 @@ var Invariants = []txn.Invariant{
 			return nil, err
 		},
 	},
+	{
+		ID: "client-defaults-are-clients", Why: "Whom a client's packages are shared with, and who pays for them, are other clients",
+		On:     Clients.Name,
+		Broken: defaultsBroken,
+	},
+}
+
+// defaultsBroken is what breaks a client's defaults naming other clients:
+// theirs, or for one deleted, any other's naming them.
+func defaultsBroken(tx *txn.Tx, id string) ([]string, error) {
+	c, ok, err := Clients.Find(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	if !ok {
+		all, err := Clients.All(tx)
+		for _, other := range all {
+			if other.BillTo == id || slices.Contains(other.SharesWith, id) {
+				out = append(out, fmt.Sprintf("client %s names %s, who was deleted", other.ID, id))
+			}
+		}
+		return out, err
+	}
+	named := slices.Clone(c.SharesWith)
+	if c.BillTo != "" {
+		named = append(named, c.BillTo)
+	}
+	for i, other := range c.SharesWith {
+		if slices.Index(c.SharesWith, other) != i {
+			out = append(out, fmt.Sprintf("client %s shares with %s twice", id, other))
+		}
+	}
+	for _, other := range named {
+		if other == id {
+			out = append(out, fmt.Sprintf("client %s names themselves", id))
+		} else if _, found, err := Clients.Find(tx, other); err != nil {
+			return nil, err
+		} else if !found {
+			out = append(out, fmt.Sprintf("client %s names %q, who isn't a client", id, other))
+		}
+	}
+	return out, nil
 }

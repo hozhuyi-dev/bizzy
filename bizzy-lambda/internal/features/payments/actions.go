@@ -1,5 +1,5 @@
 // Package payments is recording what clients paid, for sessions and
-// packages: a draft receipt per client, each item paid in full (see
+// packages: a draft receipt per payer, each item paid in full (see
 // documents). It holds no entity of its own: a payment is its receipt's
 // lines.
 package payments
@@ -79,7 +79,7 @@ func check(tx *txn.Tx, it Item, paying bool) ([]documents.Paying, error) {
 			if err := sessions.CanUndoPayment(tx, s); err != nil {
 				return nil, err
 			}
-			return []documents.Paying{{Source: s.Source(), ClientID: s.ClientID, What: sessions.Describe(tx, s)}}, nil
+			return []documents.Paying{{Source: s.Source(), What: sessions.Describe(tx, s)}}, nil
 		}
 		if err := sessions.CanPay(tx, s); err != nil {
 			return nil, err
@@ -88,7 +88,7 @@ func check(tx *txn.Tx, it Item, paying bool) ([]documents.Paying, error) {
 		if owing, err := owes(tx, s.Source()); err != nil {
 			return nil, err
 		} else if owing {
-			out = append(out, documents.Paying{Source: s.Source(), ClientID: s.ClientID, What: sessions.Describe(tx, s)})
+			out = append(out, documents.Paying{Source: s.Source(), What: sessions.Describe(tx, s)})
 		}
 		if p, err := packages.BoughtIn(tx, s.ID); err != nil {
 			return nil, err
@@ -96,7 +96,7 @@ func check(tx *txn.Tx, it Item, paying bool) ([]documents.Paying, error) {
 			if owing, err := owes(tx, documents.PackageSource(p.ID)); err != nil {
 				return nil, err
 			} else if owing {
-				out = append(out, documents.Paying{Source: documents.PackageSource(p.ID), ClientID: p.ClientID, What: describe(tx, p)})
+				out = append(out, documents.Paying{Source: documents.PackageSource(p.ID), What: describe(tx, p)})
 			}
 		}
 		return out, nil
@@ -112,7 +112,7 @@ func check(tx *txn.Tx, it Item, paying bool) ([]documents.Paying, error) {
 		if err := check(tx, p); err != nil {
 			return nil, err
 		}
-		return []documents.Paying{{Source: documents.PackageSource(p.ID), ClientID: p.ClientID, What: describe(tx, p)}}, nil
+		return []documents.Paying{{Source: documents.PackageSource(p.ID), What: describe(tx, p)}}, nil
 	}
 	return nil, apperr.Invalid("Unknown item kind %q.", it.Kind)
 }

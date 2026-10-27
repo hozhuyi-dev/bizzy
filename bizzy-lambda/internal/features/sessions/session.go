@@ -66,7 +66,7 @@ type Record struct {
 
 // Sessions are filed by client and time, and as open while they will
 // need the user once they happen: to confirm, or to record (never once
-// cancelled). The sessions using a package's credits are its client's
+// cancelled). The sessions using a package's credits are its clients'
 // (see CreditsUsed).
 var Sessions = txn.Kind[Session]{
 	Name: "SESSION", Gone: "This session was deleted.",
@@ -152,29 +152,36 @@ func (s Session) Todo(owedCents int64, now time.Time) []Reason {
 	return out
 }
 
-// CreditsUsed is how many minutes of a package's credits sessions use
-// (packages.Usage). They are its client's sessions; for a package
-// deleted, whose client is unknown, every session is counted.
-func CreditsUsed(tx *txn.Tx, packageID string) (int, error) {
+// CreditsUsed is how many minutes of a package's credits each client's
+// sessions use (packages.Usage). They are the sessions of its clients;
+// for a package deleted, whose clients are unknown, every session is
+// counted.
+func CreditsUsed(tx *txn.Tx, packageID string) (packages.Used, error) {
 	p, ok, err := packages.Packages.Find(tx, packageID)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	var ss []*Session
 	if ok {
-		ss, err = Sessions.OfClient(tx, p.ClientID)
-	} else {
-		ss, err = Sessions.All(tx)
+		for _, id := range p.Clients() {
+			theirs, err := Sessions.OfClient(tx, id)
+			if err != nil {
+				return nil, err
+			}
+			ss = append(ss, theirs...)
+		}
+	} else if ss, err = Sessions.All(tx); err != nil {
+		return nil, err
 	}
-	total := 0
+	used := packages.Used{}
 	for _, s := range ss {
 		for _, c := range s.Credits {
 			if c.PackageID == packageID {
-				total += c.Minutes
+				used[s.ClientID] += c.Minutes
 			}
 		}
 	}
-	return total, err
+	return used, nil
 }
 
 // overlaps reports whether two sessions take up the same time: a

@@ -38,6 +38,7 @@ export function toFormValues(content: DocumentContent): ContentValues {
     recipient: {
       name: recipient.name,
       idNo: recipient.idNo ?? "",
+      regNo: recipient.regNo ?? "",
       email: recipient.email ?? "",
       phone: recipient.phone ?? "",
       address: recipient.address ?? "",

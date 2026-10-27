@@ -3,31 +3,36 @@ import { useSelector } from "@tanstack/react-form";
 import { useLocation } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { PackageCheckIcon, Trash2Icon } from "lucide-react";
-import { toPackageFields, toPackageValues } from "./packages.form";
+import { sharedFor, toPackageFields, toPackageValues } from "./packages.form";
 import { usePackageSave } from "./package-save.hook";
 import { PackagesMutation } from "./packages.mutation";
 import { PackagesQuery } from "./packages.query";
-import { clientName } from "./packages.util";
+import { clientName, packagePayables } from "./packages.util";
 import { PackagePager, packageParent } from "./components/package-pager/package-pager.component";
 import type { PackageStepping } from "./components/package-pager/package-pager.component";
 import type { ReactNode } from "react";
 import type { Parent } from "~/components/shared/layout/page-header/page-header.component";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { PackageView } from "./packages.types";
+import type { ClientView } from "~/features/clients/clients.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { PageStep } from "~/components/shared/layout/page-steps/page-steps.component";
 import { ClientsQuery } from "~/features/clients/clients.query";
 import { ClientSelectField } from "~/features/clients/components/client-select-field/client-select-field.component";
+import { pickableClients } from "~/features/clients/clients.util";
+import { BILLED_TO_HELP } from "~/features/clients/clients.constant";
 import { DocumentRow } from "~/features/documents/components/document-row/document-row.component";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
-import { coveringDocuments, refLabel } from "~/features/documents/documents.util";
-import { PAYMENT_CHOICES } from "~/features/payments/payments.constant";
-import { methodLabel } from "~/features/payments/payments.util";
+import { NO_RECEIPT_YET, coveringDocuments, documentsText } from "~/features/documents/documents.util";
+import { paidText } from "~/features/payments/payments.util";
+import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
+import { PaidByField, PaidOnField } from "~/features/payments/components/paid-fields/paid-fields.component";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { saidAbove } from "~/features/remedies/remedies.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { useSettleReturn } from "~/features/remedies/settle.hook";
 import { useWhatsAppMenu } from "~/features/whatsapp/whatsapp.hook";
+import { recipientOf } from "~/features/whatsapp/whatsapp.util";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { PageSteps } from "~/components/shared/layout/page-steps/page-steps.component";
 import { TextLink } from "~/components/shared/link/text-link/text-link.component";
@@ -61,8 +66,6 @@ const FORM_ID = "package-form";
 /** A new one's list, where it goes back to when it wasn't opened from another page. */
 const PARENT: Parent = { to: "/packages", label: "Packages" };
 
-// Not paid yet: first, so a new package starts left to collect.
-const PAID_BY = [{ value: "", label: "Not yet" }, ...PAYMENT_CHOICES];
 
 /**
  * A package's page, or a new one's, wherever it is opened from: its home,
@@ -134,6 +137,7 @@ interface PackageEditorProps {
  */
 function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
   const clientsById = ClientsQuery.useById();
+  const clients = ClientsQuery.useList();
   const goBack = useGoBack(header.parent as LinkOptions);
   // Added to settle a calendar edit: back to the to-do list once saved.
   const settled = useSettleReturn();
@@ -155,7 +159,7 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
   }, [at]);
 
   const form = useAppForm({
-    defaultValues: toPackageValues(pkg, clientId),
+    defaultValues: toPackageValues(pkg, clientId, clientId ? clientsById.get(clientId) : undefined),
     onSubmit: async ({ value, formApi }) => {
       setError(null);
       try {
@@ -182,6 +186,11 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
     pending: isSubmitting,
   };
 
+  // What was received follows a new price only on a receipt not issued yet.
+  const repayable = Boolean(pkg?.paid && !pkg.paid.issued);
+  // Whom it can be shared with or billed to, and those whose sessions use it already.
+  const others = pickableClients(clients.data ?? [], pkg?.payer);
+  const using = (pkg?.uses ?? []).map((use) => use.clientId);
   const details = (
     <FieldGroup>
       {pkg?.boughtIn && (
@@ -193,7 +202,18 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
           , and on its invoice.
         </p>
       )}
-      <form.AppField name="clientId" validators={{ onChange: ({ value }) => requiredError(value, "Choose a client") }}>
+      <form.AppField
+        name="clientId"
+        validators={{ onChange: ({ value }) => requiredError(value, "Choose a client") }}
+        listeners={{
+          // Shared and billed as its new client shares and is billed.
+          onChange: ({ value }) => {
+            const shared = sharedFor(clientsById.get(value));
+            form.setFieldValue("sharedWith", shared.sharedWith);
+            if (!locked.billTo) form.setFieldValue("billTo", shared.billTo);
+          },
+        }}
+      >
         {() => (
           <ClientSelectField
             keepId={pkg?.clientId ?? clientId}
@@ -202,6 +222,23 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
           />
         )}
       </form.AppField>
+
+      <form.Subscribe selector={(state) => state.values.clientId}>
+        {(holder) => (
+          <form.AppField name="sharedWith">
+            {(field) => (
+              <field.TagsField
+                label="Shared with"
+                placeholder="Add a client"
+                options={others.filter((option) => option.value !== holder)}
+                fixed={using}
+                description="Their sessions use its credits too, oldest package first."
+                hint={using.length > 0 && <FieldDescription>Whoever's sessions use its credits stays on it.</FieldDescription>}
+              />
+            )}
+          </form.AppField>
+        )}
+      </form.Subscribe>
 
       <div className="grid grid-cols-2 gap-4">
         <form.AppField name="hours" validators={{ onChange: ({ value }) => wholeNumberError(value, 1, 1000) }}>
@@ -242,6 +279,31 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
         }}
       </form.Subscribe>
 
+      <form.AppField name="billTo">
+        {(field) => (
+          <field.SelectField
+            label="Billed to"
+            placeholder="Choose who pays"
+            items={others}
+            className="max-w-72"
+            disabled={locked.billTo !== undefined}
+            description={BILLED_TO_HELP}
+            hint={<LockedHint lock={locked.billTo} again={saidAbove(locked.billTo, locked.clientId)} />}
+          />
+        )}
+      </form.AppField>
+
+      {repayable && (
+        <form.AppField name="updatePayment">
+          {(field) => (
+            <field.CheckboxField
+              label="Update the payment with a new price"
+              description="What was paid moves to the new amount, as what you collected or refunded with the change. Without it, a new price waits for the payment to be undone."
+            />
+          )}
+        </form.AppField>
+      )}
+
       <form.AppField name="purchasedOn" validators={{ onChange: ({ value }) => requiredError(value, "Choose the day it was bought") }}>
         {(field) => (
           <field.TextField
@@ -264,27 +326,20 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
     </FieldGroup>
   );
 
+  // A new one is paid there and then, or left to collect, with Add package;
+  // afterwards a payment is recorded (and undone) as itself, Mark paid.
   const payment = (
     <FieldGroup>
-      {locked.payment && pkg?.paid ? (
-        <Field>
-          <FieldLabel>Paid</FieldLabel>
-          <p className="text-sm">
-            <b>{formatCents(pkg.paid.amountCents)}</b> by {methodLabel(pkg.paid.method)} on {formatDate(pkg.paid.paidOn)}
-          </p>
-          <LockedHint lock={locked.payment} />
-        </Field>
+      {pkg && pkg.payer !== pkg.clientId && (
+        <p className="text-sm text-muted-foreground">Billed to {clientsById.get(pkg.payer)?.name ?? "someone else"}.</p>
+      )}
+      {pkg ? (
+        <PaymentPanel payables={packagePayables(pkg)} />
       ) : (
         <>
-          <form.Subscribe selector={(state) => [state.values.paidBy, state.values.price] as const}>
-            {([paidBy, price]) => (
-              <form.AppField name="paidBy">
-                {(field) => (
-                  <field.ChoiceField label="Paid" options={PAID_BY} description={paidHelp(pkg, paidBy, parseCents(price))} />
-                )}
-              </form.AppField>
-            )}
-          </form.Subscribe>
+          <form.AppField name="paidBy">
+            {() => <PaidByField notYet description="Left to collect, it goes on your to-do list." />}
+          </form.AppField>
           <form.Subscribe selector={(state) => state.values.paidBy}>
             {(paidBy) =>
               paidBy && (
@@ -292,23 +347,29 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
                   name="paidOn"
                   validators={{ onChange: ({ value }) => requiredError(value, "Choose the day it was paid") }}
                 >
-                  {(field) => (
-                    <field.TextField
-                      label="Paid on"
-                      type="date"
-                      inputClassName="max-w-44"
-                      // Money comes in on a day that has come; one ahead is most likely a slip.
-                      description={field.state.value > todayISO() ? "That day hasn't come yet." : undefined}
-                    />
-                  )}
+                  {() => <PaidOnField />}
                 </form.AppField>
               )
             }
           </form.Subscribe>
         </>
       )}
-      {error && <ErrorMessage>{error}</ErrorMessage>}
     </FieldGroup>
+  );
+
+  // What Save sends is the Package step's (and a new one's payment); an
+  // added package's payment is the Mark paid panel's own form.
+  const saving = (content: ReactNode, id?: string) => (
+    <form
+      id={id}
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      {content}
+    </form>
   );
 
   const steps: Array<PageStep> = [
@@ -316,22 +377,31 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
       id: "package",
       title: "Package",
       state: pkg ? "done" : "current",
-      meta: pkg && `${formatHours(pkg.hours)} for ${formatCents(pkg.priceCents)}, bought ${formatDate(pkg.purchasedAt)}`,
-      content: details,
+      meta:
+        pkg &&
+        [
+          `${formatHours(pkg.hours)} for ${formatCents(pkg.priceCents)}, bought ${formatDate(pkg.purchasedAt)}`,
+          pkg.payer !== pkg.clientId && `billed to ${clientsById.get(pkg.payer)?.name ?? "someone else"}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      content: saving(
+        <>
+          {details}
+          {error && <ErrorMessage>{error}</ErrorMessage>}
+        </>,
+        FORM_ID,
+      ),
     },
     {
       id: "payment",
       title: "Payment",
       state: pkg?.paid ? "done" : pkg && pkg.owedCents > 0 ? "current" : pkg ? "none" : "todo",
-      meta: pkg?.paid
-        ? `Paid ${formatDate(pkg.paid.paidOn)} by ${methodLabel(pkg.paid.method)}`
-        : pkg && pkg.owedCents > 0
-          ? `${formatCents(pkg.owedCents)} to collect`
-          : undefined,
-      content: payment,
+      meta: pkg?.paid ? paidText(pkg.paid) : pkg && pkg.owedCents > 0 ? `${formatCents(pkg.owedCents)} due` : undefined,
+      content: pkg ? payment : saving(payment),
     },
     documentsStep(pkg),
-    creditsStep(pkg),
+    creditsStep(pkg, clientsById),
   ];
 
   return (
@@ -347,16 +417,7 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
         moreActions={actions.more}
         menuActions={actions.menu}
       />
-      <form
-        id={FORM_ID}
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.handleSubmit();
-        }}
-      >
-        <PageSteps steps={steps} />
-      </form>
+      <PageSteps steps={steps} />
       <UnsavedChangesDialog when={hasChanges} />
       {actions.dialog}
     </>
@@ -378,7 +439,7 @@ function documentsStep(pkg: PackageView | undefined): PageStep {
     id: "documents",
     title: "Documents",
     state: docs.some((doc) => doc.issued) ? "done" : "optional",
-    meta: docs.length === 0 ? "Invoice and receipt, if asked" : docs.map((doc) => (doc.issued ? refLabel(doc.type, doc.ref, true) : `${DOCUMENT_TYPES[doc.type].title} in draft`)).join(" · "),
+    meta: documentsText(docs),
     count: docs.length,
     content: (
       <DataList label="Documents">
@@ -391,7 +452,7 @@ function documentsStep(pkg: PackageView | undefined): PageStep {
                 doc.type === "invoice"
                   ? `Invoice · ${formatCents(pkg.priceCents)}`
                   : pkg.paid
-                    ? `Receipt · ${formatCents(pkg.paid.amountCents)} · ${methodLabel(pkg.paid.method)} · ${formatDate(pkg.paid.paidOn)}`
+                    ? `Receipt · ${paidText(pkg.paid)}`
                     : "Receipt"
               }
             />
@@ -400,7 +461,7 @@ function documentsStep(pkg: PackageView | undefined): PageStep {
         {!pkg.paid && (
           <DataListItem>
             <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Receipt</span> · Made when it is paid.
+              <span className="font-medium text-foreground">Receipt</span> · {NO_RECEIPT_YET}
             </p>
           </DataListItem>
         )}
@@ -409,8 +470,12 @@ function documentsStep(pkg: PackageView | undefined): PageStep {
   };
 }
 
-/** Its credits, used by sessions from the day it was bought, once older packages' run out. */
-function creditsStep(pkg: PackageView | undefined): PageStep {
+/**
+ * Its credits, used by sessions from the day it was bought, once older
+ * packages' run out: its client's, and those it is shared with, each
+ * named with what they used once it is shared.
+ */
+function creditsStep(pkg: PackageView | undefined, clientsById: ReadonlyMap<string, ClientView>): PageStep {
   if (!pkg) {
     return {
       id: "credits",
@@ -430,17 +495,14 @@ function creditsStep(pkg: PackageView | undefined): PageStep {
         {pkg.creditsLeft <= 0
           ? `All ${formatHours(pkg.hours)} used.`
           : `${formatHours(pkg.creditsUsed)} used, ${left}. Sessions from ${formatDate(pkg.purchasedAt)} on use them, by the half hour, once older packages' run out.`}
+        {pkg.sharedWith.length > 0 && pkg.uses.length > 0 && (
+          <span className="mt-1 block text-muted-foreground">
+            {pkg.uses.map((use) => `${clientsById.get(use.clientId)?.name ?? "Someone deleted"} ${formatHours(use.hours)}`).join(" · ")}
+          </span>
+        )}
       </p>
     ),
   };
-}
-
-/** What saving does to the payment, as the section stands: collect it, undo it, or move it to a new price. */
-function paidHelp(pkg: PackageView | undefined, paidBy: string, priceCents: number | null): string | undefined {
-  const paid = pkg?.paid;
-  if (!paidBy) return paid ? "Saving undoes the payment recorded." : "It goes on your to-do list to collect.";
-  if (paid && priceCents !== null && priceCents !== pkg.priceCents) return "Paid in full: the payment moves to the new price.";
-  return undefined;
 }
 
 /**
@@ -460,7 +522,8 @@ function usePackageActions(pkg: PackageView | undefined, onDeleted: () => void) 
   const items = [{ kind: "package", id: pkg.id }] as const;
   const more: Array<Action> = [
     whatsappMenu({
-      to: { name: clientName(pkg, clientsById), phone: clientsById.get(pkg.clientId)?.contact?.phone },
+      to: recipientOf(clientsById.get(pkg.payer) ?? clientsById.get(pkg.clientId), clientName(pkg, clientsById)),
+      about: recipientOf(clientsById.get(pkg.clientId), clientName(pkg, clientsById)),
       askToPay: { request: { items: [...items] }, can: pkg.can.askToPay },
       sendRecords: { items: [...items], can: pkg.can.sendRecords },
       openChat: true,

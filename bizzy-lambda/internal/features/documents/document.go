@@ -22,6 +22,8 @@
 package documents
 
 import (
+	"cmp"
+	"slices"
 	"time"
 
 	"bizzy-lambda/internal/platform/txn"
@@ -85,9 +87,11 @@ func SessionSource(id string) Source { return Source{Kind: SourceSession, ID: id
 func PackageSource(id string) Source { return Source{Kind: SourcePackage, ID: id} }
 
 type Document struct {
-	ID       string `json:"id"`
-	Type     Type   `json:"type"`
-	Status   Status `json:"status"`
+	ID     string `json:"id"`
+	Type   Type   `json:"type"`
+	Status Status `json:"status"`
+	// ClientID is who pays: billed by an invoice, paid by a receipt. What
+	// its lines cover may be other clients' (see Line.For).
 	ClientID string `json:"clientId"`
 	// Number and Revision are set on the first issue.
 	Number   string `json:"number,omitempty"`
@@ -120,6 +124,34 @@ var Documents = txn.Kind[Document]{
 	},
 }
 
+// OfClient is a client's documents, latest first (see filedAt): those
+// they pay, and those someone else pays for what is theirs (found by the
+// Links of their items).
+func OfClient(tx *txn.Tx, clientID string) ([]*Document, error) {
+	all, err := Documents.OfClient(tx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	links, err := Links.OfClient(tx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range links {
+		if slices.ContainsFunc(all, func(d *Document) bool { return d.ID == l.DocumentID }) {
+			continue
+		}
+		d, err := Documents.Get(tx, l.DocumentID)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, d)
+	}
+	slices.SortStableFunc(all, func(a, b *Document) int {
+		return cmp.Or(b.filedAt().Compare(a.filedAt()), cmp.Compare(b.ID, a.ID))
+	})
+	return all, nil
+}
+
 // Content is everything printed on the document. Once issued it never
 // changes, so the PDF can be rebuilt exactly years later.
 type Content struct {
@@ -147,12 +179,14 @@ type Issuer struct {
 	AccountNo      string `json:"accountNo,omitempty"`
 }
 
-// Recipient is the client as printed, copied from the client: their name
-// and IC or passport number. Their contact details are kept as copied, but
+// Recipient is the client who pays as printed, copied from the client:
+// their name and IC or passport number, or the name they are billed as and
+// its registration number. Their contact details are kept as copied, but
 // not printed.
 type Recipient struct {
 	Name    string `json:"name"`
 	IDNo    string `json:"idNo,omitempty"`
+	RegNo   string `json:"regNo,omitempty"`
 	Email   string `json:"email,omitempty"`
 	Phone   string `json:"phone,omitempty"`
 	Address string `json:"address,omitempty"`
@@ -180,6 +214,37 @@ type Line struct {
 	// one receipt can record payments made on different days; nil on an
 	// invoice. A line the user adds to a receipt takes its latest payment.
 	Payment *Payment `json:"payment,omitempty"`
+	// For is whom the item it covers is for, when that isn't who pays
+	// (the document's client): Mum pays for Adam's session. Nil when it is
+	// the payer's own, or covers no item.
+	For *LineFor `json:"for,omitempty"`
+}
+
+// LineFor is the client a line's item is for, and their name as printed
+// under it, filled like the recipient (see Fill).
+type LineFor struct {
+	ClientID string `json:"clientId"`
+	Name     string `json:"name,omitempty"`
+}
+
+// ForClient is whom a line on the document is for: the client its item
+// is for, the payer's own when it says none.
+func (d *Document) ForClient(l Line) string {
+	if l.For != nil {
+		return l.For.ClientID
+	}
+	return d.ClientID
+}
+
+// setFor makes a line on the document say it is for clientID: nothing
+// when that is the payer, or the line covers no item.
+func (d *Document) setFor(l *Line, clientID string) {
+	switch {
+	case l.Source == nil || clientID == "" || clientID == d.ClientID:
+		l.For = nil
+	case l.For == nil || l.For.ClientID != clientID:
+		l.For = &LineFor{ClientID: clientID}
+	}
 }
 
 // Counting is the content that counts: the draft of one never issued, the
