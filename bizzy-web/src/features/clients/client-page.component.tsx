@@ -25,7 +25,8 @@ import { ClientPackages } from "./components/client-packages/client-packages.com
 import { ClientTimeline } from "./components/client-timeline/client-timeline.component";
 import { DeleteClientDialog } from "./components/delete-client-dialog/delete-client-dialog.component";
 import { CLIENTS_LIST } from "./clients.list";
-import { clientsListLink, clientsUrl, contactProblem } from "./clients.util";
+import { clientsListLink, clientsUrl, contactProblem, pickableClients } from "./clients.util";
+import { SharingCatchUp } from "./components/sharing-catch-up/sharing-catch-up.component";
 import type { ReactNode } from "react";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { ClientFormValues } from "./clients.form";
@@ -58,6 +59,9 @@ const FORM_ID = "client-form";
 
 /** As the API keeps it: a MyKad is 14 characters with its dashes; passports are shorter. */
 const MAX_ID_NO = 20;
+
+/** As the API keeps it: a company's registration number, old and new together. */
+const MAX_BILLING_ID_NO = 40;
 
 /** The profile, and the Google contact it is linked to. */
 type ClientEditorValues = ClientFormValues & { contact: ChosenContact | null };
@@ -159,6 +163,9 @@ function ClientEditor({ client, initialName, header }: ClientEditorProps) {
   }, { quiet: Boolean(settled) });
 
   const defaultValues: ClientEditorValues = { ...toClientValues(client, initialName), contact: client?.contact ?? null };
+  // Whom they can share with or be billed to: every other client.
+  const clients = ClientsQuery.useList();
+  const others = pickableClients(clients.data ?? []).filter((other) => other.value !== client?.id);
   const form = useAppForm({
     defaultValues,
     onSubmit: async ({ value, formApi }) => {
@@ -236,6 +243,61 @@ function ClientEditor({ client, initialName, header }: ClientEditorProps) {
 
           <form.AppField name="homeVisits">
             {(field) => <field.CheckboxField label="Usually a home visit" description="(V) or (H) in a calendar title still wins." />}
+          </form.AppField>
+        </FieldGroup>
+      ),
+    },
+    {
+      id: "billing",
+      title: "Family and billing",
+      description: "Defaults for what is new: each package and document can still say otherwise.",
+      content: (
+        <FieldGroup>
+          <form.AppField name="sharesWith">
+            {(field) => (
+              <field.TagsField
+                label="Shares packages with"
+                placeholder="Add a client"
+                options={others}
+                description="Their sessions use the packages this client buys, oldest first."
+                hint={client && <SharingCatchUp client={client} sharesWith={field.state.value} />}
+              />
+            )}
+          </form.AppField>
+
+          <form.AppField name="billTo">
+            {(field) => (
+              <field.SelectField
+                label="Billed to"
+                items={[{ value: "", label: "Themselves" }, ...others]}
+                description="Who their new sessions and packages are invoiced to, and who WhatsApp asks to pay."
+              />
+            )}
+          </form.AppField>
+
+          <form.AppField name="billingName">
+            {(field) => (
+              <field.TextField
+                label="Billing name"
+                form={FORM_ID}
+                placeholder={client?.name ?? initialName ?? ""}
+                autoComplete="off"
+                description="The name invoices and receipts they pay are made out to, such as a company. Blank for their name."
+              />
+            )}
+          </form.AppField>
+
+          <form.AppField name="billingIdNo">
+            {(field) => (
+              <field.TextField
+                label="Billing ID"
+                form={FORM_ID}
+                placeholder="201901012345 (1234567-X)"
+                maxLength={MAX_BILLING_ID_NO}
+                autoComplete="off"
+                description="Printed under the billing name in place of their IC: a company's registration number."
+              />
+            )}
           </form.AppField>
         </FieldGroup>
       ),

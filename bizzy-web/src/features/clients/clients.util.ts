@@ -6,6 +6,7 @@ import type { ActivityView } from "~/features/activity/activity.types";
 import type { ContactDetails, ContactView } from "~/features/contacts/contacts.types";
 import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import { filterUrl } from "~/core/list/filter.util";
+import { formatHours } from "~/core/utils/date.util";
 
 /** The client an item is for, when it has one and it still exists. */
 export function clientOf(clientsById: ReadonlyMap<string, ClientView>, clientId: string | undefined): ClientView | undefined {
@@ -24,6 +25,7 @@ export function toClientRow(client: ClientView, activity: ActivityView | undefin
     sessions12: year.sessions,
     owedCents: activity?.owedCents ?? 0,
     creditsLeftMinutes: activity?.creditsLeftMinutes ?? 0,
+    sharedCreditsLeftMinutes: activity?.sharedCreditsLeftMinutes ?? 0,
     next: nextOf(activity),
     lastContactedAt: activity?.lastContactedAt,
   };
@@ -120,7 +122,7 @@ export function matchesChips(row: ClientRow, chips: ListFilter["chips"]): boolea
   const booked = chip("booked");
   if (booked && Boolean(row.activity?.nextBookedAt) !== (booked === "yes")) return false;
   if (chip("owes") && row.owedCents <= 0) return false;
-  if (chip("credits") && row.creditsLeftMinutes <= 0) return false;
+  if (chip("credits") && row.creditsLeftMinutes + row.sharedCreditsLeftMinutes <= 0) return false;
   if (chip("followUp") && !row.activity?.openFollowUps) return false;
   if (chip("homeVisits") && !row.client.homeVisits) return false;
   const missing = chips.missing ?? [];
@@ -177,4 +179,16 @@ export function recreateFrom(contact: ChosenContact, clientName: string | undefi
       ...(contact.postcode ? { postcode: contact.postcode } : {}),
     },
   };
+}
+
+/**
+ * "2 h left · 6 h shared": what their packages have left, and what those
+ * shared with them have (others', so never added up); undefined with none.
+ */
+export function creditsText(row: Pick<ClientRow, "creditsLeftMinutes" | "sharedCreditsLeftMinutes">): string | undefined {
+  const parts = [
+    row.creditsLeftMinutes > 0 ? `${formatHours(row.creditsLeftMinutes / 60)} left` : "",
+    row.sharedCreditsLeftMinutes > 0 ? `${formatHours(row.sharedCreditsLeftMinutes / 60)} shared` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
 }

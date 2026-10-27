@@ -16,12 +16,18 @@ type View struct {
 	Aliases []string `json:"aliases"`
 	// FeeCents is the usual hourly fee a new session is charged; nil when
 	// none is set.
-	FeeCents   *int64     `json:"feeCents,omitempty"`
-	HomeVisits bool       `json:"homeVisits"`
-	IDNo       string     `json:"idNo,omitempty"`
-	Contact    *Contact   `json:"contact,omitempty"`
-	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
-	Can        Can        `json:"can"`
+	FeeCents   *int64 `json:"feeCents,omitempty"`
+	HomeVisits bool   `json:"homeVisits"`
+	IDNo       string `json:"idNo,omitempty"`
+	// SharesWith, BillTo, BillingName and BillingIDNo are their defaults
+	// for new packages and documents.
+	SharesWith  []string   `json:"sharesWith"`
+	BillTo      string     `json:"billTo,omitempty"`
+	BillingName string     `json:"billingName,omitempty"`
+	BillingIDNo string     `json:"billingIdNo,omitempty"`
+	Contact     *Contact   `json:"contact,omitempty"`
+	ArchivedAt  *time.Time `json:"archivedAt,omitempty"`
+	Can         Can        `json:"can"`
 }
 
 // Can is what each action on a client would say now.
@@ -36,10 +42,14 @@ type Can struct {
 func ViewOf(tx *txn.Tx, c *Client, owners ...Owner) (View, error) {
 	v := View{
 		ID: c.ID, Name: c.Name, Aliases: c.Aliases, FeeCents: c.FeeCents, HomeVisits: c.HomeVisits, IDNo: c.IDNo,
+		SharesWith: c.SharesWith, BillTo: c.BillTo, BillingName: c.BillingName, BillingIDNo: c.BillingIDNo,
 		Contact: c.Contact, ArchivedAt: c.ArchivedAt,
 	}
 	if v.Aliases == nil {
 		v.Aliases = []string{}
+	}
+	if v.SharesWith == nil {
+		v.SharesWith = []string{}
 	}
 	for _, x := range []struct {
 		verdict *apperr.Verdict

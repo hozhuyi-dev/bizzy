@@ -22,7 +22,7 @@ function Lines({ children }: { children: Array<string | false | undefined> }) {
  * turns the step into its form (`onEdit`), so it can open that way straight
  * away to settle a calendar edit. Not being confirmed yet is the page's banner.
  */
-export function bookingStep(session: SessionFullView, onEdit: () => void): PageStep {
+export function bookingStep(session: SessionFullView, onEdit: () => void, payerName?: string): PageStep {
   const happened = hasHappened(session);
   return {
     id: "booking",
@@ -44,6 +44,7 @@ export function bookingStep(session: SessionFullView, onEdit: () => void): PageS
         {session.location === "visit" ? "Home visit" : "Your place"}
         {session.credits.length > 0 && <> · package credit</>}
         {session.invoice && <> · {formatCents(session.feeCents)}</>}
+        {session.payer !== session.clientId && <> · billed to {payerName ?? "someone else"}</>}
         {!session.tentative && session.confirmedAt && <> · confirmed {formatDate(session.confirmedAt)}</>}
       </p>
     ),

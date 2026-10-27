@@ -23,6 +23,14 @@ export interface ClientView {
   homeVisits: boolean;
   /** IC (MyKad, as 900101-14-5678) or passport number, printed under their name on documents. */
   idNo?: string;
+  /** Clients their new packages are shared with by default (a family): each package keeps its own list. */
+  sharesWith: Array<string>;
+  /** Who pays for their new sessions and packages by default; unset when they pay for themselves. */
+  billTo?: string;
+  /** The name documents they pay for are made out to (a company), in place of theirs. */
+  billingName?: string;
+  /** Printed under the billing name (a registration number), in place of their IC. */
+  billingIdNo?: string;
   /** The linked Google contact, where the client's details live. */
   contact?: ClientContact;
   /** When the user put them away: kept with all that is theirs, out of lists and pickers, not booked until unarchived. */
@@ -70,6 +78,11 @@ export interface ClientFields {
   homeVisits?: boolean;
   /** `""` clears it. */
   idNo?: string;
+  sharesWith?: Array<string>;
+  /** `""` clears these. */
+  billTo?: string;
+  billingName?: string;
+  billingIdNo?: string;
   contact?: { resourceName: string };
 }
 
@@ -93,6 +106,8 @@ export interface ClientRow {
   sessions12: number;
   owedCents: number;
   creditsLeftMinutes: number;
+  /** What packages shared with them have left: others' credits, never added to their own. */
+  sharedCreditsLeftMinutes: number;
   next: ClientNext | undefined;
   lastContactedAt: string | undefined;
 }

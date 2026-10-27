@@ -1,4 +1,4 @@
-import { THEME_STORAGE_KEY } from "./theme.constant";
+import { THEME_COLORS, THEME_STORAGE_KEY } from "./theme.constant";
 import { isThemePreference, resolveTheme } from "./theme.util";
 import type { ThemePreference } from "./theme.constant";
 import type { ThemeState } from "./theme.types";
@@ -25,6 +25,8 @@ function apply(preference: ThemePreference) {
   root.classList.toggle("dark", theme === "dark");
   // Native controls and scrollbars follow too.
   root.style.colorScheme = theme;
+  // And the installed app's status bar.
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", THEME_COLORS[theme]);
   state = { preference, theme };
   listeners.forEach((listener) => listener());
 }

@@ -13,7 +13,7 @@ const SIDES = {
     swipe: "down",
     viewport: "items-end",
     popup: cn(
-      "max-h-[85dvh] w-full rounded-t-2xl border-t px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+      "max-h-[85dvh] w-full rounded-t-2xl border-t px-2 pt-2 pb-[max(var(--dock-air),env(safe-area-inset-bottom))]",
       "[transform:translateY(var(--drawer-swipe-movement-y))]",
       "data-starting-style:[transform:translateY(100%)] data-ending-style:[transform:translateY(100%)]",
     ),

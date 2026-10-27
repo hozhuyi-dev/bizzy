@@ -39,6 +39,9 @@ type View struct {
 	Paid      *documents.Paid `json:"paid,omitempty"`
 	Bought    *BoughtView     `json:"bought,omitempty"`
 	OwedCents int64           `json:"owedCents"`
+	// Payer is who pays for it: billed by its invoice (or the package
+	// bought in it's), or who would be. Asking to pay goes to them.
+	Payer string `json:"payer"`
 	// Sources are what its invoice and receipt lines cover: it, and the
 	// package bought in it. Asking to pay and sending its documents go by
 	// them.
@@ -142,6 +145,7 @@ func Locks(tx *txn.Tx, s *Session) (apperr.Locks, error) {
 		"tentative": CanUnconfirm(tx, s),
 		"fee":       CanReprice(tx, s),
 		"package":   CanRebuy(tx, s),
+		"billTo":    CanBillTo(tx, s),
 	})
 }
 
@@ -154,6 +158,9 @@ type CoverView struct {
 	Credits  []CreditView `json:"credits"`
 	FeeHours float64      `json:"feeHours"`
 	FeeCents *int64       `json:"feeCents,omitempty"`
+	// Payer is who a new session of the client's is billed to, unless the
+	// booking says otherwise (Fields.BillTo).
+	Payer string `json:"payer"`
 }
 
 // ViewOf is a session as of now.
@@ -195,6 +202,9 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 	if v.OwedCents, err = owed(tx, s); err != nil {
 		return View{}, err
 	}
+	if v.Payer, err = payer(tx, v.Sources, s.ClientID); err != nil {
+		return View{}, err
+	}
 	if s.Record != nil {
 		v.Record.Summary, v.Record.HasNotes = s.Record.Summary, s.Record.HasNotes
 	}
@@ -221,6 +231,21 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 		}
 	}
 	return v, nil
+}
+
+// payer is who pays for items: whom the first on an invoice is billed to,
+// else whom their client's are.
+func payer(tx *txn.Tx, items []documents.Source, clientID string) (string, error) {
+	for _, src := range items {
+		inv, _, err := documents.Invoice(tx, src)
+		if err != nil {
+			return "", err
+		}
+		if inv != nil {
+			return inv.ClientID, nil
+		}
+	}
+	return clients.PayerOf(tx, clientID)
 }
 
 func viewsOf(tx *txn.Tx, ss []*Session) ([]View, error) {
@@ -394,9 +419,13 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 	r.Query("sessions.preview", router.Typed(func(ctx context.Context, in previewRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) (CoverView, error) {
 			c, err := Preview(tx, in.ClientID, in.Time, in.SessionID, in.BuysPackage)
+			if err != nil {
+				return CoverView{}, err
+			}
+			payer, err := clients.PayerOf(tx, in.ClientID)
 			return CoverView{
 				Kind: c.Kind, Hours: hours(c.Minutes), Credits: creditViews(c.Credits),
-				FeeHours: hours(c.FeeMinutes), FeeCents: c.FeeCents,
+				FeeHours: hours(c.FeeMinutes), FeeCents: c.FeeCents, Payer: payer,
 			}, err
 		})
 	}))

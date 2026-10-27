@@ -1,8 +1,8 @@
 import { toast } from "sonner";
 import { useSelector } from "@tanstack/react-form";
 import { PaymentsMutation } from "../../payments.mutation";
-import { PAYMENT_CHOICES } from "../../payments.constant";
-import { methodLabel } from "../../payments.util";
+import { methodLabel, paidText } from "../../payments.util";
+import { PaidByField, PaidOnField } from "../paid-fields/paid-fields.component";
 import type { Payable, PaymentMethod } from "../../payments.types";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
@@ -10,7 +10,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldLabel } from "~/components/ui/field";
 import { useAppForm } from "~/components/shared/form/form.hook";
 import { fieldErrors, requiredError } from "~/core/utils/form.util";
-import { formatDate, todayISO } from "~/core/utils/date.util";
+import { todayISO } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
 const keyOf = (p: Payable) => `${p.item.kind}:${p.item.id}:${p.paid ? "paid" : "owed"}`;
@@ -46,7 +46,7 @@ function PaymentSummary({ payable, showLabel }: { payable: Payable; showLabel: b
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm">
         {showLabel && <span className="text-muted-foreground">{payable.label}: </span>}
-        <b>{formatCents(paid.amountCents)}</b> paid by {methodLabel(paid.method)} on {formatDate(paid.paidOn)}
+        Paid {paidText(paid)}
       </p>
       {paid.issued ? (
         <span className="text-xs text-muted-foreground">On an issued receipt.</span>
@@ -181,19 +181,11 @@ export function usePaymentForm(payables: ReadonlyArray<Payable>, onDone?: () => 
       )}
 
       <form.AppField name="method" validators={{ onChange: ({ value }) => requiredError(value, "Choose how it was paid") }}>
-        {(field) => <field.ChoiceField label="Paid by" options={PAYMENT_CHOICES} />}
+        {() => <PaidByField />}
       </form.AppField>
 
       <form.AppField name="paidOn" validators={{ onChange: ({ value }) => requiredError(value, "Pick the day it was paid") }}>
-        {(field) => (
-          <field.TextField
-            label="On"
-            type="date"
-            inputClassName="max-w-44"
-            // Money comes in on a day that has come; one ahead is most likely a slip.
-            description={field.state.value > todayISO() ? "That day hasn't come yet." : undefined}
-          />
-        )}
+        {() => <PaidOnField />}
       </form.AppField>
 
     </>

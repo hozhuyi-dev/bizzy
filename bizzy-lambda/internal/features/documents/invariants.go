@@ -67,6 +67,9 @@ var Invariants = []txn.Invariant{
 			if d == nil || d.ID != l.DocumentID || d.Type != l.Type {
 				return []string{fmt.Sprintf("link %s points at %s, which doesn't cover it", id, l.DocumentID)}, nil
 			}
+			if _, line, _ := covering(tx, l.Source, l.Type); d.ForClient(*line) != l.ClientID {
+				return []string{fmt.Sprintf("link %s says it is for %q, but its line is for %q", id, l.ClientID, d.ForClient(*line))}, nil
+			}
 			if l.Type == TypeInvoice {
 				owed, err := owes(tx, l.Source)
 				if err != nil {
@@ -146,7 +149,28 @@ var Invariants = []txn.Invariant{
 			if _, found, err := clients.Clients.Find(tx, d.ClientID); err != nil || !found {
 				return []string{fmt.Sprintf("%s %s is for %q, who isn't a client", d.Type, id, d.ClientID)}, err
 			}
-			return nil, nil
+			var out []string
+			for _, c := range []*Content{d.Content, d.Draft} {
+				if c == nil {
+					continue
+				}
+				for _, l := range c.Lines {
+					switch {
+					case l.For == nil:
+					case l.Source == nil:
+						out = append(out, fmt.Sprintf("%s %s says a line covering nothing is for %s", d.Type, id, l.For.ClientID))
+					case l.For.ClientID == d.ClientID:
+						out = append(out, fmt.Sprintf("%s %s says a line is for %s, who pays it", d.Type, id, d.ClientID))
+					default:
+						if _, found, err := clients.Clients.Find(tx, l.For.ClientID); err != nil {
+							return nil, err
+						} else if !found {
+							out = append(out, fmt.Sprintf("%s %s has a line for %q, who isn't a client", d.Type, id, l.For.ClientID))
+						}
+					}
+				}
+			}
+			return out, nil
 		},
 	},
 	{
@@ -158,6 +182,9 @@ var Invariants = []txn.Invariant{
 			}
 			if has, err := Documents.HasClient(tx, id); err != nil || has {
 				return []string{"client " + id + " was deleted with documents"}, err
+			}
+			if has, err := Links.HasClient(tx, id); err != nil || has {
+				return []string{"client " + id + " was deleted with documents for them"}, err
 			}
 			return nil, nil
 		},

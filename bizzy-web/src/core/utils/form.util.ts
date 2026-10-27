@@ -1,3 +1,4 @@
+import { focusInView } from "~/core/viewport/focus-in-view.util";
 import { parseCents } from "~/core/utils/money.util";
 
 /*
@@ -75,6 +76,8 @@ export function focusFirstInvalid(): void {
     const field = root.querySelector<HTMLElement>('[data-slot="field"][data-invalid="true"]');
     if (!field) return;
     field.scrollIntoView({ block: "center", behavior: "smooth" });
-    field.querySelector<HTMLElement>("input:not([type=hidden]), textarea, button, [tabindex]")?.focus({ preventScroll: true });
+    // Over the keyboard it brings up, once that is up.
+    const box = field.querySelector<HTMLElement>("input:not([type=hidden]), textarea, button, [tabindex]");
+    if (box) focusInView(box);
   });
 }

@@ -1,14 +1,16 @@
 // Package packages is prepaid hours. A package is bought on its own in the
 // app, or in a session (its title says `10x85`: 10 hours at 85, and it is
 // collected with that session). Its price is its invoice line (see
-// documents). Each credit is an hour, given to sessions half an hour at a
-// time when they are booked (see sessions), so how much is used is
-// counted from the sessions, which this package can't see: the app passes
-// that in (Usage).
+// documents), billed to whoever pays for it. Its credits are for its
+// client and those it is shared with (a family), each an hour, given to
+// their sessions half an hour at a time when they are booked (see
+// sessions), so how much is used is counted from the sessions, which this
+// package can't see: the app passes that in (Usage).
 package packages
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -19,6 +21,9 @@ import (
 type Package struct {
 	ID       string `json:"id"`
 	ClientID string `json:"clientId"`
+	// SharedWith are the other clients whose sessions its credits may pay
+	// for, copied from its client's SharesWith when it is bought.
+	SharedWith []string `json:"sharedWith,omitempty"`
 	// Hours are its credits, an hour each.
 	Hours       int       `json:"hours"`
 	PurchasedAt time.Time `json:"purchasedAt"`
@@ -33,7 +38,7 @@ type Package struct {
 // bought in.
 var Packages = txn.Kind[Package]{
 	Name: "PACKAGE", Gone: "This package was deleted.",
-	Doc: txn.Doc{What: "A prepaid package of hours; its price is its invoice line.", Client: "its client, by purchase", Time: "when it was bought", Ref: "the session it was bought in"},
+	Doc: txn.Doc{What: "A prepaid package of hours, and whom it is shared with; its price is its invoice line.", Client: "its client, by purchase", Time: "when it was bought", Ref: "the session it was bought in"},
 	Meta: func(p *Package) txn.Meta {
 		return txn.Meta{ID: p.ID, Client: p.ClientID, Time: p.PurchasedAt, Ref: p.BoughtIn}
 	},
@@ -56,9 +61,40 @@ func (p Package) Todo(owedCents int64, now time.Time) []Reason {
 	return out
 }
 
-// Usage is how many minutes of a package's credits sessions use: counted
-// by sessions, which own them (see sessions.CreditsUsed).
-type Usage func(tx *txn.Tx, packageID string) (int, error)
+// Clients are whom its credits are for: its client, then those it is
+// shared with.
+func (p Package) Clients() []string {
+	return append([]string{p.ClientID}, p.SharedWith...)
+}
+
+// UsableBy reports whether its credits may pay for a client's sessions.
+func (p Package) UsableBy(clientID string) bool {
+	return slices.Contains(p.Clients(), clientID)
+}
+
+// Used is how many minutes of a package's credits each client's sessions
+// use.
+type Used map[string]int
+
+// Minutes is how many minutes of its credits sessions use in all.
+func (u Used) Minutes() int {
+	total := 0
+	for _, m := range u {
+		total += m
+	}
+	return total
+}
+
+// Usage is how many minutes of a package's credits sessions use, by
+// client: counted by sessions, which own them (see sessions.CreditsUsed).
+type Usage func(tx *txn.Tx, packageID string) (Used, error)
+
+// SharedWith reports whether any package is shared with a client (see
+// clients.Owner).
+func SharedWith(tx *txn.Tx, clientID string) (bool, error) {
+	all, err := Packages.All(tx)
+	return slices.ContainsFunc(all, func(p *Package) bool { return slices.Contains(p.SharedWith, clientID) }), err
+}
 
 // BoughtIn is the package bought in a session; nil when none.
 func BoughtIn(tx *txn.Tx, sessionID string) (*Package, error) {

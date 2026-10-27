@@ -89,6 +89,11 @@ describe("askItems", () => {
     expect(lines[3]).toMatch(/^Total: RM\s?285\.00$/);
     expect(askItems(ask)).not.toContain("Total");
   });
+
+  test("names whom a line is for when someone else pays", () => {
+    const text = askItems({ lines: [{ ...ask.lines[0]!, for: "Adam Tan" }], totalCents: 9500 });
+    expect(text).toMatch(/^Physiotherapy session \(Adam\) · 5 Oct 2026 · RM\s?95\.00$/);
+  });
 });
 
 describe("documentsMessage", () => {

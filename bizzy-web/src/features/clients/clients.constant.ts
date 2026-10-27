@@ -17,3 +17,6 @@ export const MISSING_DETAILS = {
   contact: "Google contact",
 } as const;
 export type MissingDetail = keyof typeof MISSING_DETAILS;
+
+/** What "Billed to" decides, said the same on a session, a package and a document. */
+export const BILLED_TO_HELP = "Whose invoice it goes on, and who WhatsApp asks to pay.";

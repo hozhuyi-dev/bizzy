@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -26,12 +27,17 @@ type Link struct {
 	// no receipt pays it: such links are listed as open (the to-do list's
 	// "collect").
 	Owed bool `json:"owed,omitempty"`
+	// ClientID is whom the item is for (see Document.ForClient), so a
+	// client's documents include those someone else pays.
+	ClientID string `json:"clientId"`
 }
 
 var Links = txn.Kind[Link]{
 	Name: "DOCLINK", Gone: "Nothing covers it.",
-	Doc:  txn.Doc{What: "Which live document of a type covers an item: <kind>:<id>#<type>.", Open: "an invoice's, while no receipt pays it: what is owed", Ref: "the document"},
-	Meta: func(l *Link) txn.Meta { return txn.Meta{ID: linkID(l.Source, l.Type), Ref: l.DocumentID, Open: l.Owed} },
+	Doc: txn.Doc{What: "Which live document of a type covers an item: <kind>:<id>#<type>.", Client: "whom the item is for", Open: "an invoice's, while no receipt pays it: what is owed", Ref: "the document"},
+	Meta: func(l *Link) txn.Meta {
+		return txn.Meta{ID: linkID(l.Source, l.Type), Client: l.ClientID, Ref: l.DocumentID, Open: l.Owed}
+	},
 }
 
 func linkID(src Source, t Type) string { return src.Key() + "#" + string(t) }
@@ -122,15 +128,20 @@ func Owed(tx *txn.Tx) ([]Source, error) {
 
 // Charge is what an item costs, as its invoice line says it.
 type Charge struct {
-	ClientID    string
+	// For is the client the item is for. A new line is billed to whom
+	// they are billed to (see clients.PayerOf), unless it goes on Into.
+	For string
+	// Payer is who pays for a new line not going on Into; "" for whom
+	// For is billed to.
+	Payer       string
 	Source      Source
 	Description string
 	Date        string
 	Cents       int64
 	Typed       bool
-	// Into is a never-issued draft invoice of the client to add the line
-	// to when the item has none yet, so a session and the package bought
-	// in it go on one invoice; "" starts a new one.
+	// Into is a never-issued draft invoice to add the line to when the
+	// item has none yet, whoever pays it, so a session and the package
+	// bought in it go on one invoice; "" starts a new one.
 	Into string
 }
 
@@ -154,13 +165,24 @@ func SetCharge(tx *txn.Tx, c Charge) (*Document, error) {
 		d.Draft.TotalCents = d.Draft.Total()
 		return d, relink(tx, d)
 	}
-	if d, err = draftFor(tx, TypeInvoice, c.ClientID, c.Into); err != nil {
+	if d, err = draftFor(tx, TypeInvoice, "", c.Into); err != nil {
 		return nil, err
 	}
+	if d == nil {
+		payer := c.Payer
+		if payer == "" {
+			if payer, err = clients.PayerOf(tx, c.For); err != nil {
+				return nil, err
+			}
+		}
+		if d, err = newDraft(tx, TypeInvoice, payer); err != nil {
+			return nil, err
+		}
+	}
 	src := c.Source
-	d.Draft.Lines = append(d.Draft.Lines, Line{
-		ID: tx.NewID(), Description: c.Description, Date: c.Date, AmountCents: c.Cents, Source: &src, Typed: c.Typed,
-	})
+	added := Line{ID: tx.NewID(), Description: c.Description, Date: c.Date, AmountCents: c.Cents, Source: &src, Typed: c.Typed}
+	d.setFor(&added, c.For)
+	d.Draft.Lines = append(d.Draft.Lines, added)
 	inDateOrder(d.Draft.Lines)
 	d.Draft.TotalCents = d.Draft.Total()
 	return d, relink(tx, d)
@@ -202,38 +224,84 @@ func CanRemove(tx *txn.Tx, src Source, what string) error {
 	return CanChange(tx, src, TypeInvoice)
 }
 
-// MoveToClient moves an item's lines to drafts of another client: to the
-// drafts in into, by type, or new ones (recorded in into, so lines that
-// move together share them). Refused while an issued document covers it.
-func MoveToClient(tx *txn.Tx, src Source, clientID string, into map[Type]string) error {
+// MoveToPayer bills an item to another client: its lines move to drafts
+// of the payer, to the drafts in into by type, or new ones (recorded in
+// into, so lines that move together share them), still for whom they
+// were. Refused while an issued document covers it.
+func MoveToPayer(tx *txn.Tx, src Source, payer string, into map[Type]string) error {
 	for _, t := range []Type{TypeInvoice, TypeReceipt} {
-		d, _, err := covering(tx, src, t)
+		d, line, err := covering(tx, src, t)
 		if err != nil {
 			return err
 		}
-		if d == nil || d.ClientID == clientID {
+		if d == nil || d.ClientID == payer {
 			continue
 		}
-		if d.Issued() {
-			return refuseIssued(d)
-		}
-		line, err := takeLine(tx, d, src)
-		if err != nil {
-			return err
-		}
-		to, err := draftFor(tx, t, clientID, into[t])
-		if err != nil {
-			return err
-		}
-		to.Draft.Lines = append(to.Draft.Lines, line)
-		inDateOrder(to.Draft.Lines)
-		to.Draft.TotalCents = to.Draft.Total()
-		into[t] = to.ID
-		if err := relink(tx, to); err != nil {
+		if err := move(tx, d, *line, payer, d.ForClient(*line), into); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// Refor makes an item's lines for another client, the item having become
+// theirs (a session booked for the wrong one). A line the old client paid
+// themselves goes to a draft of whom the new one is billed to, as a new
+// line would (into as for MoveToPayer); one someone else pays stays
+// theirs. Refused while an issued document covers it.
+func Refor(tx *txn.Tx, src Source, clientID string, into map[Type]string) error {
+	for _, t := range []Type{TypeInvoice, TypeReceipt} {
+		d, line, err := covering(tx, src, t)
+		switch {
+		case err != nil:
+			return err
+		case d == nil || d.ForClient(*line) == clientID:
+			continue
+		case d.Issued():
+			return refuseIssued(d)
+		case line.For == nil:
+			payer, err := clients.PayerOf(tx, clientID)
+			if err != nil {
+				return err
+			}
+			if err := move(tx, d, *line, payer, clientID, into); err != nil {
+				return err
+			}
+		default:
+			d.setFor(line, clientID)
+			if err := relink(tx, d); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// move takes an item's line off the draft it is on to a draft of payer's,
+// for forID: the draft into names for its type, or a new one.
+func move(tx *txn.Tx, from *Document, line Line, payer, forID string, into map[Type]string) error {
+	if from.Issued() {
+		return refuseIssued(from)
+	}
+	line, err := takeLine(tx, from, *line.Source)
+	if err != nil {
+		return err
+	}
+	to, err := draftFor(tx, from.Type, payer, into[from.Type])
+	if err != nil {
+		return err
+	}
+	if to == nil {
+		if to, err = newDraft(tx, from.Type, payer); err != nil {
+			return err
+		}
+	}
+	to.setFor(&line, forID)
+	to.Draft.Lines = append(to.Draft.Lines, line)
+	inDateOrder(to.Draft.Lines)
+	to.Draft.TotalCents = to.Draft.Total()
+	into[from.Type] = to.ID
+	return relink(tx, to)
 }
 
 // Redate puts an item's lines on a new day: in place on a draft never
@@ -281,20 +349,20 @@ func Redescribe(tx *txn.Tx, src Source, was, now string) error {
 	return nil
 }
 
-// Paying is an item to record paid: what it is, whose, and its name in a
+// Paying is an item to record paid: what it is, and its name in a
 // refusal.
 type Paying struct {
-	Source   Source
-	ClientID string
-	What     string
+	Source Source
+	What   string
 }
 
-// Pay records items paid in full, on a draft receipt per client, in place
-// of any receipt line they had. Refused for one that owes nothing.
+// Pay records items paid in full, in place of any receipt line they had:
+// on a draft receipt per payer, each received from whom its invoice bills.
+// Refused for one that owes nothing.
 func Pay(tx *txn.Tx, items []Paying, p Payment) error {
 	drafts := map[string]*Document{}
 	for _, it := range items {
-		_, charged, err := Invoice(tx, it.Source)
+		inv, charged, err := Invoice(tx, it.Source)
 		if err != nil {
 			return err
 		}
@@ -304,17 +372,17 @@ func Pay(tx *txn.Tx, items []Paying, p Payment) error {
 		if err := Unpay(tx, it.Source); err != nil {
 			return err
 		}
-		d, ok := drafts[it.ClientID]
+		d, ok := drafts[inv.ClientID]
 		if !ok {
-			if d, err = newDraft(tx, TypeReceipt, it.ClientID); err != nil {
+			if d, err = newDraft(tx, TypeReceipt, inv.ClientID); err != nil {
 				return err
 			}
-			drafts[it.ClientID] = d
+			drafts[inv.ClientID] = d
 		}
 		src, paid := it.Source, p
-		d.Draft.Lines = append(d.Draft.Lines, Line{
-			ID: tx.NewID(), Description: charged.Description, Date: charged.Date, AmountCents: charged.AmountCents, Source: &src, Payment: &paid,
-		})
+		line := Line{ID: tx.NewID(), Description: charged.Description, Date: charged.Date, AmountCents: charged.AmountCents, Source: &src, Payment: &paid}
+		d.setFor(&line, inv.ForClient(*charged))
+		d.Draft.Lines = append(d.Draft.Lines, line)
 		inDateOrder(d.Draft.Lines)
 		d.Draft.TotalCents = d.Draft.Total()
 		if err := relink(tx, d); err != nil {
@@ -422,19 +490,20 @@ func newDraft(tx *txn.Tx, t Type, clientID string) (*Document, error) {
 	return d, Documents.Add(tx, d)
 }
 
-// draftFor is the never-issued draft into, if it is one of the type for
-// the client, else a new one.
-func draftFor(tx *txn.Tx, t Type, clientID, into string) (*Document, error) {
-	if into != "" {
-		d, ok, err := Documents.Find(tx, into)
-		if err != nil {
-			return nil, err
-		}
-		if ok && !d.Issued() && d.Status == StatusDraft && d.Type == t && d.ClientID == clientID {
-			return d, nil
-		}
+// draftFor is the never-issued draft into, if it is one of the type
+// billed to payer (to anyone, for payer ""); nil when it isn't.
+func draftFor(tx *txn.Tx, t Type, payer, into string) (*Document, error) {
+	if into == "" {
+		return nil, nil
 	}
-	return newDraft(tx, t, clientID)
+	d, ok, err := Documents.Find(tx, into)
+	if err != nil || !ok {
+		return nil, err
+	}
+	if !d.Issued() && d.Status == StatusDraft && d.Type == t && (payer == "" || d.ClientID == payer) {
+		return d, nil
+	}
+	return nil, nil
 }
 
 // takeLine takes an item's line off a document not issued, deleting a
@@ -462,12 +531,14 @@ func takeLine(tx *txn.Tx, d *Document, src Source) (Line, error) {
 // Every change to a document's lines ends with it.
 func relink(tx *txn.Tx, d *Document) error {
 	want := map[Source]bool{}
+	forClient := map[Source]string{}
 	if _, kept, err := Documents.Find(tx, d.ID); err != nil {
 		return err
 	} else if c := d.Counting(); kept && c != nil {
 		for _, l := range c.Lines {
 			if l.Source != nil {
 				want[*l.Source] = true
+				forClient[*l.Source] = d.ForClient(l)
 			}
 		}
 	}
@@ -491,9 +562,9 @@ func relink(tx *txn.Tx, d *Document) error {
 		case err != nil:
 			return err
 		case ok:
-			l.DocumentID = d.ID
+			l.DocumentID, l.ClientID = d.ID, forClient[src]
 		default:
-			if err := Links.Add(tx, &Link{Source: src, Type: d.Type, DocumentID: d.ID}); err != nil {
+			if err := Links.Add(tx, &Link{Source: src, Type: d.Type, DocumentID: d.ID, ClientID: forClient[src]}); err != nil {
 				return err
 			}
 		}

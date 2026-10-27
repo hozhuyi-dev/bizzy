@@ -3,7 +3,7 @@ import type { ConflictView } from "~/features/conflicts/conflicts.types";
 import type { DocumentRef, DocumentSource } from "~/features/documents/documents.types";
 import type { FollowUpView } from "~/features/follow-ups/follow-ups.types";
 import type { PackageView } from "~/features/packages/packages.types";
-import type { Paid } from "~/features/payments/payments.types";
+import type { Paid, PaymentInput } from "~/features/payments/payments.types";
 import type { SESSION_FACETS } from "./sessions.constant";
 import type { FilterSearch, ListRequest } from "~/core/list/filter.types";
 import type { Locks, Verdict } from "~/core/lambda/lambda.types";
@@ -87,6 +87,8 @@ export interface SessionView {
   owedCents: number;
   /** What its invoice and receipt lines cover (it, and the package bought in it): what asking to pay and sending its documents go by. */
   sources: Array<DocumentSource>;
+  /** Who pays for it: billed by its invoice, or who would be. Asking to pay goes to them. */
+  payer: string;
   record: RecordView;
   todo: Array<SessionReason>;
   /** When it was called off, and why; a cancelled session stays as it was. */
@@ -144,6 +146,8 @@ export interface CoverView {
   /** What they leave, which feeCents charges when kind is "default". */
   feeHours: number;
   feeCents?: number;
+  /** Who a new session of the client's is billed to, unless the booking says otherwise. */
+  payer: string;
 }
 
 /** sessions.preview's request: a booking as the form has it, with no fee entered. */
@@ -171,6 +175,10 @@ export interface SessionFields {
   package?: { bought?: { hours: number; priceCents: number } };
   /** Move what was received to the new amounts, on receipts not issued yet. */
   updatePayment?: boolean;
+  /** Who pays for it, and the package bought in it. */
+  billTo?: string;
+  /** Paid there and then, in full with the package bought in it: a new one's only. */
+  payment?: PaymentInput;
 }
 
 /** A booking as the user fills it in: what the booking form edits. */
@@ -184,6 +192,10 @@ export interface SessionDraft {
   package?: { hours: number; priceCents: number };
   homeVisit: boolean;
   tentative: boolean;
+  /** Who pays for it, and the package bought in it; unset leaves it to whom its client is billed to. */
+  billTo?: string;
+  /** A new one's: paid there and then, in full with the package bought in it. */
+  payment?: PaymentInput;
 }
 
 /**

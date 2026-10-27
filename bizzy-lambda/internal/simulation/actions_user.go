@@ -40,7 +40,7 @@ var clientActions = []Action{
 	{Name: "clients.update", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		c := pick(t, w, "client", clients.Clients.All)
 		in := map[string]any{"id": c.ID}
-		switch rapid.IntRange(0, 5).Draw(t, "edit") {
+		switch rapid.IntRange(0, 9).Draw(t, "edit") {
 		case 0:
 			in["name"] = rapid.SampledFrom(names).Draw(t, "name")
 		case 1:
@@ -53,6 +53,14 @@ var clientActions = []Action{
 			in["contact"] = map[string]any{"resourceName": w.Contact(c.Name)}
 		case 5:
 			in["contact"] = map[string]any{"resourceName": ""}
+		case 6:
+			in["sharesWith"] = clientIDs(t, w)
+		case 7:
+			in["billTo"] = rapid.SampledFrom([]string{"", clientID(t, w)}).Draw(t, "bill to")
+		case 8:
+			in["billingName"] = rapid.SampledFrom([]string{"", "Tan Holdings Sdn Bhd"}).Draw(t, "billing name")
+		case 9:
+			in["billingIdNo"] = rapid.SampledFrom([]string{"", "201901012345"}).Draw(t, "billing id")
 		}
 		w.call(t, "clients.update", in)
 	}},
@@ -111,7 +119,7 @@ var fees = []map[string]any{
 var sessionActions = []Action{
 	{Name: "sessions.create", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		in := map[string]any{"clientId": clientID(t, w), "time": span(t, w)}
-		addSessionFields(t, in, true)
+		addSessionFields(t, w, in, true)
 		w.call(t, "sessions.create", in)
 	}},
 	{Name: "sessions.update", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
@@ -123,7 +131,7 @@ var sessionActions = []Action{
 		if rapid.Bool().Draw(t, "move it?") {
 			in["time"] = span(t, w)
 		}
-		addSessionFields(t, in, false)
+		addSessionFields(t, w, in, false)
 		v := sessionView(t, w, s)
 		if !v.Can.Update.OK {
 			w.callAsViewed(t, "sessions.update", in, v.Can.Update)
@@ -158,7 +166,7 @@ var sessionActions = []Action{
 }
 
 // addSessionFields draws what else a booking form sets.
-func addSessionFields(t *rapid.T, in map[string]any, isNew bool) {
+func addSessionFields(t *rapid.T, w *World, in map[string]any, isNew bool) {
 	if rapid.IntRange(0, 3).Draw(t, "tentative?") == 0 {
 		in["tentative"] = rapid.Bool().Draw(t, "tentative")
 	}
@@ -183,6 +191,12 @@ func addSessionFields(t *rapid.T, in map[string]any, isNew bool) {
 	if !isNew && rapid.Bool().Draw(t, "update the payment?") {
 		in["updatePayment"] = true
 	}
+	if rapid.IntRange(0, 4).Draw(t, "bill to?") == 0 {
+		in["billTo"] = clientID(t, w)
+	}
+	if isNew && rapid.IntRange(0, 3).Draw(t, "paid there and then?") == 0 {
+		in["payment"] = map[string]any{"method": rapid.SampledFrom([]string{"cash", "tng"}).Draw(t, "paid by")}
+	}
 }
 
 var moneyActions = []Action{
@@ -194,12 +208,18 @@ var moneyActions = []Action{
 		if rapid.Bool().Draw(t, "paid there and then?") {
 			in["payment"] = map[string]any{"payment": map[string]any{"method": "cash"}}
 		}
+		if rapid.IntRange(0, 3).Draw(t, "shared?") == 0 {
+			in["sharedWith"] = clientIDs(t, w)
+		}
+		if rapid.IntRange(0, 3).Draw(t, "bill to?") == 0 {
+			in["billTo"] = clientID(t, w)
+		}
 		w.call(t, "packages.create", in)
 	}},
 	{Name: "packages.update", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		p := pick(t, w, "package", packages.Packages.All)
 		in := map[string]any{"id": p.ID}
-		switch rapid.IntRange(0, 4).Draw(t, "edit") {
+		switch rapid.IntRange(0, 6).Draw(t, "edit") {
 		case 0:
 			in["clientId"] = clientID(t, w)
 		case 1:
@@ -210,6 +230,13 @@ var moneyActions = []Action{
 			in["purchasedAt"] = startTime(t, w)
 		case 4:
 			in["note"] = "Gift"
+		case 5:
+			in["sharedWith"] = clientIDs(t, w)
+		case 6:
+			in["billTo"] = clientID(t, w)
+		}
+		if rapid.IntRange(0, 3).Draw(t, "update the payment?") == 0 {
+			in["updatePayment"] = true
 		}
 		// What its dialog's payment section sends: the payment recorded
 		// again (as the form does with a new price), another, or undone.
@@ -358,6 +385,11 @@ var moneyActions = []Action{
 		}
 		kind := rapid.SampledFrom([]string{"invoice", "receipt"}).Draw(t, "type")
 		w.call(t, "documents.place", map[string]any{"type": kind, "into": into, "items": []map[string]any{item}})
+	}},
+	{Name: "documents.setPayer", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		d := pick(t, w, "document", documents.Documents.All)
+		// The client chosen may refuse it too (archived, or gone).
+		w.callRefusedAsViewed(t, "documents.setPayer", map[string]any{"id": d.ID, "clientId": clientID(t, w)}, documentCan(t, w, d).SetPayer)
 	}},
 	{Name: "documents.share", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		w.call(t, "documents.share", map[string]any{"ids": []string{pick(t, w, "document", documents.Documents.All).ID}})
@@ -530,6 +562,9 @@ func sessionChanges(v sessions.View, in map[string]any) []string {
 	if fee, ok := in["fee"].(map[string]any); ok && fee["cents"] != nil && fee["cents"] != v.FeeCents {
 		out = append(out, "fee")
 	}
+	if payer, ok := in["billTo"]; ok && payer != v.Payer {
+		out = append(out, "billTo")
+	}
 	if pkg, ok := in["package"].(map[string]any); ok {
 		bought, _ := pkg["bought"].(map[string]any)
 		switch {
@@ -558,6 +593,9 @@ func packageChanges(v packages.View, in map[string]any) []string {
 	}
 	if _, ok := in["payment"]; ok && (in["payment"].(map[string]any)["payment"] != nil || v.Paid != nil) {
 		out = append(out, "payment")
+	}
+	if payer, ok := in["billTo"]; ok && payer != v.Payer {
+		out = append(out, "billTo")
 	}
 	return out
 }
@@ -594,6 +632,16 @@ func clientID(t *rapid.T, w *World) string {
 		return "nobody"
 	}
 	return rapid.SampledFrom(all).Draw(t, "client").ID
+}
+
+// clientIDs draws a few clients' ids, now and then one that doesn't
+// exist: whom a package is shared with.
+func clientIDs(t *rapid.T, w *World) []string {
+	out := []string{}
+	for range rapid.IntRange(0, 2).Draw(t, "how many clients") {
+		out = append(out, clientID(t, w))
+	}
+	return out
 }
 
 // span draws a session from the hour, around now, so sessions often meet.

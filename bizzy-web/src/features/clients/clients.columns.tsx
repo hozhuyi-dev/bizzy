@@ -1,5 +1,5 @@
 import { BellIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
-import { contactProblem, extraAliases, isLapsed } from "./clients.util";
+import { contactProblem, creditsText, extraAliases, isLapsed } from "./clients.util";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { ClientNext, ClientRow, ClientView, ClientsListSearch } from "./clients.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
@@ -28,11 +28,6 @@ function nextText(next: ClientNext): string {
 /** A follow-up due already: it is waiting on her. */
 function overdue(next: ClientNext, now = new Date()): boolean {
   return next.kind === "followUp" && new Date(next.at) < now;
-}
-
-/** "2 h left": what their packages have left. */
-function creditsText(row: ClientRow): string | undefined {
-  return row.creditsLeftMinutes > 0 ? `${formatHours(row.creditsLeftMinutes / 60)} left` : undefined;
 }
 
 /**

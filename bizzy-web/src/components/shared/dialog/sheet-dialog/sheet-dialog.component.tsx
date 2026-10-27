@@ -18,7 +18,7 @@ import { useKeyboardInset } from "~/core/viewport/keyboard-inset.hook";
 const SHEET = [
   "max-h-[calc(90dvh-var(--keyboard-inset))] overflow-y-auto overscroll-contain sm:max-w-lg",
   "max-sm:top-auto max-sm:bottom-(--keyboard-inset) max-sm:left-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0",
-  "max-sm:rounded-b-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
+  "max-sm:rounded-b-none max-sm:pb-[max(1rem,var(--dock-air),env(safe-area-inset-bottom))]",
   "max-sm:data-open:slide-in-from-bottom-8 max-sm:data-closed:slide-out-to-bottom-8",
   // Sticky over the fields scrolling under it: its muted tint laid on the
   // popover's colour, so nothing shows through. It sticks inside the
@@ -34,7 +34,7 @@ const SHEET = [
   // thumb's height, as a DataCard's: Cancel first, the main one at the edge.
   "max-sm:[&_[data-slot$=dialog-footer]]:flex-row",
   "max-sm:[&_[data-slot$=dialog-footer]>*]:h-(--touch-target) max-sm:[&_[data-slot$=dialog-footer]>*]:min-w-0 max-sm:[&_[data-slot$=dialog-footer]>*]:flex-1",
-  "max-sm:has-[[data-slot$=dialog-footer]]:pb-4 max-sm:[&_[data-slot$=dialog-footer]]:pb-[max(1rem,env(safe-area-inset-bottom))]",
+  "max-sm:has-[[data-slot$=dialog-footer]]:pb-4 max-sm:[&_[data-slot$=dialog-footer]]:pb-[max(1rem,var(--dock-air),env(safe-area-inset-bottom))]",
 ].join(" ");
 
 /** The alert dialog sizes itself by data-size, so it is widened the same way. */

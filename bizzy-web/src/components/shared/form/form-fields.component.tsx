@@ -1,6 +1,7 @@
 import { cn } from "cn";
 import { useId } from "react";
 import { useSelector } from "@tanstack/react-form";
+import { XIcon } from "lucide-react";
 import { useFieldContext, useFormContext } from "./form-context.hook";
 import { AutocompleteInput } from "./autocomplete-input/autocomplete-input.component";
 import type { ComponentProps, ReactNode } from "react";
@@ -395,6 +396,76 @@ export function ChoicesField({
             </Button>
           );
         })}
+      </div>
+    </FieldFrame>
+  );
+}
+
+interface TagsFieldProps extends FieldFrameProps {
+  /** Every value that can be chosen, by its label; the chosen keep their order. */
+  options: ReadonlyArray<{ value: string; label: string }>;
+  /** The picker's words: "Add a client". */
+  placeholder: string;
+  /** Chosen values that can't be taken off now (why is the hint). */
+  fixed?: ReadonlyArray<string> | undefined;
+  disabled?: boolean | undefined;
+}
+
+/**
+ * Any of many, too many for a row of buttons: the chosen as chips, each
+ * with ✕ to take it off, and a picker to add another. Whom a package is
+ * shared with.
+ */
+export function TagsField({ label, labelClassName, description, hint, className, options, placeholder, fixed = [], disabled }: TagsFieldProps) {
+  const field = useFieldContext<Array<string>>();
+  const id = useId();
+  const errors = useShownErrors(field);
+  const chosen = field.state.value;
+  const labelOf = (value: string) => options.find((option) => option.value === value)?.label ?? "Someone deleted";
+  const rest = options.filter((option) => !chosen.includes(option.value));
+  const set = (next: Array<string>) => {
+    field.handleChange(next);
+    field.handleBlur();
+  };
+  return (
+    <FieldFrame {...{ label, labelClassName, description, hint, className, errors }} labelFor={id}>
+      <div className="flex flex-wrap items-center gap-2">
+        {chosen.map((value) => (
+          <span key={value} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border pr-1 pl-2.5 text-sm">
+            {labelOf(value)}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Take off ${labelOf(value)}`}
+              disabled={disabled || fixed.includes(value)}
+              onClick={() => set(chosen.filter((other) => other !== value))}
+            >
+              <XIcon />
+            </Button>
+          </span>
+        ))}
+        {rest.length > 0 && (
+          <Select
+            items={rest}
+            value=""
+            disabled={disabled}
+            onValueChange={(value) => {
+              if (value) set([...chosen, value]);
+            }}
+          >
+            <SelectTrigger id={id} className={cn(CONTROL, "min-w-40")}>
+              <SelectValue placeholder={placeholder} />
+            </SelectTrigger>
+            <SelectContent>
+              {rest.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
     </FieldFrame>
   );

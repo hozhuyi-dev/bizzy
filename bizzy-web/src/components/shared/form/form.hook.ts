@@ -8,6 +8,7 @@ import {
   NumberField,
   SelectField,
   SubmitButton,
+  TagsField,
   TextField,
   TextareaField,
 } from "./form-fields.component";
@@ -25,6 +26,7 @@ const { useAppForm: useBaseForm, withForm } = createFormHook({
     CheckboxField,
     ChoiceField,
     ChoicesField,
+    TagsField,
   },
   formComponents: { SubmitButton },
 });

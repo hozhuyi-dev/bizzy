@@ -5,10 +5,9 @@ import type { DocumentLink, DocumentType } from "~/features/documents/documents.
 import type { PackageView } from "~/features/packages/packages.types";
 import { DocumentRow } from "~/features/documents/components/document-row/document-row.component";
 import { DOCUMENT_TYPES } from "~/features/documents/documents.constant";
-import { refLabel } from "~/features/documents/documents.util";
-import { methodLabel } from "~/features/payments/payments.util";
+import { NO_RECEIPT_YET, documentsText } from "~/features/documents/documents.util";
+import { paidText } from "~/features/payments/payments.util";
 import { DataList, DataListItem } from "~/components/shared/list/data-list/data-list.component";
-import { formatDate } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
 export function documentsStep(session: SessionView, bought: PackageView | undefined): PageStep {
@@ -32,24 +31,15 @@ export function documentsStep(session: SessionView, bought: PackageView | undefi
     id: "documents",
     title: "Documents",
     state: docs.some((doc) => doc.issued) ? "done" : "optional",
-    meta: summary(docs),
+    meta: documentsText(docs),
     count: docs.length,
     content: <DocumentsStep session={session} bought={bought} />,
   };
 }
 
-/** Each one by its number once issued, or as a draft: "INV-0012 · receipt in draft". */
-function summary(docs: ReadonlyArray<DocumentLink>): string {
-  if (docs.length === 0) return "Invoice and receipt, if asked";
-  const text = docs
-    .map(({ type, ref, issued }) => (issued ? refLabel(type, ref, true) : `${DOCUMENT_TYPES[type].title.toLowerCase()} in draft`))
-    .join(" · ");
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
 const EMPTY: Record<DocumentType, string> = {
   invoice: "Nothing to invoice: a package credit covers it.",
-  receipt: "A receipt is made when it is paid.",
+  receipt: NO_RECEIPT_YET,
 };
 
 /**
@@ -95,5 +85,5 @@ function DocumentsStep({ session, bought }: { session: SessionView; bought: Pack
 function receiptMeta(doc: DocumentLink, session: SessionView, bought: PackageView | undefined): string {
   const paid = [session.paid, bought?.paid].find((p) => p?.receiptId === doc.ref.id);
   if (!paid) return "Receipt";
-  return `Receipt · ${formatCents(paid.amountCents)} · ${methodLabel(paid.method)} · ${formatDate(paid.paidOn)}`;
+  return `Receipt · ${paidText(paid)}`;
 }

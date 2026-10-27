@@ -139,6 +139,21 @@ export function coveringDocuments(item: Covered | undefined): Array<DocumentLink
   return links;
 }
 
+/** What a session's or package's Documents step says while it has no receipt. */
+export const NO_RECEIPT_YET = "Made when it is paid.";
+
+/**
+ * An item's documents in a line, each by its number once issued, or as a
+ * draft: "INV260012-00 · receipt in draft"; what they will be while none is.
+ */
+export function documentsText(docs: ReadonlyArray<DocumentLink>): string {
+  if (docs.length === 0) return "Invoice and receipt, if asked";
+  const text = docs
+    .map(({ type, ref, issued }) => (issued ? refLabel(type, ref, true) : `${DOCUMENT_TYPES[type].title.toLowerCase()} in draft`))
+    .join(" · ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /**
  * What a document's lines are for, to tell it from others in a list:
  * "Session, 5 Oct", "3 sessions, 5–19 Oct", "2 sessions, 1 package, 28 Sept – 19 Oct".

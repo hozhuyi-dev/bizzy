@@ -7,6 +7,7 @@ const client = (feeCents?: number): ClientView => ({
   name: "Jane",
   can: { archive: { ok: true }, unarchive: { ok: false }, delete: { ok: true } },
   aliases: [],
+  sharesWith: [],
   ...(feeCents === undefined ? {} : { feeCents }),
   homeVisits: false,
 });
