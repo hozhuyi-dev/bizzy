@@ -6,6 +6,11 @@
          fixed to the bottom sits on it; iOS ignores it (see useKeyboardInset). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- The home-screen icon on iOS, which doesn't read the manifest's (pwa-assets.config.ts). -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+    <!-- The installed app's status bar, in the page's background; the script
+         below and ThemeService set it for the theme. -->
+    <meta name="theme-color" content="#ffffff" />
     <title>Bizzy</title>
     <script>
       // Sets the theme before the first paint, so a dark page never flashes
@@ -20,6 +25,7 @@
           (preference !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        document.querySelector('meta[name="theme-color"]').content = dark ? "#0a0a0a" : "#ffffff";
       })();
     </script>
   </head>
