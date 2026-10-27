@@ -6,6 +6,7 @@
     "aws:login": "aws login --profile hozhuyi.dev",
     "web:dev": "pnpm -F bizzy-web dev",
     "web:env": "node scripts/web-env.mjs",
+    "web:icons": "pnpm -F bizzy-web pwa:icons",
     "web:test": "pnpm -F bizzy-web test",
     "web:lint": "pnpm -F bizzy-web lint",
     "web:typecheck": "pnpm -F bizzy-web typecheck",
