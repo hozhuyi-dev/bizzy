@@ -6,6 +6,7 @@ import { AuthQuery } from "~/features/auth/auth.query";
 import { AuthScreen } from "~/features/auth/components/auth-screen/auth-screen.component";
 import { NavBar } from "~/features/nav-bar/components/nav-bar/nav-bar.component";
 import { StayCurrent } from "~/features/sync/components/stay-current/stay-current.component";
+import { UpdatePrompt } from "~/features/app/components/update-prompt/update-prompt.component";
 import { queryClient } from "~/core/config/query-client.config";
 import { AppBannerContext } from "~/components/shared/layout/page-header/page-header.hook";
 import { PageHeaderSlotsProvider } from "~/components/shared/layout/page-header/page-header-slots.component";
@@ -48,6 +49,7 @@ function AuthGate() {
     <PageHeaderSlotsProvider>
       <div className="min-h-svh">
         <StayCurrent />
+        <UpdatePrompt />
         <NavBar />
         <NavigationProgress />
         {/* On a phone the page header leaves the page (into the nav bar and the

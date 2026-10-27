@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "pwa:icons": "pwa-assets-generator"
   },
   "packageManager": "pnpm@10.33.0",
   "dependencies": {
@@ -47,6 +48,7 @@
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@vite-pwa/assets-generator": "^2.0.0",
     "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -55,6 +57,8 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "vite": "^8.3.4",
-    "vitest": "^5.0.3"
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.3",
+    "workbox-window": "^7.4.1"
   }
 }

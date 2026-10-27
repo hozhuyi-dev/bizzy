@@ -19,7 +19,7 @@ Conventions: identifiers say "user", never "her". Production holds data, so ever
 
 | Folder | What | Stack |
 | --- | --- | --- |
-| `bizzy-web` | The app (SPA) | React 19, Vite, TanStack Router / Query / Form / Table, Tailwind, shadcn/ui, Amplify auth, Vitest |
+| `bizzy-web` | The app (SPA, installable as a PWA) | React 19, Vite, TanStack Router / Query / Form / Table, Tailwind, shadcn/ui, Amplify auth, vite-plugin-pwa, Vitest |
 | `bizzy-lambda` | API, calendar/contacts sync, PDFs, jobs | Go, DynamoDB (single table), S3, fpdf, `pgregory.net/rapid` |
 | `bizzy-infra` | AWS resources | CDK (TypeScript) |
 
@@ -159,6 +159,7 @@ The table's SQL-style migrations. The code serves only a table at its own versio
 - **A row opens as a whole**: a click, or Enter on it (`useOpenRow`). Nothing in it links to the same place, and no Edit button repeats a row that opens its editor. Its buttons are only what is left to do, the same wherever it is listed: the to-do list, a table, a timeline (`SessionQuickActions`, `FollowUpDoneButton`, `PaidMenu`, `IssueButton`). A phone's card (`DataCard`) is one height in its list: the rest (Copy link) sits behind a ⋯ at its side.
 - **Section lists mark the one being read alike**: a page's contents and its steps are underlined on a phone, on a left rail wider. The last section is at least a screen tall, so jumping to it brings its heading to the top (`fill-last-section`: `lvh` on a phone, as Chrome's URL bar folds away while scrolling).
 - **Design tokens are in `styles/app.css` only**: colours by meaning (status tones, brand, chart series, light and dark), the page's frame in rem (`--nav-height`, `--page-header-height`, `--page-gutter`, `--content-width`, `--row-height`, `--touch-target`, …), the layers (`--z-*`) and the type roles (`type-page-title`, `type-section-title`). Components use them (`h-(--page-header-height)`), never a raw colour or a size another component also knows, and the scroll measuring reads them, so changing one changes the app, and the root font size scales it all.
+- **It installs as an app (a PWA)**: Add to Home Screen in Safari on iOS, Install in Chrome. The service worker (`VitePWA` in `vite.config.ts`, off in `vite dev`) keeps the whole build, so the app opens at once, offline too; the data does not work offline, as every read and save is a call. It is registered once signed in, so a share link doesn't fetch it. A deploy's new build waits until the user reloads, offered by a toast (`UpdatePrompt`), never by itself, so nothing half-typed is lost; an installed app on iOS resumes rather than reopens, so it looks for one each time it comes back into view. The icons are generated from `public/app-icon.svg` (`pnpm web:icons`, committed), and the status bar follows the theme (`theme-color`, set by `ThemeService`).
 - **Documents are shown as the API's PDF** (`DocumentPdfView`, a frame, or a button where the browser can't show PDFs inline). The editor previews through `documents.preview`.
 - Tests mirror the file they test: `x.util.ts` → `x.util.test.ts`.
 
@@ -181,7 +182,7 @@ Staging deploys from `main` and production from `production`, by GitHub Actions 
 2. In GitHub, **Settings → Environments → New environment** `<env>`, with deployment branches limited to its branch (`main` or `production`; production may also require you as reviewer). Variables: `ENVIRONMENT` (`staging`/`production`), `PROJECT_NAME` (`bizzy`), `AWS_ROLE_ARN`, `AWS_ACCOUNT_ID`, `AWS_REGION` (`ap-southeast-1`), `ALLOWED_EMAIL`, `GOOGLE_CLIENT_ID`, `SYNC_TIME_ZONE` (`Asia/Kuala_Lumpur`), and optionally `CALLBACK_URLS` and `LOGOUT_URLS` (see `.env.example`). Secret: `GOOGLE_CLIENT_SECRET`.
 3. In the Google OAuth client, add the redirect URI `https://bizzy-<env>.auth.ap-southeast-1.amazoncognito.com/oauth2/idpresponse`.
 4. Push the branch (or run **Actions → Deploy**).
-5. Add `<SiteUrl>/google-callback` to the OAuth client's redirect URIs, `SiteUrl` being the `<project>-<env>-web` stack's output. Then open the site, sign in, and connect Google in Settings.
+5. Add `<SiteUrl>/google-callback` to the OAuth client's redirect URIs, `SiteUrl` being the `<project>-<env>-web` stack's output. Then open the site, sign in, and connect Google in Settings. On a phone, install it from there (Safari: **Share → Add to Home Screen**).
 
 ## Commands
 
@@ -193,6 +194,7 @@ pnpm data:replay production         # this checkout on production's data, in mem
 pnpm data:copy production staging   # replace staging's (or development's) data with production's, scrubbed
 pnpm web:dev             # http://localhost:4200
 pnpm web:env             # rewrite the web env only
+pnpm web:icons           # regenerate the installed app's icons after changing bizzy-web/public/app-icon.svg
 pnpm cdk:diff
 pnpm cdk:gc              # delete old Lambda builds no stack uses from the CDK assets bucket (dev:deploy and CI deploys run it too)
 pnpm ci:diff | ci:deploy # the GitHub deploy roles (bizzy-ci), by hand only
