@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"bizzy-lambda/internal/features/clients"
-	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
 	"bizzy-lambda/internal/platform/txn"
 )
@@ -45,12 +44,15 @@ func SaveDraft(tx *txn.Tx, id string, in Content) (*Document, error) {
 	was := SourceLines(d.Draft.Lines)
 	for i := range next.Lines {
 		line := &next.Lines[i]
+		line.For = nil
 		if line.Source != nil {
 			before, ok := was[*line.Source]
 			if !ok {
 				return nil, apperr.Invalid("Line %d refers to something this document doesn't cover.", i+1)
 			}
 			line.Typed = before.Typed || (d.Type == TypeInvoice && before.AmountCents != line.AmountCents)
+			// Whom it is for is its item's, never the editor's.
+			line.For = before.For
 		}
 		if line.ID == "" || slices.ContainsFunc(next.Lines[:i], func(l Line) bool { return l.ID == line.ID }) {
 			line.ID = tx.NewID()
@@ -148,15 +150,10 @@ func issuable(tx *txn.Tx, d *Document, checks []Check) (Content, error) {
 			return Content{}, err
 		}
 	}
-	cfg, err := settings.Get(tx)
+	content, err := filled(tx, d)
 	if err != nil {
 		return Content{}, err
 	}
-	client, err := clients.Clients.Get(tx, d.ClientID)
-	if err != nil {
-		return Content{}, err
-	}
-	content := Fill(*d.Draft, cfg, *client)
 	if content.Date == "" {
 		content.Date = tx.Now().In(tx.Location()).Format(time.DateOnly)
 	}
@@ -277,6 +274,82 @@ func CanSend(d *Document) error {
 		return notAtStep("Issue it first: a draft isn't sent.")
 	case StatusCancelled:
 		return notAtStep("It was cancelled.")
+	}
+	return nil
+}
+
+// SetPayer bills a draft never issued to another client, its lines still
+// for whom they were, its recipient filled again from them (see Fill). An
+// invoice's items' payments, on receipts not issued, move to a receipt
+// from them too, as they are now who pays.
+func SetPayer(tx *txn.Tx, id, clientID string) (*Document, error) {
+	d, err := Documents.Get(tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := CanSetPayer(tx, d); err != nil {
+		return nil, err
+	}
+	if _, err := clients.Active(tx, clientID); err != nil {
+		return nil, err
+	}
+	if clientID == d.ClientID {
+		return d, nil
+	}
+	if d.Type == TypeInvoice {
+		into := map[Type]string{}
+		for _, l := range d.Draft.Lines {
+			if l.Source == nil {
+				continue
+			}
+			r, line, err := Receipt(tx, *l.Source)
+			if err != nil {
+				return nil, err
+			}
+			if r != nil && r.ClientID == d.ClientID {
+				if err := move(tx, r, *line, clientID, r.ForClient(*line), into); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	forIDs := make([]string, len(d.Draft.Lines))
+	for i, l := range d.Draft.Lines {
+		forIDs[i] = d.ForClient(l)
+	}
+	d.ClientID = clientID
+	for i := range d.Draft.Lines {
+		d.setFor(&d.Draft.Lines[i], forIDs[i])
+	}
+	d.Draft.Recipient = Recipient{}
+	return d, relink(tx, d)
+}
+
+// CanSetPayer is the refusal for billing a document to another client: it
+// is a draft never issued (who pays is what an issued one is for), and on
+// an invoice, no issued receipt records a payment its old payer made for
+// what it charges.
+func CanSetPayer(tx *txn.Tx, d *Document) error {
+	switch {
+	case d.Issued():
+		return stayIssued(d, "who pays")
+	case d.Status != StatusDraft:
+		return notAtStep("It was cancelled.")
+	case d.Type != TypeInvoice:
+		return nil
+	}
+	for _, l := range d.Draft.Lines {
+		if l.Source == nil {
+			continue
+		}
+		r, _, err := Receipt(tx, *l.Source)
+		if err != nil {
+			return err
+		}
+		if r != nil && r.Issued() && r.ClientID == d.ClientID {
+			return apperr.Refused(fmt.Sprintf("%s records a payment for it from them. Cancel it first.", r.Number),
+				apperr.Remedy{Action: "documents.cancel", Target: r.ID, Label: "Cancel " + r.Number})
+		}
 	}
 	return nil
 }

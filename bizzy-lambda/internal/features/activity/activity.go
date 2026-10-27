@@ -50,6 +50,10 @@ type Client struct {
 	// CreditsLeftCents is what those credits are worth, at their share of
 	// each package's price.
 	CreditsLeftCents int64 `json:"creditsLeftCents,omitempty"`
+	// SharedCreditsLeftMinutes is what packages shared with them have
+	// left: their holders' credits, counted there too, so never added to
+	// CreditsLeftMinutes.
+	SharedCreditsLeftMinutes int `json:"sharedCreditsLeftMinutes,omitempty"`
 	// OpenFollowUps counts the follow-ups not done; NextFollowUpAt is when
 	// the soonest is due (it may be past).
 	OpenFollowUps  int        `json:"openFollowUps,omitempty"`
@@ -213,6 +217,9 @@ func All(tx *txn.Tx) ([]Client, error) {
 			c := of(p.ClientID)
 			c.CreditsLeftMinutes += left
 			c.CreditsLeftCents += p.ShareCents(charged[documents.PackageSource(p.ID)], credit[p.ID], left)
+			for _, id := range p.SharedWith {
+				of(id).SharedCreditsLeftMinutes += left
+			}
 		}
 	}
 

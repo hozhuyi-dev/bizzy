@@ -19,6 +19,12 @@ export interface PackageView {
   /** The session it was bought in (its title shows it); unset for one bought on its own. */
   boughtIn?: string;
   note?: string;
+  /** The other clients whose sessions its credits may pay for. */
+  sharedWith: Array<string>;
+  /** Hours of its credits each client's sessions use (its own client's too): one with any stays shared. */
+  uses: Array<PackageUse>;
+  /** Who pays for it: billed by its invoice, or who would be. Asking to pay goes to them. */
+  payer: string;
   /** Hours of its credits sessions use, and have left, by the half hour. */
   creditsUsed: number;
   creditsLeft: number;
@@ -33,6 +39,12 @@ export interface PackageView {
   can: PackageCan;
   /** What its update can't change now. */
   locked: Locks;
+}
+
+/** Hours of a package's credits a client's sessions use; mirrors packages.Use. */
+export interface PackageUse {
+  clientId: string;
+  hours: number;
 }
 
 /** What each action on a package would say now; mirrors packages.Can. */
@@ -59,8 +71,14 @@ export interface PackageFields {
   priceCents?: number;
   purchasedAt?: string;
   note?: string;
-  /** What was paid for it, after its price: recorded, recorded again (another day or way, a new price) or undone. */
+  /** The other clients its credits are for; a new one takes its client's default unless sent. */
+  sharedWith?: Array<string>;
+  /** Who pays for it; a new one takes its client's default unless sent. */
+  billTo?: string;
+  /** What was paid for a new one there and then; afterwards a payment is recorded as itself (Mark paid). */
   payment?: PackagePaymentChoice;
+  /** Move what was received to a new price, on a receipt not issued yet. */
+  updatePayment?: boolean;
 }
 
 /** A package's payment as entered, in full; mirrors packages.PaymentChoice. Without one it undoes the payment recorded. */

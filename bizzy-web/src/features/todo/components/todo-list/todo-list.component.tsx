@@ -4,6 +4,7 @@ import { TODO_FILTERS, TODO_GROUPS } from "../../todo.constant";
 import { byTodoOrder, groupOf, matchesFilter, progressOf, todoKey } from "../../todo.util";
 import type { TodoFilter, TodoView } from "../../todo.types";
 import type { ConflictView } from "~/features/conflicts/conflicts.types";
+import type { ClientView } from "~/features/clients/clients.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import type { SessionReason, SessionView } from "~/features/sessions/sessions.types";
 import { ClientsQuery } from "~/features/clients/clients.query";
@@ -224,6 +225,7 @@ interface SessionTodoProps {
 
 function SessionTodo({ session, onCancel }: SessionTodoProps) {
   const collecting = session.todo.includes("collect");
+  const clientsById = ClientsQuery.useById();
 
   return (
     <DataRow
@@ -234,7 +236,7 @@ function SessionTodo({ session, onCancel }: SessionTodoProps) {
           </TextLink>
           {session.todo.map((reason) => (
             <Badge key={reason} variant={REASONS[reason].tone}>
-              {REASONS[reason].label}
+              {reason === "collect" ? collectLabel(session.payer, session.clientId, clientsById) : REASONS[reason].label}
             </Badge>
           ))}
         </>
@@ -251,6 +253,12 @@ function SessionTodo({ session, onCancel }: SessionTodoProps) {
       actions={<SessionQuickActions session={session} onCancel={onCancel} from="home" />}
     />
   );
+}
+
+/** "Collect", or "Collect from Mum" when someone else pays for the client's session or package. */
+function collectLabel(payer: string, clientId: string, clientsById: ReadonlyMap<string, ClientView>): string {
+  if (payer === clientId) return REASONS.collect.label;
+  return `${REASONS.collect.label} from ${clientsById.get(payer)?.name.split(" ")[0] ?? "who pays"}`;
 }
 
 /** A package bought on its own, to collect. It opens its page, as a follow-up does; another day, at its payment. */
@@ -270,7 +278,7 @@ function PackageTodo({ pkg, onOpen }: { pkg: PackageView; onOpen: (pkg: PackageV
           ) : (
             <span className="text-muted-foreground italic">Unknown client</span>
           )}
-          <Badge variant={REASONS.collect.tone}>{REASONS.collect.label}</Badge>
+          <Badge variant={REASONS.collect.tone}>{collectLabel(pkg.payer, pkg.clientId, clientsById)}</Badge>
         </>
       }
       meta={`Package of ${formatHours(pkg.hours)} · bought ${formatDate(pkg.purchasedAt)} · ${formatCents(pkg.owedCents)} due`}

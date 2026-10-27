@@ -1,6 +1,7 @@
 import { sessionMinutes } from "./session-stage.util";
 import type { SessionDraft, SessionFields, SessionView } from "./sessions.types";
-import { addDays, toISODate, toTimeInput } from "~/core/utils/date.util";
+import type { PaymentMethod } from "~/features/payments/payments.types";
+import { addDays, toISODate, toTimeInput, todayISO } from "~/core/utils/date.util";
 import { centsToInput, parseCents } from "~/core/utils/money.util";
 
 /** Whether a package's price is per hour (`10x180`) or the total (`10@1800`). */
@@ -20,6 +21,11 @@ export interface BookingValues {
   tentative: boolean;
   /** What was received moves to the new amounts (a receipt not issued yet). */
   updatePayment: boolean;
+  /** Who pays; blank for whom the client is billed to. */
+  billTo: string;
+  /** A new one's: how it was paid there and then; blank leaves it to collect. */
+  paidBy: PaymentMethod | "";
+  paidOn: string;
 }
 
 /** Now, on the hour: most often it's the session that just happened. */
@@ -39,6 +45,7 @@ export function draftOf(session: SessionView): SessionDraft {
     ...(session.bought ? { package: { hours: session.bought.hours, priceCents: session.bought.priceCents } } : {}),
     homeVisit: session.location === "visit",
     tentative: session.tentative,
+    billTo: session.payer,
   };
 }
 
@@ -64,6 +71,9 @@ export function toBookingValues(draft: SessionDraft): BookingValues {
     homeVisit: draft.homeVisit,
     tentative: draft.tentative,
     updatePayment: false,
+    billTo: draft.billTo ?? "",
+    paidBy: draft.payment?.method ?? "",
+    paidOn: draft.payment?.paidOn ?? todayISO(),
   };
 }
 
@@ -93,6 +103,8 @@ export function toSessionDraft(values: BookingValues): SessionDraft {
       : {}),
     homeVisit: values.homeVisit,
     tentative: values.tentative,
+    ...(values.billTo ? { billTo: values.billTo } : {}),
+    ...(values.paidBy && !values.tentative ? { payment: { method: values.paidBy, paidOn: values.paidOn } } : {}),
   };
 }
 
@@ -120,6 +132,10 @@ export function toSessionFields(draft: SessionDraft, was?: SessionDraft): Sessio
   if (was ? !samePackage(draft.package, was.package) : draft.package !== undefined) {
     fields.package = draft.package ? { bought: draft.package } : {};
   }
+  // Only who the user chose: left as it was, it is whom the client is billed to.
+  if (draft.billTo && draft.billTo !== was?.billTo) fields.billTo = draft.billTo;
+  // Only as it is added: afterwards a payment is recorded as itself (Mark paid).
+  if (!was && draft.payment) fields.payment = draft.payment;
   return fields;
 }
 

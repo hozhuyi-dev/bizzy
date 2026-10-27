@@ -110,6 +110,7 @@ func New(d Deps) *App {
 	clients.Routes(r, run, contacts.Link(d.Contacts, d.Now),
 		clients.Owner{What: "sessions", Has: sessions.Sessions.HasClient},
 		clients.Owner{What: "packages", Has: packages.Packages.HasClient},
+		clients.Owner{What: "packages shared with them", Has: packages.SharedWith},
 		clients.Owner{What: "documents", Has: documents.Documents.HasClient},
 		clients.Owner{What: "follow-ups", Has: followups.FollowUps.HasClient})
 	contacts.Routes(r, run, d.Contacts)

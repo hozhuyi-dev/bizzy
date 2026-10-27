@@ -47,6 +47,12 @@ export const DocumentsService = {
    */
   place: (type: DocumentType, into: string | undefined, items: Array<DocumentSource>) =>
     invoke<DocumentView | null>("documents.place", { type, into: into ?? "", items }),
+  /**
+   * Bills a draft never issued to another client, its recipient filled
+   * again from them; an invoice's payments not on an issued receipt move
+   * with it.
+   */
+  setPayer: (id: string, clientId: string) => invoke<DocumentView | null>("documents.setPayer", { id, clientId }),
   /** Null when a never-issued draft goes: a receipt, with its payment. */
   discardDraft: (id: string) => invoke<DocumentView | null>("documents.discardDraft", { id }),
   cancel: (id: string, reason: string) => invoke<DocumentView | null>("documents.cancel", { id, reason }),

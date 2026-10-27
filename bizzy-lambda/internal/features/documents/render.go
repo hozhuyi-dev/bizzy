@@ -128,10 +128,14 @@ func header(p Printed, spec TypeSpec) pdflayout.Block {
 	return pdflayout.Row(pdflayout.Grow(business), pdflayout.Fixed(200, title)).Gap(24)
 }
 
-// recipient is who it is for: their name, and IC or passport number.
+// recipient is who pays: their name, and IC or passport number, or the
+// registration number of the name they are billed as.
 func recipient(spec TypeSpec, r Recipient) pdflayout.Block {
 	var id pdflayout.Block = pdflayout.Space(0)
-	if r.IDNo != "" {
+	switch {
+	case r.RegNo != "":
+		id = text("Reg. No. " + r.RegNo)
+	case r.IDNo != "":
 		id = text("IC / Passport No. " + r.IDNo)
 	}
 	return section(spec.RecipientLabel, pdflayout.Column(
@@ -143,7 +147,7 @@ func recipient(spec TypeSpec, r Recipient) pdflayout.Block {
 // lines are the table of what it covers, which a page may break between
 // rows.
 func lines(all []Line) pdflayout.Block {
-	row := func(date, description, amount pdflayout.TextBlock) pdflayout.Block {
+	row := func(date pdflayout.TextBlock, description pdflayout.Block, amount pdflayout.TextBlock) pdflayout.Block {
 		return pdflayout.Pad(pdflayout.Row(
 			pdflayout.Fixed(dateWidth, date),
 			pdflayout.Grow(description),
@@ -154,10 +158,19 @@ func lines(all []Line) pdflayout.Block {
 	rows := make([]pdflayout.Block, len(all))
 	for n, l := range all {
 		rows[n] = pdflayout.Underline(
-			pdflayout.Pad(row(text(printedDate(l.Date)), text(l.Description), text(printedAmount(l.AmountCents))), pdflayout.Sides(7, 0)),
+			pdflayout.Pad(row(text(printedDate(l.Date)), description(l), text(printedAmount(l.AmountCents))), pdflayout.Sides(7, 0)),
 			0.5, faint)
 	}
 	return pdflayout.Table(head, rows...)
+}
+
+// description is what a line says, and under it whom it is for when
+// that isn't who pays.
+func description(l Line) pdflayout.Block {
+	if l.For == nil || l.For.Name == "" {
+		return text(l.Description)
+	}
+	return pdflayout.Column(text(l.Description), small("for "+l.For.Name)).Gap(2)
 }
 
 // totals are the total on the right, and the amount in words under it.

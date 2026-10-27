@@ -9,19 +9,50 @@ import (
 	"bizzy-lambda/internal/features/clients"
 	"bizzy-lambda/internal/features/settings"
 	"bizzy-lambda/internal/platform/apperr"
+	"bizzy-lambda/internal/platform/txn"
 )
 
 // Fill completes a draft as it would be issued now: the business from
-// Settings and the client from their contact, where the user hasn't
-// written their own. Issued content is never filled again.
-func Fill(c Content, cfg settings.Settings, client clients.Client) Content {
+// Settings, the client who pays from their contact, and the name of whom
+// each line is for (name, by client id), where the user hasn't written
+// their own. Issued content is never filled again.
+func Fill(c Content, cfg settings.Settings, client clients.Client, name func(clientID string) string) Content {
 	if c.Issuer == (Issuer{}) {
 		c.Issuer = issuerFrom(cfg)
 	}
 	if c.Recipient == (Recipient{}) {
 		c.Recipient = recipientFrom(client)
 	}
+	lines := slices.Clone(c.Lines)
+	for i, l := range lines {
+		if l.For != nil && l.For.Name == "" {
+			lines[i].For = &LineFor{ClientID: l.For.ClientID, Name: name(l.For.ClientID)}
+		}
+	}
+	c.Lines = lines
 	return c
+}
+
+// filled is a document's draft as it would be issued now (see Fill).
+func filled(tx *txn.Tx, d *Document) (Content, error) {
+	cfg, err := settings.Get(tx)
+	if err != nil {
+		return Content{}, err
+	}
+	client, err := clients.Clients.Get(tx, d.ClientID)
+	if err != nil {
+		return Content{}, err
+	}
+	var failed error
+	content := Fill(*d.Draft, cfg, *client, func(id string) string {
+		c, err := clients.Clients.Get(tx, id)
+		if err != nil {
+			failed = err
+			return ""
+		}
+		return c.Name
+	})
+	return content, failed
 }
 
 func issuerFrom(cfg settings.Settings) Issuer {
@@ -37,10 +68,14 @@ func issuerFrom(cfg settings.Settings) Issuer {
 	}
 }
 
-// recipientFrom takes the client's name and IC or passport number, and
-// their details from their copy of the Google contact.
+// recipientFrom takes the client's name and IC or passport number, or the
+// name they are billed as and its registration number, and their details
+// from their copy of the Google contact.
 func recipientFrom(c clients.Client) Recipient {
 	r := Recipient{Name: c.Name, IDNo: c.IDNo}
+	if c.BillingName != "" {
+		r = Recipient{Name: c.BillingName, RegNo: c.BillingIDNo}
+	}
 	if contact := c.Contact; contact != nil {
 		r.Email, r.Phone, r.Address = contact.Email, contact.Phone, contact.Address
 		if contact.Postcode != "" && !strings.Contains(r.Address, contact.Postcode) {
@@ -121,6 +156,8 @@ func Legal(issued, revision Content) string {
 			return "its lines"
 		case !sameSource(issued.Lines[i].Source, line.Source):
 			return fmt.Sprintf("what line %q covers", line.Description)
+		case forClient(issued.Lines[i]) != forClient(line):
+			return fmt.Sprintf("whom %q is for", line.Description)
 		case issued.Lines[i].AmountCents != line.AmountCents:
 			return fmt.Sprintf("the amount of %q", line.Description)
 		case !samePayment(issued.Lines[i].Payment, line.Payment):
@@ -128,6 +165,14 @@ func Legal(issued, revision Content) string {
 		}
 	}
 	return ""
+}
+
+// forClient is whom a line says it is for: "" for the payer.
+func forClient(l Line) string {
+	if l.For == nil {
+		return ""
+	}
+	return l.For.ClientID
 }
 
 func samePayment(a, b *Payment) bool {
@@ -222,6 +267,7 @@ func trimRecipient(r Recipient) Recipient {
 	return Recipient{
 		Name:    strings.TrimSpace(r.Name),
 		IDNo:    strings.TrimSpace(r.IDNo),
+		RegNo:   strings.TrimSpace(r.RegNo),
 		Email:   strings.TrimSpace(r.Email),
 		Phone:   strings.TrimSpace(r.Phone),
 		Address: strings.TrimSpace(r.Address),

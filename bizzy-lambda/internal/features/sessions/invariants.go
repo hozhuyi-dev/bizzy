@@ -93,7 +93,7 @@ var Invariants = []txn.Invariant{
 		},
 	},
 	{
-		ID: "credits-of-own-package", Why: "Credits pay for a session from packages of its own client, each once",
+		ID: "credits-of-own-package", Why: "Credits pay for a session from packages its client may use (their own, or shared with them), each once",
 		On: Sessions.Name,
 		Broken: each(func(tx *txn.Tx, s *Session) ([]string, error) {
 			seen := map[string]bool{}
@@ -106,7 +106,7 @@ var Invariants = []txn.Invariant{
 					return []string{fmt.Sprintf("session %s uses package %s twice", s.ID, c.PackageID)}, nil
 				case !ok:
 					return []string{fmt.Sprintf("session %s uses credits of %s, which doesn't exist", s.ID, c.PackageID)}, nil
-				case p.ClientID != s.ClientID:
+				case !p.UsableBy(s.ClientID):
 					return []string{fmt.Sprintf("session %s of %s uses %s's package %s", s.ID, s.ClientID, p.ClientID, p.ID)}, nil
 				}
 				seen[c.PackageID] = true
@@ -118,10 +118,11 @@ var Invariants = []txn.Invariant{
 		ID: "credits-in-hand", Why: "Sessions use no more of a package's credits than it has, and a package used isn't deleted",
 		On: packages.Packages.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {
-			used, err := CreditsUsed(tx, id)
+			u, err := CreditsUsed(tx, id)
 			if err != nil {
 				return nil, err
 			}
+			used := u.Minutes()
 			p, ok, err := packages.Packages.Find(tx, id)
 			switch {
 			case err != nil:
@@ -148,9 +149,9 @@ var Invariants = []txn.Invariant{
 				if err != nil || !ok {
 					return nil, err // credits-of-own-package says it.
 				}
-				if used, err := CreditsUsed(tx, p.ID); err != nil {
+				if u, err := CreditsUsed(tx, p.ID); err != nil {
 					return nil, err
-				} else if used > p.Hours*60 {
+				} else if used := u.Minutes(); used > p.Hours*60 {
 					out = append(out, fmt.Sprintf("package %s has %d hours and sessions use %d minutes", p.ID, p.Hours, used))
 				}
 			}
@@ -176,7 +177,7 @@ var Invariants = []txn.Invariant{
 		}),
 	},
 	{
-		ID: "session-lines-are-its-clients", Why: "A document's line for a session is on the session's client's document, and an issued invoice's sessions are confirmed",
+		ID: "session-lines-are-its-clients", Why: "A document's line for a session is for the session's client, whoever pays, and an issued invoice's sessions are confirmed",
 		On: documents.Documents.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {
 			d, ok, err := documents.Documents.Find(tx, id)
@@ -196,8 +197,8 @@ var Invariants = []txn.Invariant{
 					out = append(out, fmt.Sprintf("%s %s covers session %s, which doesn't exist", d.Type, id, line.Source.ID))
 				case s.Cancelled():
 					out = append(out, fmt.Sprintf("%s %s covers session %s, which was cancelled", d.Type, id, s.ID))
-				case s.ClientID != d.ClientID:
-					out = append(out, fmt.Sprintf("%s %s for %s covers %s's session %s", d.Type, id, d.ClientID, s.ClientID, s.ID))
+				case s.ClientID != d.ForClient(line):
+					out = append(out, fmt.Sprintf("%s %s's line for %s covers %s's session %s", d.Type, id, d.ForClient(line), s.ClientID, s.ID))
 				case s.Tentative && d.Issued() && d.Type == documents.TypeInvoice:
 					out = append(out, fmt.Sprintf("%s covers tentative session %s", d.Number, s.ID))
 				}

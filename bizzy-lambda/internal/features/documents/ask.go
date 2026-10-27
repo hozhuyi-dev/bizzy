@@ -81,10 +81,12 @@ type AskLine struct {
 	Number      string `json:"number,omitempty"`
 	Revision    *int   `json:"revision,omitempty"`
 	ShareToken  string `json:"shareToken,omitempty"`
-	kind        SourceKind
+	// For names whom an item is for when that isn't who pays.
+	For  string `json:"for,omitempty"`
+	kind SourceKind
 }
 
-// AskFor is what is owed on items and on invoices, of one client. An item
+// AskFor is what is owed on items and on invoices, by one payer. An item
 // on an issued invoice is asked for as that invoice (what is owed on all
 // of it), as the client pays the invoice; one on a draft as its own line.
 func AskFor(tx *txn.Tx, items []Source, ids []string) (Ask, error) {
@@ -92,7 +94,7 @@ func AskFor(tx *txn.Tx, items []Source, ids []string) (Ask, error) {
 	if err != nil {
 		return Ask{}, err
 	}
-	a := asking{owing: owing, asked: map[string]bool{}}
+	a := asking{tx: tx, owing: owing, asked: map[string]bool{}}
 	for _, id := range ids {
 		d, err := Documents.Get(tx, id)
 		if err != nil {
@@ -116,7 +118,7 @@ func AskFor(tx *txn.Tx, items []Source, ids []string) (Ask, error) {
 		}
 	}
 	if len(a.clients) > 1 {
-		return Ask{}, notAtStep("Ask one client at a time.")
+		return Ask{}, notAtStep("Ask one payer at a time: these are billed to different clients.")
 	}
 	return a.done(tx)
 }
@@ -140,6 +142,8 @@ func askable(a Ask) error {
 
 // asking gathers what is owed, each item and invoice once.
 type asking struct {
+	tx      *txn.Tx
+	err     error
 	owing   Owing
 	asked   map[string]bool
 	clients []string
@@ -182,12 +186,31 @@ func (a *asking) item(d *Document, src Source) {
 	a.asked[src.Key()] = true
 	for _, l := range a.owing.owedOn(d) {
 		if *l.Source == src {
-			a.add(d, AskLine{Description: l.Description, Date: l.Date, AmountCents: l.AmountCents, kind: src.Kind})
+			a.add(d, AskLine{Description: l.Description, Date: l.Date, AmountCents: l.AmountCents, For: a.forName(l), kind: src.Kind})
 		}
 	}
 }
 
+// forName is the name of whom a line is for, when that isn't who pays.
+func (a *asking) forName(l Line) string {
+	switch {
+	case l.For == nil:
+		return ""
+	case l.For.Name != "":
+		return l.For.Name
+	}
+	c, err := clients.Clients.Get(a.tx, l.For.ClientID)
+	if err != nil {
+		a.err = err
+		return ""
+	}
+	return c.Name
+}
+
 func (a *asking) done(tx *txn.Tx) (Ask, error) {
+	if a.err != nil {
+		return Ask{}, a.err
+	}
 	out := Ask{Lines: a.lines}
 	if out.Lines == nil {
 		out.Lines = []AskLine{}
@@ -293,6 +316,11 @@ func CanSendRecords(tx *txn.Tx, items []Source) error {
 func sendable(docs []*Document) error {
 	if len(docs) == 0 {
 		return notAtStep("Nothing for it is issued. Issue its invoice or receipt first.")
+	}
+	for _, d := range docs[1:] {
+		if d.ClientID != docs[0].ClientID {
+			return notAtStep("Send one payer's at a time: these are billed to different clients.")
+		}
 	}
 	return nil
 }

@@ -41,7 +41,7 @@ export function PageDock() {
       // Lifted over the keyboard by translate, which moves it without laying the page out again.
       // Gone at once while the screen moves, faded back in once it is still.
       className={cn(
-        "pointer-events-none fixed inset-x-0 bottom-0 z-(--z-dock) flex -translate-y-(--keyboard-inset) flex-col items-end gap-1.5 px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] has-[[data-slot=page-dock]:empty]:hidden md:hidden",
+        "pointer-events-none fixed inset-x-0 bottom-0 z-(--z-dock) flex -translate-y-(--keyboard-inset) flex-col items-end gap-1.5 px-2 pt-2 pb-[calc(var(--dock-air)+env(safe-area-inset-bottom,0px))] has-[[data-slot=page-dock]:empty]:hidden md:hidden",
         "transition-opacity duration-150 motion-reduce:transition-none data-keyboard-moving:opacity-0 data-keyboard-moving:duration-0 data-keyboard-moving:**:pointer-events-none",
       )}
     >

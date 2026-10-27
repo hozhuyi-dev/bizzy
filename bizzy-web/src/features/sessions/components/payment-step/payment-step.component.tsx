@@ -1,15 +1,16 @@
 import { hasHappened } from "../../session-stage.util";
 import { owedText, sessionPayables } from "../../session-payment.util";
 import type { PageStep, StepState } from "~/components/shared/layout/page-steps/page-steps.component";
-import type { CoveringCredit, SessionView } from "../../sessions.types";
+import type { CoveringCredit, SessionFullView } from "../../sessions.types";
 import type { PackageView } from "~/features/packages/packages.types";
 import { PaymentPanel } from "~/features/payments/components/payment-panel/payment-panel.component";
-import { methodLabel } from "~/features/payments/payments.util";
+import { ClientsQuery } from "~/features/clients/clients.query";
+import { paidText } from "~/features/payments/payments.util";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
 export function paymentStep(
-  session: SessionView,
+  session: SessionFullView,
   covering: ReadonlyArray<CoveringCredit>,
   bought: PackageView | undefined,
 ): PageStep {
@@ -23,7 +24,7 @@ export function paymentStep(
   if (session.owedCents > 0) {
     parts.push(owedText(session));
   } else if (paid) {
-    parts.push(`${formatCents(paid.amountCents)} · ${methodLabel(paid.method)} · ${formatDate(paid.paidOn)}`);
+    parts.push(paidText(paid));
   } else {
     parts.push(session.credits.length > 0 ? "Covered by a package" : "Nothing to pay");
   }
@@ -43,19 +44,22 @@ export function paymentStep(
 }
 
 /**
- * What package credits pay of the session, what was received for its fee
- * and the package its title bought, and what is still owed, paid together.
+ * What package credits pay of the session (anyone's shared with its
+ * client), what was received for its fee and the package its title bought,
+ * and what is still owed, paid together; and who pays.
  */
 function SessionPayment({
   session,
   covering,
   bought,
 }: {
-  session: SessionView;
+  session: SessionFullView;
   covering: ReadonlyArray<CoveringCredit>;
   bought: PackageView | undefined;
 }) {
   const payables = sessionPayables(session, bought);
+  const clientsById = ClientsQuery.useById();
+  const whose = (clientId: string) => (clientId === session.clientId ? "the" : `${clientsById.get(clientId)?.name ?? "someone"}'s`);
 
   return (
     <div className="flex flex-col gap-4">
@@ -63,7 +67,7 @@ function SessionPayment({
         <ul className="flex flex-col gap-1 text-sm">
           {covering.map(({ pkg, hours }) => (
             <li key={pkg.id}>
-              {formatHours(hours)} covered by the package bought {formatDate(pkg.purchasedAt)}
+              {formatHours(hours)} covered by {whose(pkg.clientId)} package bought {formatDate(pkg.purchasedAt)}
               <span className="text-muted-foreground">
                 {" "}
                 · {formatHours(pkg.creditsLeft)} of {formatHours(pkg.hours)} left
@@ -80,6 +84,10 @@ function SessionPayment({
         <p className="text-sm">Nothing to pay for this session.</p>
       )}
       {payables.length > 0 && <PaymentPanel payables={payables} />}
+      {session.payer !== session.clientId && (
+        <p className="text-sm text-muted-foreground">Billed to {clientsById.get(session.payer)?.name ?? "someone else"}.</p>
+      )}
     </div>
   );
 }
+

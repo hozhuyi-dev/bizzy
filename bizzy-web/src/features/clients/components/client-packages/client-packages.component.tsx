@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PackageIcon } from "lucide-react";
 import type { ClientView } from "../../clients.types";
 import { PackagesQuery } from "~/features/packages/packages.query";
+import { ClientsQuery } from "~/features/clients/clients.query";
 import { clientPackagesSearch, packagePayables } from "~/features/packages/packages.util";
 import { useOpenPackage } from "~/features/packages/package-open.hook";
 import { PaidMenu } from "~/features/payments/components/paid-menu/paid-menu.component";
@@ -19,10 +20,12 @@ import { QUIPS } from "~/core/constants/quips.constant";
 
 /**
  * The client's packages, newest first: what each cost, what is left, and
- * its documents; Paid ▾ while one is owed. A row opens its page.
+ * its documents; Paid ▾ while one is owed. A row opens its page. Then
+ * those others share with them, whose they are and what is left.
  */
 export function ClientPackages({ client }: { client: ClientView }) {
   const packages = PackagesQuery.useList(true);
+  const clientsById = ClientsQuery.useById();
   const openPackage = useOpenPackage();
   // Each package's page steps through the client's packages, latest bought first, as here.
   const search = clientPackagesSearch(client.id);
@@ -32,11 +35,42 @@ export function ClientPackages({ client }: { client: ClientView }) {
   const own = packages.data
     .filter((pkg) => pkg.clientId === client.id)
     .sort((a, b) => b.purchasedAt.localeCompare(a.purchasedAt));
+  const shared = packages.data
+    .filter((pkg) => pkg.sharedWith.includes(client.id))
+    .sort((a, b) => b.purchasedAt.localeCompare(a.purchasedAt));
+  const sharedList = shared.length > 0 && (
+    <DataList label="Shared with them">
+      {shared.map((pkg) => (
+        <DataListItem key={pkg.id}>
+          <DataRow
+            title={
+              <>
+                <PackageIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="font-medium">
+                  {clientsById.get(pkg.clientId)?.name ?? "Someone"}'s · {formatHours(pkg.hours)}
+                </span>
+                {pkg.creditsLeft > 0 ? (
+                  <Badge variant="info">{formatHours(pkg.creditsLeft)} left</Badge>
+                ) : (
+                  <Badge variant="neutral">Used</Badge>
+                )}
+              </>
+            }
+            meta={<span>Bought {formatDate(pkg.purchasedAt)} · shared with them</span>}
+            onOpen={() => openPackage({ mode: "edit", pkg })}
+          />
+        </DataListItem>
+      ))}
+    </DataList>
+  );
   if (own.length === 0) {
     return (
-      <EmptyState quips={QUIPS.packages}>
-        No packages. Write 10x85 after their name in the calendar, or use Add package.
-      </EmptyState>
+      <>
+        <EmptyState quips={QUIPS.packages}>
+          No packages. Write 10x85 after their name in the calendar, or use Add package.
+        </EmptyState>
+        {sharedList}
+      </>
     );
   }
   return (
@@ -89,6 +123,7 @@ export function ClientPackages({ client }: { client: ClientView }) {
           </DataListItem>
         ))}
       </DataList>
+      {sharedList}
     </>
   );
 }

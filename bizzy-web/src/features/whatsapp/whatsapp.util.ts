@@ -1,6 +1,7 @@
 import { COMPUTER_WHATSAPP } from "./whatsapp.constant";
 import type { ComputerWhatsApp } from "./whatsapp.constant";
-import type { WhatsAppOn } from "./whatsapp.types";
+import type { WhatsAppOn, WhatsAppRecipient } from "./whatsapp.types";
+import type { ClientView } from "~/features/clients/clients.types";
 
 /**
  * The number WhatsApp needs for a Malaysian number as she'd type it
@@ -33,4 +34,9 @@ export function whatsappLink(phone: string | undefined, text: string | undefined
 
 export function isComputerWhatsApp(value: unknown): value is ComputerWhatsApp {
   return COMPUTER_WHATSAPP.includes(value as ComputerWhatsApp);
+}
+
+/** Whom a message goes to: a client, by their name and phone; `fallback` names one no longer known. */
+export function recipientOf(client: ClientView | undefined, fallback = ""): WhatsAppRecipient {
+  return { name: client?.name ?? fallback, phone: client?.contact?.phone };
 }

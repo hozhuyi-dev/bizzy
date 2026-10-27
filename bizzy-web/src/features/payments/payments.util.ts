@@ -1,10 +1,17 @@
 import { PAYMENT_METHODS } from "./payments.constant";
 import type { Facet } from "~/core/list/filter.types";
-import type { PaymentMethod } from "./payments.types";
+import type { Paid, PaymentMethod } from "./payments.types";
+import { formatDate } from "~/core/utils/date.util";
+import { formatCents } from "~/core/utils/money.util";
 
 /** "Touch 'n Go eWallet", as a receipt prints it. */
 export function methodLabel(method: PaymentMethod | undefined): string {
   return PAYMENT_METHODS.find((m) => m.value === method)?.label ?? "";
+}
+
+/** A payment as every summary of one says it: "RM 85.00 · Cash · 5 Oct 2026". */
+export function paidText(paid: Pick<Paid, "amountCents" | "method" | "paidOn">): string {
+  return `${formatCents(paid.amountCents)} · ${methodLabel(paid.method)} · ${formatDate(paid.paidOn)}`;
 }
 
 /** "TnG", where space is short. */

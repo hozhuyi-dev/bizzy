@@ -113,6 +113,17 @@ export function PackageCard({ pkg, handlers }: { pkg: PackageView; handlers: Pac
   );
 }
 
+/** The first names of those a package is shared with. */
+function sharedNames(pkg: PackageView, clientsById: ReadonlyMap<string, ClientView>): Array<string> {
+  return pkg.sharedWith.map((id) => clientsById.get(id)?.name.split(" ")[0] ?? "someone");
+}
+
+/** Under its client: whom it is shared with ("shared with Adam, Lina"), then its note. */
+function underClient(pkg: PackageView, clientsById: ReadonlyMap<string, ClientView>): string | undefined {
+  const shared = pkg.sharedWith.length > 0 ? `shared with ${sharedNames(pkg, clientsById).join(", ")}` : "";
+  return [shared, pkg.note].filter(Boolean).join(" · ") || undefined;
+}
+
 export function createPackageColumns(handlers: PackageHandlers) {
   return helper.columns([
     helper.accessor((pkg) => clientName(pkg, handlers.clientsById), {
@@ -121,10 +132,10 @@ export function createPackageColumns(handlers: PackageHandlers) {
       sortFn: "alphanumeric",
       meta: {
         width: "grow",
-        search: (pkg: PackageView) => [clientName(pkg, handlers.clientsById), pkg.note],
+        search: (pkg: PackageView) => [clientName(pkg, handlers.clientsById), ...sharedNames(pkg, handlers.clientsById), pkg.note],
       },
       cell: ({ row }) => (
-        <CellText sub={row.original.note} title={row.original.note}>
+        <CellText sub={underClient(row.original, handlers.clientsById)} title={row.original.note}>
           <PackageClient pkg={row.original} handlers={handlers} />
         </CellText>
       ),

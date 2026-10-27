@@ -17,13 +17,13 @@ Every commit also moves one counter (`PK COMMIT`, `SK COUNTER`), which makes com
 
 One item (`PK SCHEMA`, `SK VERSION`) holds how many migrations the items have been through, and the fence while they run (see `internal/platform/migrate`).
 
-Schema version (migrations in `internal/migrations`): 1
+Schema version (migrations in `internal/migrations`): 2
 
 ## Kinds
 
 ### CLIENT
 
-A client: name, calendar names, usual hourly fee and place, IC or passport number, a copy of their Google contact, and whether archived.
+A client: name, calendar names, usual hourly fee and place, IC or passport number, who their packages are shared with and who pays for them by default, the name they are billed as, a copy of their Google contact, and whether archived.
 
 | Field | Type |
 |---|---|
@@ -33,6 +33,10 @@ A client: name, calendar names, usual hourly fee and place, IC or passport numbe
 | feeCents | `*int64` |
 | homeVisits | `bool` |
 | idNo | `string` |
+| sharesWith | `[]string` |
+| billTo | `string` |
+| billingName | `string` |
+| billingIdNo | `string` |
 | contact | `*clients.Contact` |
 | archivedAt | `*time.Time` |
 
@@ -41,8 +45,9 @@ Checked on every change to one:
 - **clients-have-a-name**: Every client has a name to show and to match titles by
 - **names-name-one-client**: A name in a calendar title means one client, never two
 - **fees-not-negative**: A client's usual fee is never negative
+- **client-defaults-are-clients**: Whom a client's packages are shared with, and who pays for them, are other clients
 - **documents-are-a-clients**: Every document is for one of the clients, who isn't deleted while it is
-- **clients-keep-their-packages**: A client with packages isn't deleted
+- **clients-keep-their-packages**: A client with packages, or packages shared with them, isn't deleted
 - **clients-keep-their-sessions**: A client with sessions isn't deleted
 - **clients-keep-their-follow-ups**: A client with follow-ups isn't deleted
 
@@ -110,8 +115,8 @@ Checked on every change to one:
 - **documents-are-a-clients**: Every document is for one of the clients, who isn't deleted while it is
 - **lifecycle**: A draft has no number; an issued or cancelled one has its number, revision and link; a cancelled one isn't being edited
 - **every-issue-is-kept**: Every revision issued is kept as it was, so its PDF can be rebuilt, and its link opens it
-- **package-lines-are-its-clients**: A document's line for a package is on the package's client's document
-- **session-lines-are-its-clients**: A document's line for a session is on the session's client's document, and an issued invoice's sessions are confirmed
+- **package-lines-are-its-clients**: A document's line for a package is for the package's client, whoever pays
+- **session-lines-are-its-clients**: A document's line for a session is for the session's client, whoever pays, and an issued invoice's sessions are confirmed
 
 ### DOCLINK
 
@@ -123,9 +128,11 @@ Which live document of a type covers an item: <kind>:<id>#<type>.
 | type | `documents.Type` |
 | documentId | `string` |
 | owed | `bool` |
+| clientId | `string` |
 
 | Index | For it |
 |---|---|
+| LSI2 client | whom the item is for |
 | LSI3 open | an invoice's, while no receipt pays it: what is owed |
 | LSI5 ref | the document |
 
@@ -178,12 +185,13 @@ The last number taken in a sequence: <type>#<year>.
 
 ### PACKAGE
 
-A prepaid package of hours; its price is its invoice line.
+A prepaid package of hours, and whom it is shared with; its price is its invoice line.
 
 | Field | Type |
 |---|---|
 | id | `string` |
 | clientId | `string` |
+| sharedWith | `[]string` |
 | hours | `int` |
 | purchasedAt | `time.Time` |
 | boughtIn | `string` |
@@ -200,6 +208,7 @@ Checked on every change to one:
 
 - **packages-are-invoiced**: A package is always on an invoice, which says its price
 - **packages-are-a-clients**: Every package is a client's
+- **shared-with-clients**: A package is shared with other clients, each once
 - **credits-in-hand**: Sessions use no more of a package's credits than it has, and a package used isn't deleted
 - **bought-in-its-session**: A package bought in a session is that session's client's, bought on its day
 
@@ -263,7 +272,7 @@ Checked on every change to one:
 - **sessions-are-a-clients**: Every session is a client's
 - **paid-for**: Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more
 - **cancelled-costs-nothing**: A cancelled session costs nothing: no credits, no invoice or receipt, no package bought in it
-- **credits-of-own-package**: Credits pay for a session from packages of its own client, each once
+- **credits-of-own-package**: Credits pay for a session from packages its client may use (their own, or shared with them), each once
 - **credits-in-hand**: Sessions use no more of a package's credits than it has, and a package used isn't deleted
 - **confirmed-before-invoiced**: An invoice is issued, and a payment recorded, for a confirmed session only
 - **bought-in-its-session**: A package bought in a session is that session's client's, bought on its day

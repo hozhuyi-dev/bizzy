@@ -1,11 +1,15 @@
 import { EyeIcon, ListPlusIcon, PlusIcon, SaveIcon, SplitIcon, Trash2Icon } from "lucide-react";
 import { DOCUMENT_TYPES } from "../../documents.constant";
 import { AddSessions } from "../add-sessions/add-sessions.component";
+import { DocumentsMutation } from "../../documents.mutation";
 import type { DocumentEditorState } from "./document-editor.hook";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
 import type { PageSection } from "~/components/shared/layout/page-sections/page-sections.component";
 import { Button } from "~/components/ui/button";
-import { FieldGroup } from "~/components/ui/field";
+import { FieldDescription, FieldGroup } from "~/components/ui/field";
+import { BillToSelect } from "~/features/clients/components/bill-to-select/bill-to-select.component";
+import { BILLED_TO_HELP } from "~/features/clients/clients.constant";
+import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 import { formatCents, parseCents } from "~/core/utils/money.util";
 import { emailError, moneyError, requiredError } from "~/core/utils/form.util";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
@@ -13,6 +17,9 @@ import { saidAbove } from "~/features/remedies/remedies.util";
 
 /** As the API keeps a client's: what is printed under the name. */
 const MAX_ID_NO = 20;
+
+/** As the API keeps a client's billing ID: a company's registration number. */
+const MAX_REG_NO = 40;
 
 /** Issue: what the page is for, so it stays in view on a phone. */
 export function documentIssueAction(editor: DocumentEditorState): Action {
@@ -83,6 +90,11 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
   const total = values.lines.reduce((sum, line) => sum + (parseCents(line.amount) ?? 0), 0);
   // How many sessions and packages it covers: one alone can't move to a draft of its own.
   const covered = values.lines.filter((line) => line.source).length;
+  // Whom a line is for, when not who pays: its item's, as stored.
+  const forName = (id: string) => {
+    const line = doc.draft?.lines.find((l) => l.id === id);
+    return line?.for ? (line.for.name ?? "") || "someone else" : undefined;
+  };
 
   return [
     {
@@ -108,6 +120,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       title: spec.recipientLabel,
       content: (
         <FieldGroup>
+          <DocumentBillTo editor={editor} />
           <div className="grid gap-4 sm:grid-cols-2">
             <form.AppField
               name="recipient.name"
@@ -117,6 +130,15 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
             </form.AppField>
             <form.AppField name="recipient.idNo">
               {(field) => <field.TextField label="IC or passport no." maxLength={MAX_ID_NO} />}
+            </form.AppField>
+            <form.AppField name="recipient.regNo">
+              {(field) => (
+                <field.TextField
+                  label="Registration no."
+                  maxLength={MAX_REG_NO}
+                  description="A company's, printed in place of the IC when set."
+                />
+              )}
             </form.AppField>
           </div>
         </FieldGroup>
@@ -212,6 +234,7 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
                         : "Removing the line undoes its payment."}
                     </span>
                   )}
+                  {forName(line.id) && <p className="text-xs text-muted-foreground">for {forName(line.id)}</p>}
                 </div>
               ))}
               <div className="flex items-center justify-between gap-2">
@@ -286,4 +309,25 @@ export function documentEditorSections(editor: DocumentEditorState): Array<PageS
       ),
     },
   ];
+}
+
+/**
+ * Who pays (Bill to, Received from): on a draft never issued, another
+ * client is picked and saved at once, the recipient filled from them. Not
+ * while the draft has changes, which would be lost.
+ */
+function DocumentBillTo({ editor }: { editor: DocumentEditorState }) {
+  const { doc } = editor;
+  const setPayer = DocumentsMutation.useSetPayer();
+  if (doc.number) return null;
+  const why = !doc.can.setPayer.ok ? doc.can.setPayer : editor.hasChanges ? { ok: false, why: "Save the draft first." } : undefined;
+  return (
+    <BillToSelect
+      payer={doc.clientId}
+      disabled={why !== undefined || editor.busy || setPayer.isPending}
+      onChange={(clientId) => setPayer.mutate({ id: doc.id, clientId }, { onError: toastRefusal })}
+      description={`${BILLED_TO_HELP} Lines for someone else say whom.`}
+      hint={why && <FieldDescription>{why.why}</FieldDescription>}
+    />
+  );
 }

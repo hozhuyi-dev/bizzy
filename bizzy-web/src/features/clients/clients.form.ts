@@ -10,6 +10,12 @@ export interface ClientFormValues {
   fee: string;
   homeVisits: boolean;
   idNo: string;
+  /** Whom their new packages are shared with. */
+  sharesWith: Array<string>;
+  /** Who pays for them by default; blank for themselves. */
+  billTo: string;
+  billingName: string;
+  billingIdNo: string;
 }
 
 /** An existing client, or a new one with a name to start from. */
@@ -20,6 +26,10 @@ export function toClientValues(client: ClientView | undefined, initialName: stri
     fee: centsToInput(client?.feeCents),
     homeVisits: client?.homeVisits ?? false,
     idNo: client?.idNo ?? "",
+    sharesWith: client?.sharesWith ?? [],
+    billTo: client?.billTo ?? "",
+    billingName: client?.billingName ?? "",
+    billingIdNo: client?.billingIdNo ?? "",
   };
 }
 
@@ -41,6 +51,10 @@ export function toClientFields(
   if (feeCents !== client?.feeCents) fields.fee = feeCents === undefined ? {} : { cents: feeCents };
   if (!client || values.homeVisits !== client.homeVisits) fields.homeVisits = values.homeVisits;
   if (values.idNo.trim() !== (client?.idNo ?? "")) fields.idNo = values.idNo.trim();
+  if (values.sharesWith.join(",") !== (client?.sharesWith ?? []).join(",")) fields.sharesWith = values.sharesWith;
+  if (values.billTo !== (client?.billTo ?? "")) fields.billTo = values.billTo;
+  if (values.billingName.trim() !== (client?.billingName ?? "")) fields.billingName = values.billingName.trim();
+  if (values.billingIdNo.trim() !== (client?.billingIdNo ?? "")) fields.billingIdNo = values.billingIdNo.trim();
   if ((resourceName ?? "") !== (client?.contact?.resourceName ?? "")) fields.contact = { resourceName: resourceName ?? "" };
   return fields;
 }

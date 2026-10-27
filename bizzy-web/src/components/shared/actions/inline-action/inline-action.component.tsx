@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { CheckIcon, XIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { PendingButton } from "~/components/shared/actions/pending-button/pending-button.component";
 import { Input } from "~/components/ui/input";
+import { focusInView } from "~/core/viewport/focus-in-view.util";
 
 /*
  * A row's buttons, swapped in place for a question (to make sure of what
@@ -69,6 +70,11 @@ export function InlineField({
 }: InlineFieldProps) {
   const [value, setValue] = useState("");
   const ok = value.trim() !== "" && (valid?.(value) ?? true);
+  // Opened by a button: the cursor goes in, and the box into view over the keyboard.
+  const input = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    if (input.current) focusInView(input.current);
+  }, []);
 
   return (
     <form
@@ -79,7 +85,7 @@ export function InlineField({
       }}
     >
       <Input
-        autoFocus
+        ref={input}
         aria-label={label}
         placeholder={placeholder}
         inputMode={inputMode}

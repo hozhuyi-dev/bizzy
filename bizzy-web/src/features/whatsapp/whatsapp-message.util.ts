@@ -51,9 +51,14 @@ export function phonePay(settings: SettingsView): string {
   return apps.length > 0 && phone ? `${apps.join(" / ")}: ${phone}` : "";
 }
 
-/** "Physiotherapy session · 5 Oct 2026 · RM 95.00", or an issued invoice's number, with its link on the next line. */
+/**
+ * "Physiotherapy session · 5 Oct 2026 · RM 95.00" ("Physiotherapy session
+ * (Adam) · …" when it is for someone else than who pays), or an issued
+ * invoice's number, with its link on the next line.
+ */
 function askLine(line: DocumentAskLine): string {
-  const label = line.number ? `${line.description} ${documentLabel(line.number, line.revision)}` : line.description;
+  const described = line.for ? `${line.description} (${person(line.for).firstName})` : line.description;
+  const label = line.number ? `${described} ${documentLabel(line.number, line.revision)}` : described;
   const date = line.date ? ` · ${formatDate(line.date)}` : "";
   const link = line.shareToken ? `\n${shareUrl(line.shareToken)}` : "";
   return `${label}${date} · ${formatCents(line.amountCents)}${link}`;

@@ -28,6 +28,13 @@ type Fields struct {
 	Location  *Location      `json:"location,omitempty"`
 	Fee       *FeeChoice     `json:"fee,omitempty"`
 	Package   *PackageChoice `json:"package,omitempty"`
+	// BillTo is who pays for it, and for the package bought in it; a new
+	// one is billed as its client's BillTo says unless this is set.
+	BillTo *string `json:"billTo,omitempty"`
+	// Payment is what was paid for it there and then, in full, with the
+	// package bought in it: a session booked once it happened, paid as it
+	// is added. Afterwards a payment is recorded as itself (payments).
+	Payment *documents.PaymentInput `json:"payment,omitempty"`
 	// UpdatePayment moves what was received for it, and for the package
 	// bought in it, to their new amounts, on receipts not issued yet: the
 	// money collected or refunded with the change.
@@ -112,8 +119,8 @@ func apply(tx *txn.Tx, s *Session, f Fields, isNew bool) error {
 		if err != nil {
 			return err
 		}
-		if !ok || p.ClientID != s.ClientID {
-			moved = true // Its credits are gone, or another client's: choose again.
+		if !ok || !p.UsableBy(s.ClientID) {
+			moved = true // Its credits are gone, or not this client's: choose again.
 		}
 	}
 	if isNew || f.Fee != nil || moved || bought || resized {
@@ -134,6 +141,16 @@ func apply(tx *txn.Tx, s *Session, f Fields, isNew bool) error {
 			return err
 		}
 	}
+	if f.BillTo != nil {
+		if err := billTo(tx, s, *f.BillTo, isNew); err != nil {
+			return err
+		}
+	}
+	if f.Payment != nil {
+		if err := payNow(tx, s, *f.Payment); err != nil {
+			return err
+		}
+	}
 	if f.UpdatePayment {
 		for _, src := range []documents.Source{s.Source(), documents.PackageSource(boughtID(tx, s.ID))} {
 			if src.ID == "" {
@@ -148,8 +165,8 @@ func apply(tx *txn.Tx, s *Session, f Fields, isNew bool) error {
 }
 
 // reassign makes it another client's session, its lines and the package
-// bought in it going to that client's drafts, together. It reports
-// whether the client changed.
+// bought in it for that client, together (see documents.Refor). It
+// reports whether the client changed.
 func reassign(tx *txn.Tx, s *Session, clientID *string, isNew bool) (bool, error) {
 	if clientID == nil || *clientID == s.ClientID {
 		return false, nil
@@ -166,13 +183,101 @@ func reassign(tx *txn.Tx, s *Session, clientID *string, isNew bool) (bool, error
 			if src.ID == "" {
 				continue
 			}
-			if err := documents.MoveToClient(tx, src, *clientID, into); err != nil {
+			if err := documents.Refor(tx, src, *clientID, into); err != nil {
 				return false, err
 			}
 		}
 	}
 	s.ClientID = *clientID
 	return !isNew, nil
+}
+
+// billTo bills the session, and the package bought in it, to payer (see
+// documents.MoveToPayer). Refused for one already booked with nothing
+// billed (package credits pay for it all); a new one so is simply free.
+func billTo(tx *txn.Tx, s *Session, payer string, isNew bool) error {
+	if payer == "" {
+		return apperr.Invalid("Choose who pays for it.")
+	}
+	if _, err := clients.Active(tx, payer); err != nil {
+		return err
+	}
+	var moving []documents.Source
+	billed := false
+	for _, src := range []documents.Source{s.Source(), documents.PackageSource(boughtID(tx, s.ID))} {
+		if src.ID == "" {
+			continue
+		}
+		inv, _, err := documents.Invoice(tx, src)
+		if err != nil {
+			return err
+		}
+		billed = billed || inv != nil
+		if inv != nil && inv.ClientID != payer {
+			moving = append(moving, src)
+		}
+	}
+	if !billed && !isNew {
+		return apperr.Refused("Nothing is billed for it: package credits pay for it all, so no one pays.")
+	}
+	if len(moving) == 0 {
+		return nil
+	}
+	if err := CanBillTo(tx, s); err != nil {
+		return err
+	}
+	into := map[documents.Type]string{}
+	for _, src := range moving {
+		if err := documents.MoveToPayer(tx, src, payer, into); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// payNow records the session paid in full, with the package bought in it:
+// whatever of them is owed, nothing when package credits pay for it all.
+// Not one cancelled or not confirmed (see CanPay).
+func payNow(tx *txn.Tx, s *Session, in documents.PaymentInput) error {
+	if n, err := owed(tx, s); err != nil || n == 0 {
+		return err
+	}
+	if err := CanPay(tx, s); err != nil {
+		return err
+	}
+	pay, err := in.Check(tx.Now(), tx.Location())
+	if err != nil {
+		return err
+	}
+	var paying []documents.Paying
+	for _, src := range []documents.Source{s.Source(), documents.PackageSource(boughtID(tx, s.ID))} {
+		if src.ID == "" {
+			continue
+		}
+		cents, _, err := documents.Charged(tx, src)
+		if err != nil {
+			return err
+		}
+		paid, err := documents.Received(tx, src)
+		if err != nil {
+			return err
+		}
+		if cents > 0 && paid == nil {
+			paying = append(paying, documents.Paying{Source: src, What: Describe(tx, s)})
+		}
+	}
+	return documents.Pay(tx, paying, pay)
+}
+
+// CanBillTo is the refusal for billing a session to another client: no
+// issued document covers it, or the package bought in it.
+func CanBillTo(tx *txn.Tx, s *Session) error {
+	for _, src := range []documents.Source{s.Source(), documents.PackageSource(boughtID(tx, s.ID))} {
+		if err := documents.CanChange(tx, src, documents.TypeInvoice, documents.TypeReceipt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // reschedule moves it, unless another session is then. That is checked
@@ -334,14 +439,14 @@ func CanDeleteWithPackage(tx *txn.Tx, s *Session) error {
 	if p == nil {
 		return apperr.Refused("No package was bought in it.")
 	}
-	return packages.CanDelete(tx, p, func(tx *txn.Tx, id string) (int, error) {
-		n, err := CreditsUsed(tx, id)
+	return packages.CanDelete(tx, p, func(tx *txn.Tx, id string) (packages.Used, error) {
+		u, err := CreditsUsed(tx, id)
 		for _, c := range s.Credits {
 			if c.PackageID == id {
-				n -= c.Minutes // They go with the session.
+				u[s.ClientID] -= c.Minutes // They go with the session.
 			}
 		}
-		return n, err
+		return u, err
 	})
 }
 

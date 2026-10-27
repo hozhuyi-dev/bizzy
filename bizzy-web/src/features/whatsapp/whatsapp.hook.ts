@@ -81,9 +81,22 @@ function openWith(to: WhatsAppRecipient, compose: () => Promise<string>): void {
     });
 }
 
+/** Why a chat can't be opened: no number WhatsApp can use. */
+function phoneless(to: WhatsAppRecipient): Verdict | undefined {
+  return whatsappNumber(to.phone) ? undefined : { ok: false, why: `${to.name} has no phone number WhatsApp can use.` };
+}
+
+/** "Mum" of "Mum Tan": what a menu calls someone. */
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
+}
+
 /** What a WhatsApp menu offers for something; a way it leaves out isn't offered. */
 export interface WhatsAppTarget {
+  /** Who pays for it: asked to pay, and sent its documents. */
   to: WhatsAppRecipient;
+  /** Whom it is for, when that isn't who pays (Mum pays for Adam's session): Open chat offers their chat too. */
+  about?: WhatsAppRecipient | undefined;
   /** Asking to pay for items and invoices, as its view's verdict says. */
   askToPay?: { request: AskDocumentsRequest; can: Verdict } | undefined;
   /** Sending issued documents for the client's records: these, or those covering items, as its view's verdict says. */
@@ -107,15 +120,16 @@ export function useWhatsAppMenu(): (target: WhatsAppTarget) => Action {
   const busy = records.busy || !settings;
 
   return useCallback(
-    ({ to, askToPay, sendRecords, openChat }: WhatsAppTarget): Action => {
-      const noPhone: Verdict | undefined = whatsappNumber(to.phone)
-        ? undefined
-        : { ok: false, why: `${to.name} has no phone number WhatsApp can use.` };
+    ({ to, about, askToPay, sendRecords, openChat }: WhatsAppTarget): Action => {
+      const noPhone = phoneless(to);
+      // Someone else pays: each way says whose chat it opens.
+      const other = about && about.name !== to.name ? about : undefined;
+      const payer = firstName(to.name);
       const actions: Array<MenuItemAction> = [];
       if (askToPay) {
         actions.push({
           type: "button",
-          label: "Ask to pay",
+          label: other ? `Ask ${payer} to pay` : "Ask to pay",
           icon: HandCoinsIcon,
           can: noPhone ?? askToPay.can,
           disabled: busy,
@@ -130,7 +144,7 @@ export function useWhatsAppMenu(): (target: WhatsAppTarget) => Action {
       if (sendRecords) {
         actions.push({
           type: "button",
-          label: "Send for records",
+          label: other ? `Send records to ${payer}` : "Send for records",
           icon: FileTextIcon,
           can: noPhone ?? sendRecords.can,
           disabled: busy,
@@ -141,13 +155,15 @@ export function useWhatsAppMenu(): (target: WhatsAppTarget) => Action {
         });
       }
       if (openChat) {
-        actions.push({
-          type: "button",
-          label: "Open chat",
-          icon: MessageCircleIcon,
-          can: noPhone,
-          onClick: () => openWith(to, () => Promise.resolve("")),
-        });
+        for (const chat of other ? [other, to] : [to]) {
+          actions.push({
+            type: "button",
+            label: other ? `Open chat with ${firstName(chat.name)}` : "Open chat",
+            icon: MessageCircleIcon,
+            can: phoneless(chat),
+            onClick: () => openWith(chat, () => Promise.resolve("")),
+          });
+        }
       }
       return { type: "menu", label: "WhatsApp", icon: MessageCircleIcon, actions };
     },

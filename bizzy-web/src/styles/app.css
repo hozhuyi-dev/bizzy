@@ -228,6 +228,9 @@
   --banners-height: 0px;
   /* What the phone's dock (PageDock) takes off the bottom, set while it shows. */
   --dock-height: 0px;
+  /* The air under the dock: more once installed (below), where the page runs
+     down to the screen's edge, under the home indicator or gesture bar. */
+  --dock-air: 0.75rem;
   /* How much of the screen's bottom a phone's keyboard covers, set by
      useKeyboardInset on what rides above it (the dock, a sheet). */
   --keyboard-inset: 0px;
@@ -239,6 +242,14 @@
   --z-nav: 30;
   --z-dock: 30;
   --z-popover: 40;
+}
+
+/* Installed (a PWA): the viewport isn't fit to the safe area, so its inset
+   reads 0 while the screen's edge is the home indicator's. */
+@media (display-mode: standalone) {
+  :root {
+    --dock-air: 1.75rem;
+  }
 }
 
 /*

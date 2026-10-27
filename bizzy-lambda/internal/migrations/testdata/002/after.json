@@ -1,0 +1,36 @@
+[
+  {
+    "pk": "DOC",
+    "sk": "i1",
+    "data": {
+      "id": "i1", "type": "invoice", "status": "draft", "clientId": "c1", "createdAt": "2026-10-05T03:00:00Z",
+      "draft": {
+        "date": "", "issuer": {"name": ""}, "recipient": {"name": ""},
+        "lines": [{"id": "l1", "description": "Physiotherapy", "date": "2026-10-05", "amountCents": 9000, "source": {"kind": "session", "id": "s1"}}],
+        "totalCents": 9000
+      }
+    }
+  },
+  {
+    "pk": "DOC",
+    "sk": "r1",
+    "data": {
+      "id": "r1", "type": "receipt", "status": "draft", "clientId": "c2", "createdAt": "2026-10-06T03:00:00Z",
+      "draft": {
+        "date": "", "issuer": {"name": ""}, "recipient": {"name": ""},
+        "lines": [{"id": "l2", "description": "Package", "date": "2026-10-06", "amountCents": 85000, "source": {"kind": "package", "id": "p1"}, "payment": {"method": "cash", "paidOn": "2026-10-06"}}],
+        "totalCents": 85000
+      }
+    }
+  },
+  {
+    "pk": "DOCLINK",
+    "sk": "session:s1#invoice",
+    "data": {"source": {"kind": "session", "id": "s1"}, "type": "invoice", "documentId": "i1", "owed": true, "clientId": "c1"}
+  },
+  {
+    "pk": "DOCLINK",
+    "sk": "package:p1#receipt",
+    "data": {"source": {"kind": "package", "id": "p1"}, "type": "receipt", "documentId": "r1", "clientId": "c2"}
+  }
+]
