@@ -5,9 +5,9 @@
 // reads the user's events as these same actions, and writes sessions to
 // events.
 //
-// A session booked by mistake is deleted. One with history (it happened,
-// or something was recorded on it) is cancelled instead: it stays, with
-// its record, but holds no time, costs nothing and leaves the calendar.
+// A session made by mistake is deleted, whenever it was. One with history
+// (something recorded on it) is cancelled instead: it stays, with its
+// record, but holds no time, costs nothing and leaves the calendar.
 package sessions
 
 import (
@@ -36,9 +36,11 @@ type Session struct {
 	// confirmed.
 	ConfirmedAt *time.Time `json:"confirmedAt,omitempty"`
 	Location    Location   `json:"location"`
-	// Credits are the package credits paying for it, chosen when it was
-	// booked, oldest package first; none when its fee alone does, on an
-	// invoice.
+	// Pay is how it is paid for, by package credits or by its own fee, as
+	// chosen when it was booked or since (see pricing.go).
+	Pay Pay `json:"pay"`
+	// Credits are the package credits paying for it, as Pay says; none
+	// when its fee alone does, on an invoice.
 	Credits []Credit `json:"credits,omitempty"`
 	// Record is what the user wrote about it; its long notes are an item
 	// of their own (Notes), and its files are attachments.

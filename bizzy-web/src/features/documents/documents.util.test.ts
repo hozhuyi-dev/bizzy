@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { coversText, documentLabel } from "./documents.util";
+import { coversText, documentLabel, documentsOfClient } from "./documents.util";
+import type { DocumentSummary } from "./documents.types";
 
 describe("coversText", () => {
   test("names one line by its kind, and counts several", () => {
@@ -22,5 +23,19 @@ describe("documentLabel", () => {
     expect(documentLabel("RCP260042", undefined)).toBe("RCP260042-00");
     expect(documentLabel("INV260001", 3)).toBe("INV260001-03");
     expect(documentLabel(undefined, undefined)).toBe("Draft");
+  });
+});
+
+describe("documentsOfClient", () => {
+  const doc = (id: string, type: DocumentSummary["type"], status: DocumentSummary["status"]) =>
+    ({ id, type, status }) as DocumentSummary;
+  const docs = [doc("a", "invoice", "issued"), doc("b", "invoice", "cancelled"), doc("c", "receipt", "draft")];
+  const ids = (chips: Record<string, Array<string>>) => documentsOfClient(docs, chips).map((d) => d.id);
+
+  test("leaves out the cancelled unless their chip asks for them", () => {
+    expect(ids({})).toEqual(["a", "c"]);
+    expect(ids({ type: ["invoice"] })).toEqual(["a"]);
+    expect(ids({ status: ["cancelled"] })).toEqual(["b"]);
+    expect(ids({ status: ["issued", "cancelled"] })).toEqual(["a", "b"]);
   });
 });

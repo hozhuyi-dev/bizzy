@@ -1,14 +1,38 @@
-import { EXPENSE_FACETS } from "./expenses.constant";
+import { CATALOGUE_FACET_KEYS, EXPENSE_FACETS } from "./expenses.constant";
 import type { CatalogueView, CategoryTotal, ExpenseView, SearchExpensesRequest } from "./expenses.types";
 import type { Suggestion } from "~/components/shared/form/autocomplete-input/autocomplete-input.component";
 import type { Facet, FilterPreset, ListFilter } from "~/core/list/filter.types";
 import type { Place } from "~/core/list/pager.types";
-import { filterUrl, listRequest } from "~/core/list/filter.util";
+import { NO_FILTER, filterUrl, listRequest } from "~/core/list/filter.util";
 import { formatCents } from "~/core/utils/money.util";
 import { monthKey } from "~/core/utils/date.util";
 
 /** The expenses list's filter in its URL: this year, the tax year, unless it says otherwise. */
 export const expensesUrl = filterUrl(EXPENSE_FACETS, () => String(new Date().getFullYear()));
+
+/** The receipts a shop or item is on, at any time: the expenses list with its chip. */
+export function receiptsOf(chip: "vendor" | "item", name: string) {
+  return { to: "/expenses", search: expensesUrl.toSearch({ ...NO_FILTER, chips: { [chip]: [name] } }) } as const;
+}
+
+/** The items' or shops' list filter in its URL. */
+export const catalogueUrl = filterUrl(CATALOGUE_FACET_KEYS);
+
+/** What the items' and shops' lists can be narrowed by besides words. */
+export const CATALOGUE_FACETS: ReadonlyArray<Facet> = [
+  { key: "archived", label: "Archived", single: true, options: [{ value: "yes", label: "Archived" }] },
+];
+
+/** The ways the items' and shops' lists are looked at: those still suggested first, as they open. */
+export const CATALOGUE_PRESETS: ReadonlyArray<FilterPreset> = [
+  { label: "In use", when: undefined, chips: {} },
+  { label: "Archived", when: undefined, chips: { archived: ["yes"] } },
+];
+
+/** Whether the items' or shops' list, so filtered, lists the archived ones: only under their chip. */
+export function listsArchived(filter: ListFilter): boolean {
+  return Boolean(filter.chips.archived?.length);
+}
 
 /** Where an expense sits in the expenses list: by its day. */
 export function expensePlace(expense: ExpenseView): Place {
@@ -27,14 +51,17 @@ export function totalsByCategory(byCategory: Readonly<Record<string, number>>, c
 
 /**
  * What the expenses list can be narrowed by (EXPENSE_FACETS): the
- * categories and shops, archived ones too, and whether the receipt is kept.
+ * categories, shops and items, archived ones too, and whether the receipt
+ * is kept.
  */
 export function expenseFacets(catalogue: CatalogueView | undefined): Array<Facet> {
   const categories = catalogue?.categories ?? [];
   const vendors = catalogue?.vendors ?? [];
+  const items = catalogue?.items ?? [];
   return [
     { key: "category", label: "Category", options: categories.map(({ id, name }) => ({ value: id, label: name })) },
     { key: "vendor", label: "Shop", options: vendors.map(({ name }) => ({ value: name, label: name })) },
+    { key: "item", label: "Item", options: items.map(({ name }) => ({ value: name, label: name })) },
     {
       key: "receipt",
       label: "Receipt",
@@ -63,6 +90,7 @@ export function searchExpensesRequest(filter: ListFilter): SearchExpensesRequest
     ...listRequest(filter),
     categoryIds: [...(filter.chips.category ?? [])],
     vendors: [...(filter.chips.vendor ?? [])],
+    items: [...(filter.chips.item ?? [])],
     receipts: [...(filter.chips.receipt ?? [])] as SearchExpensesRequest["receipts"],
   };
 }
@@ -100,7 +128,7 @@ export function itemSuggestions(catalogue: CatalogueView): Array<Suggestion> {
     }));
 }
 
-/** Item names compare however she typed them, as the API does. */
+/** Item names compare however they were typed, as the API does. */
 export function normalizeName(name: string): string {
   return name.trim().split(/\s+/).join(" ").toLowerCase();
 }

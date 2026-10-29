@@ -69,6 +69,8 @@ interface TimelineItemProps {
   tone?: TimelineTone | undefined;
   /** Coming, not happened yet: a hollow marker on a dashed rail. */
   upcoming?: boolean | undefined;
+  /** Called off (a session or document cancelled): kept in the story, greyed, the rail left as it is. */
+  muted?: boolean | undefined;
   /** When, leading: "Tue 12 Oct · 10:00". */
   when: ReactNode;
   /** Beside when: its badges. */
@@ -101,6 +103,7 @@ export function TimelineItem({
   icon: Icon,
   tone = "neutral",
   upcoming = false,
+  muted = false,
   when,
   badges,
   title,
@@ -133,12 +136,13 @@ export function TimelineItem({
         className={cn(
           "relative z-10 mt-0.5 flex size-6 items-center justify-center justify-self-center rounded-full ring-4 ring-card",
           upcoming ? cn("border-2 border-dashed bg-card", HOLLOW[tone]) : TONES[tone],
+          muted && "opacity-50",
         )}
       >
         {Icon ? <Icon className="size-3.5" /> : <span className="size-1.5 rounded-full bg-current" />}
       </span>
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className={cn("flex min-w-0 flex-1 flex-col gap-0.5", muted && "opacity-50")}>
           <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
             {when}
             {badges}

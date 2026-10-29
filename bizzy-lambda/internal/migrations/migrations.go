@@ -27,6 +27,7 @@ import "bizzy-lambda/internal/platform/migrate"
 var All = []migrate.Migration{
 	paymentPerLine,
 	linkClients,
+	rememberedListsAndSessionPay,
 }
 
 // Version is the schema this code reads and writes: how many migrations

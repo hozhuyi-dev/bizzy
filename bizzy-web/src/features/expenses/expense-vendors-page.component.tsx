@@ -1,122 +1,95 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useTable } from "@tanstack/react-table";
-import { ArchiveIcon, ArchiveRestoreIcon } from "lucide-react";
-import { toast } from "sonner";
-import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
+import { CATALOGUE_FACETS, CATALOGUE_PRESETS, listsArchived } from "./expenses.util";
 import type { Vendor } from "./expenses.types";
-import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
+import type { ListFilter } from "~/core/list/filter.types";
 import { DataTable } from "~/components/shared/list/data-table/data-table.component";
 import { createDataTableColumnHelper, dataTableFeatures } from "~/components/shared/list/data-table/data-table.config";
 import { PageHeader } from "~/components/shared/layout/page-header/page-header.component";
 import { EmptyState } from "~/components/shared/feedback/empty-state/empty-state.component";
-import { RowActions } from "~/components/shared/actions/row-actions/row-actions.component";
 import { DataCard } from "~/components/shared/list/data-card/data-card.component";
-import { SearchInput } from "~/components/shared/list/search-input/search-input.component";
-import { Badge } from "~/components/ui/badge";
+import { FilterBar } from "~/components/shared/list/filter-bar/filter-bar.component";
 import { formatDate } from "~/core/utils/date.util";
+import { presetLabel } from "~/core/list/filter.util";
 import { QUIPS } from "~/core/constants/quips.constant";
-import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
 
 const NO_VENDORS: Array<Vendor> = [];
 
 const helper = createDataTableColumnHelper<Vendor>();
 
+interface ExpenseVendorsPageProps {
+  /** Words, and whether it lists the archived ones. */
+  filter: ListFilter;
+  onFilterChange: (filter: ListFilter) => void;
+}
+
 /**
  * The shops and websites the user buys from, suggested on the next
- * receipt. They are added as new ones are typed on an expense; here a
- * typo or one no longer used is archived, out of the suggestions.
+ * receipt. They are added as new ones are typed on an expense; each opens
+ * on its own page, to be renamed or archived, out of the suggestions.
+ * Receipts keep what was typed on them. The archived ones are listed only
+ * under their preset.
  */
-export function ExpenseVendorsPage() {
-  const [search, setSearch] = useState("");
+export function ExpenseVendorsPage({ filter, onFilterChange }: ExpenseVendorsPageProps) {
+  const navigate = useNavigate();
+  const open = (vendor: Vendor) => void navigate({ to: "/expenses/vendors/$id", params: { id: vendor.id } });
   const catalogue = ExpensesQuery.useCatalogue();
-  const { mutate: archive } = ExpensesMutation.useArchiveVendor();
-
-  // Archive, or unarchive, behind the row's ⋯.
-  const toggle = useCallback(
-    (vendor: Vendor): Action =>
-    vendor.archived
-      ? {
-          type: "button",
-          label: "Unarchive",
-          icon: ArchiveRestoreIcon,
-          onClick: () =>
-            archive(
-              { id: vendor.id, archived: false },
-              { onSuccess: () => toast.success(`${vendor.name} is suggested again`), onError: toastRefusal },
-            ),
-        }
-      : {
-          type: "button",
-          label: "Archive",
-          icon: ArchiveIcon,
-          onClick: () =>
-            archive(
-              { id: vendor.id, archived: true },
-              { onSuccess: () => toast.success(`${vendor.name} archived`), onError: toastRefusal },
-            ),
-        },
-    [archive],
-  );
+  const vendors = catalogue.data?.vendors;
+  const archived = listsArchived(filter);
+  const rows = useMemo(() => (vendors ?? NO_VENDORS).filter((vendor) => Boolean(vendor.archived) === archived), [vendors, archived]);
 
   const columns = useMemo(
     () =>
       helper.columns([
-        helper.accessor("name", {
-          header: "Shop",
-          sortFn: "alphanumeric",
-          meta: { width: "grow" },
-          cell: ({ row }) => (
-            <span className="flex flex-wrap items-center gap-1.5">
-              {row.original.name}
-              {row.original.archived && <Badge variant="neutral">Archived</Badge>}
-            </span>
-          ),
-        }),
+        helper.accessor("name", { header: "Shop", sortFn: "alphanumeric", meta: { width: "grow" } }),
         helper.accessor("lastUsed", {
           header: "Last receipt",
           sortFn: "alphanumeric",
           cell: ({ getValue }) => formatDate(getValue()),
         }),
-        helper.display({
-          id: "actions",
-          header: () => <span className="sr-only">Actions</span>,
-          meta: { width: "fit" },
-          cell: ({ row }) => <RowActions actions={[]} more={[toggle(row.original)]} />,
-        }),
       ]),
-    [toggle],
+    [],
   );
 
   const table = useTable({
     features: dataTableFeatures,
     columns,
-    data: catalogue.data?.vendors ?? NO_VENDORS,
+    data: rows,
     getRowId: (vendor) => vendor.id,
     initialState: { sorting: [{ id: "lastUsed", desc: true }] },
   });
 
   return (
     <>
-      <PageHeader title="Shops" toolbar={<SearchInput label="Search shops" value={search} onChange={setSearch} />} />
+      <PageHeader
+        title="Shops"
+        subtitle={presetLabel(filter, CATALOGUE_PRESETS)}
+        toolbar={
+          <FilterBar label="Search shops" value={filter} onChange={onFilterChange} facets={CATALOGUE_FACETS} presets={CATALOGUE_PRESETS} />
+        }
+      />
       <DataTable
-          table={table}
-          source={catalogue}
-          query={search}
-          empty={<EmptyState quips={QUIPS.expenses}>No shops yet. They're added as you record expenses.</EmptyState>}
-          renderCard={(row) => (
-            <DataCard
-              title={
-                <>
-                  <span className="font-medium">{row.original.name}</span>
-                  {row.original.archived && <Badge variant="neutral">Archived</Badge>}
-                </>
-              }
-              meta={`Last receipt ${formatDate(row.original.lastUsed)}`}
-              more={[toggle(row.original)]}
-            />
-          )}
-        />
+        table={table}
+        source={catalogue}
+        query={filter.text}
+        onRowOpen={open}
+        empty={
+          archived ? (
+            <EmptyState quips={QUIPS.expenses}>No archived shops.</EmptyState>
+          ) : (
+            <EmptyState quips={QUIPS.expenses}>No shops yet. They're added as you record expenses.</EmptyState>
+          )
+        }
+        renderCard={(row) => (
+          <DataCard
+            title={<span className="font-medium">{row.original.name}</span>}
+            meta={`Last receipt ${formatDate(row.original.lastUsed)}`}
+            onOpen={() => open(row.original)}
+          />
+        )}
+      />
     </>
   );
 }

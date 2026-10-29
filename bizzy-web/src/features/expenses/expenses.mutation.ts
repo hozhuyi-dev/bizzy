@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ExpensesService } from "./expenses.service";
-import type { ExpenseCategory, ExpenseFields, ExpenseItem } from "./expenses.types";
+import type { ExpenseCategory, ExpenseFields, ExpenseItem, Vendor } from "./expenses.types";
 import { CatalogueKeys, ExpenseKeys } from "~/core/constants/query-keys.constant";
 import { isStaleEdit } from "~/core/utils/api-error.util";
 
@@ -28,8 +28,7 @@ export const ExpensesMutation = {
     useExpenseMutation(({ id, fields }: { id: string; fields: ExpenseFields }) => ExpensesService.update(id, fields)),
   useDelete: () => useExpenseMutation((id: string) => ExpensesService.delete(id)),
   useSaveItem: () => useExpenseMutation((item: ExpenseItem) => ExpensesService.saveItem(item)),
-  useArchiveVendor: () =>
-    useExpenseMutation(({ id, archived }: { id: string; archived: boolean }) => ExpensesService.archiveVendor(id, archived)),
+  useSaveVendor: () => useExpenseMutation((vendor: Vendor) => ExpensesService.saveVendor(vendor)),
   useSaveCategories: () =>
     useExpenseMutation((categories: Array<ExpenseCategory>) => ExpensesService.saveCategories(categories)),
 };

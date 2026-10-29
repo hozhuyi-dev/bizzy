@@ -10,7 +10,7 @@ import (
 // Invariants are what holds for every expense, always.
 var Invariants = []txn.Invariant{
 	{
-		ID: "expenses-are-spent-on-items", Why: "An expense is something bought: lines of listed items, in a category, coming to more than nothing",
+		ID: "expenses-are-spent-on-items", Why: "An expense is something bought: lines in a category, coming to more than nothing",
 		On: Expenses.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {
 			e, ok, err := Expenses.Find(tx, id)
@@ -26,11 +26,6 @@ var Invariants = []txn.Invariant{
 			}
 			var out []string
 			for _, l := range e.Lines {
-				if _, found, err := Items.Find(tx, l.ItemID); err != nil {
-					return nil, err
-				} else if !found {
-					out = append(out, fmt.Sprintf("expense %s names item %s, which isn't listed", id, l.ItemID))
-				}
 				if !hasCategory(cats, l.CategoryID) {
 					out = append(out, fmt.Sprintf("expense %s files %s under %s, which isn't a category", id, l.Name, l.CategoryID))
 				}
@@ -62,6 +57,23 @@ var Invariants = []txn.Invariant{
 			cats, err := CategoriesOf(tx)
 			if err == nil && !hasCategory(cats, it.CategoryID) {
 				return []string{fmt.Sprintf("item %s is filed under %s, which isn't a category", id, it.CategoryID)}, nil
+			}
+			return nil, err
+		},
+	},
+	{
+		ID: "items-are-one-per-name", Why: "An item is listed once, however its name was typed",
+		On: Items.Name,
+		Broken: func(tx *txn.Tx, id string) ([]string, error) {
+			it, ok, err := Items.Find(tx, id)
+			if err != nil || !ok {
+				return nil, err
+			}
+			all, err := Items.All(tx)
+			for _, other := range all {
+				if other.ID != id && normalizeName(other.Name) == normalizeName(it.Name) {
+					return []string{fmt.Sprintf("items %s and %s are both %q", id, other.ID, it.Name)}, err
+				}
 			}
 			return nil, err
 		},

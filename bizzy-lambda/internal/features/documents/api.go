@@ -231,7 +231,8 @@ func SharedViewOf(d *Document, pdf File) SharedView {
 // for or the client's name, and by days (where it is filed: a draft
 // without a date by its latest service date), types, clients and status,
 // and invoices with something still owed on them (Unpaid); an empty filter
-// takes every value.
+// takes every value, but no status takes those not cancelled: a cancelled
+// one shows only when asked for.
 type searchRequest struct {
 	listing.Request
 	Types     []Type   `json:"types"`
@@ -256,6 +257,9 @@ func (in searchRequest) list(from, to time.Time) txn.List {
 // takes says whether a document is one the search is for, its words aside.
 func (in searchRequest) takes(d *Document, owing Owing) bool {
 	if !listing.OneOf(in.Types, d.Type) || !listing.OneOf(in.ClientIDs, d.ClientID) || !listing.OneOf(in.Statuses, d.Status) {
+		return false
+	}
+	if len(in.Statuses) == 0 && d.Status == StatusCancelled {
 		return false
 	}
 	return !in.Unpaid || d.Status != StatusCancelled && len(owing.owedOn(d)) > 0

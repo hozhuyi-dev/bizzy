@@ -84,6 +84,7 @@ export function SessionItem({ session, upcoming, handlers }: SessionItemProps) {
       icon={CalendarIcon}
       tone={badges[0]?.tone}
       upcoming={upcoming}
+      muted={Boolean(session.cancelledAt)}
       when={formatSessionTime(session.start)}
       badges={badges.map((badge) => (
         <Badge key={badge.label} variant={badge.tone}>
@@ -184,6 +185,7 @@ export function DocumentItem({ doc, clientId }: { doc: TimelineDocument; clientI
     <TimelineItem
       icon={doc.type === "invoice" ? FileTextIcon : ReceiptIcon}
       tone={doc.status === "draft" ? "neutral" : "info"}
+      muted={doc.status === "cancelled"}
       when={doc.date ? formatDate(doc.date) : "Dated when issued"}
       badges={<DocumentStatusBadge status={doc.status} revising={doc.revising} />}
       title={<span className="font-medium">{refLabel(doc.type, doc, doc.status !== "draft")}</span>}

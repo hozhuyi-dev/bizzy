@@ -17,7 +17,7 @@ Every commit also moves one counter (`PK COMMIT`, `SK COUNTER`), which makes com
 
 One item (`PK SCHEMA`, `SK VERSION`) holds how many migrations the items have been through, and the fence while they run (see `internal/platform/migrate`).
 
-Schema version (migrations in `internal/migrations`): 2
+Schema version (migrations in `internal/migrations`): 3
 
 ## Kinds
 
@@ -253,6 +253,7 @@ A session: who, when, where, whether confirmed or cancelled, the credits paying 
 | tentative | `bool` |
 | confirmedAt | `*time.Time` |
 | location | `sessions.Location` |
+| pay | `sessions.Pay` |
 | credits | `[]sessions.Credit` |
 | record | `*sessions.Record` |
 | createdAt | `time.Time` |
@@ -273,6 +274,7 @@ Checked on every change to one:
 - **paid-for**: Credits pay for a session by the half hour, its fee on an invoice for what they leave: all of it, never more
 - **cancelled-costs-nothing**: A cancelled session costs nothing: no credits, no invoice or receipt, no package bought in it
 - **credits-of-own-package**: Credits pay for a session from packages its client may use (their own, or shared with them), each once
+- **paid-as-chosen**: A session is paid by package or by its fee, as chosen: one paid by its fee uses no package credits
 - **credits-in-hand**: Sessions use no more of a package's credits than it has, and a package used isn't deleted
 - **confirmed-before-invoiced**: An invoice is issued, and a payment recorded, for a confirmed session only
 - **bought-in-its-session**: A package bought in a session is that session's client's, bought on its day
@@ -337,12 +339,12 @@ A receipt of what the practice spent, a line per item.
 
 Checked on every change to one:
 
-- **expenses-are-spent-on-items**: An expense is something bought: lines of listed items, in a category, coming to more than nothing
+- **expenses-are-spent-on-items**: An expense is something bought: lines in a category, coming to more than nothing
 - **receipts-are-an-expenses**: A receipt's file is an expense's, and goes with it
 
 ### EXPENSEITEM
 
-An item expense lines are picked from, in a category.
+An item suggested for an expense line, by name, with the category and amount it had last.
 
 | Field | Type |
 |---|---|
@@ -355,6 +357,7 @@ An item expense lines are picked from, in a category.
 Checked on every change to one:
 
 - **items-are-filed**: Every item is in a category
+- **items-are-one-per-name**: An item is listed once, however its name was typed
 
 ### EXPENSEVENDOR
 

@@ -14,7 +14,6 @@ const catalogue: CatalogueView = {
 describe("withName", () => {
   it("fills a listed item's category and last price, however the name is typed", () => {
     expect(withName({ ...EMPTY_LINE }, "kinesio  TAPE", catalogue)).toEqual({
-      itemId: "tape",
       name: "kinesio  TAPE",
       categoryId: "purchases",
       amount: "45",
@@ -26,20 +25,25 @@ describe("withName", () => {
   });
 
   it("makes a new name a new item, keeping the category chosen", () => {
-    const line = { itemId: "tape", name: "Kinesio tape", categoryId: "travel", amount: "3" };
-    expect(withName(line, "Parking", catalogue)).toEqual({ ...line, itemId: "", name: "Parking" });
+    const line = { name: "Kinesio tape", categoryId: "travel", amount: "3" };
+    expect(withName(line, "Parking", catalogue)).toEqual({ ...line, name: "Parking" });
+  });
+
+  it("keeps a saved line's own category while its name is only retyped", () => {
+    const line = { name: "Kinesio tape", categoryId: "travel", amount: "3" };
+    expect(withName(line, "Kinesio Tape", catalogue)).toEqual({ ...line, name: "Kinesio Tape" });
   });
 });
 
 describe("toExpenseFields", () => {
-  it("sends new items without an id", () => {
+  it("sends each line as typed", () => {
     const input = toExpenseFields({
       date: "2026-10-12",
       vendor: "Shopee",
       notes: " ",
       lines: [
-        { itemId: "tape", name: "Kinesio tape", categoryId: "purchases", amount: "45" },
-        { itemId: "", name: "Parking", categoryId: "travel", amount: "3.50" },
+        { name: "Kinesio tape", categoryId: "purchases", amount: "45" },
+        { name: "Parking", categoryId: "travel", amount: "3.50" },
       ],
     });
     expect(input).toEqual({
@@ -47,7 +51,7 @@ describe("toExpenseFields", () => {
       vendor: "Shopee",
       notes: "",
       lines: [
-        { itemId: "tape", name: "Kinesio tape", categoryId: "purchases", amountCents: 4500 },
+        { name: "Kinesio tape", categoryId: "purchases", amountCents: 4500 },
         { name: "Parking", categoryId: "travel", amountCents: 350 },
       ],
     });

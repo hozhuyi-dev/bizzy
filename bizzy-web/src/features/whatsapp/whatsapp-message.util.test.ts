@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { askItems, documentsMessage, documentsTitle, fillMessage, paymentMessage, phonePay } from "./whatsapp-message.util";
+import { askItems, documentsMessage, documentsTitle, fillMessage, payLinkFirst, paymentMessage, phonePay } from "./whatsapp-message.util";
 import { DEFAULT_DOCUMENT_MESSAGE, DEFAULT_PAYMENT_MESSAGE } from "./whatsapp.constant";
 import type { SentDocument } from "./whatsapp.types";
 import type { DocumentAsk, DocumentType } from "~/features/documents/documents.types";
@@ -70,6 +70,21 @@ describe("paymentMessage", () => {
     expect(text).toContain("Reference: JANE 05OCT");
     expect(text).not.toContain("{");
     expect(DEFAULT_PAYMENT_MESSAGE).toContain("{phonePay}");
+  });
+
+  test("links the payment page first, for WhatsApp to preview it", () => {
+    const text = paymentMessage({ ...settings, paymentMessage: "" }, "Jane", { ...ask, lines: [{ ...ask.lines[0]!, shareToken: "tok" }] }, "https://pay.example");
+    expect(text.indexOf("https://pay.example")).toBeLessThan(text.indexOf("/d/tok"));
+    expect(payLinkFirst(DEFAULT_PAYMENT_MESSAGE)).toBe(true);
+  });
+});
+
+describe("payLinkFirst", () => {
+  test("is whether {payLink} comes before {items}, when both are there", () => {
+    expect(payLinkFirst("{payLink}\n{items}")).toBe(true);
+    expect(payLinkFirst("{items}\n{payLink}")).toBe(false);
+    expect(payLinkFirst("{items}")).toBe(true);
+    expect(payLinkFirst("{payLink}")).toBe(true);
   });
 });
 

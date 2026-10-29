@@ -1,5 +1,6 @@
 import type {
   CoverView,
+  MoveToPackageRequest,
   PreviewSessionRequest,
   SearchSessionsRequest,
   SessionFields,
@@ -27,6 +28,10 @@ export const SessionsService = {
   cancel: (id: string, reason: string) => invoke<SessionView>("sessions.cancel", { id, reason }),
   /** Only one booked by mistake. keepPackage keeps the package bought in it as one on its own; it is deleted with it otherwise. */
   delete: (id: string, keepPackage: boolean) => invoke<null>("sessions.delete", { id, keepPackage }),
+  /** The sessions a package could pay for that their fee pays now, latest first. */
+  movable: (packageId: string) => invoke<Array<SessionView>>("sessions.movable", { packageId }),
+  /** Has a package pay for sessions first, whenever it was bought; all of them, or none. */
+  moveToPackage: (request: MoveToPackageRequest) => invoke<Array<SessionView>>("sessions.moveToPackage", request),
   /** Leaving out the notes keeps them, for the summary alone. */
   saveRecord: (id: string, summary: string, notes?: string) =>
     invoke<SessionView>("sessions.saveRecord", { id, summary, notes }),

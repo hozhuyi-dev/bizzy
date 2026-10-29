@@ -115,6 +115,21 @@ var Invariants = []txn.Invariant{
 		}),
 	},
 	{
+		ID: "paid-as-chosen", Why: "A session is paid by package or by its fee, as chosen: one paid by its fee uses no package credits",
+		On: Sessions.Name,
+		Broken: each(func(tx *txn.Tx, s *Session) ([]string, error) {
+			switch {
+			case s.Pay.By != PayByPackage && s.Pay.By != PayByFee:
+				return []string{fmt.Sprintf("session %s is paid by %q", s.ID, s.Pay.By)}, nil
+			case s.Pay.By == PayByFee && len(s.Credits) > 0:
+				return []string{fmt.Sprintf("session %s is paid by its fee and uses package credits", s.ID)}, nil
+			case s.Pay.By == PayByFee && s.Pay.PackageID != "":
+				return []string{fmt.Sprintf("session %s is paid by its fee with package %s chosen", s.ID, s.Pay.PackageID)}, nil
+			}
+			return nil, nil
+		}),
+	},
+	{
 		ID: "credits-in-hand", Why: "Sessions use no more of a package's credits than it has, and a package used isn't deleted",
 		On: packages.Packages.Name,
 		Broken: func(tx *txn.Tx, id string) ([]string, error) {

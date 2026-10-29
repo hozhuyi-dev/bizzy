@@ -89,6 +89,18 @@ export function paymentMessage(settings: SettingsView, clientName: string, ask: 
 }
 
 /**
+ * Whether a message asking to pay links the payment page before anything
+ * else: {items} links each issued invoice, and WhatsApp previews a
+ * message's first link. True without {payLink}, which has nothing to come
+ * first.
+ */
+export function payLinkFirst(template: string): boolean {
+  const pay = template.indexOf("{payLink}");
+  const items = template.indexOf("{items}");
+  return pay === -1 || items === -1 || pay < items;
+}
+
+/**
  * What {title} reads as: "receipt" for one, "receipts" for several of a
  * kind, "documents" for a mix.
  */

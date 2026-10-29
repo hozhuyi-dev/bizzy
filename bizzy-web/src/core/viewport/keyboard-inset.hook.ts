@@ -22,7 +22,9 @@ interface KeyboardInsetOptions {
 /**
  * Keeps `element` above a phone's keyboard by publishing how much of the
  * screen's bottom it covers as --keyboard-inset on it, for its classes to
- * lift it by (app.css). A phone's keyboard shrinks only the visual
+ * lift it by, and data-keyboard-up while that is more than 0, which trades
+ * the air kept over the home indicator for the little kept over a keyboard
+ * (app.css). A phone's keyboard shrinks only the visual
  * viewport, and a fixed element sits at the bottom of the layout one,
  * under the keyboard. No CSS knows the keyboard on iOS (every browser
  * there is WebKit, which has neither interactive-widget nor the
@@ -79,6 +81,7 @@ export function useKeyboardInset(element: HTMLElement | null, { hideWhileMoving 
       if (last !== -1) moving();
       last = inset;
       element.style.setProperty("--keyboard-inset", `${inset}px`);
+      element.toggleAttribute("data-keyboard-up", inset > 0);
     };
     const schedule = () => {
       frame ||= requestAnimationFrame(apply);
@@ -114,6 +117,7 @@ export function useKeyboardInset(element: HTMLElement | null, { hideWhileMoving 
       window.clearTimeout(settle);
       window.clearTimeout(quiet);
       element.style.removeProperty("--keyboard-inset");
+      element.removeAttribute("data-keyboard-up");
       delete element.dataset.keyboardMoving;
     };
   }, [element, hideWhileMoving]);

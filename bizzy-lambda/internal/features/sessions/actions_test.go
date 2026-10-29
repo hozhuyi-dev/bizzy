@@ -231,6 +231,66 @@ func TestAPaymentIsInFull(t *testing.T) {
 	}
 }
 
+func TestASessionWithNothingOnItIsDeleted(t *testing.T) {
+	a, jane, _ := setup(t)
+	gone := func(id string) bool {
+		t.Helper()
+		_, refused, err := a.Call("sessions.get", map[string]any{"id": id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return refused != nil && refused.Code == apperr.CodeNotFound
+	}
+
+	// One that happened, with its fee on a draft invoice: a mistake all
+	// the same, and it goes.
+	happened := create(t, a, book(jane, -5, -4, nil))
+	if err := a.Must("sessions.delete", map[string]any{"id": happened.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !gone(happened.ID) {
+		t.Error("the session that happened is still there")
+	}
+
+	// One with a summary stays, to be cancelled, until the summary is
+	// cleared.
+	summed := create(t, a, book(jane, -3, -2, nil))
+	if err := a.Must("sessions.saveRecord", map[string]any{"id": summed.ID, "summary": "Knee, better"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if r := refusal(t, a, "sessions.delete", map[string]any{"id": summed.ID}); r == nil || r.Action != "sessions.cancel" {
+		t.Errorf("remedy = %+v, want cancelling it", r)
+	}
+	if err := a.Must("sessions.saveRecord", map[string]any{"id": summed.ID, "summary": ""}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Must("sessions.delete", map[string]any{"id": summed.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// One cancelled goes too while nothing is on it; with something, it
+	// stays as a record.
+	called := create(t, a, book(jane, -8, -7, nil))
+	kept := create(t, a, book(jane, -10, -9, nil))
+	if err := a.Must("sessions.saveRecord", map[string]any{"id": kept.ID, "summary": "Didn't come"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{called.ID, kept.ID} {
+		if err := a.Must("sessions.cancel", map[string]any{"id": id}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.Must("sessions.delete", map[string]any{"id": called.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if r := refusal(t, a, "sessions.delete", map[string]any{"id": kept.ID}); r != nil {
+		t.Errorf("remedy = %+v, want none", r)
+	}
+	if !gone(called.ID) || gone(kept.ID) {
+		t.Error("want the cancelled session with nothing on it gone, the one with a summary kept")
+	}
+}
+
 func TestAnIssuedInvoiceIsFinal(t *testing.T) {
 	a, jane, _ := setup(t)
 	s := create(t, a, book(jane, 2, 3, map[string]any{"tentative": true}))

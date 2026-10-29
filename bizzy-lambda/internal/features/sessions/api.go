@@ -27,6 +27,8 @@ type View struct {
 	Tentative   bool       `json:"tentative"`
 	ConfirmedAt *time.Time `json:"confirmedAt,omitempty"`
 	Location    Location   `json:"location"`
+	// Pay is how it is paid for, by package or by its fee.
+	Pay Pay `json:"pay"`
 	// Hours is how long it is charged for, and Credits what package
 	// credits pay of it.
 	Hours   float64      `json:"hours"`
@@ -101,10 +103,13 @@ type RecordView struct {
 // Can is what each action on a session would say now. Delete keeps the
 // package bought in it; DeleteWithPackage deletes that too.
 type Can struct {
-	Update            apperr.Verdict `json:"update"`
-	Record            apperr.Verdict `json:"record"`
-	Pay               apperr.Verdict `json:"pay"`
-	UndoPayment       apperr.Verdict `json:"undoPayment"`
+	Update      apperr.Verdict `json:"update"`
+	Record      apperr.Verdict `json:"record"`
+	Pay         apperr.Verdict `json:"pay"`
+	UndoPayment apperr.Verdict `json:"undoPayment"`
+	// ChangePay is switching it between package and fee, or to another
+	// package.
+	ChangePay         apperr.Verdict `json:"changePay"`
 	AskToPay          apperr.Verdict `json:"askToPay"`
 	SendRecords       apperr.Verdict `json:"sendRecords"`
 	Cancel            apperr.Verdict `json:"cancel"`
@@ -112,12 +117,13 @@ type Can struct {
 	DeleteWithPackage apperr.Verdict `json:"deleteWithPackage"`
 }
 
-// FullView is a session with its notes, and what its update can't
-// change, for its page.
+// FullView is a session with its notes, what its update can't change,
+// and the packages it could be paid by, for its page.
 type FullView struct {
 	View
-	Notes  string       `json:"notes"`
-	Locked apperr.Locks `json:"locked"`
+	Notes      string       `json:"notes"`
+	Locked     apperr.Locks `json:"locked"`
+	PayOptions []PayOption  `json:"payOptions"`
 }
 
 // Full is a session as its page shows it.
@@ -135,7 +141,11 @@ func Full(tx *txn.Tx, id string) (FullView, error) {
 		return FullView{}, err
 	}
 	locked, err := Locks(tx, s)
-	return FullView{View: v, Notes: notes, Locked: locked}, err
+	if err != nil {
+		return FullView{}, err
+	}
+	options, err := payOptions(tx, s)
+	return FullView{View: v, Notes: notes, Locked: locked, PayOptions: options}, err
 }
 
 // Locks are what an update to a session can't change now.
@@ -143,6 +153,7 @@ func Locks(tx *txn.Tx, s *Session) (apperr.Locks, error) {
 	return apperr.LocksOf(map[string]error{
 		"clientId":  CanReassign(tx, s),
 		"tentative": CanUnconfirm(tx, s),
+		"pay":       CanChangePay(tx, s),
 		"fee":       CanReprice(tx, s),
 		"package":   CanRebuy(tx, s),
 		"billTo":    CanBillTo(tx, s),
@@ -153,6 +164,8 @@ func Locks(tx *txn.Tx, s *Session) (apperr.Locks, error) {
 // packages bought before it, and what pays for the FeeHours they leave
 // (Kind), at FeeCents when that is the usual fee.
 type CoverView struct {
+	// By is how it would be paid: as asked, else as a new one is.
+	By       PayBy        `json:"by"`
 	Kind     CoverKind    `json:"kind"`
 	Hours    float64      `json:"hours"`
 	Credits  []CreditView `json:"credits"`
@@ -171,7 +184,7 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 	}
 	v := View{
 		ID: s.ID, ClientID: s.ClientID, ClientName: client.Name, Start: s.Start, End: s.End,
-		Tentative: s.Tentative, ConfirmedAt: s.ConfirmedAt, Location: s.Location,
+		Tentative: s.Tentative, ConfirmedAt: s.ConfirmedAt, Location: s.Location, Pay: s.Pay,
 		Hours: hours(s.Billable()), Credits: creditViews(s.Credits),
 		CancelledAt: s.CancelledAt, CancelReason: s.CancelReason, Sources: []documents.Source{s.Source()},
 	}
@@ -220,6 +233,7 @@ func ViewOf(tx *txn.Tx, s *Session) (View, error) {
 		{&v.Can.Record, CanRecord(tx, s.ID)},
 		{&v.Can.Pay, CanPay(tx, s)},
 		{&v.Can.UndoPayment, CanUndoPayment(tx, s)},
+		{&v.Can.ChangePay, CanChangePay(tx, s)},
 		{&v.Can.AskToPay, documents.CanAskToPay(tx, v.Sources, nil)},
 		{&v.Can.SendRecords, documents.CanSendRecords(tx, v.Sources)},
 		{&v.Can.Cancel, CanCancel(tx, s)},
@@ -272,7 +286,8 @@ type listRequest struct {
 // searchRequest finds sessions by words in the client's name, the summary
 // or the notes, and by days, clients, place and stage (what is left to do,
 // or Cancelled), how far its invoice and receipt have got, and how it was
-// paid; an empty filter takes every value.
+// paid; an empty filter takes every value, but no stage takes those not
+// cancelled: a cancelled one shows only when asked for.
 type searchRequest struct {
 	listing.Request
 	ClientIDs []string    `json:"clientIds"`
@@ -325,7 +340,7 @@ func (in searchRequest) papersOf(v View) bool {
 // stageOf reports whether a session is at one of the stages asked for.
 func (in searchRequest) stageOf(v View) bool {
 	if len(in.Todo) == 0 && !in.Cancelled {
-		return true
+		return v.CancelledAt == nil
 	}
 	return in.Cancelled && v.CancelledAt != nil || len(in.Todo) > 0 && listing.AnyOf(in.Todo, v.Todo)
 }
@@ -360,6 +375,17 @@ type previewRequest struct {
 	// SessionID is the session being edited, if any.
 	SessionID   string `json:"sessionId,omitempty"`
 	BuysPackage bool   `json:"buysPackage"`
+	// Pay is how it would be paid; nil as a new one is.
+	Pay *Pay `json:"pay,omitempty"`
+}
+
+type moveToPackageRequest struct {
+	PackageID  string   `json:"packageId"`
+	SessionIDs []string `json:"sessionIds"`
+}
+
+type packageRequest struct {
+	PackageID string `json:"packageId"`
 }
 
 // Routes registers the sessions' actions; blobs holds their files.
@@ -418,15 +444,26 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 	}))
 	r.Query("sessions.preview", router.Typed(func(ctx context.Context, in previewRequest) (any, error) {
 		return txn.Read(ctx, run, func(tx *txn.Tx) (CoverView, error) {
-			c, err := Preview(tx, in.ClientID, in.Time, in.SessionID, in.BuysPackage)
+			c, err := Preview(tx, in.ClientID, in.Time, in.SessionID, in.BuysPackage, in.Pay)
 			if err != nil {
 				return CoverView{}, err
 			}
 			payer, err := clients.PayerOf(tx, in.ClientID)
 			return CoverView{
-				Kind: c.Kind, Hours: hours(c.Minutes), Credits: creditViews(c.Credits),
+				By: c.By, Kind: c.Kind, Hours: hours(c.Minutes), Credits: creditViews(c.Credits),
 				FeeHours: hours(c.FeeMinutes), FeeCents: c.FeeCents, Payer: payer,
 			}, err
+		})
+	}))
+	// sessions.movable lists the sessions a package could pay for that
+	// their fee does now, latest first (see Movable).
+	r.Query("sessions.movable", router.Typed(func(ctx context.Context, in packageRequest) (any, error) {
+		return txn.Read(ctx, run, func(tx *txn.Tx) ([]View, error) {
+			ss, err := Movable(tx, in.PackageID)
+			if err != nil {
+				return nil, err
+			}
+			return viewsOf(tx, ss)
 		})
 	}))
 	r.Mutation("sessions.create", router.Typed(func(ctx context.Context, in Fields) (any, error) {
@@ -434,6 +471,15 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 	}))
 	r.Mutation("sessions.update", router.Typed(func(ctx context.Context, in updateRequest) (any, error) {
 		return one(ctx, func(tx *txn.Tx) (*Session, error) { return Update(tx, in.ID, in.Fields) })
+	}))
+	r.Mutation("sessions.moveToPackage", router.Typed(func(ctx context.Context, in moveToPackageRequest) (any, error) {
+		return txn.Run(ctx, run, func(tx *txn.Tx) ([]View, error) {
+			ss, err := MoveToPackage(tx, in.PackageID, in.SessionIDs)
+			if err != nil {
+				return nil, err
+			}
+			return viewsOf(tx, ss)
+		})
 	}))
 	r.Mutation("sessions.saveRecord", router.Typed(func(ctx context.Context, in recordRequest) (any, error) {
 		return one(ctx, func(tx *txn.Tx) (*Session, error) { return SaveRecord(tx, in.ID, in.Summary, in.Notes) })

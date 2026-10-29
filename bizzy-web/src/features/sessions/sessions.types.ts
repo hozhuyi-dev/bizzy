@@ -24,6 +24,32 @@ export interface BoughtView {
   paid: boolean;
 }
 
+/** What a session is paid by; mirrors sessions.PayBy. */
+export type PayBy = "package" | "fee";
+
+/**
+ * How a session is paid for, as chosen and kept; mirrors sessions.Pay. By
+ * package, the package chosen pays first, whenever it was bought ("" the
+ * oldest bought by its start); what credits leave is charged at the usual
+ * fee. By fee, a fee typed for it, else the client's usual fee.
+ */
+export interface Pay {
+  by: PayBy;
+  packageId?: string;
+}
+
+/** A package a session could be paid by; mirrors sessions.PayOption. */
+export interface PayOption {
+  packageId: string;
+  /** Whose it is: the session's client's, or shared with them. */
+  clientId: string;
+  purchasedAt: string;
+  /** What it has left for the session, its own credits counted back in. */
+  hoursLeft: number;
+  /** Bought after the session started: it pays only once chosen. */
+  after: boolean;
+}
+
 /** The hours of a session a package's credits pay for; mirrors sessions.CreditView. */
 export interface CreditView {
   packageId: string;
@@ -46,6 +72,8 @@ export interface SessionCan {
   record: Verdict;
   pay: Verdict;
   undoPayment: Verdict;
+  /** Switching it between package and fee, or to another package: not once paid or on an issued document. */
+  changePay: Verdict;
   /** Asking the client to pay for it on WhatsApp: something of it is owed. */
   askToPay: Verdict;
   /** Sending its documents for the client's records: one is issued. */
@@ -72,6 +100,8 @@ export interface SessionView {
   tentative: boolean;
   confirmedAt?: string;
   location: SessionLocation;
+  /** How it is paid for, by package or by its fee. */
+  pay: Pay;
   /** How long it is charged for: its length rounded down to the half hour, at least a half hour. */
   hours: number;
   /** What package credits pay of it, oldest package first; its fee on an invoice pays the rest. */
@@ -116,10 +146,12 @@ export interface SearchSessionsRequest extends ListRequest {
   payments: Array<string>;
 }
 
-/** A session with its notes, and what its update can't change, for its page; mirrors sessions.FullView. */
+/** A session with its notes, what its update can't change, and the packages it could be paid by, for its page; mirrors sessions.FullView. */
 export interface SessionFullView extends SessionView {
   notes: string;
   locked: Locks;
+  /** Oldest first: those with hours left for it, and any it uses or has chosen. */
+  payOptions: Array<PayOption>;
 }
 
 /** A session's page in one call: it, the calendar edits waiting on it, the follow-ups made from it; mirrors app.SessionPageView. */
@@ -138,10 +170,12 @@ export type CoverKind = "bought" | "credit" | "default" | "none";
 
 /** What would pay for a session with no fee entered; mirrors sessions.CoverView. */
 export interface CoverView {
+  /** How it would be paid: as asked, else as a new one is (by package when credits cover some of it). */
+  by: PayBy;
   kind: CoverKind;
   /** How long it is charged for. */
   hours: number;
-  /** What packages bought before it pay, oldest first. */
+  /** What package credits pay, paid by package: the one chosen first, then the oldest. */
   credits: Array<CreditView>;
   /** What they leave, which feeCents charges when kind is "default". */
   feeHours: number;
@@ -158,6 +192,14 @@ export interface PreviewSessionRequest {
   sessionId?: string | undefined;
   /** It buys a package, whose credits pay what older ones leave. */
   buysPackage: boolean;
+  /** How it would be paid; left out, as a new one is. */
+  pay?: Pay | undefined;
+}
+
+/** sessions.moveToPackage's request: a package to pay for sessions its clients' fee pays now. */
+export interface MoveToPackageRequest {
+  packageId: string;
+  sessionIds: Array<string>;
 }
 
 /**
@@ -169,7 +211,9 @@ export interface SessionFields {
   time?: { start: string; end: string };
   tentative?: boolean;
   location?: SessionLocation;
-  /** `{cents}` is its whole fee, typed for it; `{}` returns it to credits and the usual fee. */
+  /** How it is paid for, chosen. */
+  pay?: Pay;
+  /** `{cents}` is its whole fee, typed for it, paid by it; `{}` clears it: with `pay`, the usual fee; alone, paid as a new one is. */
   fee?: { cents?: number };
   /** `{bought}` is the package bought in it; `{}` drops it. */
   package?: { bought?: { hours: number; priceCents: number } };
@@ -186,7 +230,9 @@ export interface SessionDraft {
   clientId: string;
   start: string;
   minutes: number;
-  /** Its whole fee, typed for it; unset leaves it to package credits and the client's hourly fee. */
+  /** How it is paid; unset, as a new one is (by package when credits cover some of it). */
+  payBy?: PayBy;
+  /** Its whole fee, typed for it, paid by it; unset leaves it to the client's hourly fee. */
   feeCents?: number;
   /** A package of hours bought in this session. */
   package?: { hours: number; priceCents: number };

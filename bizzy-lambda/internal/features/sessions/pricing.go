@@ -15,28 +15,52 @@ import (
 	"bizzy-lambda/internal/platform/txn"
 )
 
-// What pays for a session is chosen when it is booked, or when that is
-// asked to change (a fee entered or cleared, another client, a package
-// bought in it, a length charged differently): never again behind the
-// user's back, so credits or a fee the user has seen stay.
+// How a session is paid for is chosen, and kept (Pay): by package
+// credits or by its own fee. A new session is paid by package when its
+// client has credits it may use then (or buys a package in it), else by
+// its fee, and so is one whose typed fee is cleared (the calendar's title
+// losing its amount); the user may switch it, and pick the package. What
+// pays is worked out again only when that is asked to change (a choice
+// made, a fee entered or cleared, another client, a package bought in
+// it, a length charged differently), the same way, so credits never take
+// over a fee, or a fee credits, behind the user's back.
 //
 // A session is charged for its length rounded down to a half hour, and
 // at least a half hour (Billable):
 //
-//  1. a fee entered for it (typed) is its whole fee;
-//  2. otherwise the packages its client may use (their own, and those
-//     shared with them) bought by its start (one bought in the session
-//     itself included) pay with the credits they have left, oldest first,
-//     an hour a credit, a half hour at a time;
+//  1. paid by its fee, a fee entered for it (typed) is its whole fee,
+//     else the client's usual hourly fee is;
+//  2. paid by package, the package chosen pays first with the credits it
+//     has left, whenever it was bought; then the packages its client may
+//     use (their own, and those shared with them) bought by its start
+//     (one bought in the session itself included), oldest first, an hour
+//     a credit, a half hour at a time;
 //  3. what they leave is charged at the client's usual hourly fee, as it
 //     is when the session is priced;
 //  4. without one, that is refused: enter a fee.
 //
 // A fee is the session's line on an invoice (see documents); a session
-// its credits pay for in full is on no invoice.
+// its credits pay for in full is on no invoice. How a session is paid
+// changes only while nothing is received for it and no issued document
+// covers it (CanChangePay): a session paid stays paid as it was.
 
-// FeeChoice is what pays for a session, as entered: a fee typed for it, or
-// none (Cents nil), leaving it to credits and the client's usual fee.
+// PayBy is what a session is paid by.
+type PayBy string
+
+const (
+	PayByPackage PayBy = "package"
+	PayByFee     PayBy = "fee"
+)
+
+// Pay is how a session is paid for: by package credits, from the package
+// chosen first (PackageID; "" for the oldest), or by its own fee.
+type Pay struct {
+	By        PayBy  `json:"by"`
+	PackageID string `json:"packageId,omitempty"`
+}
+
+// FeeChoice is a fee typed for a session, paid by it; or none (Cents
+// nil), leaving how it is paid to the default (see above).
 type FeeChoice struct {
 	Cents *int64 `json:"cents,omitempty"`
 }
@@ -47,7 +71,8 @@ type PackageChoice struct {
 	Bought *packages.Bought `json:"bought,omitempty"`
 }
 
-// price sets what pays for a session (see above), fee being a fee typed.
+// price sets what pays for a session as its Pay says (see above), fee
+// being a fee typed, for one paid by its fee.
 func price(tx *txn.Tx, s *Session, fee *int64) error {
 	s.Credits = nil
 	if fee != nil {
@@ -56,14 +81,17 @@ func price(tx *txn.Tx, s *Session, fee *int64) error {
 		}
 		return charge(tx, s, *fee, true)
 	}
-	credits, err := creditsFor(tx, s.ID, s.ClientID, s.Start, s.Billable())
-	if err != nil {
-		return err
-	}
-	s.Credits = credits
-	left := s.Billable() - s.CreditMinutes()
-	if left == 0 {
-		return documents.Uncharge(tx, s.Source())
+	left := s.Billable()
+	if s.Pay.By == PayByPackage {
+		credits, err := creditsFor(tx, s.ID, s.ClientID, s.Start, s.Billable(), s.Pay.PackageID)
+		if err != nil {
+			return err
+		}
+		s.Credits = credits
+		left -= s.CreditMinutes()
+		if left == 0 {
+			return documents.Uncharge(tx, s.Source())
+		}
 	}
 	client, err := clients.Clients.Get(tx, s.ClientID)
 	if err != nil {
@@ -75,13 +103,109 @@ func price(tx *txn.Tx, s *Session, fee *int64) error {
 	if err := documents.Uncharge(tx, s.Source()); err != nil {
 		return err
 	}
+	setFee := apperr.Remedy{Action: "clients.update", Target: client.ID, Ask: "fee", Label: fmt.Sprintf("Set %s's usual fee", client.Name)}
+	if s.Pay.By == PayByFee {
+		return apperr.Refused(fmt.Sprintf("Enter the fee: %s has no usual fee.", client.Name), setFee)
+	}
 	covered := "no package credit covers this session"
-	if len(credits) > 0 {
+	if len(s.Credits) > 0 {
 		covered = fmt.Sprintf("package credits cover only %s of this session", packages.Hours(s.CreditMinutes()))
 	}
-	return apperr.Refused(fmt.Sprintf("Enter the fee: %s has no usual fee, and %s.", client.Name, covered),
-		apperr.Remedy{Action: "clients.update", Target: client.ID, Ask: "fee", Label: fmt.Sprintf("Set %s's usual fee", client.Name)},
+	return apperr.Refused(fmt.Sprintf("Enter the fee: %s has no usual fee, and %s.", client.Name, covered), setFee,
 		apperr.Remedy{Action: "packages.create", Request: map[string]any{"clientId": client.ID}, Label: fmt.Sprintf("Add a package for %s", client.Name)})
+}
+
+// defaultPay is how a session is paid for until the user says: by package
+// when its client has credits it may use then, or buys a package in it,
+// else by its fee.
+func defaultPay(tx *txn.Tx, s *Session) (Pay, error) {
+	if boughtID(tx, s.ID) != "" {
+		return Pay{By: PayByPackage}, nil
+	}
+	credits, err := creditsFor(tx, s.ID, s.ClientID, s.Start, s.Billable(), "")
+	if err != nil || len(credits) == 0 {
+		return Pay{By: PayByFee}, err
+	}
+	return Pay{By: PayByPackage}, nil
+}
+
+// choosePay sets how a session is paid for, as f asks: as chosen (Pay); by
+// its fee once one is typed; as defaultPay says for a new one, one whose
+// typed fee is cleared, or one a package was bought in or is no longer.
+// A package chosen that its client may no longer use (it went, or the
+// session is another client's) is forgotten. A change to what was chosen
+// must be one CanChangePay allows.
+func choosePay(tx *txn.Tx, s *Session, f Fields, isNew, bought bool) error {
+	was := s.Pay
+	typed := f.Fee != nil && f.Fee.Cents != nil
+	switch {
+	case f.Pay != nil:
+		if err := checkPay(tx, s, *f.Pay); err != nil {
+			return err
+		}
+		if typed && f.Pay.By != PayByFee {
+			return apperr.Invalid("A fee is typed only for a session paid by its fee.")
+		}
+		s.Pay = *f.Pay
+	case typed:
+		s.Pay = Pay{By: PayByFee}
+	case isNew || f.Fee != nil || bought:
+		p, err := defaultPay(tx, s)
+		if err != nil {
+			return err
+		}
+		s.Pay = p
+	}
+	if s.Pay.PackageID != "" {
+		p, ok, err := packages.Packages.Find(tx, s.Pay.PackageID)
+		if err != nil {
+			return err
+		}
+		if !ok || !p.UsableBy(s.ClientID) {
+			s.Pay.PackageID = ""
+		}
+	}
+	if isNew || s.Pay.By == was.By && (f.Pay == nil || f.Pay.PackageID == was.PackageID) {
+		return nil
+	}
+	return CanChangePay(tx, s)
+}
+
+// checkPay is the refusal for a choice of how a session is paid: by
+// package or fee, and a package chosen only to pay by, one its client may
+// use.
+func checkPay(tx *txn.Tx, s *Session, pay Pay) error {
+	switch {
+	case pay.By != PayByPackage && pay.By != PayByFee:
+		return apperr.Invalid("A session is paid by package or by its fee.")
+	case pay.PackageID == "":
+		return nil
+	case pay.By != PayByPackage:
+		return apperr.Invalid("A package is chosen only for a session paid by package.")
+	}
+	p, err := packages.Packages.Get(tx, pay.PackageID)
+	if err != nil {
+		return err
+	}
+	if !p.UsableBy(s.ClientID) {
+		return apperr.Refused(fmt.Sprintf("That package isn't %s's, or shared with them.", clientName(tx, s.ClientID)))
+	}
+	return nil
+}
+
+// CanChangePay is the refusal for changing how a session is paid for: no
+// issued invoice or receipt covers it (see CanReprice), and nothing is
+// received for it, since a session paid stays paid as it was.
+func CanChangePay(tx *txn.Tx, s *Session) error {
+	if err := CanReprice(tx, s); err != nil {
+		return err
+	}
+	paid, err := documents.Received(tx, s.Source())
+	if err != nil || paid == nil {
+		return err
+	}
+	return apperr.Refused(fmt.Sprintf("%s was received for it, so it stays paid as it was. Undo the payment first.", documents.Format(paid.AmountCents)),
+		documents.UndoPayment(s.Source()))
 }
 
 // Hourly is what an hourly rate charges for minutes, to the nearest cent
@@ -92,9 +216,10 @@ func Hourly(rateCents int64, minutes int) int64 {
 
 // creditsFor is the credits that would pay for minutes of a session of a
 // client at start (sessionID: the one being priced, whose own credits are
-// its to keep): from each package the client may use, bought by then with
-// credits left, oldest first, until they pay it all or run out.
-func creditsFor(tx *txn.Tx, sessionID, clientID string, start time.Time, minutes int) ([]Credit, error) {
+// its to keep): from the package chosen first, whenever it was bought,
+// then each package the client may use, bought by then with credits left,
+// oldest first, until they pay it all or run out.
+func creditsFor(tx *txn.Tx, sessionID, clientID string, start time.Time, minutes int, chosen string) ([]Credit, error) {
 	all, err := packages.Packages.All(tx)
 	if err != nil {
 		return nil, err
@@ -108,6 +233,11 @@ func creditsFor(tx *txn.Tx, sessionID, clientID string, start time.Time, minutes
 	slices.SortFunc(pkgs, func(a, b *packages.Package) int {
 		return cmp.Or(cmp.Compare(txn.TimeKey(a.PurchasedAt), txn.TimeKey(b.PurchasedAt)), cmp.Compare(a.ID, b.ID))
 	})
+	// The one chosen goes first, however late it was bought.
+	if i := slices.IndexFunc(pkgs, func(p *packages.Package) bool { return p.ID == chosen }); i > 0 {
+		p := pkgs[i]
+		pkgs = slices.Insert(slices.Delete(pkgs, i, i+1), 0, p)
+	}
 	used, err := usedByOthers(tx, pkgs, sessionID)
 	if err != nil {
 		return nil, err
@@ -117,7 +247,7 @@ func creditsFor(tx *txn.Tx, sessionID, clientID string, start time.Time, minutes
 		if minutes == 0 {
 			break
 		}
-		if p.PurchasedAt.After(start) {
+		if p.PurchasedAt.After(start) && p.ID != chosen {
 			continue
 		}
 		if take := min(p.Hours*60-used[p.ID], minutes); take > 0 {
@@ -156,6 +286,79 @@ func usedByOthers(tx *txn.Tx, pkgs []*packages.Package, sessionID string) (map[s
 	return used, nil
 }
 
+// PayOption is a package a session could be paid by: whose it is, when it
+// was bought, and the hours it has left for the session (its own credits
+// counted back in).
+type PayOption struct {
+	PackageID   string    `json:"packageId"`
+	ClientID    string    `json:"clientId"`
+	PurchasedAt time.Time `json:"purchasedAt"`
+	HoursLeft   float64   `json:"hoursLeft"`
+	// After says it was bought after the session started: it pays only
+	// once chosen.
+	After bool `json:"after"`
+}
+
+// payOptions are the packages a session could be paid by, oldest first:
+// those its client may use with hours left for it, and any it uses or
+// has chosen.
+func payOptions(tx *txn.Tx, s *Session) ([]PayOption, error) {
+	all, err := packages.Packages.All(tx)
+	if err != nil {
+		return nil, err
+	}
+	var pkgs []*packages.Package
+	for _, p := range all {
+		if p.UsableBy(s.ClientID) {
+			pkgs = append(pkgs, p)
+		}
+	}
+	used, err := usedByOthers(tx, pkgs, s.ID)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(pkgs, func(a, b *packages.Package) int {
+		return cmp.Or(cmp.Compare(txn.TimeKey(a.PurchasedAt), txn.TimeKey(b.PurchasedAt)), cmp.Compare(a.ID, b.ID))
+	})
+	out := []PayOption{}
+	for _, p := range pkgs {
+		left := p.Hours*60 - used[p.ID]
+		mine := p.ID == s.Pay.PackageID || slices.ContainsFunc(s.Credits, func(c Credit) bool { return c.PackageID == p.ID })
+		if left <= 0 && !mine {
+			continue
+		}
+		out = append(out, PayOption{
+			PackageID: p.ID, ClientID: p.ClientID, PurchasedAt: p.PurchasedAt,
+			HoursLeft: hours(max(left, 0)), After: p.PurchasedAt.After(s.Start),
+		})
+	}
+	return out, nil
+}
+
+// Movable are the sessions a package could pay for that their own fee
+// does now, latest first: those of the clients it is for, not cancelled.
+// Each says whether its payment can change (CanChangePay).
+func Movable(tx *txn.Tx, packageID string) ([]*Session, error) {
+	p, err := packages.Packages.Get(tx, packageID)
+	if err != nil {
+		return nil, err
+	}
+	var out []*Session
+	for _, clientID := range p.Clients() {
+		ss, err := Sessions.OfClient(tx, clientID)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range ss {
+			if !s.Cancelled() && s.Pay.By == PayByFee {
+				out = append(out, s)
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b *Session) int { return cmp.Or(b.Start.Compare(a.Start), cmp.Compare(a.ID, b.ID)) })
+	return out, nil
+}
+
 // CoverKind is what would pay for what a session's credits leave.
 type CoverKind string
 
@@ -172,10 +375,13 @@ const (
 
 // Cover is what would pay for a session.
 type Cover struct {
+	// By is how it would be paid: as chosen, else as it would be by
+	// default (see defaultPay).
+	By   PayBy
 	Kind CoverKind
 	// Minutes is how long it is charged for (Billable).
 	Minutes int
-	// Credits are the credits of packages bought before it that pay.
+	// Credits are the package credits that pay, paid by package.
 	Credits []Credit
 	// FeeMinutes is what they leave, which FeeCents charges at the
 	// usual fee (nil without one, or when the bought package pays).
@@ -184,17 +390,37 @@ type Cover struct {
 }
 
 // Preview is what would pay for a session of a client over span with no
-// fee entered (sessionID: the one being edited, keeping its own credits),
-// for the booking form to show before saving.
-func Preview(tx *txn.Tx, clientID string, span Span, sessionID string, buysPackage bool) (Cover, error) {
+// fee entered, paid as pay says (nil: as it would be by default), for the
+// booking form to show before saving. sessionID is the one being edited,
+// keeping its own credits.
+func Preview(tx *txn.Tx, clientID string, span Span, sessionID string, buysPackage bool, pay *Pay) (Cover, error) {
 	s := &Session{ID: sessionID, ClientID: clientID, Start: span.Start, End: span.End}
-	credits, err := creditsFor(tx, s.ID, clientID, s.Start, s.Billable())
-	s.Credits = credits
-	c := Cover{Kind: CoverCredit, Minutes: s.Billable(), Credits: credits, FeeMinutes: s.Billable() - s.CreditMinutes()}
+	c := Cover{Kind: CoverCredit, Minutes: s.Billable()}
 	switch {
-	case err != nil || c.FeeMinutes == 0:
-		return c, err
+	case pay != nil:
+		s.Pay = *pay
 	case buysPackage:
+		s.Pay = Pay{By: PayByPackage}
+	default:
+		p, err := defaultPay(tx, s)
+		if err != nil {
+			return c, err
+		}
+		s.Pay = p
+	}
+	c.By = s.Pay.By
+	if s.Pay.By == PayByPackage {
+		credits, err := creditsFor(tx, s.ID, clientID, s.Start, s.Billable(), s.Pay.PackageID)
+		if err != nil {
+			return c, err
+		}
+		s.Credits, c.Credits = credits, credits
+	}
+	c.FeeMinutes = s.Billable() - s.CreditMinutes()
+	switch {
+	case c.FeeMinutes == 0:
+		return c, nil
+	case buysPackage && s.Pay.By == PayByPackage:
 		c.Kind = CoverBought
 		return c, nil
 	}

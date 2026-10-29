@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,12 +23,14 @@ type Span struct {
 // Fields are what the app or the calendar sets on a session; nil leaves a
 // field as it is. An edit sets only what the user changed.
 type Fields struct {
-	ClientID  *string        `json:"clientId,omitempty"`
-	Time      *Span          `json:"time,omitempty"`
-	Tentative *bool          `json:"tentative,omitempty"`
-	Location  *Location      `json:"location,omitempty"`
-	Fee       *FeeChoice     `json:"fee,omitempty"`
-	Package   *PackageChoice `json:"package,omitempty"`
+	ClientID  *string   `json:"clientId,omitempty"`
+	Time      *Span     `json:"time,omitempty"`
+	Tentative *bool     `json:"tentative,omitempty"`
+	Location  *Location `json:"location,omitempty"`
+	// Pay is how it is paid for, chosen; Fee a fee typed, paid by it.
+	Pay     *Pay           `json:"pay,omitempty"`
+	Fee     *FeeChoice     `json:"fee,omitempty"`
+	Package *PackageChoice `json:"package,omitempty"`
 	// BillTo is who pays for it, and for the package bought in it; a new
 	// one is billed as its client's BillTo says unless this is set.
 	BillTo *string `json:"billTo,omitempty"`
@@ -83,7 +86,7 @@ func CanUpdate(s *Session) error {
 
 // apply makes the changes f asks, in this order, since a later step reads
 // what an earlier one set: who, when and where, whether confirmed, the
-// package bought in it, then what pays for it. Each step checks its own
+// package bought in it, then how it is paid and what pays for it. Each step checks its own
 // rules; the first that refuses stops it, and nothing is written.
 func apply(tx *txn.Tx, s *Session, f Fields, isNew bool) error {
 	moved, err := reassign(tx, s, f.ClientID, isNew)
@@ -123,14 +126,21 @@ func apply(tx *txn.Tx, s *Session, f Fields, isNew bool) error {
 			moved = true // Its credits are gone, or not this client's: choose again.
 		}
 	}
-	if isNew || f.Fee != nil || moved || bought || resized {
-		var fee *int64
-		if f.Fee != nil {
-			fee = f.Fee.Cents
-		} else if cents, typed, err := Fee(tx, s); err != nil {
+	if isNew || f.Pay != nil || f.Fee != nil || moved || bought || resized {
+		if err := choosePay(tx, s, f, isNew, bought); err != nil {
 			return err
-		} else if typed {
-			fee = &cents // A fee typed for it stays.
+		}
+		var fee *int64
+		switch {
+		case s.Pay.By != PayByFee:
+		case f.Fee != nil:
+			fee = f.Fee.Cents
+		default:
+			if cents, typed, err := Fee(tx, s); err != nil {
+				return err
+			} else if typed {
+				fee = &cents // A fee typed for it stays.
+			}
 		}
 		if err := price(tx, s, fee); err != nil {
 			return err
@@ -162,6 +172,36 @@ func apply(tx *txn.Tx, s *Session, f Fields, isNew bool) error {
 		}
 	}
 	return nil
+}
+
+// MoveToPackage has a package pay for sessions of the clients it is for,
+// first, whenever it was bought: sessions paid by their fee before it
+// was bought, say. Each must be one whose payment can change
+// (CanChangePay), and the package must have credits left for each.
+func MoveToPackage(tx *txn.Tx, packageID string, ids []string) ([]*Session, error) {
+	if len(ids) == 0 {
+		return nil, apperr.Invalid("Choose the sessions it pays for.")
+	}
+	if _, err := packages.Packages.Get(tx, packageID); err != nil {
+		return nil, err
+	}
+	pay := Pay{By: PayByPackage, PackageID: packageID}
+	out := make([]*Session, 0, len(ids))
+	for _, id := range ids {
+		s, err := Update(tx, id, Fields{Pay: &pay})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	// Credits are taken in the order given, so one the package can't pay
+	// for is one it ran out before.
+	for _, s := range out {
+		if !slices.ContainsFunc(s.Credits, func(c Credit) bool { return c.PackageID == packageID }) {
+			return nil, apperr.Refused(fmt.Sprintf("The package has no hours left for %s.", Describe(tx, s)))
+		}
+	}
+	return out, nil
 }
 
 // reassign makes it another client's session, its lines and the package
@@ -399,29 +439,23 @@ func Delete(tx *txn.Tx, id string, keepPackage bool) ([]string, error) {
 	return attachments.RemoveAll(tx, attachments.OwnerSession, id)
 }
 
-// CanDelete is the refusal for deleting a session: only one booked by
-// mistake goes. One with history (it happened, something was recorded on
-// it, or it was cancelled) is cancelled instead, and what was received for
-// it, or an issued invoice charging it, is undone first either way.
+// CanDelete is the refusal for deleting a session: one with nothing on it
+// goes, whenever it was and even once cancelled, as a mistake the user
+// wants gone. One with history (something recorded on it) is cancelled
+// instead, or stays once it is (see CanRecord); what was received for it,
+// or an issued invoice charging it, is undone first either way.
 func CanDelete(tx *txn.Tx, s *Session) error {
-	if s.Cancelled() {
-		return apperr.Refused("It was cancelled, so it stays, as a record.")
-	}
 	if err := documents.CanRemove(tx, s.Source(), Describe(tx, s)); err != nil {
 		return err
 	}
-	why := ""
-	if has, err := HasRecord(tx, s); err != nil {
+	has, err := HasRecord(tx, s)
+	if err != nil || !has {
 		return err
-	} else if has {
-		why = "Something is recorded on it"
-	} else if !s.Tentative && !s.Start.After(tx.Now()) {
-		why = "It happened"
 	}
-	if why == "" {
-		return nil
+	if s.Cancelled() {
+		return apperr.Refused("It was cancelled with something recorded on it, so it stays, as a record.")
 	}
-	return apperr.Refused(why+", so it stays: cancel it instead.",
+	return apperr.Refused("Something is recorded on it, so it stays: cancel it instead, or clear its summary, notes and files to delete it.",
 		apperr.Remedy{Action: "sessions.cancel", Target: s.ID, Label: "Cancel it"})
 }
 

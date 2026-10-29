@@ -140,6 +140,16 @@ var sessionActions = []Action{
 		locked := read(t, w, func(tx *txn.Tx) (apperr.Locks, error) { return sessions.Locks(tx, s) })
 		w.callAsLocked(t, "sessions.update", in, locked, sessions.Fields{}, sessionChanges(v, in)...)
 	}},
+	{Name: "sessions.moveToPackage", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		p := pick(t, w, "package", packages.Packages.All)
+		s := pick(t, w, "session", sessions.Sessions.All)
+		in := map[string]any{"packageId": p.ID, "sessionIds": []string{s.ID}}
+		if v := sessionView(t, w, s); v.Pay != (sessions.Pay{By: sessions.PayByPackage, PackageID: p.ID}) {
+			w.callRefusedAsViewed(t, "sessions.moveToPackage", in, v.Can.ChangePay)
+			return
+		}
+		w.call(t, "sessions.moveToPackage", in)
+	}},
 	{Name: "sessions.cancel", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
 		s := pick(t, w, "session", sessions.Sessions.All)
 		reason := rapid.SampledFrom([]string{"", "No-show", "Sick"}).Draw(t, "reason")
@@ -179,6 +189,14 @@ func addSessionFields(t *rapid.T, w *World, in map[string]any, isNew bool) {
 	case 1:
 		if !isNew {
 			in["fee"] = map[string]any{}
+		}
+	}
+	switch rapid.IntRange(0, 4).Draw(t, "pay") {
+	case 0:
+		in["pay"] = map[string]any{"by": rapid.SampledFrom([]string{"package", "fee", "barter"}).Draw(t, "pay by")}
+	case 1:
+		if pkgs := read(t, w, packages.Packages.All); len(pkgs) > 0 {
+			in["pay"] = map[string]any{"by": "package", "packageId": rapid.SampledFrom(pkgs).Draw(t, "pay package").ID}
 		}
 	}
 	switch rapid.IntRange(0, 5).Draw(t, "package") {
@@ -489,9 +507,10 @@ var fileActions = []Action{
 			"categoryId": rapid.SampledFrom([]string{"purchases", "travel", "nowhere"}).Draw(t, "category"), "archived": rapid.Bool().Draw(t, "archived"),
 		})
 	}},
-	{Name: "expenses.archiveVendor", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
-		w.call(t, "expenses.archiveVendor", map[string]any{
-			"id": pick(t, w, "vendor", expenses.Vendors.All).ID, "archived": rapid.Bool().Draw(t, "archived"),
+	{Name: "expenses.saveVendor", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
+		w.call(t, "expenses.saveVendor", map[string]any{
+			"id": pick(t, w, "vendor", expenses.Vendors.All).ID, "name": rapid.SampledFrom([]string{"Shopee", "Guardian", "Watsons", " "}).Draw(t, "name"),
+			"archived": rapid.Bool().Draw(t, "archived"),
 		})
 	}},
 	{Name: "expenses.saveCategories", Actor: ActorUser, Run: func(t *rapid.T, w *World) {
@@ -561,6 +580,9 @@ func sessionChanges(v sessions.View, in map[string]any) []string {
 	}
 	if fee, ok := in["fee"].(map[string]any); ok && fee["cents"] != nil && fee["cents"] != v.FeeCents {
 		out = append(out, "fee")
+	}
+	if pay, ok := in["pay"].(map[string]any); ok && (pay["by"] != string(v.Pay.By) || pay["packageId"] != nil && pay["packageId"] != v.Pay.PackageID) {
+		out = append(out, "pay")
 	}
 	if payer, ok := in["billTo"]; ok && payer != v.Payer {
 		out = append(out, "billTo")
