@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SessionsService } from "./sessions.service";
-import type { SessionFields, SessionView } from "./sessions.types";
+import type { MoveToPackageRequest, SessionFields, SessionView } from "./sessions.types";
 import type { TodoView } from "~/features/todo/todo.types";
 import { SessionKeys, TodoKeys } from "~/core/constants/query-keys.constant";
 import { isStaleEdit } from "~/core/utils/api-error.util";
@@ -56,6 +56,9 @@ export const SessionsMutation = {
       idOf: ({ id }) => id,
       refresh: true,
     }),
+
+  /** Has a package pay for sessions its clients' fee pays now; all of them, or none. */
+  useMoveToPackage: () => useSessionMutation((request: MoveToPackageRequest) => SessionsService.moveToPackage(request)),
 
   /** Calls the session off, keeping it and its record; its event goes. */
   useCancel: () =>

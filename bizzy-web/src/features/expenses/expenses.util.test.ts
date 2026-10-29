@@ -7,7 +7,7 @@ const expense = (vendor: string, lines: Array<[string, string, number]>): Expens
   id: vendor,
   date: "2026-10-12",
   vendor,
-  lines: lines.map(([name, categoryId, amountCents]) => ({ itemId: name, name, categoryId, amountCents })),
+  lines: lines.map(([name, categoryId, amountCents]) => ({ name, categoryId, amountCents })),
   totalCents: lines.reduce((sum, [, , cents]) => sum + cents, 0),
   files: 0,
   createdAt: "",

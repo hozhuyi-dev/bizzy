@@ -30,8 +30,9 @@ interface DeleteSessionDialogProps {
 }
 
 /**
- * Deletes a session booked by mistake, from the calendar too. One with
- * history is cancelled instead (its `can.delete` says so). A package bought
+ * Deletes a session made by mistake, whenever it was, from the calendar
+ * too. One with something recorded on it is cancelled instead (its
+ * `can.delete` says so). A package bought
  * in it is kept or, where its `can.deleteWithPackage` allows, deleted too.
  */
 export function DeleteSessionDialog({ session, clientName, onClose, onDeleted }: DeleteSessionDialogProps) {
@@ -53,8 +54,8 @@ function DeleteSession({ session, clientName, onClose, onDeleted }: Required<Omi
       <AlertDialogHeader>
         <AlertDialogTitle>Delete {clientName}'s session?</AlertDialogTitle>
         <AlertDialogDescription>
-          {formatSessionTime(session.start)}. For a booking made by mistake: it goes, and its event leaves your
-          calendar.
+          {formatSessionTime(session.start)}. For a mistake: it goes for good, with its fee on a draft invoice
+          {session.cancelledAt ? "" : ", and its event leaves your calendar"}.
         </AlertDialogDescription>
       </AlertDialogHeader>
       {session.bought && (

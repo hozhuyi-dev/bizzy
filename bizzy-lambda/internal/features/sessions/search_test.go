@@ -73,6 +73,17 @@ func TestSearchFindsSessionsByTheirNotes(t *testing.T) {
 	if !slices.Equal(hitIDs(first), []string{recent.ID, mid.ID}) || !slices.Equal(hitIDs(second), []string{old.ID}) || second.Next != "" {
 		t.Errorf("pages = %v, %v (next %q)", hitIDs(first), hitIDs(second), second.Next)
 	}
+
+	// A cancelled one shows only when asked for.
+	if err := a.Must("sessions.cancel", map[string]any{"id": mid.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := hitIDs(search(t, a, map[string]any{})); !slices.Equal(got, []string{recent.ID, old.ID}) {
+		t.Errorf("every one = %v, want the cancelled one left out", got)
+	}
+	if got := hitIDs(search(t, a, map[string]any{"cancelled": true})); !slices.Equal(got, []string{mid.ID}) {
+		t.Errorf("cancelled = %v", got)
+	}
 }
 
 // By how far each one's invoice and receipt have got, and how it was paid:

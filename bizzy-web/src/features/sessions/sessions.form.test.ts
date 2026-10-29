@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { toSessionFields } from "./sessions.form";
-import type { SessionDraft } from "./sessions.types";
+import { toPayFields, toSessionFields } from "./sessions.form";
+import type { SessionDraft, SessionView } from "./sessions.types";
 
 const booked: SessionDraft = {
   clientId: "jane",
@@ -49,5 +49,32 @@ describe("toSessionFields", () => {
     const priced = { ...booked, feeCents: 9500, package: { hours: 10, priceCents: 85000 } };
     expect(toSessionFields(booked, priced)).toEqual({ fee: {}, package: {} });
     expect(toSessionFields({ ...priced, feeCents: 12000 }, priced)).toEqual({ fee: { cents: 12000 } });
+  });
+});
+
+describe("toSessionFields — how it is paid", () => {
+  test("only once chosen, and a fee only for one paid by it", () => {
+    expect(toSessionFields(booked)).not.toHaveProperty("pay");
+    expect(toSessionFields({ ...booked, payBy: "fee", feeCents: 9500 })).toMatchObject({ pay: { by: "fee" }, fee: { cents: 9500 } });
+    const paid = { ...booked, payBy: "package" as const };
+    expect(toSessionFields(paid, paid)).toEqual({});
+  });
+});
+
+describe("toPayFields", () => {
+  const session = { pay: { by: "package" }, feeTyped: false, feeCents: 0 } as SessionView;
+  const values = { by: "package" as const, packageId: "", fee: "", updatePayment: false };
+
+  test("sends how it is paid, and the package chosen", () => {
+    expect(toPayFields(values, session)).toEqual({ pay: { by: "package" } });
+    expect(toPayFields({ ...values, packageId: "p2" }, session)).toEqual({ pay: { by: "package", packageId: "p2" } });
+  });
+
+  test("paid by its fee: a fee typed, or cleared for the usual one", () => {
+    expect(toPayFields({ ...values, by: "fee" }, session)).toEqual({ pay: { by: "fee" } });
+    expect(toPayFields({ ...values, by: "fee", fee: "95" }, session)).toEqual({ pay: { by: "fee" }, fee: { cents: 9500 } });
+    const typed = { pay: { by: "fee" }, feeTyped: true, feeCents: 9500 } as SessionView;
+    expect(toPayFields({ ...values, by: "fee", fee: "95" }, typed)).toEqual({ pay: { by: "fee" } });
+    expect(toPayFields({ ...values, by: "fee" }, typed)).toEqual({ pay: { by: "fee" }, fee: {} });
   });
 });

@@ -320,23 +320,24 @@ export interface ChoiceOption {
   title?: string | undefined;
 }
 
+interface ChoiceFieldProps extends FieldFrameProps {
+  options: ReadonlyArray<ChoiceOption>;
+  /** Shown chosen while none is: what is chosen for the user unless they say (the API's default). */
+  fallback?: string | undefined;
+  disabled?: boolean | undefined;
+}
+
 /** One of a few, as a row of buttons to tap: how it was paid. */
-export function ChoiceField({
-  label,
-  labelClassName,
-  description,
-  hint,
-  className,
-  options,
-}: FieldFrameProps & { options: ReadonlyArray<ChoiceOption> }) {
+export function ChoiceField({ label, labelClassName, description, hint, className, options, fallback, disabled }: ChoiceFieldProps) {
   const field = useFieldContext<string>();
   const id = useId();
   const errors = useShownErrors(field);
+  const value = field.state.value || fallback;
   return (
     <FieldFrame {...{ label, labelClassName, description, hint, className, errors }} labelId={id}>
       <div role="radiogroup" aria-labelledby={id} className="flex flex-wrap gap-2">
         {options.map((option) => {
-          const checked = field.state.value === option.value;
+          const checked = value === option.value;
           return (
             <Button
               key={option.value}
@@ -345,6 +346,7 @@ export function ChoiceField({
               aria-checked={checked}
               variant={checked ? "default" : "outline"}
               size="sm"
+              disabled={disabled}
               title={option.title}
               onClick={() => {
                 field.handleChange(option.value);

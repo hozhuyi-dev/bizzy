@@ -20,7 +20,7 @@ export const ExpensesService = {
   update: (id: string, fields: ExpenseFields) => invoke<ExpenseView>("expenses.update", { id, ...fields }),
   delete: (id: string) => invoke<null>("expenses.delete", { id }),
   saveItem: (item: ExpenseItem) => invoke<ExpenseItem>("expenses.saveItem", item),
-  archiveVendor: (id: string, archived: boolean) => invoke<Vendor>("expenses.archiveVendor", { id, archived }),
+  saveVendor: (vendor: Vendor) => invoke<Vendor>("expenses.saveVendor", vendor),
   saveCategories: (categories: Array<ExpenseCategory>) =>
     invoke<CatalogueView["categories"]>("expenses.saveCategories", { categories }),
 };

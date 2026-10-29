@@ -14,6 +14,7 @@ export const SessionKeys = {
   search: (request: object) => [...SessionKeys.all, "search", request] as const,
   detail: (id: string) => [...SessionKeys.all, "detail", id] as const,
   preview: (request: object) => [...SessionKeys.all, "preview", request] as const,
+  movable: (packageId: string) => [...SessionKeys.all, "movable", packageId] as const,
 };
 
 export const ActivityKeys = {

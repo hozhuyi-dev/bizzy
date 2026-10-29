@@ -1,8 +1,9 @@
 import { useSelector } from "@tanstack/react-form";
-import { ArchiveIcon, ArchiveRestoreIcon } from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, ReceiptTextIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
+import { receiptsOf } from "./expenses.util";
 import type { LinkOptions } from "@tanstack/react-router";
 import type { CatalogueView, ExpenseItem } from "./expenses.types";
 import type { Action } from "~/components/shared/actions/action-bar/action-bar.types";
@@ -26,7 +27,12 @@ const MAX_NAME = 100;
 /** Opened from wherever it was needed, it goes back there; else to the items. */
 const PARENT = { to: "/expenses/items", label: "Items" } as const;
 
-/** One thing the user buys: renamed, moved to another category for lines from now on, or archived. */
+/**
+ * One thing the user buys, as the list suggests it: renamed, given the
+ * category its next line starts in, or archived, out of the suggestions.
+ * Receipts keep what was typed on them; See receipts lists those of this
+ * name.
+ */
 export function ExpenseItemPage({ id }: { id: string }) {
   const catalogue = ExpensesQuery.useCatalogue();
   const item = catalogue.data?.items.find((i) => i.id === id);
@@ -82,6 +88,7 @@ function ItemEditor({ item, catalogue }: { item: ExpenseItem; catalogue: Catalog
   const submit: Action = { type: "submit", form: FORM_ID, label: "Save", style: "primary", pending: isSubmitting };
   // Archived, it isn't suggested on new expenses; those recorded keep it.
   // As a client's, an action, not a field: done at once.
+  const receipts: Action = { type: "link", label: "See receipts", icon: ReceiptTextIcon, link: receiptsOf("item", item.name) };
   const archive: Action = {
     type: "button",
     label: item.archived ? "Unarchive" : "Archive",
@@ -106,6 +113,7 @@ function ItemEditor({ item, catalogue }: { item: ExpenseItem; catalogue: Catalog
         kind="Item"
         badges={item.archived && <Badge variant="neutral">Archived</Badge>}
         actions={hasChanges ? [submit] : []}
+        moreActions={[receipts]}
         menuActions={[archive]}
       />
       <form
@@ -121,14 +129,15 @@ function ItemEditor({ item, catalogue }: { item: ExpenseItem; catalogue: Catalog
             {
               id: "item",
               title: "Item",
-              description: "Expenses already recorded keep the name and category they were saved with.",
+              description:
+                "What is suggested as a line's name is typed, and the category it starts in. Expenses already recorded keep the name and category they were saved with.",
               content: (
                 <FieldGroup>
                   <form.AppField name="name" validators={{ onChange: ({ value }) => requiredError(value, "Name the item") }}>
                     {(field) => <field.TextField label="Name" maxLength={MAX_NAME} />}
                   </form.AppField>
                   <form.AppField name="categoryId" validators={{ onChange: ({ value }) => requiredError(value, "Choose a category") }}>
-                    {(field) => <field.SelectField label="Category" items={all} options={offered} />}
+                    {(field) => <field.SelectField label="Category for its next line" items={all} options={offered} />}
                   </form.AppField>
                 </FieldGroup>
               ),

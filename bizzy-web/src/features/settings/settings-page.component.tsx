@@ -23,7 +23,7 @@ import {
   DOCUMENT_PLACEHOLDERS,
   PAYMENT_PLACEHOLDERS,
 } from "~/features/whatsapp/whatsapp.constant";
-import { documentsPreview, paymentPreview } from "~/features/whatsapp/whatsapp-message.util";
+import { documentsPreview, payLinkFirst, paymentPreview } from "~/features/whatsapp/whatsapp-message.util";
 import { ComputerWhatsAppSettings } from "~/features/whatsapp/components/computer-whatsapp-settings/computer-whatsapp-settings.component";
 import { toastWithQuip } from "~/components/shared/feedback/quip/quip.util";
 import { QUIPS } from "~/core/constants/quips.constant";
@@ -267,6 +267,11 @@ function SettingsForm({ saved }: { saved: SettingsView }) {
                           preview={paymentPreview({ ...values, paymentMessage: field.state.value })}
                           isDefault={field.state.value.trim() === DEFAULT_PAYMENT_MESSAGE}
                           onReset={() => field.handleChange(DEFAULT_PAYMENT_MESSAGE)}
+                          note={
+                            payLinkFirst(field.state.value)
+                              ? undefined
+                              : "WhatsApp previews a message's first link: put {payLink} before {items}, whose invoices have links of their own."
+                          }
                         />
                       }
                     />
@@ -373,12 +378,15 @@ interface MessageHintProps {
   preview: string;
   isDefault: boolean;
   onReset: () => void;
+  /** Something to change in the template: it still works as it is. */
+  note?: string | undefined;
 }
 
 /** Under a message template: the message as a client would get it, and going back to the app's wording. */
-function MessageHint({ preview, isDefault, onReset }: MessageHintProps) {
+function MessageHint({ preview, isDefault, onReset, note }: MessageHintProps) {
   return (
     <div className="flex flex-col gap-2">
+      {note && <p className="rounded-md bg-status-attention p-3 text-sm text-status-attention-foreground">{note}</p>}
       <p className="rounded-md bg-muted p-3 text-sm whitespace-pre-wrap">{preview}</p>
       <Button type="button" variant="outline" size="sm" className="self-start" disabled={isDefault} onClick={onReset}>
         Reset to default

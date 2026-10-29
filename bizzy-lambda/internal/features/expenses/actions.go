@@ -19,9 +19,8 @@ const (
 	maxLines  = 50
 )
 
-// Receipt is an expense as the form has it. A line without an item id
-// names a new item, which is added to the list (or matched to one already
-// there by name).
+// Receipt is an expense as the form has it. Each line's name is matched
+// to the list's item of that name, however typed, or added to it.
 type Receipt struct {
 	Date   string `json:"date"`
 	Vendor string `json:"vendor"`
@@ -66,8 +65,8 @@ func CanAttach(tx *txn.Tx, id string) error {
 	return err
 }
 
-// fill makes an expense say what the receipt does, adding to the list the
-// items its lines name that aren't there yet.
+// fill makes an expense say what the receipt does, and the list remember
+// its lines: the items it names, with their category and amount.
 func fill(tx *txn.Tx, e *Expense, in Receipt) error {
 	if _, err := time.Parse(time.DateOnly, in.Date); err != nil {
 		return apperr.Invalid("Choose the day on the receipt.")
@@ -83,7 +82,7 @@ func fill(tx *txn.Tx, e *Expense, in Receipt) error {
 	case len(in.Lines) > maxLines:
 		return apperr.Invalid("One receipt takes at most %d lines.", maxLines)
 	}
-	lines, err := resolveLines(tx, in.Lines)
+	lines, err := checkLines(tx, in.Lines)
 	if err != nil {
 		return err
 	}
@@ -94,31 +93,14 @@ func fill(tx *txn.Tx, e *Expense, in Receipt) error {
 	if err := useVendor(tx, vendor, in.Date); err != nil {
 		return err
 	}
-	for _, l := range lines {
-		it, err := Items.Get(tx, l.ItemID)
-		if err != nil {
-			return err
-		}
-		cents := l.AmountCents
-		it.LastAmountCents = &cents
-	}
-	return nil
+	return useItems(tx, lines)
 }
 
-// resolveLines checks each line, and gives a line naming a new item that
-// item: one already in the list by that name, or a new one.
-func resolveLines(tx *txn.Tx, in []Line) ([]Line, error) {
+// checkLines checks each line, its name cleaned.
+func checkLines(tx *txn.Tx, in []Line) ([]Line, error) {
 	cats, err := CategoriesOf(tx)
 	if err != nil {
 		return nil, err
-	}
-	items, err := Items.All(tx)
-	if err != nil {
-		return nil, err
-	}
-	byName := map[string]*Item{}
-	for _, it := range items {
-		byName[normalizeName(it.Name)] = it
 	}
 	out := make([]Line, len(in))
 	for i, l := range in {
@@ -133,23 +115,36 @@ func resolveLines(tx *txn.Tx, in []Line) ([]Line, error) {
 		case l.AmountCents < 0:
 			return nil, apperr.Invalid("%s can't cost less than nothing.", l.Name)
 		}
-		if l.ItemID != "" {
-			if _, err := Items.Get(tx, l.ItemID); err != nil {
-				return nil, err
-			}
-		} else if it, ok := byName[normalizeName(l.Name)]; ok {
-			l.ItemID = it.ID
-		} else {
-			it := &Item{ID: tx.NewID(), Name: l.Name, CategoryID: l.CategoryID}
-			if err := Items.Add(tx, it); err != nil {
-				return nil, err
-			}
-			byName[normalizeName(it.Name)] = it
-			l.ItemID = it.ID
-		}
 		out[i] = l
 	}
 	return out, nil
+}
+
+// useItems has the list remember a receipt's lines: an item of each name,
+// however typed, added when new, with the category and amount it had on
+// the line, to start the next one with. One archived stays archived.
+func useItems(tx *txn.Tx, lines []Line) error {
+	items, err := Items.All(tx)
+	if err != nil {
+		return err
+	}
+	byName := map[string]*Item{}
+	for _, it := range items {
+		byName[normalizeName(it.Name)] = it
+	}
+	for _, l := range lines {
+		it, ok := byName[normalizeName(l.Name)]
+		if !ok {
+			it = &Item{ID: tx.NewID(), Name: l.Name}
+			if err := Items.Add(tx, it); err != nil {
+				return err
+			}
+			byName[normalizeName(it.Name)] = it
+		}
+		cents := l.AmountCents
+		it.CategoryID, it.LastAmountCents = l.CategoryID, &cents
+	}
+	return nil
 }
 
 // useVendor adds where a receipt is from to the list, or, when it is
@@ -173,19 +168,35 @@ func useVendor(tx *txn.Tx, name, day string) error {
 	return Vendors.Add(tx, &Vendor{ID: tx.NewID(), Name: name, LastUsed: day})
 }
 
-// ArchiveVendor hides a vendor from the suggestions, or brings it back.
-// Receipts name it as text, so they stay as they were.
-func ArchiveVendor(tx *txn.Tx, id string, archived bool) (*Vendor, error) {
-	v, err := Vendors.Get(tx, id)
+// SaveVendor renames a vendor, or archives it (out of the suggestions) or
+// brings it back. Receipts name it as text, so they stay as they were.
+func SaveVendor(tx *txn.Tx, in Vendor) (*Vendor, error) {
+	v, err := Vendors.Get(tx, in.ID)
 	if err != nil {
 		return nil, err
 	}
-	v.Archived = archived
+	name := cleanText(in.Name)
+	switch {
+	case name == "":
+		return nil, apperr.Invalid("The shop needs a name.")
+	case utf8.RuneCountInString(name) > maxVendor:
+		return nil, apperr.Invalid("Keep the name to %d characters.", maxVendor)
+	}
+	others, err := Vendors.All(tx)
+	if err != nil {
+		return nil, err
+	}
+	for _, other := range others {
+		if other.ID != v.ID && normalizeName(other.Name) == normalizeName(name) {
+			return nil, apperr.Refused(other.Name + " is already in the list: archive this one instead.")
+		}
+	}
+	v.Name, v.Archived = name, in.Archived
 	return v, nil
 }
 
-// SaveItem renames an item, moves it to another category (for lines from
-// now on), or archives it.
+// SaveItem renames an item, changes the category its next line starts
+// in, or archives it (out of the suggestions). Receipts stay as they were.
 func SaveItem(tx *txn.Tx, in Item) (*Item, error) {
 	it, err := Items.Get(tx, in.ID)
 	if err != nil {
@@ -210,7 +221,7 @@ func SaveItem(tx *txn.Tx, in Item) (*Item, error) {
 	}
 	for _, other := range others {
 		if other.ID != it.ID && normalizeName(other.Name) == normalizeName(name) {
-			return nil, apperr.Refused(other.Name + " is already in the list.")
+			return nil, apperr.Refused(other.Name + " is already in the list: archive this one instead.")
 		}
 	}
 	it.Name, it.CategoryID, it.Archived = name, in.CategoryID, in.Archived

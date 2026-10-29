@@ -47,7 +47,7 @@ type SearchView struct {
 }
 
 // Totals are what the expenses found add up to: only their lines in the
-// categories searched for, when it was by category.
+// categories and of the items searched for, when it was by those.
 type Totals struct {
 	Count      int   `json:"count"`
 	SpentCents int64 `json:"spentCents"`
@@ -62,13 +62,14 @@ type CatalogueView struct {
 }
 
 // searchRequest finds expenses by words in the vendor, the notes or the
-// items, and by days, categories (any of its lines in one), shops (by
-// name, however typed) and whether its receipt is kept; an empty filter
-// takes every value.
+// items, and by days, categories (any of its lines in one), shops and
+// items (by name, however typed) and whether its receipt is kept; an
+// empty filter takes every value.
 type searchRequest struct {
 	listing.Request
 	CategoryIDs []string `json:"categoryIds"`
 	Vendors     []string `json:"vendors"`
+	Items       []string `json:"items"`
 	// Receipts are ReceiptKept, ReceiptMissing or both.
 	Receipts []string `json:"receipts"`
 }
@@ -87,11 +88,6 @@ type idRequest struct {
 type updateRequest struct {
 	ID string `json:"id"`
 	Receipt
-}
-
-type archiveVendorRequest struct {
-	ID       string `json:"id"`
-	Archived bool   `json:"archived"`
 }
 
 type categoriesRequest struct {
@@ -119,10 +115,7 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 			}
 			l := txn.List{From: from, To: to, Latest: true}
 			words := in.Words()
-			vendors := make([]string, len(in.Vendors))
-			for i, v := range in.Vendors {
-				vendors[i] = normalizeName(v)
-			}
+			vendors, items := normalizeNames(in.Vendors), normalizeNames(in.Items)
 			// Every expense's files in one read, not one read a row.
 			files, err := attachments.Counts(tx, attachments.OwnerExpense)
 			if err != nil {
@@ -130,16 +123,17 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 			}
 			found := func(e *Expense) bool {
 				fields := []string{e.Vendor, e.Notes}
-				inCategory := false
+				inCategory, ofItem := false, false
 				for _, line := range e.Lines {
 					fields = append(fields, line.Name)
 					inCategory = inCategory || listing.OneOf(in.CategoryIDs, line.CategoryID)
+					ofItem = ofItem || listing.OneOf(items, normalizeName(line.Name))
 				}
 				receipt := ReceiptMissing
 				if files[e.ID] > 0 {
 					receipt = ReceiptKept
 				}
-				return inCategory && listing.OneOf(vendors, normalizeName(e.Vendor)) && listing.OneOf(in.Receipts, receipt) &&
+				return inCategory && ofItem && listing.OneOf(vendors, normalizeName(e.Vendor)) && listing.OneOf(in.Receipts, receipt) &&
 					words.In(fields...)
 			}
 			var out SearchView
@@ -149,7 +143,7 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 					if found(e) {
 						out.Totals.Count++
 						for _, line := range e.Lines {
-							if listing.OneOf(in.CategoryIDs, line.CategoryID) {
+							if listing.OneOf(in.CategoryIDs, line.CategoryID) && listing.OneOf(items, normalizeName(line.Name)) {
 								out.Totals.SpentCents += line.AmountCents
 							}
 						}
@@ -222,9 +216,9 @@ func Routes(r *router.Router, run *txn.Runner, blobs blobstore.Store) {
 			return *it, nil
 		})
 	}))
-	r.Mutation("expenses.archiveVendor", router.Typed(func(ctx context.Context, in archiveVendorRequest) (any, error) {
+	r.Mutation("expenses.saveVendor", router.Typed(func(ctx context.Context, in Vendor) (any, error) {
 		return txn.Run(ctx, run, func(tx *txn.Tx) (Vendor, error) {
-			v, err := ArchiveVendor(tx, in.ID, in.Archived)
+			v, err := SaveVendor(tx, in)
 			if err != nil {
 				return Vendor{}, err
 			}

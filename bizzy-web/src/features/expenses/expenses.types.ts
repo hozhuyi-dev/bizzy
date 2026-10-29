@@ -1,4 +1,4 @@
-import type { EXPENSE_FACETS } from "./expenses.constant";
+import type { CATALOGUE_FACET_KEYS, EXPENSE_FACETS } from "./expenses.constant";
 import type { FilterSearch, ListRequest, Page } from "~/core/list/filter.types";
 
 // Mirrors bizzy-lambda/internal/features/expenses/api.go and expense.go.
@@ -6,9 +6,11 @@ import type { FilterSearch, ListRequest, Page } from "~/core/list/filter.types";
 /** The expenses list's filter, as its URL keeps it; an expense's page takes it too. */
 export type ExpensesSearch = FilterSearch<(typeof EXPENSE_FACETS)[number]>;
 
-/** One item on a receipt. Name and category are the item's as the line was written. */
+/** The items' or shops' list filter, as its URL keeps it. */
+export type CatalogueSearch = FilterSearch<(typeof CATALOGUE_FACET_KEYS)[number]>;
+
+/** One item on a receipt, as typed: the list's item of that name changing later leaves it as it was. */
 export interface ExpenseLine {
-  itemId: string;
   name: string;
   categoryId: string;
   amountCents: number;
@@ -33,7 +35,7 @@ export interface ExpenseView {
 /** What the expenses found add up to; mirrors expenses.Totals. */
 export interface ExpenseTotals {
   count: number;
-  /** Only their lines in the categories searched for, when it was by category. */
+  /** Only their lines in the categories and of the items searched for, when it was by those. */
   spentCents: number;
 }
 
@@ -47,16 +49,23 @@ export interface SearchExpensesRequest extends ListRequest {
   categoryIds: Array<string>;
   /** Shops by name, however typed. */
   vendors: Array<string>;
+  /** Items by name, however typed: any of its lines. */
+  items: Array<string>;
   /** Whether its receipt is kept: a file attached to it. */
   receipts: Array<"kept" | "missing">;
 }
 
-/** One thing she buys, from the list lines are picked from. */
+/**
+ * One thing the user buys, suggested by name on a line; mirrors
+ * expenses.Item. Receipts keep what was typed on them, so renaming or
+ * archiving it changes only the suggestions.
+ */
 export interface ExpenseItem {
   id: string;
   name: string;
+  /** The category a new line of it starts in: the last one's. */
   categoryId: string;
-  /** Hidden from the list she picks from; lines keep it. */
+  /** Not suggested any more. */
   archived?: boolean;
   /** What it cost the last time, to prefill a new line. */
   lastAmountCents?: number;
@@ -64,7 +73,7 @@ export interface ExpenseItem {
 
 /** Groups items the way LHDN's Form B does. */
 export interface ExpenseCategory {
-  /** Absent on one she has just added. */
+  /** Absent on one just added. */
   id?: string;
   name: string;
   /** What goes in it. */
@@ -76,8 +85,8 @@ export interface ExpenseCategory {
 
 /**
  * Somewhere the user buys from, suggested on the next receipt; mirrors
- * expenses.Vendor. Receipts name it as text, so archiving it only stops
- * the suggestion.
+ * expenses.Vendor. Receipts name it as text, so renaming or archiving it
+ * changes only the suggestions.
  */
 export interface Vendor {
   id: string;
@@ -96,13 +105,13 @@ export interface CatalogueView {
 
 /**
  * What expenses.create and expenses.update take: the whole receipt; mirrors
- * expenses.Receipt. A line without an item id adds a new item.
+ * expenses.Receipt. A line's name new to the list is added to it.
  */
 export interface ExpenseFields {
   date: string;
   vendor: string;
   notes: string;
-  lines: Array<Omit<ExpenseLine, "itemId"> & { itemId?: string }>;
+  lines: Array<ExpenseLine>;
 }
 
 /** One category's total over a period. */

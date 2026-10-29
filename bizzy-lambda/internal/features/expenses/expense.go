@@ -1,7 +1,9 @@
 // Package expenses is what the practice spends: one expense per receipt,
-// with where it was bought, the day, and a line per item on it. Each line
-// names an item from a list that grows as the user types new ones, and
-// every item belongs to a category. The categories follow the business
+// with where it was bought, the day, and a line per item on it, each in a
+// category. A receipt keeps what was typed on it. The lists of items and
+// shops only remember what was typed, to suggest it next time: they grow
+// as new names are typed, and renaming or archiving one changes the
+// suggestions, never a receipt. The categories follow the business
 // expenses on LHDN's Form B, so a year's totals per category are what the
 // tax return asks for; the user can rename, add and archive them. The
 // receipt itself is attached as a file (attachments.OwnerExpense).
@@ -37,12 +39,10 @@ var Expenses = txn.Kind[Expense]{
 	},
 }
 
-// Line is one item on a receipt.
+// Line is one item on a receipt, as typed: the list's item of that name
+// changing later leaves what was spent on what, in a year whose taxes are
+// filed, as it was.
 type Line struct {
-	ItemID string `json:"itemId"`
-	// Name and CategoryID are the item's as the line was written:
-	// renaming the item or moving it later leaves what was spent on what,
-	// in a year whose taxes are filed, as it was.
 	Name        string `json:"name"`
 	CategoryID  string `json:"categoryId"`
 	AmountCents int64  `json:"amountCents"`
@@ -79,13 +79,15 @@ func SpentBetween(tx *txn.Tx, from, to time.Time) (Spending, error) {
 	return out, err
 }
 
-// Item is one thing the business buys, from the list lines are picked
-// from.
+// Item is one thing the business buys, from the list a line's name is
+// suggested from, matched by name however typed.
 type Item struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// CategoryID is the category a new line of it starts in: the last
+	// one's.
 	CategoryID string `json:"categoryId"`
-	// Archived hides it from the list; lines keep it.
+	// Archived hides it from the suggestions; receipts are as they were.
 	Archived bool `json:"archived,omitempty"`
 	// LastAmountCents is what it cost last time, to prefill a new line.
 	LastAmountCents *int64 `json:"lastAmountCents,omitempty"`
@@ -93,14 +95,15 @@ type Item struct {
 
 var Items = txn.Kind[Item]{
 	Name: "EXPENSEITEM", Gone: "This item is no longer in the list.",
-	Doc:   txn.Doc{What: "An item expense lines are picked from, in a category."},
+	Doc:   txn.Doc{What: "An item suggested for an expense line, by name, with the category and amount it had last."},
 	Meta:  func(it *Item) txn.Meta { return txn.Meta{ID: it.ID} },
 	Whole: true,
 }
 
 // Vendor is somewhere the business buys from, from the list the form
-// suggests. A receipt names it as text, as it was typed: archiving one
-// hides it from the suggestions and leaves the receipts as they were.
+// suggests. A receipt names it as text, as it was typed: renaming or
+// archiving one changes the suggestions and leaves the receipts as they
+// were.
 type Vendor struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -185,6 +188,15 @@ func hasCategory(all []Category, id string) bool {
 // normalizeName compares item names however they were typed.
 func normalizeName(name string) string {
 	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// normalizeNames are names as normalizeName compares them.
+func normalizeNames(names []string) []string {
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = normalizeName(name)
+	}
+	return out
 }
 
 // cleanText trims a typed value and collapses its spaces.

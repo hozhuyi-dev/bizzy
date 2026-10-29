@@ -25,15 +25,17 @@ export const DOCUMENT_PLACEHOLDERS = ["firstName", "name", "title", "documents",
 /**
  * The app's wording of the message asking to pay, while the user's own in
  * Settings is blank. A line whose placeholders all come out empty is left
- * out (no e-wallets: no {phonePay} line).
+ * out (no e-wallets: no {phonePay} line). {payLink} comes before {items},
+ * whose issued invoices have links of their own: WhatsApp previews the
+ * first link in a message.
  */
 export const DEFAULT_PAYMENT_MESSAGE = `Hi {firstName}, thank you for coming in! 😊
 
-Here are the payment details:
-{items}
-
 Pay whichever way is easiest for you:
 {payLink}
+
+Here are the details:
+{items}
 
 Or transfer to me directly:
 {bank}

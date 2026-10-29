@@ -56,10 +56,17 @@ export function oneClientOf(filter: ListFilter): string | undefined {
   return client.length === 1 && payment.length === 0 && !filter.when && !filter.text.trim() ? client[0] : undefined;
 }
 
-/** A client's documents of the types and statuses the chips name (any, for none). */
+/**
+ * A client's documents of the types and statuses the chips name (any, for
+ * none), as documents.search takes them: no status chip leaves out the
+ * cancelled.
+ */
 export function documentsOfClient(docs: ReadonlyArray<DocumentSummary>, chips: ListFilter["chips"]): Array<DocumentSummary> {
   const { type = [], status = [] } = chips;
-  return docs.filter((doc) => (type.length === 0 || type.includes(doc.type)) && (status.length === 0 || status.includes(doc.status)));
+  return docs.filter(
+    (doc) =>
+      (type.length === 0 || type.includes(doc.type)) && (status.length === 0 ? doc.status !== "cancelled" : status.includes(doc.status)),
+  );
 }
 
 /** Where a document sits in its list, as the API files it. */
@@ -214,6 +221,8 @@ export function documentPresets(now = new Date()): Array<FilterPreset> {
     { label: "Unpaid invoices", when: undefined, chips: { type: ["invoice"], payment: ["unpaid"] } },
     { label: "Drafts", when: undefined, chips: { status: ["draft"] } },
     { label: "Receipts this year", when: String(now.getFullYear()), chips: { type: ["receipt"] } },
+    // Without its chip, a cancelled one isn't listed.
+    { label: "Cancelled", when: undefined, chips: { status: ["cancelled"] } },
   ];
 }
 

@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useLocation } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { PackageCheckIcon, Trash2Icon } from "lucide-react";
+import { ListPlusIcon, PackageCheckIcon, Trash2Icon } from "lucide-react";
 import { sharedFor, toPackageFields, toPackageValues } from "./packages.form";
 import { usePackageSave } from "./package-save.hook";
 import { PackagesMutation } from "./packages.mutation";
 import { PackagesQuery } from "./packages.query";
 import { clientName, packagePayables } from "./packages.util";
 import { PackagePager, packageParent } from "./components/package-pager/package-pager.component";
+import { MoveSessions } from "./components/move-sessions/move-sessions.component";
 import type { PackageStepping } from "./components/package-pager/package-pager.component";
 import type { ReactNode } from "react";
 import type { Parent } from "~/components/shared/layout/page-header/page-header.component";
@@ -152,6 +153,8 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
     !pkg && Boolean(settled),
   );
   const [error, setError] = useState<string | null>(null);
+  // Picking sessions its clients' fee pays, to pay by it instead, in its Credits step.
+  const [moving, setMoving] = useState(false);
   const locked = pkg?.locked ?? {};
   useEffect(() => {
     // Once the page is laid out and scrolled to its top.
@@ -401,7 +404,7 @@ function PackageEditor({ pkg, clientId, at, header }: PackageEditorProps) {
       content: pkg ? payment : saving(payment),
     },
     documentsStep(pkg),
-    creditsStep(pkg, clientsById),
+    creditsStep(pkg, clientsById, moving, setMoving),
   ];
 
   return (
@@ -473,9 +476,16 @@ function documentsStep(pkg: PackageView | undefined): PageStep {
 /**
  * Its credits, used by sessions from the day it was bought, once older
  * packages' run out: its client's, and those it is shared with, each
- * named with what they used once it is shared.
+ * named with what they used once it is shared. Add sessions, beside its
+ * title, opens in place the sessions its clients' fee pays, to pay by it
+ * instead (`moving`), from before it was bought too.
  */
-function creditsStep(pkg: PackageView | undefined, clientsById: ReadonlyMap<string, ClientView>): PageStep {
+function creditsStep(
+  pkg: PackageView | undefined,
+  clientsById: ReadonlyMap<string, ClientView>,
+  moving: boolean,
+  setMoving: (moving: boolean) => void,
+): PageStep {
   if (!pkg) {
     return {
       id: "credits",
@@ -490,11 +500,17 @@ function creditsStep(pkg: PackageView | undefined, clientsById: ReadonlyMap<stri
     title: "Credits",
     state: pkg.creditsLeft <= 0 ? "done" : pkg.creditsUsed > 0 ? "current" : "todo",
     meta: pkg.creditsLeft <= 0 ? "Used up" : left,
-    content: (
+    actions:
+      pkg.creditsLeft > 0 && !moving
+        ? [{ type: "button", label: "Add sessions", icon: ListPlusIcon, onClick: () => setMoving(true) }]
+        : [],
+    content: moving ? (
+      <MoveSessions pkg={pkg} onDone={() => setMoving(false)} />
+    ) : (
       <p className="text-sm">
         {pkg.creditsLeft <= 0
           ? `All ${formatHours(pkg.hours)} used.`
-          : `${formatHours(pkg.creditsUsed)} used, ${left}. Sessions from ${formatDate(pkg.purchasedAt)} on use them, by the half hour, once older packages' run out.`}
+          : `${formatHours(pkg.creditsUsed)} used, ${left}. Sessions from ${formatDate(pkg.purchasedAt)} on use them, by the half hour, once older packages' run out; Add sessions puts earlier ones on it.`}
         {pkg.sharedWith.length > 0 && pkg.uses.length > 0 && (
           <span className="mt-1 block text-muted-foreground">
             {pkg.uses.map((use) => `${clientsById.get(use.clientId)?.name ?? "Someone deleted"} ${formatHours(use.hours)}`).join(" · ")}

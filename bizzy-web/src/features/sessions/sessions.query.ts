@@ -44,6 +44,10 @@ export const SessionsQuery = {
   /** Sessions starting in [from, to). */
   useRange: (from: string, to: string) => useQuery(range(from, to)),
 
+  /** The sessions a package could pay for that their fee pays now, latest first; read only when `enabled`. */
+  useMovable: (packageId: string, enabled: boolean) =>
+    useQuery({ queryKey: SessionKeys.movable(packageId), queryFn: () => SessionsService.movable(packageId), enabled }),
+
   /** What would pay for a booking; keeps the last answer while the form changes. */
   usePreview: (request: PreviewSessionRequest | undefined) =>
     useQuery({

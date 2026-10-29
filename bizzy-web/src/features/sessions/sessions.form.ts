@@ -1,5 +1,5 @@
 import { sessionMinutes } from "./session-stage.util";
-import type { SessionDraft, SessionFields, SessionView } from "./sessions.types";
+import type { PayBy, SessionDraft, SessionFields, SessionView } from "./sessions.types";
 import type { PaymentMethod } from "~/features/payments/payments.types";
 import { addDays, toISODate, toTimeInput, todayISO } from "~/core/utils/date.util";
 import { centsToInput, parseCents } from "~/core/utils/money.util";
@@ -12,7 +12,9 @@ export interface BookingValues {
   date: string;
   time: string;
   minutes: string;
-  /** Its whole fee; blank leaves it to package credits and the client's hourly fee. */
+  /** A new one's: how it is paid; blank as a new one is (by package when credits cover some of it). */
+  payBy: PayBy | "";
+  /** Its whole fee, paid by it; blank for the client's hourly fee. */
   fee: string;
   packageHours: string;
   packagePrice: string;
@@ -41,6 +43,7 @@ export function draftOf(session: SessionView): SessionDraft {
     clientId: session.clientId,
     start: session.start,
     minutes: sessionMinutes(session),
+    payBy: session.pay.by,
     ...(session.feeTyped ? { feeCents: session.feeCents } : {}),
     ...(session.bought ? { package: { hours: session.bought.hours, priceCents: session.bought.priceCents } } : {}),
     homeVisit: session.location === "visit",
@@ -66,6 +69,7 @@ export function toBookingValues(draft: SessionDraft): BookingValues {
     date: toISODate(start),
     time: toTimeInput(start),
     minutes: String(draft.minutes),
+    payBy: draft.payBy ?? "",
     fee: centsToInput(draft.feeCents),
     ...packageValues(draft.package),
     homeVisit: draft.homeVisit,
@@ -97,7 +101,9 @@ export function toSessionDraft(values: BookingValues): SessionDraft {
     // Read as the user's local time.
     start: new Date(`${values.date}T${values.time}`).toISOString(),
     minutes: Number(values.minutes),
-    ...(fee !== null ? { feeCents: fee } : {}),
+    ...(values.payBy ? { payBy: values.payBy } : {}),
+    // A fee is typed only for one paid by it.
+    ...(fee !== null && values.payBy !== "package" ? { feeCents: fee } : {}),
     ...(values.packageHours.trim() && hours >= 1 && price !== null && price > 0
       ? { package: { hours, priceCents: values.packagePriceIs === "each" ? price * hours : price } }
       : {}),
@@ -116,9 +122,9 @@ export function sessionTime(draft: Pick<SessionDraft, "start" | "minutes">): { s
 
 /**
  * What to send for a booking: all of it for a new session, and only what
- * changed from `was` for an edit, since an update is a patch. A fee or
- * package taken away is sent empty, which returns the session to package
- * credits and the usual fee, or drops the package.
+ * changed from `was` for an edit, since an update is a patch. How it is
+ * paid only once chosen; a fee or package taken away is sent empty, which
+ * returns the session to the usual fee, or drops the package.
  */
 export function toSessionFields(draft: SessionDraft, was?: SessionDraft): SessionFields {
   const fields: SessionFields = {};
@@ -126,6 +132,7 @@ export function toSessionFields(draft: SessionDraft, was?: SessionDraft): Sessio
   if (!was || !sameInstant(draft.start, was.start) || draft.minutes !== was.minutes) fields.time = sessionTime(draft);
   if (!was || draft.homeVisit !== was.homeVisit) fields.location = draft.homeVisit ? "visit" : "own";
   if (!was || draft.tentative !== was.tentative) fields.tentative = draft.tentative;
+  if (draft.payBy && draft.payBy !== was?.payBy) fields.pay = { by: draft.payBy };
   if (was ? draft.feeCents !== was.feeCents : draft.feeCents !== undefined) {
     fields.fee = draft.feeCents === undefined ? {} : { cents: draft.feeCents };
   }
@@ -145,4 +152,42 @@ function sameInstant(a: string, b: string): boolean {
 
 function samePackage(a: SessionDraft["package"], b: SessionDraft["package"]): boolean {
   return a?.hours === b?.hours && a?.priceCents === b?.priceCents;
+}
+
+/** How a session is paid, as its Payment step changes it. */
+export interface PayValues {
+  by: PayBy;
+  /** The package to pay first; blank for the oldest bought by its start. */
+  packageId: string;
+  /** Paid by its fee: its whole fee; blank for the client's hourly fee. */
+  fee: string;
+  /** What was received moves to a new fee (a receipt not issued yet). */
+  updatePayment: boolean;
+}
+
+export function toPayValues(session: SessionView): PayValues {
+  return {
+    by: session.pay.by,
+    packageId: session.pay.packageId ?? "",
+    fee: session.feeTyped ? centsToInput(session.feeCents) : "",
+    updatePayment: false,
+  };
+}
+
+/**
+ * What to send to pay a session as the values say: how it is paid,
+ * always (the API judges only a change), and, paid by its fee, the fee
+ * when it changed, empty once cleared for the usual one.
+ */
+export function toPayFields(values: PayValues, session: SessionView): SessionFields {
+  const fields: SessionFields =
+    values.by === "package"
+      ? { pay: { by: "package", ...(values.packageId ? { packageId: values.packageId } : {}) } }
+      : { pay: { by: "fee" } };
+  if (values.by === "fee") {
+    const fee = parseCents(values.fee) ?? undefined;
+    if (fee !== (session.feeTyped ? session.feeCents : undefined)) fields.fee = fee === undefined ? {} : { cents: fee };
+  }
+  if (values.updatePayment) fields.updatePayment = true;
+  return fields;
 }

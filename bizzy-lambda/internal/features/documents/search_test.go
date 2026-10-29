@@ -51,6 +51,20 @@ func TestSearchAcrossTypes(t *testing.T) {
 	if _, refused, _ := a.Call("documents.search", map[string]any{"types": []string{"quote"}}); refused == nil {
 		t.Error("an unknown type is searched for")
 	}
+	// A cancelled one shows only when asked for.
+	inv := ss[2].Invoice.ID
+	if err := a.Must("documents.issue", map[string]any{"id": inv}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Must("documents.cancel", map[string]any{"id": inv, "reason": "Wrong client"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if ids, _ := search(map[string]any{}); slices.Contains(ids, inv) {
+		t.Errorf("every document = %v, want the cancelled one left out", ids)
+	}
+	if ids, _ := search(map[string]any{"statuses": []string{"cancelled"}}); !slices.Equal(ids, []string{inv}) {
+		t.Errorf("cancelled = %v", ids)
+	}
 }
 
 // A draft is filed by the latest session on it, not when it was made, so

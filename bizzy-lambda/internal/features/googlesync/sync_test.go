@@ -216,23 +216,27 @@ func TestEveryEventIsBizzys(t *testing.T) {
 func TestACalendarDeleteCancelsWhatHasHistory(t *testing.T) {
 	a, _ := setup(t, "Jane Smith")
 	recorded := a.Calendar.UserAdd("Jane Smith", at(-3), at(-2))
+	happened := a.Calendar.UserAdd("Jane Smith", at(-6), at(-5))
 	booked := a.Calendar.UserAdd("Jane Smith", at(30), at(31))
 	sync(t, a)
 	ss := listSessions(t, a)
-	if len(ss) != 2 {
+	if len(ss) != 3 {
 		t.Fatalf("sessions = %+v", ss)
 	}
-	past := ss[0]
-	if past.Start.After(ss[1].Start) {
-		past = ss[1]
+	var past sessions.View
+	for _, s := range ss {
+		if s.Start.Equal(at(-3)) {
+			past = s
+		}
 	}
 	if err := a.Must("sessions.saveRecord", map[string]any{"id": past.ID, "summary": "Knee, better"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	// The one that happened is cancelled, with its notes; the one booked
-	// by mistake goes.
+	// The one with notes is cancelled, keeping them; the others, nothing
+	// on them, go, the one that happened too.
 	a.Calendar.UserDelete(recorded)
+	a.Calendar.UserDelete(happened)
 	a.Calendar.UserDelete(booked)
 	sync(t, a)
 	if w := waiting(t, a); len(w) != 0 {

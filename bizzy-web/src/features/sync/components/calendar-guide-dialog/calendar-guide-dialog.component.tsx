@@ -42,6 +42,10 @@ export function CalendarGuideDialog({ open, onClose }: CalendarGuideDialogProps)
       <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
         <li>The name is the client's, or one of their other calendar names. Capitals don't matter.</li>
         <li>A title bizzy can't read waits on your to-do list, saying what to fix.</li>
+        <li>
+          Deleting an event deletes its session for good, with its fee on a draft invoice. One with notes is cancelled
+          instead, and one paid for or on an issued invoice waits on your to-do list.
+        </li>
       </ul>
       <DialogFooter showCloseButton />
     </SheetDialog>

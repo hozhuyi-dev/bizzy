@@ -1,5 +1,6 @@
 import { useSelector } from "@tanstack/react-form";
-import { PREVIEW_DEBOUNCE_MS } from "../../sessions.constant";
+import { PAY_BY_OPTIONS, PREVIEW_DEBOUNCE_MS } from "../../sessions.constant";
+import { useDescribeCover } from "../../session-cover.hook";
 import { sessionTime, toBookingValues, toSessionDraft } from "../../sessions.form";
 import { SessionsQuery } from "../../sessions.query";
 import type { BookingValues, PriceIs } from "../../sessions.form";
@@ -10,7 +11,6 @@ import { BILLED_TO_HELP } from "~/features/clients/clients.constant";
 import { pickableClients } from "~/features/clients/clients.util";
 import { PaidByField, PaidOnField } from "~/features/payments/components/paid-fields/paid-fields.component";
 import { ClientSelectField } from "~/features/clients/components/client-select-field/client-select-field.component";
-import { PackagesQuery } from "~/features/packages/packages.query";
 import { LockedHint } from "~/features/remedies/components/locked-hint/locked-hint.component";
 import { saidAbove } from "~/features/remedies/remedies.util";
 import { toastRefusal } from "~/features/remedies/components/remedy-buttons/remedy-buttons.component";
@@ -19,8 +19,8 @@ import { Button } from "~/components/ui/button";
 import { FieldDescription, FieldGroup } from "~/components/ui/field";
 import { Separator } from "~/components/ui/separator";
 import { useDebounced } from "~/core/utils/debounced.hook";
-import { formatDate, formatHours, toTimeInput } from "~/core/utils/date.util";
-import { formatCents } from "~/core/utils/money.util";
+import { formatHours, toTimeInput } from "~/core/utils/date.util";
+import { centsToInput, formatCents } from "~/core/utils/money.util";
 import { moneyError, requiredError, wholeNumberError } from "~/core/utils/form.util";
 
 const PRICE_IS_ITEMS: Array<{ value: PriceIs; label: string }> = [
@@ -46,8 +46,9 @@ interface BookingFormOptions {
 }
 
 /**
- * When and with whom, and what it costs: everything the calendar event
- * shows. The user fills in fields; the API writes the event, so its title
+ * When and with whom, and, for a new one, how it is paid: everything the
+ * calendar event shows (afterwards, how it is paid changes on its Payment
+ * step). The user fills in fields; the API writes the event, so its title
  * always reads back as this booking. Its fields go in the page's Booking
  * step (a new session's, or a session's own while it is being changed),
  * and its Save in the page header, so the page wraps the fields in a form
@@ -56,7 +57,6 @@ interface BookingFormOptions {
 export function useBookingForm({ initial, session, locked = {}, onSubmit }: BookingFormOptions) {
   const clientsById = ClientsQuery.useById();
   const clients = ClientsQuery.useList();
-  const packages = PackagesQuery.useList(true);
   // What was received follows a new fee only on a receipt not issued yet.
   const repayable = Boolean(session?.paid && !session.paid.issued);
 
@@ -82,36 +82,7 @@ export function useBookingForm({ initial, session, locked = {}, onSubmit }: Book
   const preview = SessionsQuery.usePreview(previewRequest);
   const cover: CoverView | undefined = previewRequest ? preview.data : undefined;
 
-  const describeCover = (values: BookingValues): string => {
-    const name = clientsById.get(values.clientId)?.name;
-    if (!name) return "Choose a client to see what covers it.";
-    if (!cover) return "Working out what covers it…";
-    const prefix = values.fee.trim() ? `Its whole fee, in place of` : "Leave blank to use";
-    const credits = cover.credits
-      .map(({ packageId, hours }) => {
-        const pkg = packages.data?.find((p) => p.id === packageId);
-        // A package shared with them is named by whose it is.
-        const holder = pkg ? (clientsById.get(pkg.clientId)?.name ?? name) : name;
-        return pkg
-          ? `${formatHours(hours)} of ${holder}'s package bought ${formatDate(pkg.purchasedAt)} (${formatHours(pkg.creditsLeft)} left)`
-          : `${formatHours(hours)} of ${name}'s package credits`;
-      })
-      .join(", then ");
-    const then = credits ? `${credits}, then ` : "";
-    const charged = `Charged as ${formatHours(cover.hours)}.`;
-    switch (cover.kind) {
-      case "bought":
-        return `${charged} ${prefix} ${then}the package bought in this session.`;
-      case "credit":
-        return `${charged} ${prefix} ${credits}.`;
-      case "default":
-        return `${charged} ${prefix} ${then}${name}'s usual fee for ${formatHours(cover.feeHours)}: ${formatCents(cover.feeCents ?? 0)}.`;
-      case "none":
-        return credits
-          ? `${charged} ${credits} leaves ${formatHours(cover.feeHours)}, and ${name} has no fee set.`
-          : `${charged} ${name} has no package credits left and no fee set.`;
-    }
-  };
+  const describeCover = useDescribeCover();
 
   // Who can pay: every client (whoever pays now kept, archived or not), or whom the client is billed to.
   const payers = pickableClients(clients.data ?? [], session?.payer);
@@ -194,35 +165,59 @@ export function useBookingForm({ initial, session, locked = {}, onSubmit }: Book
 
         <Separator />
 
-        <form.AppField
-          name="fee"
-          validators={{
-            onChangeListenTo: ["clientId", "date", "time", "minutes", "packageHours", "packagePrice", "tentative"],
-            onChange: ({ value, fieldApi }) => {
-              if (value.trim()) return moneyError(value);
-              // A booking not yet confirmed can wait for its fee.
-              return cover?.kind === "none" && !fieldApi.form.getFieldValue("tentative")
-                ? "Enter the fee: no package credits or client fee cover it"
-                : undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <form.Subscribe selector={(state) => state.values}>
-              {(values) => (
-                <field.TextField
-                  label="Fee for this session"
-                  inputMode="decimal"
-                  inputClassName="max-w-40"
-                  disabled={locked.fee !== undefined}
-                  // The lock says why; otherwise what would pay for it.
-                  description={locked.fee ? undefined : describeCover(values)}
-                  hint={<LockedHint lock={locked.fee} again={saidAbove(locked.fee, locked.clientId, locked.tentative)} />}
-                />
-              )}
-            </form.Subscribe>
-          )}
-        </form.AppField>
+        {/* A new one only: afterwards how it is paid changes on its Payment step. */}
+        {!session && (
+          <form.Subscribe selector={(state) => state.values}>
+            {(values) => (
+              <>
+                <form.AppField
+                  name="payBy"
+                  validators={{
+                    onChangeListenTo: ["clientId", "date", "time", "minutes", "packageHours", "packagePrice", "tentative"],
+                    // A booking not yet confirmed can wait for what pays for it.
+                    onChange: ({ fieldApi }) =>
+                      cover?.by === "package" && cover.kind === "none" && !fieldApi.form.getFieldValue("tentative")
+                        ? "Package credits don't cover it, and there's no usual fee: pay it by its fee"
+                        : undefined,
+                  }}
+                >
+                  {(field) => (
+                    <field.ChoiceField
+                      label="Paid by"
+                      options={PAY_BY_OPTIONS}
+                      fallback={cover?.by}
+                      description={(values.payBy || cover?.by) === "fee" ? undefined : describeCover(cover, values.clientId)}
+                    />
+                  )}
+                </form.AppField>
+                {(values.payBy || cover?.by) === "fee" && (
+                  <form.AppField
+                    name="fee"
+                    validators={{
+                      onChangeListenTo: ["clientId", "date", "time", "minutes", "tentative", "payBy"],
+                      onChange: ({ value, fieldApi }) => {
+                        if (value.trim()) return moneyError(value);
+                        return cover?.by === "fee" && cover.kind === "none" && !fieldApi.form.getFieldValue("tentative")
+                          ? "Enter the fee: the client has no usual fee"
+                          : undefined;
+                      },
+                    }}
+                  >
+                    {(field) => (
+                      <field.TextField
+                        label="Fee for this session"
+                        inputMode="decimal"
+                        inputClassName="max-w-40"
+                        placeholder={cover?.feeCents === undefined ? undefined : centsToInput(cover.feeCents)}
+                        description={describeCover(cover, values.clientId, Boolean(values.fee.trim()))}
+                      />
+                    )}
+                  </form.AppField>
+                )}
+              </>
+            )}
+          </form.Subscribe>
+        )}
 
         <div className="flex flex-wrap items-start gap-4">
           <form.AppField
@@ -276,17 +271,14 @@ export function useBookingForm({ initial, session, locked = {}, onSubmit }: Book
             )}
           </form.AppField>
         </div>
-        <LockedHint
-          lock={locked.package}
-          again={saidAbove(locked.package, locked.clientId, locked.tentative, locked.fee)}
-        />
+        <LockedHint lock={locked.package} again={saidAbove(locked.package, locked.clientId, locked.tentative)} />
         <form.Subscribe selector={(state) => state.values}>
           {(values) => {
             const pkg = toSessionDraft(values).package;
             return (
               <FieldDescription>
                 {pkg
-                  ? `${formatHours(pkg.hours)} for ${formatCents(pkg.priceCents)} (${formatCents(Math.round(pkg.priceCents / pkg.hours))} an hour), due with this session, which uses its credits once older packages' run out.`
+                  ? `${formatHours(pkg.hours)} for ${formatCents(pkg.priceCents)} (${formatCents(Math.round(pkg.priceCents / pkg.hours))} an hour), due with this session, which uses its credits once older packages' run out unless it is paid by its fee.`
                   : "Only if one is bought in this session, as hours; it uses the credits older packages leave."}
               </FieldDescription>
             );
@@ -301,7 +293,7 @@ export function useBookingForm({ initial, session, locked = {}, onSubmit }: Book
               className="max-w-72"
               disabled={locked.billTo !== undefined}
               description={BILLED_TO_HELP}
-              hint={<LockedHint lock={locked.billTo} again={saidAbove(locked.billTo, locked.fee, locked.package)} />}
+              hint={<LockedHint lock={locked.billTo} again={saidAbove(locked.billTo, locked.package)} />}
             />
           )}
         </form.AppField>
@@ -360,9 +352,15 @@ function endsAt(date: string, time: string, minutes: string): string {
   return Number.isNaN(end.getTime()) ? "" : `Until ${toTimeInput(end)}`;
 }
 
-/** The booking to price, once it names a client and a time. */
+/** The booking to price, once it names a client and a time, paid as chosen (as a new one is, until then). */
 function previewOf(values: BookingValues, session: SessionView | undefined): PreviewSessionRequest | undefined {
   if (!values.clientId || !values.date || !values.time) return undefined;
   const draft = toSessionDraft(values);
-  return { clientId: draft.clientId, time: sessionTime(draft), sessionId: session?.id, buysPackage: draft.package !== undefined };
+  return {
+    clientId: draft.clientId,
+    time: sessionTime(draft),
+    sessionId: session?.id,
+    buysPackage: draft.package !== undefined,
+    pay: draft.payBy ? { by: draft.payBy } : undefined,
+  };
 }

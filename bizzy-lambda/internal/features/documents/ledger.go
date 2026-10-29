@@ -219,7 +219,7 @@ func CanRemove(tx *txn.Tx, src Source, what string) error {
 	if r, _, err := Receipt(tx, src); err != nil {
 		return err
 	} else if r != nil {
-		return apperr.Refused(fmt.Sprintf("A payment is recorded for %s. Undo it first, so the record of it isn't lost.", what), undoPayment(src))
+		return apperr.Refused(fmt.Sprintf("A payment is recorded for %s. Undo it first, so the record of it isn't lost.", what), UndoPayment(src))
 	}
 	return CanChange(tx, src, TypeInvoice)
 }
@@ -435,10 +435,10 @@ func CheckPaid(tx *txn.Tx, src Source) error {
 	case err != nil:
 		return err
 	case cents == 0:
-		return apperr.Refused(fmt.Sprintf("Nothing would be owed on %s, but a payment is recorded for it. Undo the payment first.", describe(*received)), undoPayment(src))
+		return apperr.Refused(fmt.Sprintf("Nothing would be owed on %s, but a payment is recorded for it. Undo the payment first.", describe(*received)), UndoPayment(src))
 	case received.AmountCents != cents:
 		return apperr.Refused(fmt.Sprintf("%s was received for %s, which would cost %s. Undo the payment first, or update it with the change.",
-			Format(received.AmountCents), describe(*received), Format(cents)), undoPayment(src))
+			Format(received.AmountCents), describe(*received), Format(cents)), UndoPayment(src))
 	}
 	return nil
 }
@@ -450,7 +450,8 @@ func describe(l Line) string {
 	return fmt.Sprintf("%q on %s", l.Description, l.Date)
 }
 
-func undoPayment(src Source) apperr.Remedy {
+// UndoPayment is the remedy undoing what was received for an item.
+func UndoPayment(src Source) apperr.Remedy {
 	return apperr.Remedy{
 		Action: "payments.set", Target: src.Key(), Label: "Undo the payment",
 		Request: map[string]any{"items": []map[string]any{{"kind": src.Kind, "id": src.ID}}},

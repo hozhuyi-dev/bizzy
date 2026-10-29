@@ -1,5 +1,5 @@
 import { useSelector } from "@tanstack/react-form";
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ExpensesMutation } from "./expenses.mutation";
 import { ExpensesQuery } from "./expenses.query";
@@ -18,7 +18,8 @@ import { ErrorState } from "~/components/shared/feedback/error-state/error-state
  * The categories items are filed under. They start as the expenses on LHDN's
  * Form B, so a year's totals are what the tax return asks for; should the
  * form change, they are renamed, added or archived here. One is never
- * deleted: expenses already recorded are filed under it.
+ * deleted: expenses already recorded are filed under it. The archived ones
+ * are folded away at the bottom, as put away elsewhere.
  */
 export function ExpenseCategoriesPage() {
   const catalogue = ExpensesQuery.useCatalogue();
@@ -72,6 +73,8 @@ function CategoriesEditor({ initial }: { initial: Array<ExpenseCategory> }) {
 
   const isSubmitting = useSelector(form.store, (state) => state.isSubmitting);
   const hasChanges = useSelector(form.store, (state) => !state.isDefaultValue);
+  // Grouped as saved, so ticking Archived doesn't move the row away from under the pointer.
+  const archivedIds = new Set(initial.flatMap((category) => (category.archived && category.id ? [category.id] : [])));
 
   return (
     <>
@@ -102,83 +105,96 @@ function CategoriesEditor({ initial }: { initial: Array<ExpenseCategory> }) {
           filed under it stays there.
         </p>
         <form.Field name="categories" mode="array">
-          {(list) => (
-            <>
-              <ul className="flex flex-col divide-y rounded-md border">
-                {list.state.value.map((category, i) => (
-                  <li key={category.id ?? `new-${i}`} className="flex flex-col gap-2 p-3 md:flex-row md:items-start">
-                    <div className="grid flex-1 gap-2 md:grid-cols-2">
-                      <form.AppField
-                        name={`categories[${i}].name`}
-                        validators={{ onChange: ({ value }) => requiredError(value, "Name the category") }}
-                      >
-                        {(field) => <field.TextField label="Name" labelClassName="sr-only" maxLength={MAX_NAME} />}
-                      </form.AppField>
-                      <form.AppField name={`categories[${i}].hint`}>
-                        {(field) => (
-                          <field.TextField
-                            label="What goes in it"
-                            labelClassName="sr-only"
-                            maxLength={MAX_HINT}
-                            placeholder="What goes in it"
-                          />
-                        )}
-                      </form.AppField>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 md:h-8">
-                      <form.Field name={`categories[${i}].capital`}>
-                        {(field) => (
-                          <label className="flex items-center gap-1.5 text-sm">
-                            <Checkbox checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
-                            Capital allowance
-                          </label>
-                        )}
-                      </form.Field>
-                      <form.Field name={`categories[${i}].archived`}>
-                        {(field) => (
-                          <label className="flex items-center gap-1.5 text-sm">
-                            <Checkbox checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
-                            Archived
-                          </label>
-                        )}
-                      </form.Field>
-                      <span className="flex">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Move up"
-                          disabled={i === 0}
-                          onClick={() => list.moveValue(i, i - 1)}
-                        >
-                          <ArrowUpIcon />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Move down"
-                          disabled={i === list.state.value.length - 1}
-                          onClick={() => list.moveValue(i, i + 1)}
-                        >
-                          <ArrowDownIcon />
-                        </Button>
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                onClick={() => list.pushValue({ name: "", hint: "", capital: false, archived: false })}
-              >
-                <PlusIcon /> Add category
-              </Button>
-            </>
-          )}
+          {(list) => {
+            const rows = list.state.value.map((category, i) => ({ category, i }));
+            const archived = rows.filter(({ category }) => category.id !== undefined && archivedIds.has(category.id));
+            const inUse = rows.filter((row) => !archived.includes(row));
+            const row = ({ category, i }: { category: CategoryValues; i: number }) => (
+              <li key={category.id ?? `new-${i}`} className="flex flex-col gap-2 p-3 md:flex-row md:items-start">
+                <div className="grid flex-1 gap-2 md:grid-cols-2">
+                  <form.AppField
+                    name={`categories[${i}].name`}
+                    validators={{ onChange: ({ value }) => requiredError(value, "Name the category") }}
+                  >
+                    {(field) => <field.TextField label="Name" labelClassName="sr-only" maxLength={MAX_NAME} />}
+                  </form.AppField>
+                  <form.AppField name={`categories[${i}].hint`}>
+                    {(field) => (
+                      <field.TextField
+                        label="What goes in it"
+                        labelClassName="sr-only"
+                        maxLength={MAX_HINT}
+                        placeholder="What goes in it"
+                      />
+                    )}
+                  </form.AppField>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 md:h-8">
+                  <form.Field name={`categories[${i}].capital`}>
+                    {(field) => (
+                      <label className="flex items-center gap-1.5 text-sm">
+                        <Checkbox checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
+                        Capital allowance
+                      </label>
+                    )}
+                  </form.Field>
+                  <form.Field name={`categories[${i}].archived`}>
+                    {(field) => (
+                      <label className="flex items-center gap-1.5 text-sm">
+                        <Checkbox checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
+                        Archived
+                      </label>
+                    )}
+                  </form.Field>
+                  <span className="flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Move up"
+                      disabled={i === 0}
+                      onClick={() => list.moveValue(i, i - 1)}
+                    >
+                      <ArrowUpIcon />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Move down"
+                      disabled={i === list.state.value.length - 1}
+                      onClick={() => list.moveValue(i, i + 1)}
+                    >
+                      <ArrowDownIcon />
+                    </Button>
+                  </span>
+                </div>
+              </li>
+            );
+            return (
+              <>
+                <ul className="flex flex-col divide-y rounded-md border">{inUse.map(row)}</ul>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-fit"
+                  onClick={() => list.pushValue({ name: "", hint: "", capital: false, archived: false })}
+                >
+                  <PlusIcon /> Add category
+                </Button>
+                {archived.length > 0 && (
+                  <details className="group/archived">
+                    <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground">
+                      <ChevronRightIcon className="size-4 transition-transform group-open/archived:rotate-90" aria-hidden="true" />
+                      Archived ({archived.length})
+                    </summary>
+                    <ul className="mt-2 flex flex-col divide-y rounded-md border">{archived.map(row)}</ul>
+                  </details>
+                )}
+              </>
+            );
+          }}
         </form.Field>
       </form>
       <UnsavedChangesDialog when={hasChanges} />

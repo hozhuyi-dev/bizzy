@@ -231,6 +231,9 @@
   /* The air under the dock: more once installed (below), where the page runs
      down to the screen's edge, under the home indicator or gesture bar. */
   --dock-air: 0.75rem;
+  /* The air between a keyboard and what rides above it: no home indicator
+     there to keep clear of. */
+  --keyboard-air: 0.5rem;
   /* How much of the screen's bottom a phone's keyboard covers, set by
      useKeyboardInset on what rides above it (the dock, a sheet). */
   --keyboard-inset: 0px;
@@ -250,6 +253,12 @@
   :root {
     --dock-air: 1.75rem;
   }
+}
+
+/* Riding above a phone's keyboard (useKeyboardInset): the keyboard is the
+   edge now, so only its air. */
+[data-keyboard-up] {
+  --dock-air: var(--keyboard-air);
 }
 
 /*

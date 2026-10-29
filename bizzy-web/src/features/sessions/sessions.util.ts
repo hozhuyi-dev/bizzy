@@ -62,6 +62,8 @@ export function sessionPresets(now = new Date()): Array<FilterPreset> {
     { label: "To confirm", when: undefined, chips: { stage: ["confirm"] } },
     { label: "To record", when: undefined, chips: { stage: ["record"] } },
     { label: "Unpaid", when: undefined, chips: { stage: ["collect"] } },
+    // Without its chip, a cancelled one isn't listed.
+    { label: "Cancelled", when: undefined, chips: { stage: [CANCELLED_STAGE] } },
   ];
 }
 

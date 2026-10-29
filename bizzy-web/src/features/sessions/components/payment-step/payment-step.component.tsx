@@ -1,3 +1,4 @@
+import { PencilIcon } from "lucide-react";
 import { hasHappened } from "../../session-stage.util";
 import { owedText, sessionPayables } from "../../session-payment.util";
 import type { PageStep, StepState } from "~/components/shared/layout/page-steps/page-steps.component";
@@ -9,10 +10,16 @@ import { paidText } from "~/features/payments/payments.util";
 import { formatDate, formatHours } from "~/core/utils/date.util";
 import { formatCents } from "~/core/utils/money.util";
 
+/**
+ * How it is paid, what was received, and what is owed. Changing how it is
+ * paid (package or its fee) is the step's own action, beside its title:
+ * the page turns the step into its form (`onChangePay`), as the booking's.
+ */
 export function paymentStep(
   session: SessionFullView,
   covering: ReadonlyArray<CoveringCredit>,
   bought: PackageView | undefined,
+  onChangePay: () => void,
 ): PageStep {
   const { paid } = session;
 
@@ -35,6 +42,7 @@ export function paymentStep(
     title: "Payment",
     state,
     meta: parts.join(" · "),
+    actions: [{ type: "button", label: "Change how it's paid", icon: PencilIcon, can: session.can.update, onClick: onChangePay }],
     content: session.tentative ? (
       <p className="text-sm text-muted-foreground">{session.can.pay.why ?? "Confirm the session before recording its payment."}</p>
     ) : (
@@ -63,6 +71,7 @@ function SessionPayment({
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-sm">{payText(session)}</p>
       {covering.length > 0 && (
         <ul className="flex flex-col gap-1 text-sm">
           {covering.map(({ pkg, hours }) => (
@@ -91,3 +100,8 @@ function SessionPayment({
   );
 }
 
+/** "Paid by package, oldest first": how it is paid, as chosen. */
+function payText(session: SessionFullView): string {
+  if (session.pay.by === "fee") return session.feeTyped ? "Paid by its own fee, entered for it." : "Paid by its own fee: the client's usual one.";
+  return session.pay.packageId ? "Paid by package: the one chosen first." : "Paid by package, oldest first.";
+}
