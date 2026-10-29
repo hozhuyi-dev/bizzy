@@ -216,10 +216,16 @@ jobs:
           # Un-hashed public files revalidate on every request.
           aws s3 sync "$DIST" "s3://$SITE_BUCKET" \
             --cache-control "public,max-age=0,must-revalidate" \
-            --exclude "assets/*" --exclude "index.html"
-          # Entry document last, once everything it references is in place.
+            --exclude "assets/*" --exclude "index.html" --exclude "sw.js"
+          # Entry document once everything it references is in place.
           aws s3 cp "$DIST/index.html" "s3://$SITE_BUCKET/index.html" \
             --cache-control "no-cache"
+          # The service worker after it: a browser that finds the new one
+          # downloads the build it lists, index.html too, and CloudFront ignores
+          # the revision in the query, so before this it would keep the old
+          # index.html, pointing at assets deleted below.
+          aws s3 cp "$DIST/sw.js" "s3://$SITE_BUCKET/sw.js" \
+            --cache-control "public,max-age=0,must-revalidate"
           # Then drop the previous builds' files, which nothing references
           # any more (each build names its assets anew, so they pile up).
           aws s3 sync "$DIST" "s3://$SITE_BUCKET" --delete --size-only
