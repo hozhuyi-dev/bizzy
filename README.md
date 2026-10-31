@@ -2,6 +2,41 @@
 
 Back-office for a one-person physio practice: sessions, packages, invoices and receipts, follow-ups, expenses. Sessions are booked in Google Calendar or in the app.
 
+Built and run by one developer, and in use by the practice in production. A React PWA on the phone, a Go API on AWS Lambda and DynamoDB, deployed by CDK and GitHub Actions. The screenshots show made-up data.
+
+<p align="center">
+  <img src="docs/images/demo.gif" alt="A session is booked, marked paid, and its receipt issued" width="300">
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/images/home.png" alt="Home: today's sessions and the to-do list" width="260"><br>Home</td>
+    <td align="center"><img src="docs/images/refusal.png" alt="A paid session's menu: Cancel and Delete are off, each saying why and what to undo first" width="260"><br>Why an action is off</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/conflict.png" alt="A calendar edit onto another session's time, refused and waiting on the to-do list with its remedy" width="260"><br>A calendar edit refused</td>
+    <td align="center"><img src="docs/images/pay-page.png" alt="The payment page the WhatsApp message links: bank details and the ways to pay" width="260"><br>The payment page it sends</td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/images/desktop.png" alt="A client's page on a wide screen: timeline, packages and documents" width="820">
+</p>
+
+### Highlights
+
+- **Every rule is tested by use.** A property-based state machine ([simulation](bizzy-lambda/internal/simulation/simulation_test.go), `pgregory.net/rapid`) runs every action, calendar edits and the clock in random order. After each step it checks every invariant, that a refusal changed nothing, and that each view's verdicts match the API. The same run can be pointed at production's data, in memory, before a deploy.
+- **The app never reaches an invalid state.** A change is an action that checks its rules before anything is written, then the invariants are checked on what it changed, then it commits as one transaction ([txn](bizzy-lambda/internal/platform/txn/runner.go)). A refusal says why and offers remedies. The web holds no business rule: each view carries `can` and `locked` from the API.
+- **Google Calendar is a command surface.** Moving an event in Calendar is read as the command the app would send, under the same rules ([googlesync](bizzy-lambda/internal/features/googlesync)). A refused edit waits on the to-do list, with one remedy that always puts bizzy's version back.
+- **Invoices are printed once.** Issuing renders the PDF byte-for-byte repeatably ([pdflayout](bizzy-lambda/internal/platform/pdflayout), a small layout engine over fpdf), commits its SHA-256 and keeps it in S3 under Object Lock for 7 years. The layout can change freely; issued documents never do.
+- **Reads are the budget.** DynamoDB runs at 5 provisioned units a second. Commits are checked per partition by version, and a warm Lambda keeps what it read while that version holds ([cache](bizzy-lambda/internal/platform/txn/cache.go)), so most requests read one item. A page is one call.
+- **Production holds data, so nothing is reset.** Versioned [migrations](bizzy-lambda/internal/migrations) run on deploy behind a fence, with a backup first and a dry run in CI. Deploys use GitHub OIDC roles scoped to each environment ([ci-stack](bizzy-infra/lib/ci-stack.ts)).
+
+> [!IMPORTANT]
+> **Viewing only. All rights reserved.** This code is public to be read as a portfolio piece. No licence is granted: you may not use, copy, modify, distribute or deploy it, in whole or in part, without written permission.
+
+The rest of this README is the design, written for whoever works on it next.
+
 ## Design principles
 
 1. **bizzy is the truth; Google Calendar is a command surface.** A calendar edit is read as the command the app would send, under the same rules. Every event in the chosen calendar is bizzy's (a session, a follow-up `!`) or refused. A refused edit waits on the to-do list with remedies, one of which always puts bizzy's version back. Google Contacts is the truth for contact details (the app keeps a read-only copy); a client's IC or passport number is bizzy's.
@@ -195,6 +230,7 @@ pnpm lambda:deploy       # hotswap development Lambdas after Go changes, then mi
 pnpm lambda:migrate:dry  # what the next deploy's migrations would do (writes nothing)
 pnpm data:replay production         # this checkout on production's data, in memory; see below
 pnpm data:copy production staging   # replace staging's (or development's) data with production's, scrubbed
+pnpm data:seed           # reset development and fill it with made-up data around today, for screenshots
 pnpm web:dev             # http://localhost:4200
 pnpm web:env             # rewrite the web env only
 pnpm web:icons           # regenerate the installed app's icons after changing bizzy-web/public/app-icon.svg

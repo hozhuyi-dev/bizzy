@@ -1,0 +1,1 @@
+Read [README.md](README.md) at the start of every task: it is the memory and the rules for this repo. Record lasting facts and decisions in README.md, concisely and in the right section, never here or in Claude's own memory.
